@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05060a" />
+    <meta
+      name="description"
+      content="Light show musical personnel : depose un morceau, l'analyse audio tourne sur le serveur, le spectacle se synchronise sur la musique."
+    />
+    <title>Night Light — light show musical</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A1%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/styles/base.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage" aria-label="Spectacle lumineux" role="img"></canvas>
+      <div id="scrim" aria-hidden="true"></div>
+
+      <!-- Écran de dépôt -->
+      <main id="screen-drop" class="screen is-active" data-screen="drop">
+        <div class="drop-shell">
+          <header class="brand">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <div class="brand-text">
+              <h1>Night Light</h1>
+              <p class="brand-sub">Light show musical — usage personnel</p>
+            </div>
+          </header>
+
+          <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-describedby="drop-hint">
+            <div class="dropzone-inner">
+              <svg class="dropzone-icon" viewBox="0 0 48 48" aria-hidden="true">
+                <path
+                  d="M24 33V11m0 0-8 8m8-8 8 8M7 30v4a5 5 0 0 0 5 5h24a5 5 0 0 0 5-5v-4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <p class="dropzone-title">Dépose ta musique ici</p>
+              <p class="dropzone-sub" id="drop-hint">
+                MP3, WAV, OGG, FLAC, M4A — le fichier est analysé sur cette machine puis supprimé.
+              </p>
+              <button id="btn-pick" class="btn btn-ghost" type="button">Choisir un fichier</button>
+            </div>
+            <input
+              id="file-input"
+              type="file"
+              accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/wave,audio/ogg,audio/flac,audio/x-m4a,audio/mp4,video/mp4,.mp3,.wav,.ogg,.oga,.flac,.m4a,.aac"
+              class="visually-hidden"
+              aria-label="Fichier audio"
+            />
+          </div>
+
+          <p id="drop-error" class="drop-error" role="alert" hidden></p>
+
+          <ul class="notice-list">
+            <li>
+              <strong>Confidentialité :</strong> le fichier part de ton navigateur vers le serveur local pour
+              l'analyse. Il n'est ni publié, ni accessible publiquement, et il est effacé dès que l'analyse et le
+              spectacle sont terminés.
+            </li>
+            <li>
+              <strong>Confort visuel :</strong> mode intensité réduite et réglage des flashs disponibles pendant le
+              spectacle.
+            </li>
+          </ul>
+        </div>
+      </main>
+
+      <!-- Écran d'analyse -->
+      <main id="screen-analysis" class="screen" data-screen="analysis">
+        <div class="panel panel-analyze">
+          <p class="kicker">Analyse en cours</p>
+          <h2 id="an-title" class="an-title">—</h2>
+          <p id="an-meta" class="an-meta">—</p>
+
+          <div
+            class="progress"
+            role="progressbar"
+            id="an-progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-labelledby="an-phase"
+          >
+            <div class="progress-bar"><span id="an-progress-fill" class="progress-fill"></span></div>
+            <div class="progress-row">
+              <span id="an-phase" class="progress-phase">Préparation</span>
+              <span id="an-percent" class="progress-percent">0 %</span>
+            </div>
+          </div>
+
+          <p id="an-detail" class="an-detail">Envoi du fichier…</p>
+
+          <div class="panel-actions">
+            <button id="btn-cancel-analysis" class="btn btn-ghost" type="button">Annuler</button>
+            <button id="btn-launch" class="btn btn-primary" type="button" hidden>Lancer le show</button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Écran d'erreur -->
+      <main id="screen-error" class="screen" data-screen="error">
+        <div class="panel panel-error">
+          <p class="kicker kicker-error">Oups</p>
+          <h2 id="err-title" class="an-title">Le spectacle n'a pas pu démarrer</h2>
+          <p id="err-message" class="an-meta">Une erreur inattendue est survenue.</p>
+          <details id="err-details" class="err-details" hidden>
+            <summary>Détails techniques</summary>
+            <pre id="err-detail-text"></pre>
+          </details>
+          <div class="panel-actions">
+            <button id="btn-error-back" class="btn btn-primary" type="button">Revenir au dépôt</button>
+          </div>
+        </div>
+      </main>
+
+      <!-- Spectacle -->
+      <section id="screen-show" class="screen screen-show" data-screen="show" hidden>
+        <div class="show-top">
+          <div class="now-playing">
+            <span class="np-dot" aria-hidden="true"></span>
+            <div class="np-text">
+              <strong id="np-title">—</strong>
+              <span id="np-info">—</span>
+            </div>
+          </div>
+          <button id="btn-fullscreen" class="btn btn-icon" type="button" aria-label="Plein écran" title="Plein écran">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="icon">
+              <path
+                d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <aside id="hud" class="hud" aria-label="Commandes du spectacle">
+          <button id="hud-toggle" class="hud-toggle" type="button" aria-expanded="true" aria-controls="hud-body">
+            <span class="hud-toggle-label">Commandes</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="icon hud-chevron">
+              <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+
+          <div id="hud-body" class="hud-body">
+            <div class="hud-block">
+              <p id="hud-track" class="hud-track">—</p>
+              <div class="seek">
+                <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Position dans le morceau" />
+                <div class="seek-times"><span id="time-current">0:00</span><span id="time-total">0:00</span></div>
+              </div>
+            </div>
+
+            <div class="transport">
+              <button id="btn-play" class="btn btn-round btn-primary" type="button" aria-label="Lecture / pause">
+                <svg viewBox="0 0 24 24" class="icon icon-play" aria-hidden="true">
+                  <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
+                </svg>
+                <svg viewBox="0 0 24 24" class="icon icon-pause" aria-hidden="true" hidden>
+                  <path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.4z" fill="currentColor" />
+                </svg>
+              </button>
+              <button id="btn-restart" class="btn btn-round" type="button" aria-label="Recommencer le show" title="Recommencer">
+                <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                  <path
+                    d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <label class="volume">
+                <span class="visually-hidden">Volume</span>
+                <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                  <path
+                    d="M4 10v4h3l4 3.5v-15L7 10H4zM16 9.5a4 4 0 0 1 0 5M18.5 7a7.5 7.5 0 0 1 0 10"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <input id="volume" type="range" min="0" max="100" value="80" aria-label="Volume" />
+              </label>
+            </div>
+
+            <div class="hud-grid">
+              <label class="field">
+                <span class="field-label">Intensité</span>
+                <input id="intensity" type="range" min="20" max="150" value="100" aria-label="Intensité visuelle" />
+              </label>
+              <label class="field">
+                <span class="field-label">Flashs</span>
+                <input id="flashes" type="range" min="0" max="150" value="90" aria-label="Intensité des flashs" />
+              </label>
+            </div>
+
+            <div class="hud-toggles">
+              <label class="switch">
+                <input id="chk-reduced" type="checkbox" />
+                <span>Intensité réduite</span>
+              </label>
+              <label class="switch">
+                <input id="chk-noflash" type="checkbox" />
+                <span>Sans flashs</span>
+              </label>
+            </div>
+
+            <div class="hud-block">
+              <p id="section-label" class="section-label">—</p>
+              <p id="hud-stats" class="hud-stats">—</p>
+            </div>
+
+            <div class="panel-actions">
+              <button id="btn-change-track" class="btn btn-ghost" type="button">Autre morceau</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <div id="live" class="visually-hidden" role="status" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

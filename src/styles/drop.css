@@ -1,0 +1,180 @@
+/* ---------------------------------------------------------- écran de dépôt */
+
+.drop-shell {
+  width: min(760px, 100%);
+  display: grid;
+  gap: clamp(18px, 3vw, 28px);
+  text-align: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 25%, #fff 0 12%, transparent 13%),
+    conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent-3), var(--accent-warm), var(--accent));
+  box-shadow: 0 10px 30px rgba(124, 92, 255, 0.45);
+  animation: brand-spin 18s linear infinite;
+}
+
+@keyframes brand-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.brand h1 {
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.brand-sub {
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.dropzone {
+  position: relative;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(18, 22, 36, 0.66), rgba(9, 11, 20, 0.5));
+  backdrop-filter: blur(14px);
+  padding: clamp(30px, 6vw, 58px) clamp(20px, 4vw, 44px);
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.25s var(--ease),
+    transform 0.2s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+
+.dropzone:hover {
+  border-color: rgba(124, 92, 255, 0.55);
+  background: linear-gradient(180deg, rgba(28, 30, 52, 0.7), rgba(12, 14, 26, 0.55));
+}
+
+.dropzone.is-dragover {
+  border-color: var(--accent-2);
+  transform: scale(1.012);
+  box-shadow:
+    0 0 0 6px rgba(34, 211, 238, 0.12),
+    0 30px 80px rgba(34, 211, 238, 0.18);
+}
+
+.dropzone-inner {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.dropzone-icon {
+  width: clamp(44px, 8vw, 62px);
+  height: clamp(44px, 8vw, 62px);
+  color: var(--accent-2);
+  opacity: 0.9;
+}
+
+.dropzone-title {
+  font-size: clamp(1.3rem, 4.4vw, 2rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.dropzone-sub {
+  color: var(--ink-dim);
+  font-size: 0.92rem;
+  max-width: 46ch;
+}
+
+.dropzone .btn {
+  margin-top: 6px;
+}
+
+.drop-error {
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.notice-list {
+  display: grid;
+  gap: 8px;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  text-align: left;
+  max-width: 70ch;
+  margin-inline: auto;
+}
+
+.notice-list strong {
+  color: var(--ink-dim);
+}
+
+/* ---------------------------------------------------------- écran analyse */
+
+.progress {
+  display: grid;
+  gap: 10px;
+}
+
+.progress-bar {
+  height: 10px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.45);
+  transition: width 0.25s var(--ease);
+}
+
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+}
+
+.progress-phase {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.progress-percent {
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.an-detail {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.panel-analyze .btn-ghost {
+  justify-self: start;
+}
+
+@media (max-width: 640px) {
+  .dropzone {
+    border-radius: 20px;
+  }
+}

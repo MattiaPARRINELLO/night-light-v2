@@ -1,0 +1,329 @@
+import type { RenderSettings } from "../types";
+import { clamp01, hash01, mix, smoothstep } from "./series";
+import { drawCoreGlow, drawFamily, drawWash } from "./families";
+import type { FrameState } from "./families";
+import type { Palette, Scene } from "./show";
+import { hslToRgb, shiftHue, shorthand } from "./color";
+import { sceneAt, sceneWeight, type ShowPlan } from "./show";
+import type { TrackView } from "./view";
+
+export interface RenderInput {
+  ctx: CanvasRenderingContext2D;
+  /** Dimensions en pixels CSS. */
+  width: number;
+  height: number;
+  /** Rapport de pixels de l'appareil. */
+  dpr: number;
+  /** Position de lecture musicale, en secondes. */
+  time: number;
+  view: TrackView;
+  plan: ShowPlan;
+  settings: RenderSettings;
+  /** `prefers-reduced-motion` du système. */
+  reducedMotion: boolean;
+  /** Qualité adaptative 0..1. */
+  quality: number;
+  /** Numéro d'image. */
+  frame: number;
+}
+
+export type { FrameState };
+
+/** Plafond d'opacité d'un flash : évite les sauts de luminosité agressifs. */
+export const FLASH_CEILING = 0.4;
+/** Deux flashs sont toujours séparés d'au moins cette durée. */
+const FLASH_MIN_GAP = 0.14;
+/** Glissement continu de la teinte, en degrés par seconde. */
+export const HUE_DRIFT_PER_SEC = 14;
+/** Teintes fortement écartées juste après un impact. */
+const DROP_HUE_JUMP = 70;
+/** Saut de teinte quand la variation d'une phrase surgit. */
+const VARIATION_HUE_JUMP = 85;
+/** Durée du grand wash de projecteurs après un impact, en secondes. */
+const WASH_SPAN_SEC = 4.5;
+
+function paint(h: number, s: number, l: number, a: number): string {
+  return shorthand(hslToRgb({ h, s, l }), a);
+}
+
+function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  const { width: w, height: h } = f;
+  const glow = 0.02 + f.energy * 0.05 + f.bass * 0.05;
+  const top = paint(f.palette.hue, f.palette.saturation, 0.035 + glow * 0.5, 1);
+  const bottom = paint(shiftHue(f.palette.hue, f.palette.spread * 0.4), f.palette.saturation, 0.05 + glow, 1);
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(1, bottom);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  // Lueur centrale très douce, liée à l'énergie.
+  const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
+  const halo = ctx.createRadialGradient(w * 0.5, h * 0.55, 0, w * 0.5, h * 0.55, Math.max(radius, 1));
+  const haloAlpha = (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha;
+  halo.addColorStop(0, paint(f.palette.hue, 0.85, 0.6, haloAlpha));
+  halo.addColorStop(1, paint(f.palette.hue, 0.85, 0.5, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, w, h);
+}
+
+function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  const { width: w, height: h } = f;
+  const base = f.reduced ? 26 : 64;
+  const count = Math.max(8, Math.round(base * (0.4 + 0.6 * f.quality)));
+  const drift = f.reduced ? 0.012 : 0.035;
+  ctx.fillStyle = "#ffffff";
+  for (let i = 0; i < count; i += 1) {
+    const sx = hash01(i * 1531 + f.seed);
+    const sy = hash01(i * 2749 + f.seed);
+    const sp = 0.4 + hash01(i * 3301 + f.seed) * 1.6;
+    const x = (((sx + f.t * drift * sp) % 1) + 1) % 1;
+    const y = (((sy - f.t * drift * 0.6 * sp) % 1) + 1) % 1;
+    const size = 0.6 + hash01(i * 4093 + f.seed) * 1.7;
+    const alpha = (0.05 + 0.16 * f.energy) * f.alpha * (0.4 + sy * 0.6);
+    ctx.globalAlpha = clamp01(alpha);
+    ctx.beginPath();
+    ctx.arc(x * w, y * h, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * Opacité du flash global. Volontairement plafonnée et espacée : le spectacle
+ * ne clignote jamais à haute fréquence, et le mode réduit l'annule.
+ */
+export function flashAlpha(f: FrameState, settings: RenderSettings): number {
+  if (f.reduced) return 0;
+  const budget = settings.flashes;
+  if (budget <= 0) return 0;
+  const beatHit = f.beat * (0.35 + 0.65 * f.bass);
+  const dropHit = f.build > 0.92 ? f.buildStrength * 0.9 : 0;
+  const raw = Math.max(beatHit, dropHit);
+  if (raw < 0.3) return 0;
+  const gated = raw * smoothstep(0.12, 0.4, f.energy);
+  return Math.min(gated, 1) * FLASH_CEILING * Math.min(budget, 1.5);
+}
+
+/**
+ * Force du wash : décroissance lente après chaque fin de montée. Le wash
+ * commence avec l'impact et s'étire sur ~3 s, donc « l'impact puis la salle
+ * entière qui balaie ».
+ */
+export function washStrength(view: TrackView, t: number, sceneCount: number): number {
+  if (sceneCount === 0) return 0;
+  let peak = 0;
+  for (const build of view.analysis.builds) {
+    const age = t - build.end;
+    if (age < -0.2 || age > WASH_SPAN_SEC) continue;
+    // Montée rapide, tenue, puis descente douce.
+    const rise = age < 0 ? 1 + age / 0.15 : 1;
+    const fall = age < 0.25 ? 1 : Math.exp(-(age - 0.25) / 2.4);
+    const value = rise * fall * build.strength;
+    if (value > peak) peak = value;
+  }
+  return clamp01(peak);
+}
+
+/**
+ * Réaction aux montées d'énergie : tant que le morceau prend de l'ampleur, le
+ * spectacle pulse sur les temps forts au lieu de simplement éclairer.
+ * Jamais en mode réduit, toujours plafonné et toujours cadencé par le beat.
+ */
+export function surgeAlpha(f: FrameState, settings: RenderSettings): number {
+  if (f.reduced || settings.flashes <= 0) return 0;
+  const rise = smoothstep(0.4, 0.9, f.surge);
+  if (rise <= 0.02 || f.beat < 0.45) return 0;
+  return rise * f.beat * FLASH_CEILING * Math.min(settings.flashes, 1.5) * 0.85;
+}
+
+/**
+ * Force de la variation d'une phrase : 0 au début et à la fin, 1 autour des
+ * deux tiers. Fenêtre large et bords doux, donc jamais un coup de ciseaux.
+ */
+export function variationStrength(scene: Scene, t: number): number {
+  const span = scene.end - scene.start;
+  if (span <= 0.5) return 0;
+  const ratio = (t - scene.start) / span;
+  if (ratio < 0.25 || ratio > 0.9) return 0;
+  const local = (ratio - 0.25) / 0.65;
+  const wave = Math.sin(local * Math.PI);
+  return Math.max(0, 0.15 + 0.85 * wave * wave);
+}
+
+/** Opacité de la couche de fond permanente. */
+const BACKDROP_ALPHA = 0.3;
+
+function lastFlashTime(view: TrackView, t: number): number {
+  const beats = view.beatsIn(t - FLASH_MIN_GAP - 0.5, t);
+  const build = view.buildAt(t);
+  if (build !== null) return build.end - 0.0001;
+  return beats.length > 0 ? (beats[beats.length - 1] ?? t) : -Infinity;
+}
+
+/**
+ * Rend une image complète du spectacle. Fonction pure du temps musical :
+ * mêmes entrées ⇒ image identique, ce qui garde la synchronisation après une
+ * pause, une reprise ou un déplacement dans le morceau.
+ */
+export function renderFrame(input: RenderInput): void {
+  const { ctx, width, height, dpr, view, plan, settings, reducedMotion, quality, frame } = input;
+  const t = input.time;
+  const reduced = settings.reduced || reducedMotion;
+  const scene = sceneAt(plan, t);
+  const beat = view.beatPulse(t, 0.45);
+  const build = view.buildProgress(t);
+  const buildNow = view.buildAt(t);
+  // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
+  // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
+  // le morceau « change de lumière » sans cesse.
+  const drift = HUE_DRIFT_PER_SEC * (t - scene.start) * (reduced ? 0.4 : 1);
+  const drop = view.buildIntensity(t);
+  const variation = reduced ? 0 : variationStrength(scene, t);
+  const surge = view.energyTrend(t, 1.2);
+  const hueShift = (drift + DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation + 360) % 360;
+  const palette: Palette = {
+    name: scene.palette.name,
+    hue: (scene.palette.hue + hueShift) % 360,
+    spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
+    saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
+    lightness: Math.min(0.8, scene.palette.lightness + drop * 0.12 + variation * 0.06),
+  };
+
+  const base: FrameState = {
+    t,
+    width,
+    height,
+    dpr,
+    scene,
+    palette,
+    energy: view.energyAt(t),
+    bass: view.bassAt(t),
+    mid: view.midAt(t),
+    high: view.highAt(t),
+    beat,
+    beatPhase: view.beatPhase(t),
+    beatIndex: view.beatIndexAt(t),
+    build,
+    buildStrength: buildNow?.strength ?? 0,
+    surge,
+    intensity: scene.intensity * settings.intensity * (1 + surge * 0.6),
+    alpha: sceneWeight(scene, t),
+    reduced,
+    quality,
+    seed: plan.seed,
+    frame,
+  };
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.clearRect(0, 0, width, height);
+
+  drawBackground(ctx, { ...base, palette });
+  ctx.globalCompositeOperation = "lighter";
+
+  // Scène courante + scène sortante pendant le fondu (transition fluide).
+  drawFamily(ctx, base, view, scene.family);
+  drawCoreGlow(ctx, base);
+
+  // Couche de fond permanente : même pendant les phrases « calmes », l'écran
+  // montre deux mondes superposés au lieu d'un seul.
+  if (scene.backdrop !== scene.family) {
+    const backdropState: FrameState = {
+      ...base,
+      palette: { ...palette, hue: (palette.hue + 130) % 360 },
+      alpha: base.alpha * BACKDROP_ALPHA,
+      intensity: base.intensity * 0.6,
+    };
+    drawFamily(ctx, backdropState, view, scene.backdrop);
+  }
+
+  // Variation au milieu de la phrase : une autre famille surgit brièvement,
+  // avec sa propre teinte. C'est ce qui empêche le spectacle de tourner en boucle.
+  if (variation > 0.05) {
+    const variationState: FrameState = {
+      ...base,
+      palette: {
+        ...palette,
+        hue: (palette.hue + 48) % 360,
+        saturation: Math.min(1, palette.saturation + 0.1),
+      },
+      alpha: base.alpha * variation * 0.8,
+      intensity: base.intensity * (0.7 + 0.6 * variation),
+    };
+    drawFamily(ctx, variationState, view, scene.variant);
+  }
+
+  // Grand wash de projecteurs après un impact : il vit plus longtemps que la
+  // sur-couche et couvre tout l'écran. Jamais en mode réduit.
+  const wash = reduced ? 0 : washStrength(view, t, plan.scenes.length);
+  if (wash > 0.02) {
+    const washState: FrameState = {
+      ...base,
+      palette: { ...palette, hue: (palette.hue + 25) % 360 },
+      alpha: base.alpha * wash,
+      intensity: base.intensity,
+    };
+    drawWash(ctx, washState);
+  }
+
+  // Sur-couche d'impact : moments brefs et très soutenus, jamais en mode réduit.
+  if (drop > 0.02 && !reduced) {
+    const dropState: FrameState = {
+      ...base,
+      palette,
+      alpha: base.alpha * Math.min(1, drop * 1.3),
+      intensity: base.intensity * (1 + drop),
+      buildStrength: 1,
+    };
+    const dropFamily = plan.seed % 2 === 0 ? "bars" : "shutters";
+    drawFamily(ctx, dropState, view, dropFamily);
+    const ceiling = FLASH_CEILING * Math.min(settings.flashes, 1.5);
+    if (ceiling > 0 && drop > 0.35) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, ceiling * drop).toFixed(3)})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+
+  const previous = scene.index > 0 ? plan.scenes[scene.index - 1] : undefined;
+  if (previous !== undefined && t < scene.start + scene.fadeIn) {
+    const ratio = clamp01((t - scene.start) / Math.max(scene.fadeIn, 0.001));
+    const outgoing: FrameState = {
+      ...base,
+      scene: previous,
+      palette: previous.palette,
+      alpha: (1 - ratio) * sceneWeight(previous, t),
+      intensity: previous.intensity * settings.intensity,
+    };
+    drawFamily(ctx, outgoing, view, previous.family);
+  }
+
+  drawDust(ctx, base);
+
+  const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
+  if (flash > 0.002) {
+    // Garde anti-stroboscope : pas deux flashs à moins de FLASH_MIN_GAP.
+    if (t - lastFlashTime(view, t) >= FLASH_MIN_GAP) {
+      ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+
+  // Vignette : garde la composition lisible même quand tout s'allume.
+  const vignette = ctx.createRadialGradient(
+    width * 0.5,
+    height * 0.5,
+    Math.min(width, height) * 0.28,
+    width * 0.5,
+    height * 0.5,
+    Math.hypot(width, height) * 0.62,
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.62)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+}
