@@ -23,6 +23,11 @@ class AudioLevel:
     active: bool = False
     available: bool = False
     rms: float = 0.0
+    energy: float = 0.0
+    bass: float = 0.0
+    mid: float = 0.0
+    high: float = 0.0
+    transient: float = 0.0
     source: str = ""
     error: str = ""
     updated_at: float = 0.0
@@ -183,10 +188,53 @@ class SystemAudioCapture:
             samples = struct.unpack(f"<{count}h", chunk[: count * 2])
             square = sum(sample * sample for sample in samples)
             rms = math.sqrt(square / count) / 32768.0 if count else 0.0
+            energy = rms
+            transient = 0.0
+            bass = mid = high = 0.0
+            try:
+                import numpy as np
+
+                array = np.asarray(samples, dtype=np.float32) / 32768.0
+                # Réduction des calculs : flux court, donc FFT 512 ou menos.
+                n = min(512, len(array))
+                if n >= 32:
+                    spectrum = np.abs(np.fft.rfft(array[-n:], n=n))
+                    freqs = np.fft.rfftfreq(n, d=1.0 / SAMPLE_RATE)
+                    energy_low = (
+                        float(np.mean(spectrum[(freqs >= 20) & (freqs < 250)]))
+                        if np.any((freqs >= 20) & (freqs < 250))
+                        else 0.0
+                    )
+                    energy_mid = (
+                        float(np.mean(spectrum[(freqs >= 250) & (freqs < 2000)]))
+                        if np.any((freqs >= 250) & (freqs < 2000))
+                        else 0.0
+                    )
+                    energy_high = (
+                        float(np.mean(spectrum[freqs >= 2000]))
+                        if np.any(freqs >= 2000)
+                        else 0.0
+                    )
+                    total = energy_low + energy_mid + energy_high
+                    if total > 0:
+                        bass = energy_low / total
+                        mid = energy_mid / total
+                        high = energy_high / total
+                    # Transitoire : différence d'énergie avec la fenêtre précédente.
+                    with self._lock:
+                        previous_energy = self._level.energy
+                    transient = max(0.0, energy - previous_energy)
+                    transient = min(1.0, transient * 4.0)
+            except Exception:
+                bass = mid = high = 0.0
             # Lissage exponentiel simple.
             with self._lock:
-                previous = self._level.rms
-                self._level.rms = previous * 0.35 + rms * 0.65
+                self._level.rms = self._level.rms * 0.35 + rms * 0.65
+                self._level.energy = self._level.energy * 0.35 + energy * 0.65
+                self._level.bass = self._level.bass * 0.4 + bass * 0.6
+                self._level.mid = self._level.mid * 0.4 + mid * 0.6
+                self._level.high = self._level.high * 0.4 + high * 0.6
+                self._level.transient = self._level.transient * 0.3 + transient * 0.7
                 self._level.active = True
                 self._level.updated_at = time.time()
         with self._lock:
