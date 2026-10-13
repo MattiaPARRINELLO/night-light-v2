@@ -13,25 +13,61 @@ class MatchThresholds:
     """Seuils de validation des correspondances."""
 
     min_score: float = 70.0
-    max_duration_delta_sec: float = 10.0
-    max_duration_delta_ratio: float = 0.05
+    max_duration_delta_sec: float = 2.0
+    max_duration_delta_ratio: float = 0.005
     min_title_ratio: float = 0.70
     reject_previews: bool = True
     allow_missing_duration: bool = False
 
 
+_OFFICIAL_TITLE_TOKENS = {
+    "official",
+    "audio",
+    "video",
+    "clip",
+    "officiel",
+    "originale",
+    "provided",
+    "youtube",
+    "topic",
+    "original",
+    "(official",
+    "album",
+}
+
+
 def _text_ratio(left: str, right: str) -> float:
     if not left or not right:
         return 0.0
-    if left == right or left in right:
+    if left == right:
         return 1.0
-    if right in left:
-        return len(right) / max(1, len(left))
+    # Les marqueurs officiels peuvent être présents d'un côté sans indiquer
+    # une version différente. Les termes additionnels non officiels sont
+    # pénalisés plutôt que considérés comme identiques.
+    if left in right or right in left:
+        long_value, short_value = (
+            (right, left) if len(right) >= len(left) else (left, right)
+        )
+        extra = [
+            token for token in long_value.split() if token not in short_value.split()
+        ]
+        if not extra:
+            return 1.0
+        if extra[0] in {"feat", "ft", "featuring"}:
+            return 1.0
+        if all(token in _OFFICIAL_TITLE_TOKENS for token in extra):
+            return 1.0
+        # Un candidat plus long conserve une bonne note, mais n'est plus traité
+        # comme une correspondance mot-à-mot exacte.
+        return max(0.85, min(0.95, max(len(short_value), 1) / max(len(long_value), 1)))
     return SequenceMatcher(None, left, right).ratio()
 
 
 def duration_tolerance_sec(query: TrackQuery, thresholds: MatchThresholds) -> float:
-    base = max(thresholds.max_duration_delta_sec, query.duration_sec * thresholds.max_duration_delta_ratio)
+    base = max(
+        thresholds.max_duration_delta_sec,
+        query.duration_sec * thresholds.max_duration_delta_ratio,
+    )
     return base
 
 
@@ -52,7 +88,13 @@ def score_candidate(
 
     title_score = title_ratio * 50.0
     # Un artiste absent dans la requête ne pénalise pas le score.
-    artist_score = artist_ratio * 30.0 if query.normalized_artist else 30.0 if candidate.normalized_artist else 0.0
+    artist_score = (
+        artist_ratio * 30.0
+        if query.normalized_artist
+        else 30.0
+        if candidate.normalized_artist
+        else 0.0
+    )
 
     duration_score = 0.0
     delta = duration_delta_sec(query, candidate)
@@ -65,6 +107,30 @@ def score_candidate(
 
 
 _PREVIEW_MARKERS = ("snippet", "preview", "teaser", "excerpt", "sample")
+_INCOMPATIBLE_VERSION_MARKERS = (
+    "remix",
+    "live",
+    "nightcore",
+    "slowed",
+    "speed up",
+    "8d",
+    "bass boosted",
+    "cover",
+    "mashup",
+    "edit",
+    "react",
+    "commentary",
+    "instrumental",
+    "karaoke",
+    "paroles",
+    "lyrics",
+    "lyric",
+    "sped up",
+    "slowed down",
+    "extended",
+    "radio edit",
+    "remaster",
+)
 
 
 def validate_match(
@@ -104,9 +170,15 @@ def validate_match(
             if delta > tolerance:
                 reasons.append("duration_mismatch")
 
-    if (
-        candidate.title
-        and any(marker in normalize_text(candidate.title) for marker in _PREVIEW_MARKERS)
+    if query.normalized_title and candidate.normalized_title:
+        candidate_text = normalize_text(candidate.title)
+        if any(
+            marker in candidate_text and marker not in query.normalized_title
+            for marker in _INCOMPATIBLE_VERSION_MARKERS
+        ):
+            reasons.append("incompatible_version")
+    if candidate.title and any(
+        marker in normalize_text(candidate.title) for marker in _PREVIEW_MARKERS
     ):
         reasons.append("preview_title")
 

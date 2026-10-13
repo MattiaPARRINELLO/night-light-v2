@@ -212,6 +212,7 @@ export interface ResolveRequest {
   title: string;
   artist?: string;
   durationSec?: number;
+  trackKey?: string;
 }
 
 export async function submitResolve(
@@ -225,6 +226,7 @@ export async function submitResolve(
       title: request.title,
       artist: request.artist ?? "",
       duration_sec: request.durationSec,
+      track_key: request.trackKey,
     }),
     signal,
   });
@@ -242,10 +244,11 @@ export function resolveAndAnalyze(
     onPhase?: (state: { progress: number; phase: string; detail: string }) => void;
     signal?: AbortSignal;
   } = {},
+  trackKey?: string,
 ): Promise<{ jobId: string; analysis: Analysis }> {
   const { onPhase, signal } = handlers;
   return new Promise((resolve, reject) => {
-    submitResolve({ title, artist, durationSec }, signal)
+    submitResolve({ title, artist, durationSec, trackKey }, signal)
       .then(async (job) => {
         try {
           const analysis = await pollJob(job.jobId, onPhase, signal);
@@ -256,4 +259,27 @@ export function resolveAndAnalyze(
       })
       .catch(reject);
   });
+}
+
+
+export interface NowPlayingResponse {
+  available: boolean;
+  player: string;
+  status: string;
+  title: string;
+  artist: string;
+  album: string;
+  durationSec?: number | null;
+  positionSec?: number | null;
+  updatedAt: number;
+  ambiguous: boolean;
+  error?: string;
+}
+
+export async function fetchNowPlaying(signal?: AbortSignal): Promise<NowPlayingResponse> {
+  const response = await fetch("/api/now-playing", { signal });
+  if (!response.ok) {
+    throw new ApiError("Lecteur indisponible.", "now_playing_unavailable", undefined, response.status);
+  }
+  return (await parseJson(response)) as NowPlayingResponse;
 }

@@ -5,8 +5,10 @@ et le serveur écoute par défaut sur 127.0.0.1 uniquement.
 """
 
 from __future__ import annotations
+import json
 
 import asyncio
+import logging
 import atexit
 import shutil
 from contextlib import asynccontextmanager
@@ -16,20 +18,26 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import sniff
 from pydantic import BaseModel
 from .retrieve.models import TrackQuery
 from .retrieve.cache import AudioCache
-from .retrieve.youtube import YouTubeProvider
+from .retrieve.deezer import DeezerProvider
 from .retrieve.resolver import resolve_track, RetrievalError
 from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
 from .config import Settings, load_settings
+from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
+from .audio_capture import get_audio_capture
 from .store import SessionStore
 
 MAX_ACTIVE_JOBS = 24
+_LOGGER = logging.getLogger("night-light.resolve")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 PURGE_INTERVAL_SEC = 20
 
 AUDIO_MEDIA_TYPES = {
@@ -55,14 +63,19 @@ class ResolveRequest(BaseModel):
     artist: str = ""
     duration_sec: float | None = None
     duration: float | None = None
+    track_key: str | None = None
 
 
 class AppState:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = SessionStore(Path(settings.session_dir), settings.session_ttl_sec)
-        self.executor = ThreadPoolExecutor(max_workers=settings.workers, thread_name_prefix="analysis")
+        self.executor = ThreadPoolExecutor(
+            max_workers=settings.workers, thread_name_prefix="analysis"
+        )
         self.purge_task: asyncio.Task[None] | None = None
+        self.current_track_key = ""
+        self.resolve_pending = False
 
     def drop_audio(self, job_id: str) -> None:
         job = self.store.get(job_id)
@@ -87,27 +100,77 @@ class AppState:
             self.store.set_error(job_id, error.code, error.message, error.detail)
         except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
             self.drop_audio(job_id)
-            self.store.set_error(job_id, "analysis_failed", "L'analyse du morceau a échoué.", str(error)[:300])
+            self.store.set_error(
+                job_id,
+                "analysis_failed",
+                "L'analyse du morceau a échoué.",
+                str(error)[:300],
+            )
 
-    def run_resolve(self, job_id: str, title: str, artist: str, duration_sec: float) -> None:
+    def run_resolve(
+        self,
+        job_id: str,
+        title: str,
+        artist: str,
+        duration_sec: float,
+        track_key: str | None = None,
+    ) -> None:
         job = self.store.get(job_id)
         if job is None:
             return
+        self.resolve_pending = True
+        used_key = (track_key or f"{title.strip()}|{artist.strip()}").strip()
 
         query = TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
         cache = AudioCache(Path(self.settings.cache_dir))
-        provider = YouTubeProvider()
+        _LOGGER.info(
+            "Début résolution id=%s titre=%r artiste=%r durée=%.3fs",
+            job_id,
+            title,
+            artist,
+            duration_sec,
+        )
+        if not self.settings.deezer_arl:
+            self.resolve_pending = False
+            self.store.set_error(
+                job_id,
+                "deezer_not_configured",
+                "La récupération Deezer n'est pas configurée.",
+                "Renseigne DEEZER_ARL dans l'environnement du serveur, puis relance-le.",
+            )
+            _LOGGER.error("Résolution refusée: Deezer non configuré id=%s", job_id)
+            return
+        provider = DeezerProvider(
+            arl=self.settings.deezer_arl,
+            work_dir=Path(self.settings.cache_dir) / "streamrip",
+        )
 
         def report(phase: str, progress: float, message: str) -> None:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
+            _LOGGER.info(
+                "Résolution %s : %s (%.0f%%) %s", job_id, phase, progress * 100, message
+            )
 
         try:
-            result = resolve_track(query, provider, cache, progress=report)
+            result = resolve_track(
+                query,
+                provider,
+                cache,
+                thresholds=provider.thresholds,
+                progress=report,
+            )
         except RetrievalError as error:
+            self.resolve_pending = False
             self.store.set_error(job_id, error.code, error.message)
             return
         except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
-            self.store.set_error(job_id, "resolve_failed", "La récupération du morceau a échoué.", str(error)[:300])
+            self.resolve_pending = False
+            self.store.set_error(
+                job_id,
+                "resolve_failed",
+                "La récupération du morceau a échoué.",
+                str(error)[:300],
+            )
             return
 
         resolved_job = self.store.get(job_id)
@@ -115,9 +178,22 @@ class AppState:
             resolved_job.audio_path = result.cache_entry_path
             resolved_job.owns_audio = False
             resolved_job.size_bytes = (
-                result.cache_entry_path.stat().st_size if result.cache_entry_path.is_file() else resolved_job.size_bytes
+                result.cache_entry_path.stat().st_size
+                if result.cache_entry_path.is_file()
+                else resolved_job.size_bytes
             )
-            resolved_job.filename = " - ".join(part for part in (title.strip(), artist.strip()) if part) or resolved_job.filename
+            resolved_job.filename = (
+                " - ".join(part for part in (title.strip(), artist.strip()) if part)
+                or resolved_job.filename
+            )
+        if self.current_track_key and used_key != self.current_track_key:
+            self.resolve_pending = False
+            self.store.set_error(
+                job_id, "stale_result", "Le morceau a changé pendant la résolution."
+            )
+            return
+        _LOGGER.info("Résolution réussie id=%s, lancement de l'analyse", job_id)
+        self.resolve_pending = False
         self.run_analysis(job_id)
 
     async def shutdown(self) -> None:
@@ -166,10 +242,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
     state.executor.submit(warmup)
     state.purge_task = asyncio.create_task(purge_loop())
+    start_mpris_monitor()
     atexit.register(state.store.purge_all)
     try:
         yield
     finally:
+        stop_mpris_monitor()
         await state.shutdown()
 
 
@@ -235,7 +313,10 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
     if state.store.count() >= MAX_ACTIVE_JOBS:
         state.store.purge_expired()
         if state.store.count() >= MAX_ACTIVE_JOBS:
-            raise HTTPException(status_code=503, detail="Trop d'analyses en cours. Réessaie dans un instant.")
+            raise HTTPException(
+                status_code=503,
+                detail="Trop d'analyses en cours. Réessaie dans un instant.",
+            )
 
     content, filename = await read_upload(file)
     if len(content) == 0:
@@ -253,7 +334,9 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
 
     job = state.store.create(filename, len(content))
     if job.audio_path is None:
-        raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
+        raise HTTPException(
+            status_code=500, detail="Impossible de créer l'espace de travail."
+        )
     audio_path = job.audio_path.with_name(f"audio.{detected.extension_hint or 'bin'}")
     job.audio_path = audio_path
     audio_path.write_bytes(content)
@@ -273,24 +356,45 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
         },
     )
 
+
 @app.post("/api/resolve")
 async def resolve(request: ResolveRequest) -> JSONResponse:
     """Résout un morceau par métadonnées puis le transmet à l'analyseur existant."""
     if state.store.count() >= MAX_ACTIVE_JOBS:
-        raise HTTPException(status_code=503, detail="Trop d'analyses en cours. Réessaie dans un instant.")
+        raise HTTPException(
+            status_code=503,
+            detail="Trop d'analyses en cours. Réessaie dans un instant.",
+        )
 
     if not request.title or not request.title.strip():
         raise HTTPException(status_code=400, detail="Le titre est requis.")
-    duration = request.duration_sec if request.duration_sec is not None else request.duration
+    duration = (
+        request.duration_sec if request.duration_sec is not None else request.duration
+    )
     duration = float(duration or 0.0)
     artist = request.artist or ""
 
-    filename = " - ".join(part for part in (request.title.strip(), artist.strip()) if part)
+    filename = " - ".join(
+        part for part in (request.title.strip(), artist.strip()) if part
+    )
     job = state.store.create(filename, 0)
     if job.audio_path is None:
-        raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
+        raise HTTPException(
+            status_code=500, detail="Impossible de créer l'espace de travail."
+        )
 
-    state.executor.submit(state.run_resolve, job.id, request.title.strip(), artist.strip(), duration)
+    track_key = (
+        request.track_key or f"{request.title.strip()}|{artist.strip()}"
+    ).strip()
+    state.current_track_key = track_key
+    state.executor.submit(
+        state.run_resolve,
+        job.id,
+        request.title.strip(),
+        artist.strip(),
+        duration,
+        track_key,
+    )
     return JSONResponse(
         status_code=202,
         content={
@@ -303,7 +407,6 @@ async def resolve(request: ResolveRequest) -> JSONResponse:
             "sizeBytes": 0,
         },
     )
-
 
 
 @app.get("/api/jobs/{job_id}")
@@ -324,7 +427,9 @@ async def delete_session(job_id: str) -> dict[str, str]:
 async def track(job_id: str) -> FileResponse:
     job = state.store.get(job_id)
     if job is None or job.audio_path is None or not job.audio_path.exists():
-        raise HTTPException(status_code=404, detail="Morceau indisponible (session expirée ?).")
+        raise HTTPException(
+            status_code=404, detail="Morceau indisponible (session expirée ?)."
+        )
     extension = job.audio_path.suffix.lstrip(".").lower()
     media_type = AUDIO_MEDIA_TYPES.get(extension, "application/octet-stream")
     return FileResponse(
@@ -332,6 +437,33 @@ async def track(job_id: str) -> FileResponse:
         media_type=media_type,
         filename=job.filename,
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/now-playing")
+async def now_playing() -> dict[str, Any]:
+    return get_now_playing().to_dict()
+
+
+@app.get("/api/audio-levels")
+async def audio_levels() -> StreamingResponse:
+    """Flux SSE du niveau audio système capturé via PipeWire/PulseAudio."""
+
+    async def stream() -> asyncio.AsyncIterator[str]:
+        capture = get_audio_capture()
+        capture.acquire()
+        try:
+            while True:
+                payload = json.dumps(capture.level().to_dict(), ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+                await asyncio.sleep(0.08)
+        finally:
+            capture.release()
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

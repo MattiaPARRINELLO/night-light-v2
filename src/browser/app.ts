@@ -1,5 +1,5 @@
 import { AudioEngine } from "./audio";
-import { ApiError, audioUrl, fetchHealth, resolveAndAnalyze, uploadAndAnalyze, type Limits } from "../core/api";
+import { ApiError, audioUrl, fetchHealth, fetchNowPlaying, resolveAndAnalyze, uploadAndAnalyze, type Limits, type NowPlayingResponse } from "../core/api";
 import {
   FAMILY_LABELS,
   MOOD_LABELS,
@@ -52,6 +52,9 @@ export class App {
   private analysisController: AbortController | null = null;
   private pendingAnalysis: Analysis | null = null;
   private pendingTitle = "";
+  private lastAutoTrackKey = "";
+  private nowPlaying: NowPlayingResponse | null = null;
+  private liveCapture: EventSource | null = null;
 
   private rafId = 0;
   private frame = 0;
@@ -78,6 +81,9 @@ export class App {
     this.mediaQuery.addEventListener("change", this.onReducedMotionChange);
     this.bindDrop();
     this.bindResolve();
+    this.bindLiveCapture();
+    window.setInterval(() => void this.pollNowPlaying(), 1500);
+    void this.pollNowPlaying();
     this.bindAnalysis();
     this.bindShow();
     this.bindKeyboard();
@@ -296,7 +302,7 @@ export class App {
     });
   }
 
-  private async handleResolve(title: string, artist: string, duration: number | undefined): Promise<void> {
+  private async handleResolve(title: string, artist: string, duration: number | undefined, trackKey?: string): Promise<void> {
     const status = el<HTMLElement>("resolve-status");
     const controller = new AbortController();
     this.analysisController = controller;
@@ -311,12 +317,18 @@ export class App {
       meta: "Résolution automatique",
     });
     try {
-      const { jobId, analysis } = await resolveAndAnalyze(title, artist, duration, {
-        signal: controller.signal,
-        onPhase: ({ progress, phase, detail }) => {
-          setUploadState({ phase, progress, detail: detail.length > 0 ? detail : phase, title });
+      const { jobId, analysis } = await resolveAndAnalyze(
+        title,
+        artist,
+        duration,
+        {
+          signal: controller.signal,
+          onPhase: ({ progress, phase, detail }) => {
+            setUploadState({ phase, progress, detail: detail.length > 0 ? detail : phase, title });
+          },
         },
-      });
+        trackKey,
+      );
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
       this.showReady(title, analysis, 0);
@@ -337,6 +349,87 @@ export class App {
     } finally {
       this.analysisController = null;
     }
+  }
+
+  private async pollNowPlaying(): Promise<void> {
+    try {
+      const data = await fetchNowPlaying();
+      this.nowPlaying = data;
+      this.updateNowPlayingUI();
+      await this.maybeAutoResolve();
+    } catch {
+      // Service indisponible : on masque simplement l'indication.
+      this.nowPlaying = null;
+      const status = document.getElementById("resolve-detected");
+      if (status !== null) status.hidden = true;
+    }
+  }
+
+  private updateNowPlayingUI(): void {
+    const status = document.getElementById("resolve-detected");
+    if (status === null) return;
+    const data = this.nowPlaying;
+    if (data === null || !data.available || data.title === "" || data.artist === "") {
+      status.hidden = true;
+      return;
+    }
+    status.hidden = false;
+    status.classList.remove("is-error");
+    if (data.ambiguous) {
+      status.textContent = "Plusieurs lecteurs détectés. Import manuel recommandé.";
+      return;
+    }
+    status.textContent = `Lecteur détecté : ${data.title} — ${data.artist}${data.status === "playing" ? " (lecture)" : " (pause)"}`;
+  }
+
+  private async maybeAutoResolve(): Promise<void> {
+    const data = this.nowPlaying;
+    if (data === null || !data.available || data.ambiguous || data.status !== "playing") return;
+    if (data.title.trim() === "" || data.artist.trim() === "") return;
+    if (this.analysisController !== null) return;
+    const key = `${data.title.trim()}|${data.artist.trim()}`;
+    if (key === this.lastAutoTrackKey) return;
+    this.lastAutoTrackKey = key;
+    el<HTMLInputElement>("resolve-title").value = data.title;
+    el<HTMLInputElement>("resolve-artist").value = data.artist;
+    if (data.durationSec !== null && data.durationSec !== undefined && data.durationSec > 0) {
+      el<HTMLInputElement>("resolve-duration").value = String(Math.round(data.durationSec));
+    }
+    await this.handleResolve(data.title, data.artist, data.durationSec ?? undefined, key);
+  }
+
+  private bindLiveCapture(): void {
+    const btn = el<HTMLButtonElement>("btn-live-capture");
+    const level = el<HTMLElement>("live-level");
+    btn.addEventListener("click", () => {
+      if (this.liveCapture !== null) {
+        this.liveCapture.close();
+        this.liveCapture = null;
+        btn.textContent = "Écouter le son du PC";
+        level.textContent = "Capture inactive";
+        return;
+      }
+      const source = new EventSource("/api/audio-levels");
+      source.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as { rms?: number; active?: boolean; error?: string };
+          if (data.error) {
+            level.textContent = data.error;
+            return;
+          }
+          const percent = Math.round((data.rms ?? 0) * 100);
+          level.textContent = `Capture ${data.active ? "active" : "inactive"} · niveau ${percent} %`;
+        } catch {
+          /* ignore malformed event */
+        }
+      };
+      source.onerror = () => {
+        level.textContent = "Erreur de capture audio";
+      };
+      this.liveCapture = source;
+      btn.textContent = "Arrêter la capture";
+      level.textContent = "Capture en cours…";
+    });
   }
 
   private backToDrop(): void {
@@ -435,6 +528,21 @@ export class App {
     this.view = new TrackView(analysis);
     this.plan = buildShowPlan(analysis, this.effectiveReduced());
     this.audio.load(audioUrl(this.jobId));
+    const detectedPosition = this.nowPlaying?.positionSec;
+    if (this.nowPlaying?.status === "playing" && Number.isFinite(detectedPosition)) {
+      const offset = detectedPosition as number;
+      this.audio.element.addEventListener(
+        "loadedmetadata",
+        () => {
+          try {
+            (this.audio.element as HTMLAudioElement).currentTime = Math.max(0, Math.min(this.audio.duration || offset, offset));
+          } catch {
+            /* ignore */
+          }
+        },
+        { once: true },
+      );
+    }
     this.audio.setVolume(Number(el<HTMLInputElement>("volume").value) / 100);
 
     el<HTMLElement>("np-title").textContent = title;

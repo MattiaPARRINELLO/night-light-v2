@@ -102,13 +102,20 @@ def resolve_track(
         unique: list[tuple[float, Candidate]] = []
         seen_keys: set[str] = set()
         for score, cand in accepted:
-            key = normalize_text(f"{cand.title}|{cand.artist}")
+            canonical = " ".join(
+                token
+                for token in normalize_text(cand.title).split()
+                if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"}
+            )
+            key = normalize_text(f"{canonical}|{cand.artist}")
             if key in seen_keys:
                 continue
             seen_keys.add(key)
             unique.append((score, cand))
         if len(unique) >= 2:
-            top_exact_title = unique[0][1].normalized_title == query.normalized_title
+            candidate_core = " ".join(token for token in unique[0][1].normalized_title.split() if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"})
+            query_core = " ".join(token for token in query.normalized_title.split() if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"})
+            top_exact_title = candidate_core == query_core
             if not top_exact_title or unique[0][0] < thresholds.min_score:
                 if unique[0][0] >= thresholds.min_score and (unique[0][0] - unique[1][0]) < 2.0:
                     raise RetrievalError(

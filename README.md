@@ -46,6 +46,37 @@ l'adresse affichée par Vite.
 5. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
    et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
 
+## Récupérer un morceau par son titre (Deezer)
+
+Un morceau peut aussi être retrouvé sans dépôt de fichier : l'API (`POST /api/resolve`)
+résout un couple titre/artiste, et le lecteur en cours peut être suivi automatiquement
+(MPRIS).
+
+La recherche se fait **dans le catalogue Deezer**, par titre et artiste — pas dans des
+clips vidéo — et le morceau est téléchargé **en 128 kbps MP3**, le plus bas niveau de
+qualité proposé, choisi délibérément : l'analyse et la lecture ne justifient pas plus
+lourd. Le morceau récupéré est ensuite mis en cache comme un fichier déposé.
+
+Prérequis :
+
+1. **streamrip** — le CLI qui cherche et télécharge. C'est le fork maintenu
+   ([Stensel8/streamrip](https://github.com/Stensel8/streamrip), Python ≥ 3.14), installé
+   à côté du projet : le serveur l'appelle en sous-processus.
+
+   ```bash
+   git clone https://github.com/Stensel8/streamrip ~/Documents/dev/forks/streamrip
+   uv tool install ~/Documents/dev/forks/streamrip
+   ```
+
+2. **Le cookie ARL de ta session Deezer**, dans `DEEZER_ARL` (voir `.env.example`). Il se
+   lit dans les cookies du navigateur connecté à Deezer : DevTools → Application →
+   Cookies → `arl`. Sans lui, la récupération est refusée avec un message explicite, et le
+   reste de l'application fonctionne normalement.
+
+Le provider (`server/retrieve/deezer.py`) n'appelle que le CLI : il écrit pour streamrip une
+copie privée (`0600`) de sa configuration dans le répertoire de cache, y pose le cookie et
+force le niveau de qualité le plus bas. Aucun secret n'est écrit dans le dépôt.
+
 ## Confidentialité et sécurité
 
 - Le fichier part de ton navigateur vers **ton serveur local**, et c'est indiqué sur
@@ -60,7 +91,9 @@ l'adresse affichée par Vite.
 - Serveur : limite de taille (`MAX_FILE_MB`), de durée (`MAX_DURATION_SEC`), délai d'analyse
   (`ANALYZE_TIMEOUT_SEC`), nombre d'analyses simultanées, vérification du type réel,
   sessions dans un répertoire dédié. Aucune clé ni mot de passe dans le code : tout se règle
-  par variables d'environnement (voir `.env.example`).
+  par variables d'environnement (voir `.env.example`). Le cookie Deezer `DEEZER_ARL` n'est
+  ni versionné ni journalisé : il n'est recopié que dans la configuration privée (`0600`)
+  que streamrip utilise, dans le répertoire de cache.
 
 **N'expose pas ce serveur à Internet** : il n'a pas d'authentification.
 
@@ -92,6 +125,10 @@ directement échantillonnables depuis le navigateur.
   ambiances cohérentes, pas une structure « couplet / refrain ».
 - La lecture dans le navigateur dépend des codecs du navigateur : si un morceau analysé
   n'est pas lisible, l'application le dit et propose un format plus sûr (WAV, MP3).
+- **Récupération Deezer** : la recherche de streamrip ne renvoie pas la durée d'un
+  résultat. La durée est donc vérifiée sur le fichier téléchargé (`ffprobe`, tolérance
+  0,5 %) : un écart franc écarte le candidat au lieu d'accepter une autre version (live,
+  remix, edit).
 
 ## Le spectacle
 
@@ -176,6 +213,7 @@ server/
   analysis.py           moteur librosa (décodage, courbes, rythme, sections, montées)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
+  retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation
 tests/                  tests front, tests serveur, vérification navigateur
 scripts/                démarrage dev et lancement des tests
 ```
@@ -189,5 +227,6 @@ scripts/                démarrage dev et lancement des tests
 | `MAX_DURATION_SEC` | `900` | durée de morceau maximale |
 | `ANALYZE_TIMEOUT_SEC` | `240` | délai d'analyse |
 | `SESSION_TTL_SEC` | `1800` | durée de vie d'une session inactive |
+| `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |

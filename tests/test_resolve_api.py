@@ -19,7 +19,11 @@ from tests.make_fixture import write_synthetic_track
 def client(tmp_path: Path):
     previous_state = main.state
     previous_settings = main.settings
-    main.settings = replace(previous_settings, session_dir=str(tmp_path / "night-light-sessions"))
+    main.settings = replace(
+        previous_settings,
+        session_dir=str(tmp_path / "night-light-sessions"),
+        deezer_arl="arl-test",
+    )
     main.state = main.AppState(main.settings)
     with TestClient(main.app) as test_client:
         yield test_client
@@ -95,3 +99,20 @@ def test_resolve_handles_retrieval_error(client: TestClient, monkeypatch) -> Non
     job = _wait_for_job(client, job_id)
     assert job["status"] == "error"
     assert job["error"]["code"] == "no_match"
+
+
+def test_resolve_without_deezer_arl_is_reported(client: TestClient) -> None:
+    previous = main.state.settings
+    main.state.settings = replace(previous, deezer_arl="")
+    try:
+        response = client.post(
+            "/api/resolve",
+            json={"title": "Get Lucky", "artist": "Daft Punk", "duration_sec": 369.0},
+        )
+        assert response.status_code == 202
+        job = _wait_for_job(client, response.json()["jobId"])
+    finally:
+        main.state.settings = previous
+    assert job["status"] == "error"
+    assert job["error"]["code"] == "deezer_not_configured"
+    assert "DEEZER_ARL" in job["error"]["detail"]
