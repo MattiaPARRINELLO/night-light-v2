@@ -25,6 +25,7 @@ class Job:
     error: dict[str, str] | None = None
     created_at: float = field(default_factory=time.time)
     audio_path: Path | None = None
+    owns_audio: bool = True
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -141,8 +142,13 @@ class SessionStore:
             job = self._jobs.pop(job_id, None)
         if job is None:
             return
-        if job.audio_path is not None:
-            shutil.rmtree(job.audio_path.parent, ignore_errors=True)
+        if job.audio_path is not None and job.owns_audio:
+            # Seuls les jobs ayant créé leur fichier audio le suppriment.
+            # Les morceaux issus du cache persistant sont conservés.
+            if job.audio_path.parent.exists():
+                shutil.rmtree(job.audio_path.parent, ignore_errors=True)
+            else:
+                job.audio_path.unlink(missing_ok=True)
 
     def purge_expired(self) -> int:
         now = time.time()

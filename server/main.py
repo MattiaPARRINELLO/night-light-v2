@@ -20,6 +20,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import sniff
+from pydantic import BaseModel
+from .retrieve.models import TrackQuery
+from .retrieve.cache import AudioCache
+from .retrieve.youtube import YouTubeProvider
+from .retrieve.resolver import resolve_track, RetrievalError
 from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
 from .config import Settings, load_settings
 from .store import SessionStore
@@ -45,6 +50,13 @@ def package_version(name: str) -> str:
         return "inconnue"
 
 
+class ResolveRequest(BaseModel):
+    title: str
+    artist: str = ""
+    duration_sec: float | None = None
+    duration: float | None = None
+
+
 class AppState:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -54,7 +66,7 @@ class AppState:
 
     def drop_audio(self, job_id: str) -> None:
         job = self.store.get(job_id)
-        if job is not None and job.audio_path is not None:
+        if job is not None and job.audio_path is not None and job.owns_audio:
             job.audio_path.unlink(missing_ok=True)
 
     def run_analysis(self, job_id: str) -> None:
@@ -76,6 +88,37 @@ class AppState:
         except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
             self.drop_audio(job_id)
             self.store.set_error(job_id, "analysis_failed", "L'analyse du morceau a échoué.", str(error)[:300])
+
+    def run_resolve(self, job_id: str, title: str, artist: str, duration_sec: float) -> None:
+        job = self.store.get(job_id)
+        if job is None:
+            return
+
+        query = TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
+        cache = AudioCache(Path(self.settings.cache_dir))
+        provider = YouTubeProvider()
+
+        def report(phase: str, progress: float, message: str) -> None:
+            self.store.update(job_id, progress=progress, phase=phase, message=message)
+
+        try:
+            result = resolve_track(query, provider, cache, progress=report)
+        except RetrievalError as error:
+            self.store.set_error(job_id, error.code, error.message)
+            return
+        except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
+            self.store.set_error(job_id, "resolve_failed", "La récupération du morceau a échoué.", str(error)[:300])
+            return
+
+        resolved_job = self.store.get(job_id)
+        if resolved_job is not None:
+            resolved_job.audio_path = result.cache_entry_path
+            resolved_job.owns_audio = False
+            resolved_job.size_bytes = (
+                result.cache_entry_path.stat().st_size if result.cache_entry_path.is_file() else resolved_job.size_bytes
+            )
+            resolved_job.filename = " - ".join(part for part in (title.strip(), artist.strip()) if part) or resolved_job.filename
+        self.run_analysis(job_id)
 
     async def shutdown(self) -> None:
         if self.purge_task is not None:
@@ -229,6 +272,38 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
             "sizeBytes": job.size_bytes,
         },
     )
+
+@app.post("/api/resolve")
+async def resolve(request: ResolveRequest) -> JSONResponse:
+    """Résout un morceau par métadonnées puis le transmet à l'analyseur existant."""
+    if state.store.count() >= MAX_ACTIVE_JOBS:
+        raise HTTPException(status_code=503, detail="Trop d'analyses en cours. Réessaie dans un instant.")
+
+    if not request.title or not request.title.strip():
+        raise HTTPException(status_code=400, detail="Le titre est requis.")
+    duration = request.duration_sec if request.duration_sec is not None else request.duration
+    duration = float(duration or 0.0)
+    artist = request.artist or ""
+
+    filename = " - ".join(part for part in (request.title.strip(), artist.strip()) if part)
+    job = state.store.create(filename, 0)
+    if job.audio_path is None:
+        raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
+
+    state.executor.submit(state.run_resolve, job.id, request.title.strip(), artist.strip(), duration)
+    return JSONResponse(
+        status_code=202,
+        content={
+            "jobId": job.id,
+            "status": "queued",
+            "progress": 0,
+            "phase": "En file d'attente",
+            "message": "Morceau demandé, recherche en préparation.",
+            "filename": job.filename,
+            "sizeBytes": 0,
+        },
+    )
+
 
 
 @app.get("/api/jobs/{job_id}")

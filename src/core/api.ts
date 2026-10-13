@@ -207,3 +207,53 @@ export function clampRatio(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return value < 0 ? 0 : value > 1 ? 1 : value;
 }
+
+export interface ResolveRequest {
+  title: string;
+  artist?: string;
+  durationSec?: number;
+}
+
+export async function submitResolve(
+  request: ResolveRequest,
+  signal?: AbortSignal,
+): Promise<JobResponse> {
+  const response = await fetch("/api/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: request.title,
+      artist: request.artist ?? "",
+      duration_sec: request.durationSec,
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    throw toApiError(await parseJson(response), response.status);
+  }
+  return (await parseJson(response)) as JobResponse;
+}
+
+export function resolveAndAnalyze(
+  title: string,
+  artist: string,
+  durationSec: number | undefined,
+  handlers: {
+    onPhase?: (state: { progress: number; phase: string; detail: string }) => void;
+    signal?: AbortSignal;
+  } = {},
+): Promise<{ jobId: string; analysis: Analysis }> {
+  const { onPhase, signal } = handlers;
+  return new Promise((resolve, reject) => {
+    submitResolve({ title, artist, durationSec }, signal)
+      .then(async (job) => {
+        try {
+          const analysis = await pollJob(job.jobId, onPhase, signal);
+          resolve({ jobId: job.jobId, analysis });
+        } catch (error) {
+          reject(error);
+        }
+      })
+      .catch(reject);
+  });
+}

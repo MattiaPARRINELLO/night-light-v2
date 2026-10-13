@@ -26,7 +26,9 @@ if (!existsSync(playwrightPath)) {
   process.exit(2);
 }
 
-const { chromium } = await import(playwrightPath);
+const { createRequire } = await import("node:module");
+const requireFromHere = createRequire(import.meta.url);
+const { chromium } = requireFromHere(playwrightPath);
 const failures = [];
 
 function buildTrack(workspace) {

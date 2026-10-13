@@ -1,5 +1,5 @@
 import { AudioEngine } from "./audio";
-import { ApiError, audioUrl, fetchHealth, uploadAndAnalyze, type Limits } from "../core/api";
+import { ApiError, audioUrl, fetchHealth, resolveAndAnalyze, uploadAndAnalyze, type Limits } from "../core/api";
 import {
   FAMILY_LABELS,
   MOOD_LABELS,
@@ -77,6 +77,7 @@ export class App {
     this.reducedMotion = this.mediaQuery.matches;
     this.mediaQuery.addEventListener("change", this.onReducedMotionChange);
     this.bindDrop();
+    this.bindResolve();
     this.bindAnalysis();
     this.bindShow();
     this.bindKeyboard();
@@ -241,7 +242,9 @@ export class App {
         `Tempo ${analysis.tempo.toFixed(1)} BPM · ${analysis.beats.length} temps forts · ` +
         `${analysis.sections.length} sections`,
       title,
-      meta: `Durée ${formatTime(analysis.duration)} · ${(sizeBytes / 1048576).toFixed(1)} Mo`,
+      meta:
+        `Durée ${formatTime(analysis.duration)}` +
+        (sizeBytes > 0 ? ` · ${(sizeBytes / 1048576).toFixed(1)} Mo` : ""),
     });
     el<HTMLButtonElement>("btn-cancel-analysis").hidden = true;
     el<HTMLButtonElement>("btn-launch").hidden = false;
@@ -262,6 +265,78 @@ export class App {
     el<HTMLButtonElement>("btn-error-back").addEventListener("click", () => {
       this.backToDrop();
     });
+  }
+
+  private bindResolve(): void {
+    const form = el<HTMLFormElement>("resolve-form");
+    const status = el<HTMLElement>("resolve-status");
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (this.analysisController !== null) return;
+      const title = el<HTMLInputElement>("resolve-title").value.trim();
+      const artist = el<HTMLInputElement>("resolve-artist").value.trim();
+      const rawDuration = el<HTMLInputElement>("resolve-duration").value.trim();
+      const duration = rawDuration === "" ? undefined : Number(rawDuration);
+      if (title === "" || artist === "") {
+        status.hidden = false;
+        status.classList.add("is-error");
+        status.textContent = "Le titre et l'artiste sont requis.";
+        return;
+      }
+      if (duration !== undefined && (!Number.isFinite(duration) || duration <= 0)) {
+        status.hidden = false;
+        status.classList.add("is-error");
+        status.textContent = "La durée doit être un nombre positif.";
+        return;
+      }
+      status.hidden = false;
+      status.classList.remove("is-error");
+      status.textContent = "Recherche en cours…";
+      void this.handleResolve(title, artist, duration);
+    });
+  }
+
+  private async handleResolve(title: string, artist: string, duration: number | undefined): Promise<void> {
+    const status = el<HTMLElement>("resolve-status");
+    const controller = new AbortController();
+    this.analysisController = controller;
+    this.pendingTitle = title;
+    this.pendingAnalysis = null;
+    showScreen("analysis");
+    setUploadState({
+      phase: "Recherche",
+      progress: 0,
+      detail: "Recherche du morceau sur YouTube",
+      title,
+      meta: "Résolution automatique",
+    });
+    try {
+      const { jobId, analysis } = await resolveAndAnalyze(title, artist, duration, {
+        signal: controller.signal,
+        onPhase: ({ progress, phase, detail }) => {
+          setUploadState({ phase, progress, detail: detail.length > 0 ? detail : phase, title });
+        },
+      });
+      this.jobId = jobId;
+      this.pendingAnalysis = analysis;
+      this.showReady(title, analysis, 0);
+      status.hidden = true;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "aborted") {
+        this.backToDrop();
+        return;
+      }
+      const message = error instanceof Error ? error.message : "Erreur inconnue pendant la résolution.";
+      const detail =
+        error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
+      setShowError("Le morceau n'a pas pu être récupéré", message, detail);
+      showScreen("error");
+      status.hidden = false;
+      status.classList.add("is-error");
+      status.textContent = message;
+    } finally {
+      this.analysisController = null;
+    }
   }
 
   private backToDrop(): void {
