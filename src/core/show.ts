@@ -11,7 +11,10 @@ export type FamilyId =
   | "shutters"
   | "bars"
   | "spiral"
-  | "spots";
+  | "spots"
+  | "mirror"
+  | "parade"
+  | "crossfire";
 
 export interface Scene {
   index: number;
@@ -79,6 +82,9 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   bars: "barres",
   spiral: "spirale",
   spots: "projecteurs",
+  mirror: "miroirs",
+  parade: "défilé",
+  crossfire: "tirs croisés",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -92,8 +98,28 @@ export const MOOD_LABELS: Record<Mood, string> = {
 /** Familles posées, pour les passages sans percussion marquée. */
 const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral"];
 /** Familles qui suivent le rythme, pour les passages cadencés. */
-const RHYTHMIC_FAMILIES: FamilyId[] = ["bars", "beams", "grid", "shutters", "tunnel", "spots"];
-const ENERGETIC_FAMILIES: FamilyId[] = ["beams", "spots", "spiral", "shutters", "bars", "grid"];
+const RHYTHMIC_FAMILIES: FamilyId[] = [
+  "bars",
+  "beams",
+  "grid",
+  "shutters",
+  "tunnel",
+  "spots",
+  "mirror",
+  "parade",
+  "crossfire",
+];
+const ENERGETIC_FAMILIES: FamilyId[] = [
+  "beams",
+  "spots",
+  "spiral",
+  "shutters",
+  "bars",
+  "grid",
+  "mirror",
+  "parade",
+  "crossfire",
+];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
 
@@ -178,7 +204,9 @@ function familyFor(caractere: Caractere, reduced: boolean, turn: number): Family
     return pick(["beams", "waves", "rings", "particles"] as FamilyId[]);
   }
   if (energy < 0.22) return pick(CALM_FAMILIES);
-  if (brightness > 0.62) return pick(["particles", "spots", "spiral", "rings", "beams"] as FamilyId[]);
+  if (brightness > 0.62) {
+    return pick(["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"] as FamilyId[]);
+  }
   if (density > 2.2) return pick(RHYTHMIC_FAMILIES);
   if (energy > 0.6) return pick(ENERGETIC_FAMILIES);
   return pick(ALL_FAMILIES);

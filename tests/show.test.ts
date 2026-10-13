@@ -210,7 +210,7 @@ describe("diversite du spectacle", () => {
     expect(hueBuckets.size).toBeGreaterThanOrEqual(4);
   });
 
-  test("un long morceau exploite les dix familles visuelles", () => {
+  test("un long morceau exploite les treize familles visuelles", () => {
     const long = analysis({
       duration: 300,
       sections: [
@@ -221,7 +221,7 @@ describe("diversite du spectacle", () => {
     });
     const plan = buildShowPlan(long, false);
     expect(plan.scenes.length).toBeGreaterThan(15);
-    expect(new Set(plan.scenes.map((scene) => scene.family)).size).toBe(10);
+    expect(new Set(plan.scenes.map((scene) => scene.family)).size).toBe(13);
   });
 
   test("la cadence depend du nombre d'evenements du morceau", () => {

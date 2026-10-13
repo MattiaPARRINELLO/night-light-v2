@@ -137,7 +137,21 @@ describe("rendu déterministe", () => {
   });
 
   test("toutes les familles visuelles rendent sans erreur", () => {
-    for (const family of ["beams", "tunnel", "particles", "waves", "grid", "rings"] as const) {
+    for (const family of [
+      "beams",
+      "tunnel",
+      "particles",
+      "waves",
+      "grid",
+      "rings",
+      "shutters",
+      "bars",
+      "spiral",
+      "spots",
+      "mirror",
+      "parade",
+      "crossfire",
+    ] as const) {
       const data = analysis();
       const plan = buildShowPlan(data, false);
       plan.scenes = plan.scenes.map((scene) => ({ ...scene, family }));
@@ -162,6 +176,84 @@ describe("rendu déterministe", () => {
   test("un temps hors bornes reste rendable", () => {
     expect(() => renderAt(-5)).not.toThrow();
     expect(() => renderAt(999)).not.toThrow();
+  });
+
+  test("les faisceaux en miroir sont reellement symetriques", () => {
+    // Une scène unique couvrant tout le morceau, et un temps au tout début de
+    // la phrase : aucune autre couche (fond, variation, wash, impact) ne vient
+    // s'ajouter aux tracés, donc chaque tracé vient bien de `mirror`.
+    const data = analysis();
+    const plan = buildShowPlan(data, false);
+    plan.scenes = [
+      { ...plan.scenes[0]!, family: "mirror", variant: "mirror", backdrop: "mirror", start: 0, end: 60 },
+    ];
+    const { ctx, operations } = fakeContext();
+    renderFrame({
+      ctx,
+      width: 800,
+      height: 600,
+      dpr: 1,
+      time: 2,
+      view: new TrackView(data),
+      plan,
+      settings: DEFAULT_SETTINGS,
+      reducedMotion: false,
+      quality: 1,
+      frame: 0,
+    });
+
+    // Chaque lampe dessine deux tracés par côté : son faisceau (triangle) puis
+    // son point lumineux. `mirror` boucle donc sur [gauche, droite], ce qui
+    // donne par paire : faisceau_g, lampe_g, faisceau_d, lampe_d.
+    // `mirror` dessine 8 paires, soit 32 tracés (faisceau + lampe, gauche +
+    // droite). Les couches suivantes (scène sortante, poussière) dessinent
+    // aussi des arcs : le test ne regarde que la couche `mirror`, au début.
+    const paths: string[][] = [];
+    let mirrorPaths = 0;
+    for (let i = 0; i < operations.length && mirrorPaths < 32; i += 1) {
+      if (operations[i] !== "beginPath") continue;
+      const end = operations.indexOf("fill", i + 1);
+      if (end === -1) continue;
+      paths.push(operations.slice(i + 1, end));
+      mirrorPaths += 1;
+    }
+    expect(paths.length).toBe(32);
+
+    const width = 800;
+    const mirrorOp = (op: string) => {
+      if (!op.includes(":")) return op;
+      const [kind, rest] = op.split(":");
+      const numbers = rest!.split(",").map(Number);
+      // Quels indices portent un x : les deux extrémités du dégradé linéaire,
+      // l'origine unique des points et des arcs. Jamais un rayon, qui devrait
+      // rester positif.
+      const xIndices = kind === "linear" ? [0, 2, 4] : [0];
+      const flipped = numbers.map((value, index) => (xIndices.includes(index) ? width - value : value));
+      return `${kind}:${flipped.map((v) => v.toFixed(1)).join(",")}`;
+    };
+
+    // Le miroir échange les deux bords d'ouverture du faisceau : les bords
+    // dessinés en deuxième à gauche sont tirés en premier à droite. Seuls ces
+    // tracés du milieu s'inversent, l'origine et la fermeture gardent leur ordre.
+    const mirrorPair = (left: string[], right: string[]) => {
+      const head = left[0]!;
+      const tail = left[left.length - 1]!;
+      const middle = left.slice(1, -1).map(mirrorOp).reverse();
+      expect(right[0]).toBe(mirrorOp(head));
+      expect(right[right.length - 1]).toBe(mirrorOp(tail));
+      expect(right.slice(1, -1)).toEqual(middle);
+    };
+
+    for (let lamp = 0; lamp < paths.length; lamp += 4) {
+      const beamLeft = paths[lamp]!;
+      const lampLeft = paths[lamp + 1]!;
+      const beamRight = paths[lamp + 2]!;
+      const lampRight = paths[lamp + 3]!;
+      expect(beamRight.length).toBe(beamLeft.length);
+      expect(lampRight.length).toBe(lampLeft.length);
+      mirrorPair(beamLeft, beamRight);
+      mirrorPair(lampLeft, lampRight);
+    }
   });
 
   test("une analyse sans sections ni temps forts rend quand même", () => {

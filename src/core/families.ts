@@ -481,6 +481,179 @@ const spots: FamilyDraw = (ctx, f) => {
   }
 };
 
+/* ------------------------------------------------------ faisceaux en miroir */
+
+/**
+ * Faisceaux miroirs : des paires de projecteurs parfaitement symétriques de
+ * part et d'autre de l'axe vertical. Chaque lampe a sa jumelle exactement en
+ * face, au même instant, à la même hauteur — et les deux visent leur reflet.
+ *
+ * C'est le seul effet du spectacle où deux faisceaux se répondent, donc le
+ * seul qui donne l'impression d'un vrai show réglé à la main. Les ouvertures
+ * sont volontairement étroites : un faisceau long et net se lit beaucoup mieux
+ * de loin qu'un large pâté de lumière.
+ */
+const mirror: FamilyDraw = (ctx, f) => {
+  const { width: w, height: h } = f;
+  const pairs = count(8, f.quality, f.reduced);
+  const cx = w * 0.5;
+  const cy = h * 0.5;
+  // La portée dépasse largement l'écran : le faisceau doit traverser la scène
+  // sans s'arrêter au bord.
+  const reach = Math.hypot(w, h) * 1.35;
+
+  for (let i = 0; i < pairs; i += 1) {
+    const ratio = pairs === 1 ? 0.5 : i / (pairs - 1);
+    const row = hash01(i * 711 + f.seed);
+    const originY = h * (0.1 + row * 0.8);
+    const aimY = cy + (hash01(i * 911 + f.seed) - 0.5) * h * 0.62;
+    const speed = 0.16 + hash01(i * 1031 + f.seed) * 0.34;
+    // Un quart de tour de décalage entre deux lampes voisines : les paires ne
+    // balayent jamais toutes dans le même sens, le motif respire.
+    const swing = Math.sin(f.t * speed + hash01(i * 1213 + f.seed) * Math.PI * 2);
+    const aimX = cx + swing * w * 0.4;
+    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const alpha = (0.05 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
+    if (alpha <= 0.002) continue;
+    const aperture = (0.013 + hash01(i * 1367 + f.seed) * 0.018) * (0.7 + f.bass * 0.7 + f.beat * 0.3);
+
+    for (const side of [-1, 1] as const) {
+      const originX = side < 0 ? 0 : w;
+      // Reflet du point visé par rapport au centre : c'est tout le secret de
+      // la symétrie, et elle tient même quand le point se déplace.
+      const targetX = side < 0 ? aimX : w - aimX;
+      const angle = Math.atan2(aimY - originY, targetX - originX);
+      const range = reach * (0.8 + hash01(i * 1517 + f.seed) * 0.5);
+      const gradient = ctx.createLinearGradient(
+        originX,
+        originY,
+        originX + Math.cos(angle) * range,
+        originY + Math.sin(angle) * range,
+      );
+      gradient.addColorStop(0, paint(hue, 0.9, 0.76, alpha));
+      gradient.addColorStop(0.55, paint(shiftHue(hue, 14), 0.86, 0.66, alpha * 0.5));
+      gradient.addColorStop(1, paint(shiftHue(hue, 14), 0.86, 0.62, 0));
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(originX, originY);
+      ctx.lineTo(originX + Math.cos(angle - aperture) * range, originY + Math.sin(angle - aperture) * range);
+      ctx.lineTo(originX + Math.cos(angle + aperture) * range, originY + Math.sin(angle + aperture) * range);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = paint(hue, 0.92, 0.82, alpha * 1.4);
+      ctx.beginPath();
+      ctx.arc(originX, originY, 3 + f.beat * 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+};
+
+/* --------------------------------------------------------- mur de projecteurs */
+
+/**
+ * Rangée de projecteurs alignée sur un même bord, tous parallèles, qui
+ * balayent d'un seul bloc. À l'inverse de `mirror`, il n'y a pas de paire :
+ * une seule direction, une seule impulsion, comme une rangée de lampes de
+ * concert qui pivote ensemble sur sa structure.
+ */
+const parade: FamilyDraw = (ctx, f) => {
+  const { width: w, height: h } = f;
+  const lamps = count(9, f.quality, f.reduced);
+  if (lamps < 1) return;
+  const gap = w / (lamps + 1);
+  const reach = Math.hypot(w, h) * 1.25;
+  // Deux battements superposés : le balayage principal est lent, la petite
+  // modulation lui donne un rythme irrégulier qui évite l'effet métronome.
+  const sweep = Math.sin(f.t * 0.16) * 0.6 + Math.sin(f.t * 0.43) * 0.14;
+  const tilt = -Math.PI / 2 + sweep;
+  const lampY = h * 0.98;
+  const alpha = (0.05 + 0.24 * f.energy + 0.12 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let i = 0; i < lamps; i += 1) {
+    const ratio = lamps === 1 ? 0.5 : i / (lamps - 1);
+    // Léger décalage par lampe : la rangée reste parallèle sans être rigide.
+    const angle = tilt + (hash01(i * 311 + f.seed) - 0.5) * 0.07;
+    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const aperture = (0.02 + hash01(i * 433 + f.seed) * 0.014) * (0.7 + f.bass * 0.8 + f.beat * 0.25);
+    const range = reach * (0.75 + hash01(i * 557 + f.seed) * 0.6);
+    const originX = gap * (i + 1);
+    const gradient = ctx.createLinearGradient(
+      originX,
+      lampY,
+      originX + Math.cos(angle) * range,
+      lampY + Math.sin(angle) * range,
+    );
+    gradient.addColorStop(0, paint(hue, 0.88, 0.74, alpha));
+    gradient.addColorStop(0.7, paint(shiftHue(hue, 18), 0.84, 0.64, alpha * 0.45));
+    gradient.addColorStop(1, paint(shiftHue(hue, 18), 0.84, 0.6, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(originX, lampY);
+    ctx.lineTo(originX + Math.cos(angle - aperture) * range, lampY + Math.sin(angle - aperture) * range);
+    ctx.lineTo(originX + Math.cos(angle + aperture) * range, lampY + Math.sin(angle + aperture) * range);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = paint(hue, 0.9, 0.8, alpha * 1.3);
+    ctx.beginPath();
+    ctx.arc(originX, lampY, 3 + f.beat * 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/* ------------------------------------------------------------ tirs croisés */
+
+/**
+ * Tirs croisés : un projecteur par coin, quatre faisceaux longs et fins qui
+ * se croisent au milieu de l'écran. Chaque lampe visant le centre, la figure
+ * reste une étoile quelle que soit la taille de l'écran ; la respiration
+ * lente élarg puis resserre l'écart, ce qui donne un effet de « ouverture de
+ * porte » sans jamais cesser de converger.
+ */
+const crossfire: FamilyDraw = (ctx, f) => {
+  const { width: w, height: h } = f;
+  const cx = w * 0.5;
+  const cy = h * 0.5;
+  const reach = Math.hypot(w, h) * 1.45;
+  const breath = Math.sin(f.t * (f.reduced ? 0.08 : 0.19)) * 0.3;
+  const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let corner = 0; corner < 4; corner += 1) {
+    const originX = corner === 0 || corner === 3 ? 0 : w;
+    const originY = corner < 2 ? 0 : h;
+    // Angle vers le centre, décalé d'un quart de tour par coin : les quatre
+    // tirs restent écartés de 90° et se croisent tous au même point.
+    const base = Math.atan2(cy - originY, cx - originX);
+    const angle = base + breath;
+    const hue = f.palette.hue + (corner / 4) * f.palette.spread;
+    const aperture = (0.014 + 0.012 * hash01(corner * 97 + f.seed)) * (0.7 + f.energy * 0.8 + f.beat * 0.35);
+    const gradient = ctx.createLinearGradient(
+      originX,
+      originY,
+      originX + Math.cos(angle) * reach,
+      originY + Math.sin(angle) * reach,
+    );
+    gradient.addColorStop(0, paint(hue, 0.9, 0.78, alpha));
+    gradient.addColorStop(0.35, paint(hue, 0.88, 0.68, alpha * 0.7));
+    gradient.addColorStop(1, paint(shiftHue(hue, 20), 0.86, 0.62, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(originX + Math.cos(angle - aperture) * reach, originY + Math.sin(angle - aperture) * reach);
+    ctx.lineTo(originX + Math.cos(angle + aperture) * reach, originY + Math.sin(angle + aperture) * reach);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = paint(hue, 0.92, 0.84, alpha * 1.5);
+    ctx.beginPath();
+    ctx.arc(originX, originY, 3 + f.beat * 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
 /**
  * Grand wash de projecteurs : couche massive utilisée après un impact.
  * Beaucoup de faisceaux larges venant des quatre bords, qui balayent tout
@@ -559,6 +732,9 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   bars,
   spiral,
   spots,
+  mirror,
+  parade,
+  crossfire,
 };
 
 export function drawFamily(
