@@ -10,3 +10,6 @@ __pycache__/
 .pytest_cache/
 *.shot/
 node_modules/
+
+# Le projet utilise bun (bun.lock) : le lock npm n'est qu'un artefact.
+package-lock.json
