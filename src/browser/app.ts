@@ -8,15 +8,21 @@ import {
   sceneAt,
   type ShowPlan,
 } from "../core/show";
-import { HUE_DRIFT_PER_SEC, variationStrength } from "../core/render";
-import { renderFrame } from "../core/render";
-import { clamp, formatTime } from "../core/series";
+import { renderFrame, sceneHue, variationStrength } from "../core/render";
+import { clamp, formatTime, quantizeQuality } from "../core/series";
 import { TrackView } from "../core/view";
 import type { Analysis, RenderSettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import { el, setDropError, setPlaying, setShowError, setStatus, setUploadState, showScreen } from "./ui";
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|flac|m4a|aac|opus|weba|webm)$/i;
+
+/**
+ * Nombre d'images pendant lesquelles un palier de qualité doit être demandé
+ * avant d'être adopté. Sans ce délai, un fps qui oscille autour d'une frontière
+ * fait basculer le rendu d'un palier à l'autre en permanence.
+ */
+const QUALITY_HOLD_FRAMES = 24;
 const SECTION_LABELS: Record<string, string> = {
   calme: "Passage calme",
   montee: "Montée",
@@ -52,6 +58,10 @@ export class App {
   private lastTs = 0;
   private fps = 60;
   private quality = 1;
+  /** Images consécutives passées à demander un autre palier de qualité. */
+  private qualityHold = 0;
+  /** Tranche de qualité courante : pilote la résolution du canvas. */
+  private qualityBand = false;
   private lastHudUpdate = 0;
   private seeking = false;
   private reducedMotion = false;
@@ -504,11 +514,41 @@ export class App {
       if (delta > 0) {
         const instant = 1000 / delta;
         this.fps += (instant - this.fps) * 0.06;
-        this.quality = clamp(this.fps / 52, 0.35, 1);
+        this.updateQuality();
+        // La résolution du canvas dépend de la qualité : sans ce rappel, un
+        // passage sous la barre des 0,5 ne changerait jamais le dpr et le
+        // spectacle continuerait à rendre en haute résolution alors qu'il rame.
+        const band = this.quality < 0.5;
+        if (band !== this.qualityBand) {
+          this.qualityBand = band;
+          this.resize();
+        }
       }
       this.tick();
     };
     this.rafId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Qualité réduite à des paliers, avec hystérésis.
+   *
+   * Le fps varie en continu ; en le passant tel quel au rendu, chaque
+   * variation changeait le nombre d'éléments dessinés de 1 à 3 unités. Les
+   * familles calculant leurs positions par `i / n`, tout se décalait d'un coup :
+   * le spectacle « sautait » d'une image à l'autre, sur tous les types de scène.
+   * Un palier n'est adopté que s'il est demandé sans interruption pendant
+   * `QUALITY_HOLD_FRAMES`, ce qui supprime les bascules intempestives.
+   */
+  private updateQuality(): void {
+    const wanted = quantizeQuality(this.fps / 52);
+    if (wanted === this.quality) {
+      this.qualityHold = 0;
+      return;
+    }
+    this.qualityHold += 1;
+    if (this.qualityHold < QUALITY_HOLD_FRAMES) return;
+    this.quality = wanted;
+    this.qualityHold = 0;
   }
 
   private stopLoop(): void {
@@ -546,7 +586,9 @@ export class App {
       });
       this.frame += 1;
     } catch (error) {
-      this.quality = Math.max(0.3, this.quality * 0.7);
+      // Le rendu a échoué : on descend d'un palier. La valeur reste quantifiée,
+      // sinon le nombre d'éléments recommencerait à varier à chaque image.
+      this.quality = quantizeQuality(this.quality * 0.7);
       console.error("Rendu interrompu", error);
     }
   }
@@ -566,11 +608,12 @@ export class App {
     const section = view.sectionAt(t);
     const scene = sceneAt(this.plan ?? buildShowPlan(view.analysis, this.effectiveReduced()), t);
     const label = SECTION_LABELS[section.label] ?? section.label;
-    // La teinte affichée est celle réellement dessinée (glissement + drop).
-    const drift = HUE_DRIFT_PER_SEC * (t - scene.start) * (this.effectiveReduced() ? 0.4 : 1);
+    // La teinte affichée est celle réellement dessinée (même fonction, mêmes
+    // entrées) : avant, le HUD recalculait sa propre dérive et annonçait une
+    // couleur qui n'était pas à l'écran.
     const drop = view.buildIntensity(t);
-    const hue = (scene.palette.hue + drift + 70 * drop) % 360;
     const variation = this.effectiveReduced() ? 0 : variationStrength(scene, t);
+    const hue = sceneHue(scene, t, drop, variation, this.effectiveReduced());
     const moment = drop > 0.5 ? "impact" : variation > 0.4 ? "variation" : MOOD_LABELS[scene.mood];
     el<HTMLElement>("section-label").textContent =
       `${label} · ${SCENE_REASON_LABELS[scene.reason]} · ${moment} · ` +

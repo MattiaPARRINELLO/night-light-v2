@@ -1,5 +1,5 @@
 import type { RenderSettings } from "../types";
-import { clamp01, hash01, mix, smoothstep } from "./series";
+import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
 import { drawCoreGlow, drawFamily, drawWash } from "./families";
 import type { FrameState } from "./families";
 import type { Palette, Scene } from "./show";
@@ -33,6 +33,8 @@ export type { FrameState };
 export const FLASH_CEILING = 0.4;
 /** Deux flashs sont toujours séparés d'au moins cette durée. */
 const FLASH_MIN_GAP = 0.14;
+/** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
+const FLASH_ATTACK_SEC = 0.12;
 /** Glissement continu de la teinte, en degrés par seconde. */
 export const HUE_DRIFT_PER_SEC = 14;
 /** Teintes fortement écartées juste après un impact. */
@@ -58,13 +60,19 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   ctx.fillRect(0, 0, w, h);
 
   // Lueur centrale très douce, liée à l'énergie.
+  const cx = w * 0.5;
+  const cy = h * 0.55;
   const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
-  const halo = ctx.createRadialGradient(w * 0.5, h * 0.55, 0, w * 0.5, h * 0.55, Math.max(radius, 1));
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
   const haloAlpha = (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha;
   halo.addColorStop(0, paint(f.palette.hue, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(f.palette.hue, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
-  ctx.fillRect(0, 0, w, h);
+  // Le dégradé est transparent au-delà de `radius` : on ne remplit que son
+  // cadre, jamais tout l'écran. Une passe plein écran de plus par image est
+  // exactement ce qui fait ramer le compositing.
+  const span = Math.min(radius, Math.max(w, h));
+  ctx.fillRect(Math.max(0, cx - span), Math.max(0, cy - span), Math.min(w, span * 2), Math.min(h, span * 2));
 }
 
 function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
@@ -113,9 +121,10 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
 export function washStrength(view: TrackView, t: number, sceneCount: number): number {
   if (sceneCount === 0) return 0;
   let peak = 0;
-  for (const build of view.analysis.builds) {
+  // Seules les montées qui viennent de finir comptent : pas besoin de balayer
+  // tout le morceau à chaque image.
+  for (const build of view.buildsEndingIn(t - WASH_SPAN_SEC, t + 0.2)) {
     const age = t - build.end;
-    if (age < -0.2 || age > WASH_SPAN_SEC) continue;
     // Montée rapide, tenue, puis descente douce.
     const rise = age < 0 ? 1 + age / 0.15 : 1;
     const fall = age < 0.25 ? 1 : Math.exp(-(age - 0.25) / 2.4);
@@ -154,11 +163,33 @@ export function variationStrength(scene: Scene, t: number): number {
 /** Opacité de la couche de fond permanente. */
 const BACKDROP_ALPHA = 0.3;
 
-function lastFlashTime(view: TrackView, t: number): number {
+/**
+ * Teinte réellement dessinée à l'instant `t`.
+ *
+ * Le glissement porte sur le temps du morceau, jamais sur le temps écoulé
+ * depuis le début de la scène : en repartant de zéro à chaque changement de
+ * scène, la couleur faisait un bond de plusieurs dizaines de degrés en plein
+ * spectacle. Fonction partagée avec l'affichage, pour que le HUD annonce la
+ * teinte qui est vraiment à l'écran.
+ */
+export function sceneHue(scene: Scene, t: number, drop: number, variation: number, reduced: boolean): number {
+  const drift = HUE_DRIFT_PER_SEC * t * (reduced ? 0.4 : 1);
+  const shift = drift + DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation;
+  return (scene.palette.hue + shift + 360) % 360;
+}
+
+/**
+ * Dernier évènement capable de déclencher un flash : le temps fort le plus
+ * récent, ou l'impact de montée le plus récent. `-Infinity` si aucun.
+ *
+ * C'est aussi la garde anti-stroboscope : deux flashs ne peuvent naître qu'à
+ * plus de `FLASH_MIN_GAP` l'un de l'autre, ce qui est toujours vrai puisque les
+ * temps forts d'un morceau sont séparés par une pulsation entière.
+ */
+function lastFlashTrigger(view: TrackView, t: number): number {
   const beats = view.beatsIn(t - FLASH_MIN_GAP - 0.5, t);
-  const build = view.buildAt(t);
-  if (build !== null) return build.end - 0.0001;
-  return beats.length > 0 ? (beats[beats.length - 1] ?? t) : -Infinity;
+  const beat = beats[beats.length - 1] ?? -Infinity;
+  return Math.max(beat, view.lastBuildEnd(t));
 }
 
 /**
@@ -167,9 +198,13 @@ function lastFlashTime(view: TrackView, t: number): number {
  * pause, une reprise ou un déplacement dans le morceau.
  */
 export function renderFrame(input: RenderInput): void {
-  const { ctx, width, height, dpr, view, plan, settings, reducedMotion, quality, frame } = input;
+  const { ctx, width, height, dpr, view, plan, settings, reducedMotion, frame } = input;
   const t = input.time;
   const reduced = settings.reduced || reducedMotion;
+  // La qualité est ramenée à un palier connu ici, et pas seulement par
+  // l'appelant : c'est ce qui garantit qu'une variation de fps ne change jamais
+  // le nombre d'éléments d'une image à l'autre (voir QUALITY_STEPS).
+  const quality = quantizeQuality(input.quality);
   const scene = sceneAt(plan, t);
   const beat = view.beatPulse(t, 0.45);
   const build = view.buildProgress(t);
@@ -177,14 +212,12 @@ export function renderFrame(input: RenderInput): void {
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
   // le morceau « change de lumière » sans cesse.
-  const drift = HUE_DRIFT_PER_SEC * (t - scene.start) * (reduced ? 0.4 : 1);
   const drop = view.buildIntensity(t);
   const variation = reduced ? 0 : variationStrength(scene, t);
   const surge = view.energyTrend(t, 1.2);
-  const hueShift = (drift + DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation + 360) % 360;
   const palette: Palette = {
     name: scene.palette.name,
-    hue: (scene.palette.hue + hueShift) % 360,
+    hue: sceneHue(scene, t, drop, variation, reduced),
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     lightness: Math.min(0.8, scene.palette.lightness + drop * 0.12 + variation * 0.06),
@@ -218,7 +251,9 @@ export function renderFrame(input: RenderInput): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
-  ctx.clearRect(0, 0, width, height);
+  // Pas de `clearRect` : le contexte est opaque et `drawBackground` repeint
+  // intégralement l'écran juste en dessous. Une passe plein écran économisée à
+  // chaque image, c'est une écriture de framebuffer en moins sur le GPU.
 
   drawBackground(ctx, { ...base, palette });
   ctx.globalCompositeOperation = "lighter";
@@ -303,8 +338,13 @@ export function renderFrame(input: RenderInput): void {
 
   const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
   if (flash > 0.002) {
-    // Garde anti-stroboscope : pas deux flashs à moins de FLASH_MIN_GAP.
-    if (t - lastFlashTime(view, t) >= FLASH_MIN_GAP) {
+    // Garde anti-stroboscope : un flash ne naît que sur l'attaque d'un temps
+    // fort ou d'un impact, jamais au milieu de la décroissance. L'ancienne garde
+    // faisait exactement l'inverse (elle comparait au dernier temps fort et
+    // bloquait donc le flash pile au moment où il devait partir), ce qui
+    // produisait des éclairs erratiques, décalés, parfois absents.
+    const age = t - lastFlashTrigger(view, t);
+    if (age >= -0.02 && age <= FLASH_ATTACK_SEC) {
       ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
@@ -314,6 +354,25 @@ export function renderFrame(input: RenderInput): void {
   ctx.globalAlpha = 1;
 
   // Vignette : garde la composition lisible même quand tout s'allume.
+  // Le dégradé ne dépend que des dimensions : on le mémorise au lieu d'en
+  // recréer un à chaque image.
+  const vignette = vignetteFor(ctx, width, height);
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+}
+
+/** Vignettes déjà créées, par contexte puis par dimensions. */
+const vignetteCache = new WeakMap<CanvasRenderingContext2D, Map<string, CanvasGradient>>();
+
+function vignetteFor(ctx: CanvasRenderingContext2D, width: number, height: number): CanvasGradient {
+  let bySize = vignetteCache.get(ctx);
+  if (bySize === undefined) {
+    bySize = new Map();
+    vignetteCache.set(ctx, bySize);
+  }
+  const key = `${width}x${height}`;
+  const cached = bySize.get(key);
+  if (cached !== undefined) return cached;
   const vignette = ctx.createRadialGradient(
     width * 0.5,
     height * 0.5,
@@ -324,6 +383,6 @@ export function renderFrame(input: RenderInput): void {
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(1, "rgba(0,0,0,0.62)");
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, width, height);
+  bySize.set(key, vignette);
+  return vignette;
 }

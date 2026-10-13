@@ -16,6 +16,13 @@ export class TrackView {
   readonly beats: number[];
   readonly onsets: number[];
 
+  /** Montées triées par début, pour trouver la montée courante en binaire. */
+  private readonly buildsByStart: Build[];
+  private readonly buildStarts: number[];
+  /** Montées triées par fin, pour ne balayer que la fenêtre utile. */
+  private readonly buildsByEnd: Build[];
+  private readonly buildEnds: number[];
+
   constructor(analysis: Analysis) {
     this.analysis = analysis;
     this.duration = analysis.duration;
@@ -23,6 +30,11 @@ export class TrackView {
     this.beatPeriod = analysis.beatPeriod;
     this.beats = analysis.beats;
     this.onsets = analysis.onsets;
+
+    this.buildsByStart = [...analysis.builds].sort((left, right) => left.start - right.start);
+    this.buildStarts = this.buildsByStart.map((build) => build.start);
+    this.buildsByEnd = [...analysis.builds].sort((left, right) => left.end - right.end);
+    this.buildEnds = this.buildsByEnd.map((build) => build.end);
   }
 
   energyAt(t: number): number {
@@ -134,12 +146,19 @@ export class TrackView {
     return Math.max(lowerBoundNumbers(this.beats, t), 0);
   }
 
-  /** Montée en cours à l'instant `t`, sinon `null`. */
+  /**
+   * Montée courante à l'instant `t`, sinon `null`.
+   *
+   * Recherche binaire sur les débuts : le rendu appelle cette méthode plusieurs
+   * fois par image, un balayage linéaire de toutes les montées coûterait cher
+   * sur un morceau long. Les montées ne se chevauchent pas, donc la dernière
+   * commencée avant `t` est la seule candidate.
+   */
   buildAt(t: number): Build | null {
-    for (const build of this.analysis.builds) {
-      if (t >= build.start && t < build.end) return build;
-    }
-    return null;
+    const index = lowerBoundNumbers(this.buildStarts, t);
+    if (index < 0) return null;
+    const build = this.buildsByStart[index];
+    return build !== undefined && t < build.end ? build : null;
   }
 
   /** Progression 0..1 dans la montée courante (0 si aucune). */
@@ -165,15 +184,37 @@ export class TrackView {
    */
   buildIntensity(t: number): number {
     let peak = 0;
-    for (const build of this.analysis.builds) {
+    for (const build of this.buildsEndingIn(t - DROP_SPAN_SEC, t + DROP_ANTICIPATION_SEC)) {
       const age = t - build.end;
-      if (age < -DROP_ANTICIPATION_SEC) continue;
-      if (age > DROP_SPAN_SEC) continue;
       const anticipation = age < 0 ? 0.35 * (1 + age / DROP_ANTICIPATION_SEC) : 1;
       const value = (age < 0 ? anticipation : Math.exp(-age / 0.42) * anticipation) * build.strength;
       if (value > peak) peak = value;
     }
     return clamp01(peak);
+  }
+
+  /**
+   * Montées dont la fin tombe dans `[from, to]`, triées par fin croissante.
+   * En binaire : le rendu n'a jamais besoin de toutes les montées du morceau,
+   * seulement de celles qui sont actives à l'instant courant.
+   */
+  buildsEndingIn(from: number, to: number): Build[] {
+    const out: Build[] = [];
+    let index = lowerBoundNumbers(this.buildEnds, from);
+    if (index < 0) index = 0;
+    while (index < this.buildEnds.length) {
+      const build = this.buildsByEnd[index];
+      if (build === undefined || build.end > to) break;
+      if (build.end >= from) out.push(build);
+      index += 1;
+    }
+    return out;
+  }
+
+  /** Fin de la dernière montée terminée, `-Infinity` si aucune. */
+  lastBuildEnd(t: number): number {
+    const index = lowerBoundNumbers(this.buildEnds, t);
+    return index < 0 ? -Infinity : this.buildEnds[index] ?? -Infinity;
   }
 }
 

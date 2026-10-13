@@ -62,6 +62,28 @@ export function clamp01(value: number): number {
   return clamp(value, 0, 1);
 }
 
+/**
+ * Paliers de qualité utilisés par le rendu.
+ *
+ * La qualité brute issue du fps varie en continu ; la passer telle quelle à
+ * `count()` fait changer le nombre d'éléments d'une image à l'autre (de 1 à 3
+ * unités pour un écart de 0,02). Comme presque toutes les familles calculent
+ * leurs positions avec `i / n`, un seul cran de différence décalait tout d'un
+ * coup : c'était la cause du rendu qui « saute ». Un petit nombre de paliers
+ * borne le problème : le rendu ne change plus que quelques fois par morceau.
+ */
+export const QUALITY_STEPS = [0.3, 0.45, 0.6, 0.75, 0.9, 1] as const;
+
+/** Arrondit une qualité continue au palier le plus proche. */
+export function quantizeQuality(quality: number): number {
+  const value = clamp01(quality);
+  let best: number = QUALITY_STEPS[0];
+  for (const step of QUALITY_STEPS) {
+    if (Math.abs(step - value) < Math.abs(best - value)) best = step;
+  }
+  return best;
+}
+
 export function mix(a: number, b: number, ratio: number): number {
   return a + (b - a) * ratio;
 }

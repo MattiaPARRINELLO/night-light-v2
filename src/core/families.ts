@@ -488,7 +488,7 @@ const spots: FamilyDraw = (ctx, f) => {
  */
 export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
-  const lamps = count(16, f.quality, false);
+  const lamps = count(16, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.35;
   const sweep = 0.42;
   const alpha = (0.13 + 0.12 * f.energy + 0.04 * f.beat) * f.alpha;
@@ -543,7 +543,9 @@ export function drawCoreGlow(ctx: CanvasRenderingContext2D, f: FrameState): void
   gradient.addColorStop(0.35, paint(f.palette.hue, 0.8, 0.6, alpha * 0.4));
   gradient.addColorStop(1, paint(f.palette.hue, 0.8, 0.5, 0));
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, w, h);
+  // Cadre du dégradé seulement : le halo est nul au-delà de `radius`, remplir
+  // tout l'écran ajoutait une passe additive plein écran par image.
+  ctx.fillRect(Math.max(0, cx - radius), Math.max(0, cy - radius), Math.min(w, radius * 2), Math.min(h, radius * 2));
 }
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {

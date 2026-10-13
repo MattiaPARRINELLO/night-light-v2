@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderFrame } from "../src/core/render";
+import { renderFrame, sceneHue } from "../src/core/render";
 import { buildShowPlan } from "../src/core/show";
+import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
 import type { Analysis } from "../src/types";
@@ -90,7 +91,7 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
   };
 }
 
-function renderAt(time: number, analysisData: Analysis = analysis(), settings = DEFAULT_SETTINGS) {
+function renderAt(time: number, analysisData: Analysis = analysis(), settings = DEFAULT_SETTINGS, quality = 1) {
   const { ctx, operations } = fakeContext();
   const view = new TrackView(analysisData);
   const plan = buildShowPlan(analysisData, settings.reduced);
@@ -104,7 +105,7 @@ function renderAt(time: number, analysisData: Analysis = analysis(), settings = 
     plan,
     settings,
     reducedMotion: false,
-    quality: 1,
+    quality,
     frame: Math.round(time * 60),
   });
   return operations;
@@ -246,5 +247,116 @@ describe("diversite a l'ecran", () => {
     const dropMoment = countAt(8.05, { ...DEFAULT_SETTINGS, reduced: true });
     const quietMoment = countAt(20, { ...DEFAULT_SETTINGS, reduced: true });
     expect(dropMoment).toBeLessThanOrEqual(quietMoment * 1.6);
+  });
+});
+
+describe("flashs", () => {
+  /** Remplissages plein écran au format exact du fond (1280×720). */
+  function flashFramesAt(time: number): number {
+    const trace = renderAt(time).join("|").split("|");
+    return trace.filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
+  }
+
+  test("un flash part sur l'attaque du temps fort, jamais entre deux temps", () => {
+    // Fond + vignette en permanence, + 1 quand le flash part. Les temps forts
+    // tombent sur 8,0 / 8,5 / 9,0… : le flash doit naître juste après
+    // l'attaque, pas pendant la décroissance ni à contretemps.
+    expect(flashFramesAt(12.25)).toBe(2);
+    expect(flashFramesAt(8.05)).toBe(3);
+    expect(flashFramesAt(8.25)).toBe(2);
+  });
+
+  test("deux flashs restent toujours espacés d'au moins FLASH_MIN_GAP", () => {
+    // Evenements = début de chaque salve de flashs.
+    const events: number[] = [];
+    let flashing = false;
+    for (let t = 0; t < 20; t += 1 / 60) {
+      const isFlash = flashFramesAt(t) > 2;
+      if (isFlash && !flashing) events.push(t);
+      flashing = isFlash;
+    }
+    expect(events.length).toBeGreaterThan(0);
+    for (let i = 1; i < events.length; i += 1) {
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(0.14);
+    }
+  });
+});
+
+describe("stabilite de la qualite", () => {
+  test("quantizeQuality ne renvoie que des paliers connus", () => {
+    const steps: readonly number[] = QUALITY_STEPS;
+    for (let quality = 0; quality <= 1.0001; quality += 0.001) {
+      expect(steps).toContain(quantizeQuality(quality));
+    }
+    expect(quantizeQuality(0)).toBe(0.3);
+    expect(quantizeQuality(1)).toBe(1);
+    expect(quantizeQuality(0.5)).toBe(0.45);
+  });
+
+  test("deux qualites dans le meme palier dessinent exactement la meme image", () => {
+    // Sans paliers, un écart de fps de 0,02 changeait le nombre d'éléments de
+    // 1 à 3 unités : toutes les positions de famille étaient recalculées et
+    // l'animation « sautait » d'une image à l'autre.
+    const times = [3, 8.05, 20, 33.25, 47, 58];
+    for (const t of times) {
+      const reference = renderAt(t, analysis(), DEFAULT_SETTINGS, 0.9);
+      for (const quality of [0.86, 0.89, 0.9, 0.93, 0.94]) {
+        expect(renderAt(t, analysis(), DEFAULT_SETTINGS, quality).join("|")).toBe(reference.join("|"));
+      }
+    }
+  });
+
+  test("changer de palier change la charge, et un palier voisin ne la change plus", () => {
+    const countOperations = (quality: number) => renderAt(45, analysis(), DEFAULT_SETTINGS, quality).length;
+    // Paliers distincts => charge différente (la qualité sert à quelque chose).
+    expect(countOperations(0.45)).not.toBe(countOperations(1));
+    // A l'intérieur d'un palier, la charge ne bouge pas d'une image à l'autre.
+    expect(countOperations(0.61)).toBe(countOperations(0.66));
+    expect(countOperations(0.66)).toBe(countOperations(0.67));
+    // Et un palier plus loin la change.
+    expect(countOperations(0.8)).not.toBe(countOperations(0.45));
+  });
+
+  test("toute qualite d'un meme palier donne l'image du palier, sur tous les temps", () => {
+    // La propriété qui compte : deux fps voisins (donc deux qualités voisines)
+    // ne doivent jamais changer ce qui est dessiné. C'est ce qui causait les
+    // animations qui « sautent ».
+    for (let i = 0; i < 40; i += 1) {
+      const step = QUALITY_STEPS[i % QUALITY_STEPS.length] ?? 1;
+      const low = Math.max(0, Math.min(1, step + (hash01(i) - 0.5) * 0.12));
+      const high = Math.max(0, Math.min(1, step + (hash01(i + 997) - 0.5) * 0.12));
+      if (quantizeQuality(low) !== step || quantizeQuality(high) !== step) continue;
+      const time = 2 + (i % 55);
+      const first = renderAt(time, analysis(), DEFAULT_SETTINGS, low);
+      const second = renderAt(time, analysis(), DEFAULT_SETTINGS, high);
+      expect(second.join("|")).toBe(first.join("|"));
+    }
+  });
+});
+
+describe("couleur", () => {
+  /** Écart angulaire entre deux teintes, 0..180. */
+  function hueGap(a: number, b: number): number {
+    return Math.abs(((b - a + 540) % 360) - 180);
+  }
+
+  test("la dérive de teinte porte sur le temps du morceau, pas sur la scène", () => {
+    const scene = buildShowPlan(analysis(), false).scenes[0]!;
+    // La teinte ne doit aucune dépendance à `scene.start` : sinon elle repartait
+    // de zéro à chaque changement de scène et la couleur faisait un bond.
+    const early = sceneHue({ ...scene, start: 0 }, 30, 0, 0, false);
+    const late = sceneHue({ ...scene, start: 22 }, 30, 0, 0, false);
+    expect(early).toBe(late);
+  });
+
+  test("la teinte glisse continûment, sans saut, dans le temps", () => {
+    const scene = buildShowPlan(analysis(), false).scenes[0]!;
+    let previous = sceneHue(scene, 0, 0, 0, false);
+    for (let t = 0.1; t < 60; t += 0.1) {
+      const hue = sceneHue(scene, t, 0, 0, false);
+      // 14 degrés par seconde => 1,4 degré par pas de 0,1 s.
+      expect(hueGap(previous, hue)).toBeLessThan(2);
+      previous = hue;
+    }
   });
 });
