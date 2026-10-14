@@ -1,5 +1,5 @@
 import { AudioEngine } from "./audio";
-import { ApiError, audioUrl, fetchHealth, fetchNowPlaying, resolveAndAnalyze, uploadAndAnalyze, type Limits, type NowPlayingResponse } from "../core/api";
+import { ApiError, audioUrl, fetchHealth, fetchNowPlaying, fetchPlaybackPosition, resolveAndAnalyze, uploadAndAnalyze, type Limits, type NowPlayingResponse, type PlaybackPositionResponse } from "../core/api";
 import {
   FAMILY_LABELS,
   MOOD_LABELS,
@@ -10,7 +10,16 @@ import {
 } from "../core/show";
 import { renderFrame, sceneHue, variationStrength } from "../core/render";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
+import {
+  EMPTY_LIVE_AUDIO,
+  normalizeLiveLevels,
+  smoothLiveFeatures,
+  type LiveAudioFeatures,
+} from "../core/liveAudio";
 import { TrackView } from "../core/view";
+import { estimatePlayerPositionMs, normalizePlaybackText, showDriftMs, syncCorrection } from "../core/playback";
+import type { ExternalPlaybackState } from "../core/playback";
+import { dbgLog, dbgThrottled, debugLog, type DebugCategory } from "../core/debug";
 import type { Analysis, RenderSettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import { el, setDropError, setPlaying, setShowError, setStatus, setUploadState, showScreen } from "./ui";
@@ -39,6 +48,44 @@ interface Session {
   startedAt: number;
 }
 
+/** Instantané de la capture système, pour l'overlay de debug. */
+interface CaptureDebug {
+  /** Flux SSE : fermé, en connexion, ouvert ou en erreur. */
+  link: "fermé" | "connexion…" | "ouvert" | "erreur";
+  messages: number;
+  lastAt: number;
+  rate: number;
+  state: string;
+  active: string;
+  source: string;
+  error: string;
+}
+
+/** Instantané de la synchronisation, pour l'overlay de debug. */
+interface SyncDebug {
+  phase: "LIVE" | "SYNCING" | "SHOW_SYNCED" | "SHOW_LOCAL" | "PAUSED" | "LOST";
+  source: string;
+  playerTitle: string;
+  expectedTitle: string;
+  playerMs: number;
+  showMs: number;
+  driftMs: number;
+  latencyMs: number;
+  attempts: number;
+  match: string;
+  correlation: number | null;
+  resyncAt: number;
+}
+
+function num(value: number | undefined): string {
+  return Number.isFinite(value) ? (value as number).toFixed(3) : "—";
+}
+
+function seconds(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
 export class App {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -58,6 +105,59 @@ export class App {
   private liveCapture: EventSource | null = null;
   private liveRaf = 0;
   private liveLevels: Record<string, number> = {};
+  private liveAudioRaw: LiveAudioFeatures = EMPTY_LIVE_AUDIO;
+  private liveAudio: LiveAudioFeatures = EMPTY_LIVE_AUDIO;
+  private liveView: TrackView | null = null;
+  private livePlan: ShowPlan | null = null;
+
+  private syncedView: TrackView | null = null;
+  private syncedPlan: ShowPlan | null = null;
+  private syncedStartMs = 0;
+  private syncedStartedAtEpoch = 0;
+  private syncedRaf = 0;
+  private syncedTimer: number | null = null;
+  private syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
+  private syncedMode = false;
+  private debugOverlayActive = false;
+  private liveMode = true;
+  private liveTimeStart = performance.now();
+  private liveQuality = 1;
+  private liveQualityHold = 0;
+  private liveFrame = 0;
+  private liveMainRaf = 0;
+  private liveFps = 60;
+  private liveLastTs = 0;
+
+  /* ---- debug ---- */
+  private readonly debugCapture: CaptureDebug = {
+    link: "fermé",
+    messages: 0,
+    lastAt: 0,
+    rate: 0,
+    state: "inactive",
+    active: "?",
+    source: "",
+    error: "",
+  };
+  private readonly debugSync: SyncDebug = {
+    phase: "LIVE",
+    source: "",
+    playerTitle: "",
+    expectedTitle: "",
+    playerMs: 0,
+    showMs: 0,
+    driftMs: 0,
+    latencyMs: Number(localStorage.getItem("night-light-latency") ?? 0),
+    attempts: 0,
+    match: "",
+    correlation: null,
+    resyncAt: 0,
+  };
+  private debugTimer: number | null = null;
+  private debugLastPlayer: ExternalPlaybackState | null = null;
+  private debugRateWindowAt = 0;
+  private debugRateWindowCount = 0;
+  private debugLastSseState = "";
 
   private rafId = 0;
   private frame = 0;
@@ -85,11 +185,17 @@ export class App {
     this.bindDrop();
     this.bindResolve();
     this.bindLiveCapture();
+    this.bindDockToggle();
+    this.bindLatencyControls();
+    showScreen("drop");
+    void this.startLiveMode();
     window.setInterval(() => void this.pollNowPlaying(), 1500);
     void this.pollNowPlaying();
     this.bindAnalysis();
     this.bindShow();
     this.bindKeyboard();
+    this.bindDebugToggle();
+    this.debugTimer = window.setInterval(() => this.updateDebugOverlay(), 500);
     window.addEventListener("resize", this.resize);
     this.resize();
     void this.loadHealth();
@@ -104,14 +210,21 @@ export class App {
         maxFileBytes: health.limits.maxFileBytes,
         maxDurationSec: health.limits.maxDurationSec,
       };
-    } catch {
+      dbgLog("boot", "prêt · limites", {
+        maxMo: Math.round(health.limits.maxFileBytes / 1048576),
+        maxDureeSec: health.limits.maxDurationSec,
+      });
+    } catch (error) {
       this.limits = null;
+      dbgLog("erreur", "health injoignable", error instanceof Error ? error.message : String(error));
     }
   }
 
   dispose(): void {
     this.mediaQuery?.removeEventListener("change", this.onReducedMotionChange);
     window.removeEventListener("resize", this.resize);
+    if (this.debugTimer !== null) window.clearInterval(this.debugTimer);
+    this.debugTimer = null;
     this.stopLoop();
     this.audio.dispose();
   }
@@ -196,7 +309,7 @@ export class App {
     const title = file.name.replace(/\.[^.]+$/, "");
     this.pendingTitle = title;
     this.pendingAnalysis = null;
-    showScreen("analysis");
+    el<HTMLElement>("dock-panel").classList.add("is-hidden");
     setUploadState({
       phase: "Envoi",
       progress: 0,
@@ -207,6 +320,10 @@ export class App {
 
     const controller = new AbortController();
     this.analysisController = controller;
+    this.debug("analyse", `fichier déposé · ${title}`, {
+      tailleMo: Number((file.size / 1048576).toFixed(1)),
+      type: file.type || "inconnu",
+    });
     try {
       const { jobId, analysis } = await uploadAndAnalyze(file, {
         signal: controller.signal,
@@ -216,7 +333,7 @@ export class App {
             progress: ratio * 0.25,
             detail: `${Math.round(ratio * 100)} % envoyé`,
           });
-        },
+          dbgThrottled("upload", "analyse", "envoi vers le serveur", { progression: `${Math.round(ratio * 100)} %` }, 2000);        },
         onPhase: ({ progress, phase, detail }) => {
           setUploadState({
             phase,
@@ -227,15 +344,26 @@ export class App {
       });
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
-      this.showReady(title, analysis, file.size);
+      document.body.dataset.analysisReady = "true";
+      this.debug("analyse", "analyse terminée", {
+        titre: title,
+        dureeSec: Number(analysis.duration.toFixed(1)),
+        tempo: Number(analysis.tempo.toFixed(1)),
+        temps: analysis.beats.length,
+        montees: analysis.builds.length,
+        sections: analysis.sections.length,
+      });
+      void this.tryAutoSynced(title, "", analysis.duration, analysis);
     } catch (error) {
       if (error instanceof ApiError && error.code === "aborted") {
+        this.debug("analyse", "analyse annulée par l'utilisateur");
         this.backToDrop();
         return;
       }
       const message = error instanceof Error ? error.message : "Erreur inconnue pendant l'analyse.";
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
+      this.debug("erreur", "analyse en échec", { message, detail });
       setShowError("L'analyse a échoué", message, detail);
       showScreen("error");
     } finally {
@@ -243,33 +371,30 @@ export class App {
     }
   }
 
-  private showReady(title: string, analysis: Analysis, sizeBytes: number): void {
-    setUploadState({
-      phase: "Analyse terminée",
-      progress: 1,
-      detail:
-        `Tempo ${analysis.tempo.toFixed(1)} BPM · ${analysis.beats.length} temps forts · ` +
-        `${analysis.sections.length} sections`,
-      title,
-      meta:
-        `Durée ${formatTime(analysis.duration)}` +
-        (sizeBytes > 0 ? ` · ${(sizeBytes / 1048576).toFixed(1)} Mo` : ""),
-    });
-    el<HTMLButtonElement>("btn-cancel-analysis").hidden = true;
-    el<HTMLButtonElement>("btn-launch").hidden = false;
-    el<HTMLButtonElement>("btn-launch").focus();
-    setStatus(`Analyse de ${title} terminée. Spectacle prêt.`);
+  private showSyncFailed(title: string, reason: string): void {
+    setShowError(
+      "Le spectacle n'a pas pu se synchroniser",
+      `Aucune lecture externe correspondant à « ${title} » n'a été trouvée. Lance la lecture du morceau puis relance-le.`,
+      reason,
+    );
+    el<HTMLElement>("dock-panel").classList.remove("is-hidden");
+    showScreen("error");
+    setStatus(`Impossible de synchroniser ${title}.`);
+    this.debugSync.phase = "LOST";
+    this.debugSync.match = reason;
+    this.debug("erreur", `synchro impossible pour ${title}`, reason);
   }
 
   private bindAnalysis(): void {
-    el<HTMLButtonElement>("btn-launch").addEventListener("click", () => {
-      const analysis = this.pendingAnalysis;
-      if (analysis === null) return;
-      void this.startShow(analysis);
-    });
     el<HTMLButtonElement>("btn-cancel-analysis").addEventListener("click", () => {
       this.analysisController?.abort();
       this.backToDrop();
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && this.analysisController !== null) {
+        this.analysisController.abort();
+        this.backToDrop();
+      }
     });
     el<HTMLButtonElement>("btn-error-back").addEventListener("click", () => {
       this.backToDrop();
@@ -311,7 +436,8 @@ export class App {
     this.analysisController = controller;
     this.pendingTitle = title;
     this.pendingAnalysis = null;
-    showScreen("analysis");
+    el<HTMLElement>("dock-panel").classList.add("is-hidden");
+    this.debug("analyse", `recherche par titre · ${title} / ${artist}`, { dureeSec: duration ?? "—" });
     setUploadState({
       phase: "Recherche",
       progress: 0,
@@ -328,22 +454,42 @@ export class App {
           signal: controller.signal,
           onPhase: ({ progress, phase, detail }) => {
             setUploadState({ phase, progress, detail: detail.length > 0 ? detail : phase, title });
+            dbgThrottled(
+              `phase-${phase}`,
+              "analyse",
+              `phase « ${phase} »`,
+              {
+                progression: `${Math.round(progress * 100)} %`,
+                detail: detail.length > 0 ? detail : phase,
+              },
+              4000,
+            );
           },
         },
         trackKey,
       );
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
-      this.showReady(title, analysis, 0);
+      document.body.dataset.analysisReady = "true";
+      this.debug("analyse", `analyse terminée · ${title} / ${artist}`, {
+        dureeSec: Number(analysis.duration.toFixed(1)),
+        tempo: Number(analysis.tempo.toFixed(1)),
+        temps: analysis.beats.length,
+        montees: analysis.builds.length,
+        sections: analysis.sections.length,
+      });
+      void this.tryAutoSynced(title, artist, analysis.duration, analysis);
       status.hidden = true;
     } catch (error) {
       if (error instanceof ApiError && error.code === "aborted") {
+        this.debug("analyse", "recherche annulée par l'utilisateur");
         this.backToDrop();
         return;
       }
       const message = error instanceof Error ? error.message : "Erreur inconnue pendant la résolution.";
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
+      this.debug("erreur", "récupération du morceau en échec", { message, detail });
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
       showScreen("error");
       status.hidden = false;
@@ -359,6 +505,20 @@ export class App {
       const data = await fetchNowPlaying();
       this.nowPlaying = data;
       this.updateNowPlayingUI();
+      dbgThrottled(
+        "now-playing",
+        "sync",
+        "lecteur scruté",
+        {
+          source: data.available ? "détecté" : "aucun",
+          titre: data.title || "—",
+          artiste: data.artist || "—",
+          statut: data.status,
+          positionSec: data.positionSec === null || data.positionSec === undefined ? "—" : Number(data.positionSec.toFixed(1)),
+          ambigue: data.ambiguous,
+        },
+        5000,
+      );
       await this.maybeAutoResolve();
     } catch {
       // Service indisponible : on masque simplement l'indication.
@@ -461,51 +621,670 @@ export class App {
   }
 
   private bindLiveCapture(): void {
+    el<HTMLButtonElement>("btn-live-capture").addEventListener("click", () => {
+      if (this.liveCapture !== null) this.closeExternalCapture();
+      else this.openExternalCapture();
+    });
+  }
+
+  private openExternalCapture(): void {
+    if (this.liveCapture !== null) return;
     const btn = el<HTMLButtonElement>("btn-live-capture");
     const level = el<HTMLElement>("live-level");
-    btn.addEventListener("click", () => {
-      if (this.liveCapture !== null) {
-        this.liveCapture.close();
-        this.liveCapture = null;
-        btn.textContent = "Écouter le son du PC";
-        level.textContent = "Capture inactive";
-        this.stopLiveRender();
-        return;
-      }
-      const source = new EventSource("/api/audio-levels");
-      source.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data) as { rms?: number; active?: boolean; error?: string; energy?: number; bass?: number; mid?: number; high?: number; transient?: number };
-          this.liveLevels = data as Record<string, number>;
-          if (data.error) {
-            level.textContent = data.error;
-            return;
-          }
-          const percent = Math.round((data.rms ?? 0) * 100);
-          level.textContent = `Capture ${data.active ? "active" : "inactive"} · niveau ${percent} %`;
-        } catch {
-          /* ignore malformed event */
+    const source = new EventSource("/api/audio-levels");
+    this.debugCapture.link = "connexion…";
+    this.debug("capture", "ouverture du flux SSE /api/audio-levels");
+    source.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as Record<string, unknown>;
+        this.liveLevels = data as Record<string, number>;
+        const now = performance.now();
+        this.debugCapture.messages += 1;
+        this.debugCapture.lastAt = Date.now();
+        this.debugRateWindowCount += 1;
+        if (this.debugRateWindowAt === 0) this.debugRateWindowAt = now;
+        if (now - this.debugRateWindowAt >= 1000) {
+          this.debugCapture.rate = (this.debugRateWindowCount * 1000) / (now - this.debugRateWindowAt);
+          this.debugRateWindowAt = now;
+          this.debugRateWindowCount = 0;
         }
-      };
-      source.onerror = () => {
-        level.textContent = "Erreur de capture audio";
-      };
-      this.liveCapture = source;
-      btn.textContent = "Arrêter la capture";
-      level.textContent = "Capture en cours…";
-      this.startLiveRender();
-    });
+        this.debugCapture.link = "ouvert";
+        this.debugCapture.state = String(data.state ?? "inactive");
+        this.debugCapture.active = String(data.active ?? "?");
+        this.debugCapture.source = String(data.source ?? "");
+        this.debugCapture.error = String(data.error ?? "");
+        if (this.debugCapture.error !== "") this.debug("erreur", "capture en erreur", this.debugCapture.error);
+        if (this.debugCapture.state !== this.debugLastSseState) {
+          this.debug("capture", `état de la capture → ${this.debugCapture.state}`, {
+            source: this.debugCapture.source,
+            rms: Number(data.rms ?? 0).toFixed(4),
+          });
+          this.debugLastSseState = this.debugCapture.state;
+        }
+        const next = normalizeLiveLevels(data);
+        this.liveAudioRaw = next;
+        if (data.error) {
+          level.textContent = String(data.error);
+          return;
+        }
+        const percent = Math.round((Number(data.rms ?? 0)) * 100);
+        level.textContent = `Capture ${data.state ?? (data.active ? "active" : "inactive")} · niveau ${percent} %`;
+        dbgThrottled(
+          "levels",
+          "capture",
+          "caractéristiques reçues",
+          {
+            rms: next.rms.toFixed(3),
+            energie: next.energy.toFixed(3),
+            basses: next.bass.toFixed(2),
+            mediums: next.mid.toFixed(2),
+            aigus: next.high.toFixed(2),
+            transitoire: next.transient.toFixed(3),
+          },
+          1000,
+        );
+      } catch {
+        /* ignore malformed event */
+      }
+    };
+    source.onerror = () => {
+      level.textContent = "Erreur de capture audio";
+      this.debugCapture.link = "erreur";
+      this.debug("erreur", "flux SSE de capture interrompu (parec ou serveur)");
+    };
+    this.liveCapture = source;
+    btn.textContent = "Arrêter la capture";
+    level.textContent = "Capture en cours…";
+    this.startLiveRender();
+  }
+
+  private closeExternalCapture(): void {
+    if (this.liveCapture === null) return;
+    this.liveCapture.close();
+    this.liveCapture = null;
+    const btn = el<HTMLButtonElement>("btn-live-capture");
+    const level = el<HTMLElement>("live-level");
+    btn.textContent = "Écouter le son du PC";
+    level.textContent = "Capture inactive";
+    this.debug("capture", `flux SSE fermé · ${this.debugCapture.messages} messages reçus au total`);
+    this.debugCapture.link = "fermé";
+    this.debugCapture.state = "fermée";
+    this.debugCapture.active = "?";
+    this.debugCapture.error = "";
+    this.debugLastSseState = "";
+    this.stopLiveRender();
   }
 
   private backToDrop(): void {
     this.stopLoop();
     this.audio.pause();
     void this.releaseSession();
+    this.stopSyncedMode();
+    this.liveMode = true;
+    this.debug("live", "retour au mode live");
+    this.bindDockToggle();
+    this.bindLatencyControls();
+    void this.startLiveMode();
     el<HTMLButtonElement>("btn-cancel-analysis").hidden = false;
-    el<HTMLButtonElement>("btn-launch").hidden = true;
     setUploadState({ phase: "Préparation", progress: 0, detail: "Envoi du fichier…" });
+    el<HTMLElement>("dock-panel").classList.remove("is-hidden");
+    delete document.body.dataset.analysisReady;
     showScreen("drop");
     setStatus("Écran de dépôt. Dépose un morceau pour lancer un spectacle.");
+  }
+
+
+
+  private bindLatencyControls(): void {
+    const input = document.getElementById("latency-offset") as HTMLInputElement | null;
+    if (input === null) return;
+    input.value = String(this.syncedLatencyMs);
+    input.addEventListener("change", () => {
+      const value = Number(input.value);
+      if (Number.isFinite(value)) {
+        this.syncedLatencyMs = Math.max(-500, Math.min(1000, value));
+        localStorage.setItem("night-light-latency", String(this.syncedLatencyMs));
+      }
+    });
+    document.getElementById("latency-preset-wired")?.addEventListener("click", () => {
+      this.syncedLatencyMs = 0;
+      input.value = "0";
+      localStorage.setItem("night-light-latency", "0");
+    });
+    document.getElementById("latency-calibrate")?.addEventListener("click", () => { this.calibrateLatency(); });
+    document.getElementById("latency-preset-bt")?.addEventListener("click", () => {
+      this.syncedLatencyMs = 200;
+      input.value = "200";
+      localStorage.setItem("night-light-latency", "200");
+    });
+  }
+
+  private bindDebugToggle(): void {
+    window.addEventListener("keydown", (event) => {
+      if (event.key.toLowerCase() === "d" && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+        this.debugOverlayActive = !this.debugOverlayActive;
+        const overlay = document.getElementById("debug-overlay");
+        if (overlay !== null) overlay.toggleAttribute("hidden", !this.debugOverlayActive);
+        this.debug("boot", `overlay de debug ${this.debugOverlayActive ? "affiché" : "masqué"}`);
+      }
+    });
+  }
+
+  /**
+   * Concentre tout ce qui se passe en direct : mode courant, état de la capture
+   * système, valeurs audio brutes et lissées, position du lecteur face à celle
+   * du show, puis la fin du journal. Rafraîchi deux fois par seconde.
+   */
+  private updateDebugOverlay(): void {
+    const overlay = document.getElementById("debug-overlay");
+    if (overlay === null || !this.debugOverlayActive) return;
+
+    const cap = this.debugCapture;
+    const sync = this.debugSync;
+    const age = cap.lastAt === 0 ? "jamais" : `${Math.max(0, Math.round(Date.now() - cap.lastAt))} ms`;
+    const raw = this.liveAudioRaw;
+    const smooth = this.liveAudio;
+
+    const lines: string[] = [
+      "── Night Light · debug (touche D pour masquer) ──",
+      `mode            ${sync.phase} · live=${this.liveMode ? "oui" : "non"} · show=${this.syncedMode ? "sync" : this.view === null ? "—" : "local"}`,
+      `capture         SSE ${cap.link} · ${cap.messages} messages · ${cap.rate.toFixed(1)}/s · dernier il y a ${age}`,
+      `capture état    ${cap.state}${cap.active === "?" ? "" : ` · active=${cap.active}`}${cap.source === "" ? "" : ` · source=${cap.source}`}${cap.error === "" ? "" : ` · erreur=${cap.error}`}`,
+      `audio brut      rms=${num(raw.rms)} én=${num(raw.energy)} basses=${num(raw.bass)} méd=${num(raw.mid)} aigus=${num(raw.high)} transitoire=${num(raw.transient)}`,
+      `audio lissé     rms=${num(smooth.rms)} én=${num(smooth.energy)} basses=${num(smooth.bass)} méd=${num(smooth.mid)} aigus=${num(smooth.high)} transitoire=${num(smooth.transient)}`,
+      `rendu live      fps=${this.liveFps.toFixed(1)} · qualité=${this.liveQuality.toFixed(2)} · ${this.liveFrame} images`,
+      `rendu show      fps=${this.fps.toFixed(1)} · qualité=${this.quality.toFixed(2)} · ${this.frame} images`,
+    ];
+
+    if (sync.phase !== "LIVE") {
+      // Valeurs recalculées à l'instant de l'affichage : entre deux resyncs
+      // (2,5 s), le show et le lecteur continuent d'avancer.
+      const joueur = this.debugLastPlayer;
+      const maintenant = Date.now();
+      const lecteurMs = joueur === null ? sync.playerMs : estimatePlayerPositionMs(joueur, maintenant);
+      const showMs = this.syncedMode
+        ? this.syncedStartMs + (maintenant - this.syncedStartedAtEpoch)
+        : sync.showMs;
+      const ecartMs =
+        joueur === null ? sync.driftMs : lecteurMs + this.syncedLatencyMs - showMs;
+      lines.push(
+        `sync           source=${sync.source === "" ? "?" : sync.source} · attendu=${sync.expectedTitle === "" ? "—" : sync.expectedTitle}`,
+        `sync morceau   lecteur=${sync.playerTitle === "" ? "—" : sync.playerTitle}`,
+        `sync position  lecteur=${seconds(lecteurMs)} · show=${seconds(showMs)} · écart=${Math.round(ecartMs)} ms`,
+        `sync réglages  latence=${sync.latencyMs} ms · tentatives=${sync.attempts} · corrélation=${sync.correlation === null ? "—" : sync.correlation.toFixed(2)}`,
+        `sync verdict   ${sync.match === "" ? "—" : sync.match}${sync.resyncAt === 0 ? "" : ` · dernier contrôle il y a ${((performance.now() - sync.resyncAt) / 1000).toFixed(1)} s`}`,
+      );
+    }
+
+    lines.push("── journal ──");
+    for (const line of debugLog.lines(14, 6)) lines.push(line);
+    overlay.textContent = lines.join("\n");
+  }
+
+  /** Écrit une ligne dans la console et dans le tampon de l'overlay. */
+  private debug(category: DebugCategory, message: string, data?: unknown): void {
+    dbgLog(category, message, data);
+  }
+
+  private calibrateLatency(): void {
+    if (!this.syncedMode || this.syncedView === null) return;
+    const time = (this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch)) / 1000;
+    const beats = this.syncedView.beats;
+    let nearestMs = Math.round(time * 1000);
+    let diffMs = Number.POSITIVE_INFINITY;
+    for (const beat of beats) {
+      const d = Math.abs(beat * 1000 - Math.round(time * 1000));
+      if (d < diffMs) {
+        diffMs = d;
+        nearestMs = Math.round(beat * 1000);
+      }
+    }
+    this.syncedLatencyMs = Math.max(-500, Math.min(1000, nearestMs - Math.round(time * 1000)));
+    const input = document.getElementById("latency-offset") as HTMLInputElement | null;
+    if (input !== null) input.value = String(this.syncedLatencyMs);
+    localStorage.setItem("night-light-latency", String(this.syncedLatencyMs));
+  }
+
+  private bindDockToggle(): void {
+    const dock = document.getElementById("dock-panel");
+    if (dock === null) return;
+    const hide = document.getElementById("btn-hide-dock");
+    const show = document.createElement("button");
+    show.id = "btn-show-dock";
+    show.type = "button";
+    show.className = "btn btn-ghost control-toggle";
+    show.textContent = "Afficher panneau";
+    show.hidden = true;
+    document.body.append(show);
+    hide?.addEventListener("click", () => {
+      dock.classList.add("is-hidden");
+      show.hidden = false;
+    });
+    show.addEventListener("click", () => {
+      dock.classList.remove("is-hidden");
+      show.hidden = true;
+    });
+  }
+
+
+  private async tryAutoSynced(
+    title: string,
+    artist: string,
+    duration: number,
+    analysis: Analysis,
+  ): Promise<void> {
+    this.debugSync.phase = "SYNCING";
+    this.debugSync.expectedTitle = title;
+    this.debugSync.attempts = 0;
+    this.debug("sync", "attente d'une lecture externe correspondante", { titre: title, artiste: artist || "—", dureeSec: Number(duration.toFixed(1)) });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (!this.pendingAnalysis || this.syncedMode || this.view !== null) return;
+      this.debugSync.attempts = attempt + 1;
+      try {
+        const state = await fetchPlaybackPosition(title, artist, duration);
+        this.debugLastPlayer = {
+          source: state.source,
+          status: state.status,
+          title: state.title,
+          artist: state.artist,
+          positionMs: state.positionMs,
+          capturedAtMs: state.capturedAtMs,
+        };
+        this.debugSync.source = state.source;
+        this.debugSync.playerTitle = state.title;
+        this.debugSync.playerMs = state.positionMs;
+        this.debugSync.showMs = state.positionMs + this.syncedLatencyMs;
+        const match = state.match?.accepted === true;
+        const durationDelta = state.match?.durationDeltaSec ?? null;
+        const formatOk = durationDelta === null || durationDelta <= 3;
+        const reasons = state.match?.reasons ?? [];
+        this.debugSync.match = [
+          match ? "correspondance OK" : "pas de correspondance",
+          reasons.length > 0 ? `motifs=${reasons.join(",")}` : "motifs=aucun",
+          durationDelta === null ? "durée non comparée" : `écart durée ${durationDelta.toFixed(2)}s`,
+          `statut=${state.status}`,
+        ].join(" · ");
+        dbgThrottled(
+          "sync-attempt",
+          "sync",
+          `tentative ${attempt + 1}/10 de synchronisation`,
+          {
+            source: state.source,
+            lecteur: state.title || "—",
+            positionSec: Number((state.positionMs / 1000).toFixed(2)),
+            statut: state.status,
+            correspondance: match,
+            motifs: reasons,
+            ecartDureeSec: durationDelta,
+          },
+          1500,
+        );
+        if (match && formatOk && state.status === "playing") {
+          // Position ramenée à l'instant présent : la mesure date du sous-processus
+          // playerctl, pas de la réponse HTTP.
+          const initialMs = estimatePlayerPositionMs(
+            {
+              source: state.source,
+              status: state.status,
+              title: state.title,
+              artist: state.artist,
+              positionMs: state.positionMs,
+              capturedAtMs: state.capturedAtMs,
+            },
+            Date.now(),
+          );
+          await this.startSyncedShow(analysis, initialMs, state);
+          return;
+        }
+      } catch (error) {
+        this.debugSync.match = "position injoignable";
+        this.debug("erreur", "lecture de position impossible", error instanceof Error ? error.message : String(error));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    // Aucune lecture correspondante pendant 20 s : on renonce proprement.
+    this.showSyncFailed(title, "Aucune position MPRIS/Spotify correspondante pendant 20 s.");
+  }
+
+  private async startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void> {
+    this.stopLiveMode();
+    this.closeExternalCapture();
+    this.liveMode = false;
+    this.syncedMode = true;
+    this.debugSync.phase = "SHOW_SYNCED";
+    if (state !== undefined) {
+      this.debugSync.source = state.source;
+      this.debugSync.playerTitle = state.title;
+    }
+    this.debugSync.expectedTitle = this.pendingTitle;
+    this.debugSync.latencyMs = this.syncedLatencyMs;
+    this.debugSync.match = "show lancé à la position du lecteur";
+
+    this.syncedView = new TrackView(analysis);
+    this.syncedPlan = buildShowPlan(analysis, this.effectiveReduced());
+    this.syncedStartMs = initialMs + this.syncedLatencyMs;
+    this.syncedStartedAtEpoch = Date.now();
+    if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
+    this.syncedTimer = window.setInterval(() => void this.resyncSynced(analysis.duration), 2500);
+    this.startSyncedLoop();
+    setStatus(`Show synchronisé lancé : ${this.pendingTitle}.`);
+    this.debug("sync", "show synchronisé démarré", {
+      titre: this.pendingTitle,
+      source: state?.source ?? "?",
+      positionLecteurSec: Number((initialMs / 1000).toFixed(2)),
+      latenceMs: this.syncedLatencyMs,
+      positionShowSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+      dureeSec: Number(analysis.duration.toFixed(1)),
+    });
+  }
+
+  private startSyncedLoop(): void {
+    if (this.syncedRaf !== 0) return;
+    const loop = (): void => {
+      this.syncedRaf = requestAnimationFrame(loop);
+      if (!this.syncedMode || this.syncedView === null || this.syncedPlan === null) return;
+      this.renderSynced();
+    };
+    this.syncedRaf = requestAnimationFrame(loop);
+  }
+
+  private stopSyncedMode(): void {
+    if (this.syncedRaf !== 0) cancelAnimationFrame(this.syncedRaf);
+    this.syncedRaf = 0;
+    if (this.syncedTimer !== null) {
+      window.clearInterval(this.syncedTimer);
+      this.syncedTimer = null;
+    }
+    this.syncedMode = false;
+  }
+
+  private renderSynced(): void {
+    const view = this.syncedView;
+    const plan = this.syncedPlan;
+    if (view === null || plan === null) return;
+    // Horloge epoch, la même que celle du serveur : indispensable pour comparer
+    // la position du show à celle du lecteur.
+    const elapsed = Date.now() - this.syncedStartedAtEpoch;
+    const time = Math.max(0, (this.syncedStartMs + elapsed) / 1000);
+    try {
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      renderFrame({
+        ctx: this.ctx,
+        width: this.canvas.clientWidth,
+        height: this.canvas.clientHeight,
+        dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
+        time: Math.min(time, view.duration),
+        view,
+        plan,
+        settings: this.settings,
+        reducedMotion: this.reducedMotion,
+        quality: this.quality,
+        frame: this.frame,
+      });
+      this.frame += 1;
+    } catch (error) {
+      this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));
+      console.error("Rendu synchronisé interrompu", error);
+    }
+  }
+
+  private async resyncSynced(duration: number): Promise<void> {
+    if (!this.syncedMode || this.syncedView === null) return;
+    // Même horloge que le serveur (epoch) : la comparaison avec la position du
+    // lecteur n'a de sens qu'à cette condition.
+    const nowMs = Date.now();
+    try {
+      const state = await fetchPlaybackPosition(this.pendingTitle, "", duration);
+      this.debugSync.resyncAt = nowMs;
+      this.debugSync.source = state.source;
+      this.debugSync.playerTitle = state.title;
+      this.debugSync.expectedTitle = this.pendingTitle;
+      this.debugSync.latencyMs = this.syncedLatencyMs;
+
+      if (state.title && this.pendingTitle && normalizePlaybackText(state.title) !== normalizePlaybackText(this.pendingTitle)) {
+        this.debug("sync", "changement de morceau détecté · retour en Live", {
+          attendu: this.pendingTitle,
+          lecteur: state.title,
+        });
+        this.backToDrop();
+        return;
+      }
+
+      const player = {
+        source: state.source,
+        status: state.status,
+        title: state.title,
+        artist: state.artist,
+        positionMs: state.positionMs,
+        capturedAtMs: state.capturedAtMs,
+      };
+      this.debugLastPlayer = player;
+      // Position réelle du lecteur, puis cible du show : le réglage de latence
+      // place volontairement le show en avance sur le son (Bluetooth, HDMI…).
+      const playerMs = estimatePlayerPositionMs(player, nowMs);
+      const targetShowMs = playerMs + this.syncedLatencyMs;
+      const drift = showDriftMs(player, nowMs, this.syncedStartMs, this.syncedStartedAtEpoch, this.syncedLatencyMs);
+      // L'écart mesuré avant correction sert à décider, pas à s'afficher : ce qui
+      // compte pour l'utilisateur est l'écart résiduel une fois recadré.
+      const driftAvantCorrection = drift;
+
+      if (state.status === "paused") {
+        this.debugSync.phase = "PAUSED";
+        this.debugSync.match = "lecture en pause · show figé";
+        this.syncedStartedAtEpoch = Date.now();
+        this.syncedStartMs = playerMs;
+        this.debug("sync", "lecture en pause · show figé sur place", {
+          positionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+        });
+        return;
+      }
+
+      if (state.status !== "playing") {
+        this.debugSync.phase = "LOST";
+        this.debugSync.match = `lecteur statut=${state.status}`;
+        this.debug("sync", `statut de lecture inattendu (${state.status}) · show laissé en l'état`);
+        return;
+      }
+
+      this.debugSync.phase = "SHOW_SYNCED";
+      const correction = syncCorrection(drift);
+      if (correction === "hard") {
+        this.debugSync.match = "écart ≥ 1,5 s · recalage direct";
+        this.syncedStartMs = targetShowMs;
+        this.syncedStartedAtEpoch = nowMs;
+        this.debug("sync", "écart important · recalage direct du show", {
+          ecartMs: Math.round(driftAvantCorrection),
+          nouvellePositionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+          positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
+        });
+      } else if (correction === "soft") {
+        this.syncedStartMs = targetShowMs - (nowMs - this.syncedStartedAtEpoch);
+        this.debugSync.match = "écart > 150 ms · origine recalculée";
+        this.debug("sync", "dérive détectée · origine du show recalculée", {
+          ecartMs: Math.round(driftAvantCorrection),
+          positionShowSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+          positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
+        });
+      } else {
+        this.debugSync.match = "synchronisé (≤ 150 ms)";
+        dbgThrottled(
+          "resync",
+          "sync",
+          "synchronisé",
+          {
+            ecartMs: Math.round(drift),
+            lecteurSec: Number((playerMs / 1000).toFixed(2)),
+            showSec: Number(((this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch)) / 1000).toFixed(2)),
+            latenceMs: this.syncedLatencyMs,
+          },
+          5000,
+        );
+      }
+
+      // Affichage de l'état APRÈS correction : l'écart résiduel est la seule
+      // valeur qui décrit ce que voit l'utilisateur.
+      this.debugSync.playerMs = estimatePlayerPositionMs(player, Date.now());
+      this.debugSync.showMs = this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch);
+      this.debugSync.driftMs = showDriftMs(
+        player,
+        Date.now(),
+        this.syncedStartMs,
+        this.syncedStartedAtEpoch,
+        this.syncedLatencyMs,
+      );
+    } catch (error) {
+      this.debugSync.phase = "LOST";
+      this.debugSync.match = "position de lecture injoignable";
+      this.debug("erreur", "position de lecture injoignable pendant la resynchronisation", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async ensureLiveView(): Promise<void> {
+    if (this.liveView !== null && this.livePlan !== null) return;
+    const analysis: Analysis = {
+      schema: 1,
+      duration: 1_000_000,
+      tempo: 120,
+      beatCount: 0,
+      beatPeriod: 0.5,
+      beats: [],
+      onsets: [],
+      energy: [[0, 0]],
+      bass: [[0, 1 / 3]],
+      mid: [[0, 1 / 3]],
+      high: [[0, 1 / 3]],
+      sections: [{ start: 0, end: 1_000_000, label: "intense", energy: 0.5 }],
+      builds: [],
+    };
+    this.liveView = new TrackView(analysis);
+    this.livePlan = {
+      duration: 1_000_000,
+      seed: 1,
+      scenes: [
+        {
+          index: 0,
+          start: 0,
+          end: 1_000_000,
+          family: "beams",
+          variant: "tunnel",
+          backdrop: "waves",
+          palette: { name: "indigo", hue: 252, spread: 62, saturation: 0.82, lightness: 0.6 },
+          intensity: 0.6,
+          fadeIn: 0.7,
+          fadeOut: 0.9,
+          mood: "pulse",
+          reason: "ouverture",
+        },
+      ],
+      barStarts: [],
+    };
+  }
+
+  private async startLiveMode(): Promise<void> {
+    this.liveMode = true;
+    this.liveTimeStart = performance.now();
+    this.debugSync.phase = "LIVE";
+    this.debugSync.match = "";
+    this.debugSync.attempts = 0;
+    await this.ensureLiveView();
+    this.startExternalCapture(true);
+    this.startLiveLoop();
+    this.debug("live", "mode live démarré · capture du son du PC ouverte");
+  }
+
+  private startExternalCapture(force: boolean): void {
+    // `force` conservé pour l'interface future ; la capture est ouverte via le même flux.
+    if (force && this.liveCapture === null) this.openExternalCapture();
+  }
+
+  private startLiveLoop(): void {
+    if (this.liveMainRaf !== 0) return;
+    this.liveLastTs = 0;
+    const loop = (timestamp: number): void => {
+      this.liveMainRaf = requestAnimationFrame(loop);
+      if (!this.liveMode) return;
+      if (this.liveLastTs === 0) {
+        this.liveLastTs = timestamp;
+        return;
+      }
+      const delta = timestamp - this.liveLastTs;
+      this.liveLastTs = timestamp;
+      if (delta > 0) {
+        const instant = 1000 / delta;
+        this.liveFps += (instant - this.liveFps) * 0.06;
+        const wanted = quantizeQuality(this.liveFps / 52);
+        if (wanted === this.liveQuality) this.liveQualityHold = 0;
+        else {
+          this.liveQualityHold += 1;
+          if (this.liveQualityHold >= 24) {
+            this.liveQuality = wanted;
+            this.liveQualityHold = 0;
+          }
+        }
+      }
+      this.tickLive();
+    };
+    this.liveMainRaf = requestAnimationFrame(loop);
+  }
+
+  private stopLiveMode(): void {
+    if (this.liveMainRaf !== 0) cancelAnimationFrame(this.liveMainRaf);
+    this.liveMainRaf = 0;
+  }
+
+  private tickLive(): void {
+    if (!this.liveMode || this.liveView === null || this.livePlan === null) return;
+    const target = this.liveAudioRaw;
+    if (target.updatedAt > this.liveAudio.updatedAt) {
+      this.liveAudio = smoothLiveFeatures(this.liveAudio, target, 0.4);
+    }
+    const time = (performance.now() - this.liveTimeStart) / 1000;
+    this.renderLive(time);
+  }
+
+  private renderLive(time: number): void {
+    const view = this.liveView;
+    const plan = this.livePlan;
+    if (view === null || plan === null) return;
+    try {
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      renderFrame({
+        ctx: this.ctx,
+        width: this.canvas.clientWidth,
+        height: this.canvas.clientHeight,
+        dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
+        time,
+        view,
+        plan,
+        settings: this.settings,
+        reducedMotion: this.reducedMotion,
+        quality: this.liveQuality,
+        frame: this.liveFrame,
+        liveAudio: this.liveAudio,
+      });
+      this.liveFrame += 1;
+      if (this.liveFrame % 120 === 0) {
+        dbgThrottled(
+          "live-render",
+          "live",
+          "rendu live en cours",
+          {
+            fps: this.liveFps.toFixed(1),
+            qualite: this.liveQuality.toFixed(2),
+            images: this.liveFrame,
+            rms: num(this.liveAudio.rms),
+            energie: num(this.liveAudio.energy),
+          },
+          4000,
+        );
+      }
+    } catch (error) {
+      this.liveQuality = quantizeQuality(this.liveQuality * 0.7);
+      this.debug("erreur", "rendu live interrompu", error instanceof Error ? error.message : String(error));
+      console.error("Rendu live interrompu", error);
+    }
   }
 
   /* -------------------------------------------------------------- spectacle */
@@ -583,7 +1362,13 @@ export class App {
   }
 
   private async startShow(analysis: Analysis): Promise<void> {
+    this.stopLiveMode();
+    this.closeExternalCapture();
+    this.liveMode = false;
     const title = this.pendingTitle;
+    this.debugSync.phase = "SHOW_LOCAL";
+    this.debugSync.expectedTitle = title;
+    this.debugSync.match = "show analysé local (touche S)";
     this.session = {
       jobId: this.jobId,
       title,
@@ -686,6 +1471,14 @@ export class App {
       const target = event.target as HTMLElement | null;
       if (target !== null && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       switch (event.key) {
+        case "s":
+        case "S": {
+          // Échappatoire discret : show analysé en local si la synchro est impossible.
+          const analysis = this.pendingAnalysis;
+          this.debug("show", "show analysé local forcé au clavier (S)", { titre: this.pendingTitle });
+          if (analysis !== null) void this.startShow(analysis);
+          break;
+        }
         case " ":
           event.preventDefault();
           void this.togglePlay();

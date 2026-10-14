@@ -6,6 +6,7 @@ import type { Palette, Scene } from "./show";
 import { hslToRgb, shiftHue, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
 import type { TrackView } from "./view";
+import { type LiveAudioFeatures } from "./liveAudio";
 
 export interface RenderInput {
   ctx: CanvasRenderingContext2D;
@@ -25,14 +26,22 @@ export interface RenderInput {
   quality: number;
   /** Numéro d'image. */
   frame: number;
+  /** Caractéristiques audio live optionnelles, pour le mode réactif. */
+  liveAudio?: LiveAudioFeatures;
 }
 
 export type { FrameState };
 
 /** Plafond d'opacité d'un flash : évite les sauts de luminosité agressifs. */
 export const FLASH_CEILING = 0.4;
-/** Deux flashs sont toujours séparés d'au moins cette durée. */
-const FLASH_MIN_GAP = 0.14;
+/**
+ * Deux flashs de temps fort sont toujours séparés d'au moins cette durée.
+ *
+ * La modération compte autant que l'effet : à 130 BPM, des temps forts toutes
+ * les 0,46 s donneraient plus de deux flashs par seconde, et une salle qui
+ * martèle finit par fatiguer. Un drop de montée garde sa priorité.
+ */
+const FLASH_MIN_GAP = 1.6;
 /** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
 const FLASH_ATTACK_SEC = 0.12;
 /** Glissement continu de la teinte, en degrés par seconde. */
@@ -114,6 +123,36 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
 }
 
 /**
+ * Nombre de montées en dessous duquel le morceau est jugé insuffisamment
+ * dynamique : les drops ne suffisent alors plus à porter le spectacle.
+ */
+const BEAT_DRIVE_MAX_BUILDS = 2;
+
+/** Part d'un vrai drop que prend une impulsion de temps fort. */
+const BEAT_DRIVE_WEIGHT = 0.6;
+
+/**
+ * Impulsion de secours sur les temps forts.
+ *
+ * Un morceau fort d'un bout à l'autre — rap masterisé, electro compressée — ne
+ * contient presque aucune montée, donc aucun drop : entre deux changements de
+ * scène, le spectacle semble mort. Quand l'analyse trouve peu de montées, on
+ * pulse alors sur les temps forts eux-mêmes, à une intensité inférieure à un
+ * vrai drop pour rester honnête avec la musique.
+ *
+ * Retourne 0 dès que le morceau a assez de montées : les vrais drops restent
+ * prioritaires, et un morceau dynamique ne voit rien changer.
+ */
+export function beatDrive(view: TrackView, t: number, builds: number): number {
+  if (builds > BEAT_DRIVE_MAX_BUILDS) return 0;
+  const pulse = view.beatPulse(t, 0.45);
+  if (pulse < 0.05) return 0;
+  // L'énergie locale dose l'impulsion : un temps fort sur un passage creux
+  // reste discret.
+  return clamp01(pulse * (0.35 + 0.65 * view.energyAt(t)));
+}
+
+/**
  * Force du wash : décroissance lente après chaque fin de montée. Le wash
  * commence avec l'impact et s'étire sur ~3 s, donc « l'impact puis la salle
  * entière qui balaie ».
@@ -179,17 +218,39 @@ export function sceneHue(scene: Scene, t: number, drop: number, variation: numbe
 }
 
 /**
- * Dernier évènement capable de déclencher un flash : le temps fort le plus
- * récent, ou l'impact de montée le plus récent. `-Infinity` si aucun.
+ * Un flash est-il admissible à l'instant `t` ?
  *
- * C'est aussi la garde anti-stroboscope : deux flashs ne peuvent naître qu'à
- * plus de `FLASH_MIN_GAP` l'un de l'autre, ce qui est toujours vrai puisque les
- * temps forts d'un morceau sont séparés par une pulsation entière.
+ * Fonction pure du temps musical, donc déterministe : mêmes entrées ⇒ même
+ * réponse, ce qui garde le spectacle identique après une pause ou un saut.
+ *
+ * Trois conditions :
+ * 1. il doit naître sur l'attaque d'un évènement (pas pendant la décroissance) ;
+ * 2. un impact de montée garde la priorité — il est rare, et c'est le moment que
+ *    le spectacle doit montrer ;
+ * 3. sinon, le temps fort doit tomber dans la cadence : un flash tous les
+ *    `n` temps forts, `n` choisi pour que l'intervalle dépasse `FLASH_MIN_GAP`.
+ *    À 130 BPM, un flash toutes les 0,46 s fatigue ; tous les 4 temps forts
+ *    (≈ 2 s), le spectacle respire.
  */
-function lastFlashTrigger(view: TrackView, t: number): number {
-  const beats = view.beatsIn(t - FLASH_MIN_GAP - 0.5, t);
-  const beat = beats[beats.length - 1] ?? -Infinity;
-  return Math.max(beat, view.lastBuildEnd(t));
+export function flashAdmitted(view: TrackView, t: number): boolean {
+  const beats = view.beatsIn(t - (FLASH_MIN_GAP + 1.0), t);
+  const lastBeat = beats.length > 0 ? (beats[beats.length - 1] ?? -Infinity) : -Infinity;
+  const lastDrop = view.lastBuildEnd(t);
+  const current = Math.max(lastBeat, lastDrop);
+  if (current === -Infinity) return false;
+
+  const age = t - current;
+  if (age < -0.02 || age > FLASH_ATTACK_SEC) return false;
+
+  // Impact de montée : prioritaire.
+  if (lastDrop >= lastBeat) return true;
+
+  // Temps fort : cadence espacée, calée sur l'index du temps fort pour rester
+  // stable quel que soit le moment où l'image est calculée.
+  const period = Math.max(view.beatPeriod, 0.05);
+  const every = Math.max(1, Math.ceil(FLASH_MIN_GAP / period));
+  if (every <= 1) return true;
+  return view.beatIndexAt(current) % every === 0;
 }
 
 /**
@@ -200,21 +261,26 @@ function lastFlashTrigger(view: TrackView, t: number): number {
 export function renderFrame(input: RenderInput): void {
   const { ctx, width, height, dpr, view, plan, settings, reducedMotion, frame } = input;
   const t = input.time;
+  const liveAudio = input.liveAudio;
+  const isLive = liveAudio !== undefined;
   const reduced = settings.reduced || reducedMotion;
   // La qualité est ramenée à un palier connu ici, et pas seulement par
   // l'appelant : c'est ce qui garantit qu'une variation de fps ne change jamais
   // le nombre d'éléments d'une image à l'autre (voir QUALITY_STEPS).
   const quality = quantizeQuality(input.quality);
   const scene = sceneAt(plan, t);
-  const beat = view.beatPulse(t, 0.45);
-  const build = view.buildProgress(t);
+  const beat = liveAudio !== undefined ? liveAudio.transient : view.beatPulse(t, 0.45);
+  const build = liveAudio !== undefined ? 0 : view.buildProgress(t);
   const buildNow = view.buildAt(t);
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
-  // le morceau « change de lumière » sans cesse.
-  const drop = view.buildIntensity(t);
+  // le morceau « change de lumière » sans cesse. Le pulsage de secours sur les
+  // temps forts ne sert qu'aux morceaux sans montée, pour qu'un morceau fort
+  // d'un bout à l'autre ne paraisse pas mort entre deux scènes.
+  const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
+  const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
   const variation = reduced ? 0 : variationStrength(scene, t);
-  const surge = view.energyTrend(t, 1.2);
+  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
   const palette: Palette = {
     name: scene.palette.name,
     hue: sceneHue(scene, t, drop, variation, reduced),
@@ -230,17 +296,17 @@ export function renderFrame(input: RenderInput): void {
     dpr,
     scene,
     palette,
-    energy: view.energyAt(t),
-    bass: view.bassAt(t),
-    mid: view.midAt(t),
-    high: view.highAt(t),
+    energy: liveAudio !== undefined ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3) : view.energyAt(t),
+    bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
+    mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
+    high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),
     beat,
     beatPhase: view.beatPhase(t),
     beatIndex: view.beatIndexAt(t),
     build,
     buildStrength: buildNow?.strength ?? 0,
     surge,
-    intensity: scene.intensity * settings.intensity * (1 + surge * 0.6),
+    intensity: scene.intensity * settings.intensity * (isLive ? (1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85) : (1 + surge * 0.6 + beatDriveValue * 0.5)),
     alpha: sceneWeight(scene, t),
     reduced,
     quality,
@@ -292,7 +358,7 @@ export function renderFrame(input: RenderInput): void {
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
   // sur-couche et couvre tout l'écran. Jamais en mode réduit.
-  const wash = reduced ? 0 : washStrength(view, t, plan.scenes.length);
+  const wash = reduced || isLive ? 0 : washStrength(view, t, plan.scenes.length);
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
@@ -315,8 +381,12 @@ export function renderFrame(input: RenderInput): void {
     const dropFamily = plan.seed % 2 === 0 ? "bars" : "shutters";
     drawFamily(ctx, dropState, view, dropFamily);
     const ceiling = FLASH_CEILING * Math.min(settings.flashes, 1.5);
-    if (ceiling > 0 && drop > 0.35) {
-      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, ceiling * drop).toFixed(3)})`;
+    // Seul un vrai drop de l'analyse ouvre le lavage blanc : le pulsage de
+    // secours sur les temps forts éclaire la scène, il ne blanchit pas l'écran.
+    // Sinon un morceau sans montée clignoterait à chaque temps fort.
+    const realDrop = isLive ? 0 : view.buildIntensity(t);
+    if (ceiling > 0 && realDrop > 0.35) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, ceiling * realDrop).toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -337,17 +407,9 @@ export function renderFrame(input: RenderInput): void {
   drawDust(ctx, base);
 
   const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
-  if (flash > 0.002) {
-    // Garde anti-stroboscope : un flash ne naît que sur l'attaque d'un temps
-    // fort ou d'un impact, jamais au milieu de la décroissance. L'ancienne garde
-    // faisait exactement l'inverse (elle comparait au dernier temps fort et
-    // bloquait donc le flash pile au moment où il devait partir), ce qui
-    // produisait des éclairs erratiques, décalés, parfois absents.
-    const age = t - lastFlashTrigger(view, t);
-    if (age >= -0.02 && age <= FLASH_ATTACK_SEC) {
-      ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
-      ctx.fillRect(0, 0, width, height);
-    }
+  if (flash > 0.002 && flashAdmitted(view, t)) {
+    ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
+    ctx.fillRect(0, 0, width, height);
   }
 
   ctx.globalCompositeOperation = "source-over";

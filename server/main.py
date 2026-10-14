@@ -30,6 +30,7 @@ from .retrieve.resolver import resolve_track, RetrievalError
 from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
 from .config import Settings, load_settings
 from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
+from .playback_position import get_playback_state, match_playback, PlaybackState
 from .audio_capture import get_audio_capture
 from .store import SessionStore
 
@@ -440,13 +441,30 @@ async def track(job_id: str) -> FileResponse:
     )
 
 
+@app.get("/api/playback-position")
+async def playback_position(
+    title: str = "", artist: str = "", duration_sec: float = 0.0
+) -> dict[str, Any]:
+    state = get_playback_state(title=title, artist=artist, duration_sec=duration_sec)
+    payload = state.to_dict()
+    if title.strip() or artist.strip() or duration_sec > 0:
+        payload["match"] = match_playback(
+            state,
+            title=title,
+            artist=artist,
+            duration_sec=duration_sec,
+            title_threshold=0.8,
+        )
+    return payload
+
+
 @app.get("/api/now-playing")
 async def now_playing() -> dict[str, Any]:
     return get_now_playing().to_dict()
 
 
 @app.get("/api/audio-levels")
-async def audio_levels() -> StreamingResponse:
+async def audio_levels(request: Request) -> StreamingResponse:
     """Flux SSE du niveau audio système capturé via PipeWire/PulseAudio."""
 
     async def stream() -> asyncio.AsyncIterator[str]:
@@ -454,6 +472,8 @@ async def audio_levels() -> StreamingResponse:
         capture.acquire()
         try:
             while True:
+                if await request.is_disconnected():
+                    break
                 payload = json.dumps(capture.level().to_dict(), ensure_ascii=False)
                 yield f"data: {payload}\n\n"
                 await asyncio.sleep(0.08)

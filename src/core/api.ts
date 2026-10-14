@@ -283,3 +283,62 @@ export async function fetchNowPlaying(signal?: AbortSignal): Promise<NowPlayingR
   }
   return (await parseJson(response)) as NowPlayingResponse;
 }
+
+export interface PlaybackPositionResponse {
+  source: string;
+  available: boolean;
+  title: string;
+  artist: string;
+  album: string;
+  status: string;
+  positionMs: number;
+  durationMs?: number | null;
+  capturedAtMs: number;
+  error?: string;
+  match?: {
+    accepted: boolean;
+    titleSimilarity: number;
+    artistSimilarity: number;
+    durationDeltaSec: number | null;
+    reasons: string[];
+  } | null;
+}
+
+export async function fetchPlaybackPosition(
+  title?: string,
+  artist?: string,
+  durationSec?: number,
+  signal?: AbortSignal,
+): Promise<PlaybackPositionResponse> {
+  const params = new URLSearchParams();
+  if (title !== undefined) params.set("title", title);
+  if (artist !== undefined) params.set("artist", artist);
+  if (durationSec !== undefined) params.set("duration_sec", String(durationSec));
+  const query = params.toString();
+  const response = await fetch(`/api/playback-position${query ? `?${query}` : ""}`, { signal });
+  if (! response.ok) throw toApiError(await parseJson(response), response.status);
+  const result = (await parseJson(response)) as unknown as Record<string, unknown>;
+  const match = result.match as Record<string, unknown> | undefined;
+  return {
+    source: String(result.source ?? "none"),
+    available: Boolean(result.available),
+    title: String(result.title ?? ""),
+    artist: String(result.artist ?? ""),
+    album: String(result.album ?? ""),
+    status: String(result.status ?? "stopped"),
+    positionMs: Number(result.position_ms ?? 0),
+    durationMs: result.duration_ms === null ? null : Number(result.duration_ms ?? 0),
+    capturedAtMs: Math.round(Number(result.captured_at ?? 0) * 1000),
+    error: typeof result.error === "string" ? result.error : undefined,
+    match:
+      match === undefined
+        ? null
+        : {
+            accepted: Boolean(match.accepted),
+            titleSimilarity: Number(match.title_similarity ?? 0),
+            artistSimilarity: Number(match.artist_similarity ?? 0),
+            durationDeltaSec: match.duration_delta_sec === null ? null : Number(match.duration_delta_sec ?? 0),
+            reasons: Array.isArray(match.reasons) ? (match.reasons as string[]) : [],
+          },
+  };
+}

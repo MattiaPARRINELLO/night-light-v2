@@ -16,7 +16,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "bun scripts/test.mjs",
-    "check:browser": "bun tests/browser_check.mjs"
+    "check:browser": "bun tests/browser_check.mjs",
+    "check:sync": "bun tests/sync_check.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest",

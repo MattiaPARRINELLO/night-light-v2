@@ -21,7 +21,7 @@
 
       <!-- Écran de dépôt -->
       <main id="screen-drop" class="screen is-active" data-screen="drop">
-        <div class="drop-shell">
+        <div id="dock-panel" class="drop-shell">
           <header class="brand">
             <span class="brand-mark" aria-hidden="true"></span>
             <div class="brand-text">
@@ -82,6 +82,16 @@
             <button id="btn-live-capture" class="btn btn-ghost" type="button">Écouter le son du PC</button>
             <span id="live-level" class="resolve-status">Capture inactive</span>
           </div>
+          <label class="field field-text">
+            <span class="field-label">Latence (ms)</span>
+            <input id="latency-offset" type="number" min="-500" max="1000" step="10" value="0" />
+          </label>
+          <div class="resolve-capture">
+            <button id="latency-preset-wired" class="btn btn-ghost" type="button">Filaire</button>
+            <button id="latency-preset-bt" class="btn btn-ghost" type="button">Bluetooth</button>
+            <button id="latency-calibrate" class="btn btn-ghost" type="button">Caler</button>
+          </div>
+            <button id="btn-hide-dock" class="btn btn-ghost" type="button">Masquer panneau</button>
           </section>
 
           <ul class="notice-list">
@@ -125,7 +135,6 @@
 
           <div class="panel-actions">
             <button id="btn-cancel-analysis" class="btn btn-ghost" type="button">Annuler</button>
-            <button id="btn-launch" class="btn btn-primary" type="button" hidden>Lancer le show</button>
           </div>
         </div>
       </main>
@@ -257,6 +266,9 @@
       </section>
 
       <div id="live" class="visually-hidden" role="status" aria-live="polite"></div>
+
+      <!-- Overlay de debug : touche D -->
+      <div id="debug-overlay" class="debug-overlay" hidden></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

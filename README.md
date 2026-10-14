@@ -179,6 +179,7 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 ```bash
 bun run test            # types (tsc) + tests front + tests serveur
 bun run check:browser   # parcours complet dans un vrai navigateur (Playwright)
+bun run check:sync      # synchronisation Show ↔ lecteur, sans lecteur réel
 bunx vite build         # build de production dans dist/
 ```
 
@@ -186,6 +187,30 @@ Les tests couvrent le cœur pur (courbes, scènes, couleurs, rendu déterministe
 (détection de format, limites, cycle d'analyse, suppression de session) et un parcours
 navigateur réel : dépôt, analyse, lancement, pause/reprise, mode réduit, redémarrage, retour
 au dépôt, absence d'erreur console.
+
+### Tester la synchronisation sans lecteur réel
+
+`bun run check:sync` fabrique un faux `playerctl` (`tests/fake_playerctl.py`, piloté par
+`tests/fake_player.py`) qui joue un morceau de 12 s dont on choisit la position et le titre.
+Le serveur est lancé avec ce faux binaire en tête de `PATH`, puis le test dépose le fichier
+correspondant et vérifie, via l'overlay de debug :
+
+1. que le show démarre à la position du lecteur (écart mesuré, pas une fourchette) ;
+2. qu'un **recul** de 5 s est suivi par le show ;
+3. qu'une **avance** de 5 s est suivie aussi ;
+4. qu'un changement de morceau ramène en Live ;
+5. que l'écart résiduel après recadrage reste sous 300 ms.
+
+Deux régressions sont couvertes par ces tests :
+
+- **l'horloge** : la position du lecteur doit être extrapolée avec `Date.now()` (epoch,
+  comme le serveur), jamais `performance.now()`. Mélanger les deux ramenait la position à
+  0 et rebouclait le show sur la même scène ;
+- **la latence de lecture** : `playerctl` met du temps à répondre, donc le serveur
+  horodate la position au milieu du sous-processus (`position_read_at`) au lieu de la fin
+  de tous les appels. Sans ça, le show perdait à chaque resync la durée de lecture du
+  binaire (~0,5 s avec un faux lent).
+
 
 ## Structure
 
@@ -202,6 +227,9 @@ src/
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
+    liveAudio.ts        caractéristiques audio live (normalisation, lissage)
+    playback.ts         position du lecteur, dérive, corrélation (purs)
+    debug.ts            journal de debug partagé (console + overlay)
   browser/
     app.ts              orchestration (dépôt, analyse, show, raccourcis)
     audio.ts            lecture et position musicale
@@ -215,6 +243,7 @@ server/
   main.py               API FastAPI
   retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation
 tests/                  tests front, tests serveur, vérification navigateur
+                        (dont fake_playerctl.py : faux lecteur pour la synchro)
 scripts/                démarrage dev et lancement des tests
 ```
 
@@ -230,3 +259,114 @@ scripts/                démarrage dev et lancement des tests
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |
+
+## Synchronisation Show / lecture externe
+
+### Prérequis pour la position de lecture
+
+Le show automatiquement synchronisé utilise **MPRIS** pour connaître le morceau en cours
+et la position du lecteur. Options :
+
+1. **playerctl** (recommandé, le serveur l'utilise comme repli), installé sur le système.
+2. **Un lecteur MPRIS compatible** (Spotify, VLC, MPD avec `mpd-mpris`, navigateurs Chromium
+   modernes sous Linux…).
+
+```bash
+# Debian/Ubuntu
+pkexec apt install playerctl
+```
+
+Si aucune position n'est disponible, Night Light bascule automatiquement sur un repli par
+corrélation d'énergie (tour de garde supplémentaire), puis revient en mode Live si le score
+est insuffisant.
+
+### Calage de la latence Offline
+
+Dans le dock **Analyse**, le réglage **Latence (ms)** (-500 à +1000, pas de 10 ms) compense
+la différence entre le signal audio et le rendu visuel :
+
+- **Filaire** : preset 0 ms.
+- **Bluetooth** : preset +200 ms.
+- **Bouton « Caler »** : pendant un show synchronisé, tape quand tu entendes le beat ; la
+  valeur s'ajuste approximativement. Deux taps supplémentaires affineraient en production.
+
+Valeurs sont persistées dans `localStorage` (`night-light-latency`).
+
+### Pourquoi certains morceaux n'ont presque pas de drops
+
+Les drops viennent des **montées** de l'analyse : `server/analysis.py` (`detect_builds`) valide une
+montée seulement si elle gagne **≥ 18 %** d'énergie sur **≥ 2 s**. Un morceau fort d'un bout à
+l'autre — rap masterisé, electro compressée — ne contient presque aucune montée, donc aucun
+drop : le spectacle ne vivait plus que sur les changements de scène.
+
+Deux conséquences, et un réglage :
+
+- ce n'est **pas** un problème de synchronisation ni d'encodage (vérifié : WAV, MP3 128 kbps et
+  FLAC donnent exactement les mêmes montées) ;
+- le log d'analyse affiche le chiffre (`analyse terminée {..., temps: 394, montees: 1, ...}`) ;
+- **pulsage de secours** : quand l'analyse trouve **2 montées ou moins**, le rendu pulse sur les
+  temps forts eux-mêmes (`beatDrive` dans `src/core/render.ts`), à 60 % de l'intensité d'un vrai
+  drop et dosé par l'énergie locale. Un morceau dynamique ne voit rien changer, un morceau plat
+  respire au rythme du beat.
+
+### Modération des flashs
+
+Trop de flashs fatiguent une salle autant qu'un écran. Deux gardes, toutes deux des fonctions
+pures du temps musical (donc déterministes : après une pause ou un saut, la même image sort) :
+
+- **cadence** (`FLASH_MIN_GAP = 1.6 s`) : un flash de temps fort sur `n` seulement, `n` étant
+  calculé pour que l'intervalle dépasse toujours 1,6 s — 4 temps forts à 130 BPM, 2 à 60 BPM ;
+- **lavage blanc** : seul un vrai drop de l'analyse blanchit l'écran. Le pulsage de secours
+  éclaire la scène, il ne flashe jamais plein écran.
+
+Un drop de montée garde sa priorité sur la cadence : il est rare, et c'est justement le moment
+que le spectacle doit montrer.
+
+### Overlay de debug
+
+Touche **D** affiche / masque l'overlay avec : mode actif, source de position, position show,
+latence appliquée et état de la capture.
+
+## Debug : voir ce qu'il se passe en direct
+
+Deux sorties complémentaires, pensées pour diagnostiquer une soirée sans deviner.
+
+### Overlay à l'écran — touche `D`
+
+Affiche et masque un panneau en haut à droite. Il se rafraîchit deux fois par
+seconde et contient :
+
+| Ligne | Contenu |
+| --- | --- |
+| `mode` | `LIVE`, `SYNCING`, `SHOW_SYNCED`, `SHOW_LOCAL`, `PAUSED`, `LOST` |
+| `capture` | état du flux SSE (`ouvert`, `fermé`, `erreur`), nombre de messages reçus, débit en messages/s, âge du dernier message |
+| `capture état` | état remonté par `parec` (`active`, `silent`, `error`), moniteur audio utilisé, erreur éventuelle |
+| `audio brut` | `rms`, énergie, basses, médiums, aigus, transitoire tels que reçus du serveur |
+| `audio lissé` | les mêmes valeurs après lissage exponentiel |
+| `rendu live` / `rendu show` | fps mesurés, palier de qualité, nombre d'images |
+| `sync …` | source, morceau attendu vs morceau lu, position lecteur, position show, écart en ms, latence appliquée, tentatives, verdict |
+| `journal` | les derniers événements horodatés |
+
+Le journal limite les lignes de routine (valeurs qui se répètent) à six pour que
+les vrais événements — changement de morceau, recalage, erreur — restent lisibles.
+
+### Console du navigateur
+
+Chaque événement écrit une ligne horodatée et catégorisée :
+
+```
+[live]    11:04:10.212 mode live démarré · capture du son du PC ouverte
+[capture] 11:04:10.270 état de la capture → active {"source":"…monitor","rms":"0.0000"}
+[analyse] 11:04:10.403 phase « En file d'attente » {"progression":"0 %"}
+[sync]    11:04:10.273 lecteur scruté {"source":"détecté","titre":"Karma","ambigue":false}
+[sync]    11:04:29.350 écart important · recalage direct du show {"ecartMs":1810}
+[ERREUR]  11:04:30.001 position de lecture injoignable pendant la resynchronisation
+```
+
+Catégories : `boot`, `capture`, `analyse`, `sync`, `live`, `show`, `ERREUR`.
+Les valeurs qui se répètent (caractéristiques audio, resynchronisations OK,
+scrutation du lecteur) sont naturellement espacées dans le temps pour ne pas
+noyer la console.
+
+Les valeurs de l'overlay et les lignes de console sont écrites par
+[`src/core/debug.ts`](./src/core/debug.ts) (`dbgLog`, `dbgThrottled`).

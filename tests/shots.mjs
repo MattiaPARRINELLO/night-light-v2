@@ -53,10 +53,10 @@ try {
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on("pageerror", (error) => console.error("pageerror:", String(error)));
-  await page.goto(`${API}/`, { waitUntil: "networkidle" });
+  await page.goto(`${API}/`, { waitUntil: "domcontentloaded" });
   await page.setInputFiles("#file-input", track);
-  await page.waitForSelector("#btn-launch:not([hidden])", { timeout: 120000 });
-  await page.click("#btn-launch");
+  await page.waitForSelector('body[data-analysis-ready="true"]', { timeout: 120000 });
+  await page.keyboard.press("s");
   await page.waitForSelector("#screen-show.is-active", { timeout: 20000 });
 
   const moments = rich ? [4, 20, 36, 50] : [1, 3, 5, 7.5, 10];

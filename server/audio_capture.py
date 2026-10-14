@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import math
 import shutil
 import subprocess
@@ -16,12 +14,15 @@ from typing import Any
 SAMPLE_RATE = 16000
 CHANNELS = 1
 CHUNK_BYTES = 2048
+SILENCE_RMS_THRESHOLD = 0.006
+SILENCE_STATE_SEC = 1.5
 
 
 @dataclass
 class AudioLevel:
     active: bool = False
     available: bool = False
+    state: str = "inactive"  # inactive, starting, active, silent, error
     rms: float = 0.0
     energy: float = 0.0
     bass: float = 0.0
@@ -37,7 +38,7 @@ class AudioLevel:
 
 
 class SystemAudioCapture:
-    """Capture le moniteur de sortie du système et expose un niveau RMS."""
+    """Capture le moniteur de sortie du système et expose des caractéristiques lissées."""
 
     def __init__(self) -> None:
         self._proc: subprocess.Popen[bytes] | None = None
@@ -48,6 +49,7 @@ class SystemAudioCapture:
         self._level = AudioLevel()
         self._available_checked = False
         self._available = False
+        self._silent_since: float | None = None
 
     def available(self) -> bool:
         if self._available_checked:
@@ -57,32 +59,13 @@ class SystemAudioCapture:
             shutil.which("parec") is not None and shutil.which("pactl") is not None
         )
         self._level.available = self._available
+        if not self._available:
+            self._level.state = "error"
+            self._level.error = "parec/pactl indisponible"
         return self._available
 
     def _default_monitor(self) -> str:
-        # Préférer un sink réellement en lecture, sinon utiliser le défaut.
-        try:
-            result = subprocess.run(
-                ["pactl", "list", "sinks", "short"],
-                capture_output=True,
-                text=True,
-                timeout=2.0,
-                check=False,
-            )
-            for line in result.stdout.splitlines():
-                fields = line.split()
-                if len(fields) < 6:
-                    continue
-                sink_id, name, *_rest, state = (
-                    fields[0],
-                    fields[1],
-                    *fields[2:-1],
-                    fields[-1],
-                )
-                if state.upper().startswith("RUNNING"):
-                    return f"{name}.monitor"
-        except (OSError, subprocess.TimeoutExpired, ValueError):
-            pass
+        # Priorité au sink par défaut : c'est généralement celui que l'utilisateur entend.
         try:
             sink = subprocess.run(
                 ["pactl", "get-default-sink"],
@@ -95,6 +78,25 @@ class SystemAudioCapture:
             sink = ""
         if sink:
             return f"{sink}.monitor"
+        # Sinon, préférer un sink réellement en lecture.
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "sinks", "short"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            for line in result.stdout.splitlines():
+                fields = line.split()
+                if len(fields) < 6:
+                    continue
+                name = fields[1]
+                state = fields[-1]
+                if state.upper().startswith("RUNNING"):
+                    return f"{name}.monitor"
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            pass
         return ""
 
     def acquire(self) -> None:
@@ -112,12 +114,28 @@ class SystemAudioCapture:
 
     def level(self) -> AudioLevel:
         with self._lock:
+            clients = self._clients
+        if clients > 0:
+            self._ensure_started()
+        with self._lock:
             return AudioLevel(**self._level.to_dict())
+
+    def _ensure_started(self) -> None:
+        with self._lock:
+            proc_dead = self._proc is not None and self._proc.poll() is not None
+            need = proc_dead or self._proc is None
+            if not need:
+                return
+            self._stop.clear()
+            self._start_locked()
 
     def _start_locked(self) -> None:
         if not self.available():
             self._level = AudioLevel(
-                active=False, available=False, error="parec/pactl indisponible"
+                active=False,
+                available=False,
+                state="error",
+                error="parec/pactl indisponible",
             )
             return
         self._stop.clear()
@@ -139,16 +157,21 @@ class SystemAudioCapture:
             )
         except OSError as error:
             self._level = AudioLevel(
-                active=False, available=self._available, error=str(error)
+                active=False,
+                available=self._available,
+                state="error",
+                error=str(error),
             )
             self._proc = None
             return
         self._level = AudioLevel(
             active=True,
             available=True,
+            state="active",
             source=source or "default monitor",
             updated_at=time.time(),
         )
+        self._silent_since = None
         self._thread = threading.Thread(
             target=self._read_loop, name="system-audio-capture", daemon=True
         )
@@ -170,8 +193,9 @@ class SystemAudioCapture:
             self._thread.join(timeout=2.0)
         self._thread = None
         self._stop.clear()
+        self._silent_since = None
         self._level = AudioLevel(
-            active=False, available=self._available, updated_at=time.time()
+            active=False, available=self._available, state="inactive", updated_at=time.time()
         )
 
     def _read_loop(self) -> None:
@@ -195,7 +219,6 @@ class SystemAudioCapture:
                 import numpy as np
 
                 array = np.asarray(samples, dtype=np.float32) / 32768.0
-                # Réduction des calculs : flux court, donc FFT 512 ou menos.
                 n = min(512, len(array))
                 if n >= 32:
                     spectrum = np.abs(np.fft.rfft(array[-n:], n=n))
@@ -220,14 +243,12 @@ class SystemAudioCapture:
                         bass = energy_low / total
                         mid = energy_mid / total
                         high = energy_high / total
-                    # Transitoire : différence d'énergie avec la fenêtre précédente.
                     with self._lock:
                         previous_energy = self._level.energy
                     transient = max(0.0, energy - previous_energy)
                     transient = min(1.0, transient * 4.0)
             except Exception:
                 bass = mid = high = 0.0
-            # Lissage exponentiel simple.
             with self._lock:
                 self._level.rms = self._level.rms * 0.35 + rms * 0.65
                 self._level.energy = self._level.energy * 0.35 + energy * 0.65
@@ -237,9 +258,23 @@ class SystemAudioCapture:
                 self._level.transient = self._level.transient * 0.3 + transient * 0.7
                 self._level.active = True
                 self._level.updated_at = time.time()
+                if self._level.rms < SILENCE_RMS_THRESHOLD:
+                    if self._silent_since is None:
+                        self._silent_since = time.time()
+                    elif time.time() - self._silent_since >= SILENCE_STATE_SEC:
+                        self._level.state = "silent"
+                else:
+                    self._silent_since = None
+                    self._level.state = "active"
         with self._lock:
             if self._level.active:
                 self._level.active = False
+            if self._proc is not None and self._proc.poll() is not None and not self._stop.is_set():
+                self._level.state = "error"
+                self._level.error = "Capture interrompue"
+            else:
+                if self._level.state not in {"silent", "error"}:
+                    self._level.state = "inactive"
 
 
 _CAPTURE = SystemAudioCapture()

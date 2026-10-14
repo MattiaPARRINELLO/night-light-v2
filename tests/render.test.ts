@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderFrame, sceneHue } from "../src/core/render";
+import { beatDrive, flashAdmitted, renderFrame, sceneHue } from "../src/core/render";
 import { buildShowPlan } from "../src/core/show";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
@@ -47,6 +47,12 @@ function fakeContext() {
     },
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, operations };
+}
+
+function buildBeats(step: number, until: number): number[] {
+  const out: number[] = [];
+  for (let t = 0; t <= until; t += step) out.push(Number(t.toFixed(3)));
+  return out;
 }
 
 function analysis(overrides: Partial<Analysis> = {}): Analysis {
@@ -258,6 +264,126 @@ describe("rendu déterministe", () => {
 
   test("une analyse sans sections ni temps forts rend quand même", () => {
     expect(() => renderAt(10, analysis({ sections: [], beats: [], onsets: [], builds: [] }))).not.toThrow();
+  });
+});
+
+describe("pulsage de secours sur les temps forts", () => {
+  // Un morceau sans montée (rap fort d'un bout à l'autre) ne montre aucun drop :
+  // le spectacle paraît mort entre deux scènes. `beatDrive` pulse alors sur les
+  // temps forts, à une intensité inférieure à un vrai drop.
+
+  test("pulse juste après un temps fort quand l'analyse trouve peu de montées", () => {
+    const view = new TrackView(analysis()); // 1 seule montée (18→22 s)
+    // Les temps forts tombent sur 8,0 / 8,5 / 9,0…
+    expect(beatDrive(view, 8.02, 1)).toBeGreaterThan(0.4);
+    expect(beatDrive(view, 8.25, 1)).toBeLessThan(0.2);
+  });
+
+  test("reste muet entre deux temps forts", () => {
+    const view = new TrackView(analysis());
+    expect(beatDrive(view, 8.4, 1)).toBe(0);
+  });
+
+  test("se taît dès que le morceau a assez de montées", () => {
+    const view = new TrackView(analysis());
+    // Jusqu'à deux montées, le morceau reste jugé peu dynamique ; à trois, les
+    // vrais drops suffisent à porter le spectacle.
+    expect(beatDrive(view, 8.02, 2)).toBeGreaterThan(0);
+    expect(beatDrive(view, 8.02, 3)).toBe(0);
+    expect(beatDrive(view, 8.02, 9)).toBe(0);
+  });
+
+  test("est dosé par l'énergie locale", () => {
+    const view = new TrackView(analysis());
+    const pulse = view.beatPulse(8.02, 0.45);
+    const attendu = pulse * (0.35 + 0.65 * view.energyAt(8.02));
+    expect(beatDrive(view, 8.02, 1)).toBeCloseTo(attendu, 6);
+  });
+
+  test("le rendu s'allume davantage sur un morceau sans montée", () => {
+    // Même analyse, sauf les montées : sans le pulsage de secours, un morceau
+    // sans montée ne dessine pas la surcouche d'impact à cet instant. Les
+    // montées de comparaison sont loin de 8,02 s, donc inactives : la seule
+    // différence d'image vient du pulsage.
+    const operations = (data: Analysis) => renderAt(8.02, data).length;
+    const sansMontee = operations(analysis({ builds: [] }));
+    const monteesLointaines = operations(
+      analysis({
+        builds: [
+          { start: 20, end: 24, strength: 0.9 },
+          { start: 40, end: 44, strength: 0.9 },
+          { start: 50, end: 54, strength: 0.9 },
+        ],
+      }),
+    );
+    expect(sansMontee).toBeGreaterThan(monteesLointaines);
+  });
+});
+
+describe("moderation des flashs", () => {
+  test("les flashs de temps fort restent espacés d'au moins FLASH_MIN_GAP", () => {
+    // 0,5 s entre deux temps forts (120 BPM) : sans modération, deux flashs par
+    // seconde. La cadence doit retomber à un toutes les ~1,6 s au minimum. On
+    // compte les évènements, pas les images : un flash dure plusieurs images.
+    const view = new TrackView(analysis());
+    const events: number[] = [];
+    for (let t = 0; t < 20; t += 1 / 60) {
+      const precedent = events[events.length - 1];
+      if (flashAdmitted(view, t) && (precedent === undefined || t - precedent > 0.3)) events.push(t);
+    }
+    expect(events.length).toBeGreaterThanOrEqual(4);
+    expect(events.length).toBeLessThanOrEqual(13);
+    for (let i = 1; i < events.length; i += 1) {
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+    }
+  });
+
+  test("un flash ne naît jamais au milieu de la décroissance", () => {
+    const view = new TrackView(analysis());
+    expect(flashAdmitted(view, 8.25)).toBe(false);
+    expect(flashAdmitted(view, 8.05)).toBe(true);
+  });
+
+  test("un drop garde sa priorité, même juste après un flash de temps fort", () => {
+    // La montée de l'analyse se termine à 22 s, pile sur un temps fort : le drop
+    // doit flasher malgré la modération des temps forts.
+    const view = new TrackView(analysis());
+    expect(flashAdmitted(view, 22.02)).toBe(true);
+    expect(flashAdmitted(view, 22.3)).toBe(false);
+  });
+
+  test("la cadence s'espace toute seule sur un morceau rapide", () => {
+    // 180 BPM contre 60 BPM : dans les deux cas l'intervalle minimum est
+    // respecté, et le morceau rapide ne martèle pas davantage.
+    const rapide = new TrackView(analysis({ tempo: 180, beatPeriod: 1 / 3, beats: buildBeats(1 / 3, 60) }));
+    const lente = new TrackView(analysis({ tempo: 60, beatPeriod: 1.0, beats: buildBeats(1.0, 60) }));
+    const evenements = (view: TrackView) => {
+      const out: number[] = [];
+      for (let t = 0; t < 20; t += 1 / 60) {
+        const precedent = out[out.length - 1];
+        if (flashAdmitted(view, t) && (precedent === undefined || t - precedent > 0.3)) out.push(t);
+      }
+      return out;
+    };
+    for (const view of [rapide, lente]) {
+      const events = evenements(view);
+      expect(events.length).toBeGreaterThan(3);
+      for (let i = 1; i < events.length; i += 1) {
+        expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+      }
+    }
+    // 20 s de morceau : jamais plus d'un flash toutes les 1,6 s.
+    expect(evenements(rapide).length).toBeLessThanOrEqual(13);
+    expect(evenements(lente).length).toBeLessThanOrEqual(13);
+  });
+
+  test("le lavage blanc ne vient jamais du pulsage de secours", () => {
+    // Morceau sans aucune montée : le pulsage éclaire la scène (surcouche
+    // d'impact) mais ne blanchit jamais l'écran.
+    const flashs = (builds: Analysis["builds"]) =>
+      renderAt(8.02, analysis({ builds })).filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
+    const sansMontee = flashs([]);
+    expect(sansMontee).toBeLessThanOrEqual(3); // fond + flash éventuel + vignette
   });
 });
 

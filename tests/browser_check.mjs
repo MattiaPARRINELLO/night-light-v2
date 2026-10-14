@@ -113,7 +113,7 @@ try {
   });
   page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
-  await page.goto(`${API}/`, { waitUntil: "networkidle" });
+  await page.goto(`${API}/`, { waitUntil: "domcontentloaded" });
 
   const dropTitle = await page.locator(".dropzone-title").innerText();
   if (!dropTitle.includes("Dépose ta musique ici")) failures.push(`texte de la zone inattendu : ${dropTitle}`);
@@ -121,13 +121,13 @@ try {
 
   // ---- upload et analyse
   await page.setInputFiles("#file-input", track);
-  await page.waitForSelector("#btn-launch:not([hidden])", { timeout: 120000 });
-  const launchLabel = (await page.locator("#btn-launch").innerText()).trim();
-  if (launchLabel !== "Lancer le show") failures.push(`bouton final inattendu : ${launchLabel}`);
-  console.log(`analyse prête : « ${await page.locator("#an-title").innerText()} » — ${await page.locator("#an-meta").innerText()}`);
+  await page.waitForSelector('body[data-analysis-ready="true"]', { timeout: 120000 });
+  console.log("analyse prête : show lancé automatiquement");
+  const analyzePanel = await page.locator("#screen-analysis .panel").isVisible().catch(() => false);
+  if (analyzePanel) failures.push("le panneau d'analyse en bas est toujours visible");
 
-  // ---- lancement du show
-  await page.click("#btn-launch");
+  // Pas de lecteur externe dans ce bac à sable : raccourci forcé pour le show analysé.
+  await page.keyboard.press("s");
   await page.waitForSelector("#screen-show.is-active", { timeout: 20000 });
   await page.waitForTimeout(3000);
 
