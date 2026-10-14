@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { beatDrive, flashAdmitted, renderFrame, sceneHue } from "../src/core/render";
+import { beatDrive, beatStrength, flashAdmitted, renderFrame, sceneHue } from "../src/core/render";
 import { buildShowPlan } from "../src/core/show";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
@@ -25,7 +25,16 @@ function fakeContext() {
     lineCap: "butt",
     lineJoin: "miter",
     strokeStyle: "",
-    fillStyle: "",
+    // Le style est enregistré à l'affectation : sans ça, impossible de
+    // distinguer un flash blanc d'un remplissage plein écran d'une famille.
+    _fill: "",
+    get fillStyle() {
+      return this._fill;
+    },
+    set fillStyle(value: string) {
+      this._fill = value;
+      operations.push(`fillStyle:${value}`);
+    },
     setTransform: () => operations.push("setTransform"),
     clearRect: () => operations.push("clearRect"),
     fillRect: (x: number, y: number, w: number, h: number) =>
@@ -72,9 +81,11 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
       [40, 0.95],
       [60, 0.3],
     ],
+    // Basse forte et continue : les temps forts de ce fixture portent un kick,
+    // ce qui est la condition pour qu'un flash parte.
     bass: [
-      [0, 0.3],
-      [30, 0.6],
+      [0, 0.9],
+      [30, 0.9],
       [60, 0.9],
     ],
     mid: [
@@ -469,34 +480,86 @@ describe("diversite a l'ecran", () => {
 });
 
 describe("flashs", () => {
-  /** Remplissages plein écran au format exact du fond (1280×720). */
+  /**
+   * Nombre de flashs blancs plein écran à l'instant `t`.
+   *
+   * On compte les `fillRect` pleins précédés d'un style blanc : un remplissage
+   * plein écran peut aussi venir d'une famille de la scène, et ce n'est pas un
+   * flash.
+   */
   function flashFramesAt(time: number): number {
-    const trace = renderAt(time).join("|").split("|");
-    return trace.filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
+    const trace = renderAt(time);
+    let total = 0;
+    let pending = "";
+    for (const operation of trace) {
+      if (operation.startsWith("fillStyle:")) {
+        pending = operation.slice("fillStyle:".length);
+        continue;
+      }
+      if (operation === "fillRect:0.0,0.0,1280.0,720.0" && /^rgba\(255,255,255,/.test(pending)) {
+        total += 1;
+      }
+    }
+    return total;
   }
 
   test("un flash part sur l'attaque du temps fort, jamais entre deux temps", () => {
-    // Fond + vignette en permanence, + 1 quand le flash part. Les temps forts
-    // tombent sur 8,0 / 8,5 / 9,0… : le flash doit naître juste après
-    // l'attaque, pas pendant la décroissance ni à contretemps.
-    expect(flashFramesAt(12.25)).toBe(2);
-    expect(flashFramesAt(8.05)).toBe(3);
-    expect(flashFramesAt(8.25)).toBe(2);
+    // Passage « intense » (40-60 s) : basse forte et énergie haute, donc les
+    // temps forts portent un kick et méritent un flash. Le flash doit naître
+    // juste après l'attaque, pas pendant la décroissance ni à contretemps.
+    expect(flashFramesAt(42.25)).toBe(0);
+    expect(flashFramesAt(42.05)).toBe(1);
+    expect(flashFramesAt(44.05)).toBe(1);
+  });
+
+  test("aucun flash dans un passage calme", () => {
+    // 0-20 s : basse faible et énergie basse, la musique ne demande rien. Le
+    // show garde son mouvement mais ne flashe pas — c'est tout l'enjeu de
+    // `beatStrength` : ne célébrer que les temps forts qui portent quelque chose.
+    for (const t of [4.05, 8.05, 12.05, 16.05, 20.05]) {
+      expect(flashFramesAt(t)).toBe(0);
+    }
   });
 
   test("deux flashs restent toujours espacés d'au moins FLASH_MIN_GAP", () => {
     // Evenements = début de chaque salve de flashs.
     const events: number[] = [];
     let flashing = false;
-    for (let t = 0; t < 20; t += 1 / 60) {
-      const isFlash = flashFramesAt(t) > 2;
+    for (let t = 40; t < 60; t += 1 / 60) {
+      const isFlash = flashFramesAt(t) > 0;
       if (isFlash && !flashing) events.push(t);
       flashing = isFlash;
     }
-    expect(events.length).toBeGreaterThan(0);
+    expect(events.length).toBeGreaterThan(3);
+    expect(events.length).toBeLessThanOrEqual(14);
     for (let i = 1; i < events.length; i += 1) {
-      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(0.14);
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
     }
+  });
+});
+
+describe("pulse en accord avec la musique", () => {
+  test("un temps fort sans basse ne pulse pas", () => {
+    // Même analyse, basse coupée : plus rien à célébrer.
+    const view = new TrackView(analysis({ bass: [[0, 0.05], [30, 0.05], [60, 0.05]] }));
+    expect(beatStrength(view, 8.02)).toBe(0);
+    expect(beatStrength(view, 42.02)).toBe(0);
+  });
+
+  test("un kick dans un passage intense pulse plus fort qu'en passage calme", () => {
+    const view = new TrackView(analysis());
+    const intense = beatStrength(view, 42.02);
+    const calme = beatStrength(view, 8.02);
+    expect(intense).toBeGreaterThan(0.5);
+    expect(calme).toBeLessThan(intense * 0.6);
+    // Le passage calme pulse encore, mais faiblement : le show respire.
+    expect(calme).toBeGreaterThan(0.1);
+  });
+
+  test("l'intensité du pulse suit l'énergie du morceau", () => {
+    const fort = new TrackView(analysis({ energy: [[0, 1], [60, 1]] }));
+    const faible = new TrackView(analysis({ energy: [[0, 0.2], [60, 0.2]] }));
+    expect(beatStrength(fort, 42.02)).toBeGreaterThan(beatStrength(faible, 42.02) * 1.4);
   });
 });
 

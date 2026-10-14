@@ -322,6 +322,22 @@ pures du temps musical (donc déterministes : après une pause ou un saut, la m�
 Un drop de montée garde sa priorité sur la cadence : il est rare, et c'est justement le moment
 que le spectacle doit montrer.
 
+### Des pulses en accord avec la musique
+
+Trop de pulses fatiguent, mais les supprimer partout appauvrit le show. Le vrai réglage est de
+**ne célébrer que les temps forts qui portent quelque chose** : `beatStrength` (dans
+`src/core/render.ts`) croise trois informations de l'analyse —
+
+- le temps fort lui-même (`beatPulse`) ;
+- la bande **30-150 Hz** à cet instant : pas de basse, pas de pulse. Une charley ou un temps
+  mort ne déclenche plus rien ;
+- l'énergie du passage et celle de la section.
+
+Résultat : fort sur un kick dans un passage soutenu, quasi muet dans un couplet calme, et
+strictement rien sur un temps fort sans basse. Tout ce qui pilote l'image (familles, flashs,
+montées, intensité) passe par cette valeur, donc le show respire avec la musique au lieu de la
+couvrir.
+
 ### Overlay de debug
 
 Touche **D** affiche / masque l'overlay avec : mode actif, source de position, position show,

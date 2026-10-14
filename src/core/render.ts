@@ -132,6 +132,26 @@ const BEAT_DRIVE_MAX_BUILDS = 2;
 const BEAT_DRIVE_WEIGHT = 0.6;
 
 /**
+ * Force de l'évènement musical à l'instant `t` : 0 quand rien ne se passe, 1 sur
+ * un kick franc dans un passage soutenu.
+ *
+ * Un temps fort ne compte que s'il porte des **basses** (30-150 Hz, la bande du
+ * kick) : sinon c'est une charley, un temps mort ou une pédale, et le show n'a
+ * rien à célébrer. C'est ce qui aligne les pulses sur la musique au lieu de les
+ * multiplier — sur un morceau clair là où ça compte, muet là où la musique ne
+ * demande rien.
+ */
+export function beatStrength(view: TrackView, t: number): number {
+  const pulse = view.beatPulse(t, 0.45);
+  if (pulse < 0.05) return 0;
+  const kick = view.bassAt(t);
+  if (kick < 0.12) return 0;
+  const energy = view.energyAt(t);
+  const sectionEnergy = clamp01(view.sectionAt(t).energy);
+  return clamp01(pulse * kick * (0.35 + 0.65 * energy) * (0.55 + 0.45 * sectionEnergy));
+}
+
+/**
  * Impulsion de secours sur les temps forts.
  *
  * Un morceau fort d'un bout à l'autre — rap masterisé, electro compressée — ne
@@ -269,7 +289,10 @@ export function renderFrame(input: RenderInput): void {
   // le nombre d'éléments d'une image à l'autre (voir QUALITY_STEPS).
   const quality = quantizeQuality(input.quality);
   const scene = sceneAt(plan, t);
-  const beat = liveAudio !== undefined ? liveAudio.transient : view.beatPulse(t, 0.45);
+  // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
+  // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
+  // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
+  const beat = liveAudio !== undefined ? liveAudio.transient : beatStrength(view, t);
   const build = liveAudio !== undefined ? 0 : view.buildProgress(t);
   const buildNow = view.buildAt(t);
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
