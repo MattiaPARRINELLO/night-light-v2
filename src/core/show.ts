@@ -20,7 +20,10 @@ export type FamilyId =
   | "gobos"
   | "pendule"
   | "couronne"
-  | "pluie";
+  | "pluie"
+  | "portique"
+  | "etoile"
+  | "vortex";
 
 export interface Scene {
   index: number;
@@ -122,6 +125,9 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   pendule: "pendules",
   couronne: "couronne",
   pluie: "pluie de lumière",
+  portique: "portique",
+  etoile: "étoile",
+  vortex: "vortex",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -151,6 +157,9 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "pendule",
   "couronne",
   "pluie",
+  "portique",
+  "etoile",
+  "vortex",
 ];
 const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -168,6 +177,9 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "pendule",
   "couronne",
   "pluie",
+  "portique",
+  "etoile",
+  "vortex",
 ];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];

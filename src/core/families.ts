@@ -1342,6 +1342,146 @@ const pluie: FamilyDraw = (ctx, f, view) => {
   }
 };
 
+/* ---------------------------------------------------------------- portique */
+
+/**
+ * Portique : les faisceaux montent du plancher mais se penchent vers le centre,
+ * dessinant une porte de lumière. La porte s'ouvre sur les moments forts et se
+ * referme sur les passages calmes — c'est elle qui donne le sentiment d'un
+ * passage, d'un seuil, au lieu d'un simple rideau.
+ */
+const portique: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const faisceaux = count(13, f.quality, f.reduced);
+  const positions = rowPositions(faisceaux, w, w * 0.08);
+  const portee = Math.hypot(w, h) * 1.15;
+  // Ouverture : 0 = porte fermée (les rayons se rejoignent en haut), 1 = grands
+  // rayons verticaux. Elle suit l'énergie, donc l'impact ouvre la porte.
+  const ouverture = f.reduced ? 0.55 : 0.35 + 0.55 * f.energy + 0.35 * f.beat;
+  const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let i = 0; i < positions.length; i += 1) {
+    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
+    const x = positions[i] ?? 0;
+    // Penché vers le centre : chaque rayon vise le haut de l'axe médian.
+    const penche = (0.5 - ratio) * 1.15 * (1 - Math.min(ouverture, 1));
+    // Le balancement lent garde la porte vivante sans la faire clignoter.
+    const balance = beatSwing(f, view, f.reduced ? 0.2 : 0.4, GRAND_BALAYAGE_BEATS, ratio);
+    const angle = -Math.PI / 2 + penche + balance;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    softBeam(ctx, {
+      x,
+      y: h * 1.02,
+      angle,
+      length: portee,
+      width: Math.min(w, h) * 0.022 * (0.85 + f.energy * 0.5 + f.beat * 0.3),
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness + 0.05,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.04,
+    });
+  }
+};
+
+/* ------------------------------------------------------------------ etoile */
+
+/**
+ * Étoile : quelques rayons partant d'un foyer qui dérive lentement, chacun
+ * pulsant à son tour. C'est un projecteur rotatif vu de loin — peu de branches,
+ * des longueurs inégales, et un foyer qui se déplace au lieu de rester planté au
+ * milieu.
+ */
+const etoile: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const branches = f.reduced ? 5 : count(7, f.quality, false);
+  // Foyer qui dérive lentement dans le cadre, jamais au bord.
+  const derive = Math.sin(f.t * 0.07) * 0.18;
+  const cx = w * (0.5 + derive);
+  const cy = h * (0.48 + Math.cos(f.t * 0.05) * 0.12);
+  const portee = Math.hypot(w, h) * 1.25;
+  const rotation = beatSwing(f, view, f.reduced ? 0.3 : 0.9, GRAND_BALAYAGE_BEATS) + f.t * 0.03;
+  const alpha = (0.05 + 0.26 * f.energy + 0.15 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+  const cycle = f.reduced ? 24 : f.energy > 0.55 ? 8 : 14;
+
+  for (let i = 0; i < branches; i += 1) {
+    const part = i / branches;
+    const angle = rotation + part * Math.PI * 2;
+    // Chaque branche pulse à son tour et sur sa propre longueur.
+    const pulsation = elementEnvelope(f, view, i, cycle, 0.7);
+    const longueur = portee * (0.6 + 0.5 * hash01(i * 811 + f.seed)) * (0.45 + 0.55 * pulsation);
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    if (pulsation <= 0.01) continue;
+    softBeam(ctx, {
+      x: cx,
+      y: cy,
+      angle,
+      length: longueur,
+      width: Math.min(w, h) * 0.017 * (0.8 + f.energy * 0.6),
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness + 0.07,
+      alpha: alpha * pulsation,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.03,
+    });
+  }
+
+  // Le foyer : une source, pas un point géométrique.
+  const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.05 + f.bass * 0.12), 1));
+  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.82, (0.16 + 0.3 * f.bass) * f.alpha));
+  noyau.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  ctx.fillStyle = noyau;
+  ctx.fillRect(Math.max(0, cx - w * 0.2), Math.max(0, cy - h * 0.2), w * 0.4, h * 0.4);
+};
+
+/* ------------------------------------------------------------------ vortex */
+
+/**
+ * Vortex : un éventail dont les rayons sont vrillés — serrés d'un côté, ouverts
+ * de l'autre — et dont la vrille tourne lentement. Le mouvement se lit comme
+ * une spirale qui tourne, là où un éventail régulier ne fait que basculer.
+ */
+const vortex: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const rayons = count(19, f.quality, f.reduced);
+  const originX = w * 0.5;
+  const originY = h * 1.04;
+  const portee = Math.hypot(w, h) * 1.1;
+  const alpha = (0.05 + 0.3 * f.energy + 0.18 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+  // La vrille suit l'énergie : un passage fort enroule l'éventail plus serré.
+  const vrille = 0.55 + 0.75 * f.energy;
+  const tour = beatSwing(f, view, f.reduced ? 0.5 : 1.4, GRAND_BALAYAGE_BEATS) + f.t * 0.05;
+
+  for (let i = 0; i < rayons; i += 1) {
+    const part = rayons === 1 ? 0.5 : i / (rayons - 1);
+    // Espacement régulier, plus une ondulation qui vrille l'éventail.
+    const base = -Math.PI * 0.62 + part * Math.PI * 1.24;
+    const angle = base + Math.sin(part * Math.PI * 2 + tour) * vrille * 0.34 + tour * 0.12;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    softBeam(ctx, {
+      x: originX,
+      y: originY,
+      angle,
+      length: portee,
+      width: Math.min(w, h) * 0.03 * (0.7 + f.bass * 0.8),
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.05,
+    });
+  }
+};
+
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   beams,
   tunnel,
@@ -1362,6 +1502,9 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   pendule,
   couronne,
   pluie,
+  portique,
+  etoile,
+  vortex,
 };
 
 export function drawFamily(
