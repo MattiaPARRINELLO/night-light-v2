@@ -1,8 +1,15 @@
 # Night Light — light show musical
 
+[![CI](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml)
+[![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](./LICENSE)
+
 Application **personnelle** (une seule personne, aucune authentification) : tu déposes un
 morceau, le serveur l'analyse avec librosa, et le navigateur joue un spectacle lumineux
 synchronisé sur la musique.
+
+![Trois instants du spectacle](./docs/images/spectacle-1.webp)
+![Anneaux et faisceaux](./docs/images/spectacle-2.webp)
+![Faisceaux croisés](./docs/images/spectacle-3.webp)
 
 ```
 morceau (glisser-déposer)
@@ -64,14 +71,24 @@ Prérequis :
    à côté du projet : le serveur l'appelle en sous-processus.
 
    ```bash
-   git clone https://github.com/Stensel8/streamrip ~/Documents/dev/forks/streamrip
-   uv tool install ~/Documents/dev/forks/streamrip
+   git clone https://github.com/Stensel8/streamrip ~/.local/share/night-light/streamrip
+   uv tool install ~/.local/share/night-light/streamrip
    ```
+
+   > streamrip exige **Python ≥ 3.14** ; le serveur d'analyse, lui, tourne sur
+   > **Python 3.11 à 3.13** (voir `pyproject.toml`). Les deux environnements sont
+   > indépendants.
 
 2. **Le cookie ARL de ta session Deezer**, dans `DEEZER_ARL` (voir `.env.example`). Il se
    lit dans les cookies du navigateur connecté à Deezer : DevTools → Application →
    Cookies → `arl`. Sans lui, la récupération est refusée avec un message explicite, et le
    reste de l'application fonctionne normalement.
+
+> ⚠️ **Avertissement.** Cette récupération télécharge des morceaux depuis Deezer en
+> s'appuyant sur une session personnelle, ce qui est contraire aux conditions
+> d'utilisation de Deezer et peut poser un problème de droits. La fonctionnalité est
+> **désactivée tant que `DEEZER_ARL` est vide** et n'a de sens que dans un cadre
+> strictement privé. Pour un usage partagé, préfère le dépôt de fichiers locaux.
 
 Le provider (`server/retrieve/deezer.py`) n'appelle que le CLI : il écrit pour streamrip une
 copie privée (`0600`) de sa configuration dans le répertoire de cache, y pose le cookie et
@@ -249,11 +266,22 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 ## Vérifier
 
 ```bash
-bun run test            # types (tsc) + tests front + tests serveur
+bun run lint            # oxlint (front) + ruff (serveur)
+bun run typecheck       # types (tsc)
+bun run test            # types + tests front + tests serveur
+bun run build           # build de production dans dist/
 bun run check:browser   # parcours complet dans un vrai navigateur (Playwright)
 bun run check:sync      # synchronisation Show ↔ lecteur, sans lecteur réel
 bun run check:dashboard # écran de show + dashboard, de bout en bout
-bunx vite build         # build de production dans dist/
+```
+
+Les vérifications navigateur (`check:*`) exigent un environnement préparé :
+
+```bash
+uv sync                                 # crée .venv (le serveur est lancé via .venv/bin/uvicorn)
+bun add -D playwright                   # client Playwright
+bunx playwright install chromium        # navigateur
+bun run build                           # l'API sert dist/ pour ce type de test
 ```
 
 Les tests couvrent le cœur pur (courbes, scènes, couleurs, rendu déterministe), le serveur
@@ -516,3 +544,7 @@ noyer la console.
 
 Les valeurs de l'overlay et les lignes de console sont écrites par
 [`src/core/debug.ts`](./src/core/debug.ts) (`dbgLog`, `dbgThrottled`).
+
+## Licence
+
+[MIT](./LICENSE).

@@ -91,9 +91,7 @@ class DeezerProvider:
         if search_limit < 1 or search_limit > 100:
             raise ValueError("search_limit must be between 1 and 100")
         self.arl = arl.strip()
-        self.work_dir = Path(
-            work_dir or (Path(tempfile.gettempdir()) / "night-light-streamrip")
-        )
+        self.work_dir = Path(work_dir or (Path(tempfile.gettempdir()) / "night-light-streamrip"))
         self.search_limit = search_limit
         self.search_timeout_sec = search_timeout_sec
         self.download_timeout_sec = download_timeout_sec
@@ -122,9 +120,7 @@ class DeezerProvider:
                 "--output-file",
                 str(output_file),
             ]
-            _run_command(
-                command, timeout=self.search_timeout_sec, operation="recherche Deezer"
-            )
+            _run_command(command, timeout=self.search_timeout_sec, operation="recherche Deezer")
             # streamrip n'écrit rien quand la recherche ne rend rien.
             if not output_file.is_file():
                 return []
@@ -142,9 +138,7 @@ class DeezerProvider:
             seen.add(candidate.source_id)
             candidates.append(candidate)
         candidates.sort(
-            key=lambda candidate: (
-                validate_match(query, candidate, self.thresholds).score
-            ),
+            key=lambda candidate: validate_match(query, candidate, self.thresholds).score,
             reverse=True,
         )
         return candidates
@@ -183,9 +177,7 @@ class DeezerProvider:
         except OSError as error:
             raise DeezerProviderError(f"chemin de fichier invalide: {error}") from error
         if resolved != root and root not in resolved.parents:
-            raise DeezerProviderError(
-                "le fichier téléchargé est hors du répertoire attendu"
-            )
+            raise DeezerProviderError("le fichier téléchargé est hors du répertoire attendu")
         _validate_downloaded_audio(
             path,
             max_bytes=self.max_download_bytes,
@@ -212,9 +204,7 @@ class DeezerProvider:
             return self._config_path
         self.work_dir.mkdir(parents=True, exist_ok=True)
         os.chmod(self.work_dir, 0o700)
-        template = (
-            self.work_dir / f"streamrip-base-{_streamrip_version(self._binary())}.toml"
-        )
+        template = self.work_dir / f"streamrip-base-{_streamrip_version(self._binary())}.toml"
         if not template.is_file():
             _run_command(
                 [
@@ -255,7 +245,7 @@ def _run_command(
     except FileNotFoundError as error:
         raise DeezerProviderError(
             "streamrip introuvable : installe le fork "
-            "(uv tool install ~/Documents/dev/forks/streamrip)"
+            "(uv tool install <chemin-vers-le-dépôt-cloné-de-streamrip>)"
         ) from error
     except subprocess.TimeoutExpired as error:
         raise DeezerProviderError(f"{operation} : délai d'attente dépassé") from error
@@ -267,18 +257,13 @@ def _run_command(
                 "(cookie « arl » d'une session web Deezer), ou essaie "
                 "`streamrip config open` depuis un terminal."
             )
-        raise DeezerProviderError(
-            f"{operation} a échoué (code {completed.returncode}): {detail}"
-        )
+        raise DeezerProviderError(f"{operation} a échoué (code {completed.returncode}): {detail}")
     return completed
 
 
 def _error_detail(stderr: str, stdout: str) -> str:
     """Le message utile d'une erreur streamrip, qu'elle encadre de décor."""
-    lines = [
-        line.strip().strip("│╰╯╭╮─╌╎ \t")
-        for line in (stderr or stdout or "").splitlines()
-    ]
+    lines = [line.strip().strip("│╰╯╭╮─╌╎ \t") for line in (stderr or stdout or "").splitlines()]
     lines = [line for line in lines if line]
     errors = [line for line in lines if "Error" in line]
     return (errors or lines or ["erreur inconnue"])[-1][:300]
@@ -344,9 +329,7 @@ def _set_option(text: str, section: str, key: str, literal: str) -> str:
     header = f"[{section}]"
     start = next((i for i, line in enumerate(lines) if line.strip() == header), None)
     if start is None:
-        raise DeezerProviderError(
-            f"section [{section}] absente de la configuration streamrip"
-        )
+        raise DeezerProviderError(f"section [{section}] absente de la configuration streamrip")
     end = next(
         (i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")),
         len(lines),
@@ -379,11 +362,7 @@ def _files_in(directory: Path) -> set[Path]:
 
 
 def _downloaded_file(destination: Path, before: set[Path]) -> Path:
-    files = [
-        path
-        for path in _files_in(destination)
-        if path.suffix.lower() in _AUDIO_SUFFIXES
-    ]
+    files = [path for path in _files_in(destination) if path.suffix.lower() in _AUDIO_SUFFIXES]
     if not files:
         raise DeezerProviderError("aucun fichier audio téléchargé")
     fresh = [path for path in files if path not in before]
@@ -400,9 +379,7 @@ def _validate_downloaded_audio(
     head = path.read_bytes()[:64]
     sniff_result = sniff(head)
     if not sniff_result.supported:
-        raise DeezerProviderError(
-            f"format non audio détecté: {sniff_result.format_name}"
-        )
+        raise DeezerProviderError(f"format non audio détecté: {sniff_result.format_name}")
     duration = _probe_duration(path)
     if duration <= 0:
         raise DeezerProviderError("durée non positive dans le fichier téléchargé")
@@ -412,8 +389,7 @@ def _validate_downloaded_audio(
         tolerance = max(2.0, expected_duration_sec * 0.005)
         if abs(duration - expected_duration_sec) > tolerance:
             raise DeezerProviderError(
-                f"durée incompatible: attendu {expected_duration_sec:.3f}s, "
-                f"obtenu {duration:.3f}s"
+                f"durée incompatible: attendu {expected_duration_sec:.3f}s, obtenu {duration:.3f}s"
             )
 
 
@@ -443,15 +419,11 @@ def _probe_duration(path: Path) -> float:
     except subprocess.TimeoutExpired as error:
         raise DeezerProviderError("ffprobe a dépassé le délai") from error
     if output.returncode != 0:
-        raise DeezerProviderError(
-            f"ffprobe a refusé le fichier: {output.stderr.strip()[:200]}"
-        )
+        raise DeezerProviderError(f"ffprobe a refusé le fichier: {output.stderr.strip()[:200]}")
     try:
         return float(output.stdout.strip())
     except ValueError as error:
-        raise DeezerProviderError(
-            "durée illisible dans le fichier téléchargé"
-        ) from error
+        raise DeezerProviderError("durée illisible dans le fichier téléchargé") from error
 
 
 @functools.lru_cache(maxsize=4)
