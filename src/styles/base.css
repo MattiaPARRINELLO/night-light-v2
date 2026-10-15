@@ -432,6 +432,9 @@ body.kiosk #screen-error,
 body.kiosk #screen-show,
 body.kiosk #hud,
 body.kiosk .notice-list,
+/* Le bouton « Afficher panneau » est créé par le script et vit hors des écrans :
+   sans cette règle, il restait seul au milieu d'un show censé être nu. */
+body.kiosk .control-toggle,
 body.kiosk #scrim {
   display: none !important;
 }

@@ -985,7 +985,14 @@ export class App {
     const link = this.control;
     if (link === null) return;
     const controlled = Date.now() - this.controllerAt < 3000;
+    const etaitKiosk = document.body.classList.contains("kiosk");
     document.body.classList.toggle("kiosk", controlled);
+    // Le passage en kiosk change la taille CSS du canvas (100vw x 100vh) : sans
+    // nouveau calibrage, le tampon de dessin ne correspond plus à l'affichage.
+    if (etaitKiosk !== controlled) {
+      this.resize();
+      dbgLog("boot", `écran de show ${controlled ? "piloté par le dashboard (interface masquée)" : "rendu à son interface"}`);
+    }
     const state: ShowState = {
       version: 1,
       at: Date.now(),
@@ -1043,6 +1050,8 @@ export class App {
     const dock = document.getElementById("dock-panel");
     if (dock === null) return;
     const hide = document.getElementById("btn-hide-dock");
+    // Ce bouton vit hors des écrans (donc hors du mode kiosk) : c'est
+    // `body.kiosk .control-toggle` qui le masque quand un dashboard pilote.
     const show = document.createElement("button");
     show.id = "btn-show-dock";
     show.type = "button";

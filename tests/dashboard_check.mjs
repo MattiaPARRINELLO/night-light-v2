@@ -172,6 +172,52 @@ try {
   await show.waitForSelector("canvas#stage");
   await show.waitForFunction(() => typeof window.nightLight !== "undefined");
 
+  // ---- le dashboard voit l'écran de show et le met en kiosk
+  const lien = Date.now() + 15000;
+  let connecte = false;
+  while (Date.now() < lien) {
+    if ((await text(dash, "link-pill")) === "Show connecté") {
+      connecte = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  if (!connecte) failures.push("le dashboard ne voit pas l'écran de show");
+  await show.waitForTimeout(500);
+  const kiosk = await show.evaluate(() => document.body.classList.contains("kiosk"));
+  if (!kiosk) failures.push("l'écran de show n'est pas passé en kiosk");
+
+  // Aucune interface ne doit subsister : on force l'apparition du bouton
+  // « Afficher panneau » (celui qui traînait au milieu du show) puis on relève
+  // tout ce qui reste réellement peint à l'écran.
+  await show.evaluate(() => {
+    document.getElementById("dock-panel")?.classList.add("is-hidden");
+    const bouton = document.getElementById("btn-show-dock");
+    if (bouton !== null) bouton.hidden = false;
+  });
+  await show.waitForTimeout(500);
+  const residuel = await show.evaluate(() => {
+    const visibles = [];
+    for (const node of document.querySelectorAll("button, input, select, aside, main, .panel, .control-toggle, .hud")) {
+      if (node.id === "stage" || node.id === "live-stage" || node.id === "debug-overlay") continue;
+      let cache = false;
+      for (let current = node; current !== null; current = current.parentElement) {
+        const style = getComputedStyle(current);
+        if (style.display === "none" || style.visibility === "hidden") {
+          cache = true;
+          break;
+        }
+      }
+      if (!cache && node.getBoundingClientRect().width > 1) visibles.push(node.id || node.className);
+    }
+    return visibles;
+  });
+  console.log(
+    `lien=${connecte ? "connecté" : "HORS LIGNE"} · kiosk=${kiosk} · ` +
+      `interface résiduelle : ${residuel.length === 0 ? "aucune" : residuel.join(", ")}`,
+  );
+  if (residuel.length > 0) failures.push(`interface encore visible en kiosk : ${residuel.join(", ")}`);
+
   // ---- premier morceau
   play("Premier Morceau", 65.0);
   await dash.setInputFiles("#file-input", premier);
