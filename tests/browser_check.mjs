@@ -129,9 +129,16 @@ try {
   // Pas de lecteur externe dans ce bac à sable : raccourci forcé pour le show analysé.
   await page.keyboard.press("s");
   await page.waitForSelector("#screen-show.is-active", { timeout: 20000 });
-  await page.waitForTimeout(3000);
+  // On attend que la lecture avance vraiment : sous charge, le décodage du
+  // fichier peut prendre plusieurs secondes, et un délai fixe produisait des
+  // alertes sans rapport avec le code.
+  const demarrage = Date.now() + 20000;
+  let started = await audioState(page);
+  while (Date.now() < demarrage && started.time < 0.3) {
+    await page.waitForTimeout(250);
+    started = await audioState(page);
+  }
 
-  const started = await audioState(page);
   if (started.missing) failures.push("élément audio introuvable");
   if (started.paused) failures.push("l'audio est en pause juste après le lancement");
   if (started.time < 0.3) failures.push(`l'audio n'avance pas (${started.time}s)`);
