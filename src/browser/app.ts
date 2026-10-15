@@ -509,7 +509,9 @@ export class App {
       const message = error instanceof Error ? error.message : "Erreur inconnue pendant la résolution.";
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
-      this.debug("erreur", "récupération du morceau en échec", { message, detail });
+      // Une résolution automatique qui échoue est une situation normale (le
+      // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur.
+      this.debug("attention", "morceau non récupéré automatiquement", { message, detail });
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
       showScreen("error");
       status.hidden = false;
@@ -715,7 +717,10 @@ export class App {
     this.liveCapture = source;
     btn.textContent = "Arrêter la capture";
     level.textContent = "Capture en cours…";
-    this.startLiveRender();
+    // Le visualiseur en barres n'a de sens qu'en mode live : pendant un show,
+    // il se superposerait au spectacle. La capture, elle, doit continuer —
+    // l'audio vient du lecteur externe, pas du navigateur, donc pas de boucle.
+    if (this.liveMode) this.startLiveRender();
   }
 
   private closeExternalCapture(): void {
@@ -1070,7 +1075,7 @@ export class App {
     this.audio.pause();
     this.view = null;
     this.plan = null;
-    this.debugLastPlayer = null;
+
     this.debugSync.phase = "SYNCING";
     this.debugSync.expectedTitle = title;
     this.debugSync.attempts = 0;
@@ -1153,9 +1158,12 @@ export class App {
     this.audio.pause();
     this.view = null;
     this.plan = null;
-    this.debugLastPlayer = null;
+
     this.stopLiveMode();
-    this.closeExternalCapture();
+    // On coupe le visualiseur en barres, PAS la capture : l'audio vient du
+    // lecteur externe (aucun risque de boucle), et le tableau de bord continue
+    // ainsi d'afficher le son en direct pendant tout le show.
+    this.stopLiveRender();
     this.liveMode = false;
     this.syncedMode = true;
     this.debugSync.phase = "SHOW_SYNCED";
@@ -1576,7 +1584,7 @@ export class App {
     // resynchronisation continue de tourner et finit par voir un « changement
     // de morceau » face au lecteur, ce qui coupait le show local net.
     this.stopSyncedMode();
-    this.debugLastPlayer = null;
+
     this.stopLiveMode();
     this.closeExternalCapture();
     this.liveMode = false;

@@ -218,7 +218,15 @@ class Dashboard {
     el<HTMLElement>("kpi-drift-note").textContent =
       state.mode === "live" ? "rien à caler en Live" : `tolérance 150 ms · latence ${sync.latencyMs} ms`;
 
-    el<HTMLElement>("audio-rate").textContent = `${state.capture.rate.toFixed(1)} msg/s`;
+    el<HTMLElement>("audio-rate").textContent = state.capture.open
+      ? `${state.capture.rate.toFixed(1)} msg/s`
+      : "capture fermée";
+    if (!state.capture.open) {
+      // Sans ça, un panneau figé sur les dernières valeurs ressemble à une panne.
+      el<HTMLElement>("audio-rate").classList.add("is-off");
+    } else {
+      el<HTMLElement>("audio-rate").classList.remove("is-off");
+    }
     el<HTMLElement>("val-rms").textContent = state.audio.rms.toFixed(3);
     el<HTMLElement>("val-energy").textContent = state.audio.energy.toFixed(3);
     el<HTMLElement>("val-bass").textContent = state.audio.bass.toFixed(2);

@@ -17,7 +17,8 @@ export type DebugCategory =
   | "sync"
   | "live"
   | "show"
-  | "erreur";
+  | "erreur"
+  | "attention";
 
 export interface DebugEntry {
   /** Horodatage epoch (ms). */
@@ -40,6 +41,7 @@ const CATEGORY_ICON: Record<DebugCategory, string> = {
   live: "live",
   show: "show",
   erreur: "ERREUR",
+  attention: "attention",
 };
 
 const MAX_ENTRIES = 240;
@@ -71,6 +73,7 @@ class DebugLog {
     if (echo) {
       const line = `[${CATEGORY_ICON[category]}] ${stamp(at)} ${message}${preview(data)}`;
       if (category === "erreur") console.error(line, data ?? "");
+      else if (category === "attention") console.warn(line, data ?? "");
       else console.log(line, data ?? "");
     }
   }

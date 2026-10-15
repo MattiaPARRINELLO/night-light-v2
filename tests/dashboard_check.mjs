@@ -201,6 +201,30 @@ try {
   if (avant.empreinte === apres.empreinte) failures.push("le canvas ne dessine plus après le 2e morceau");
   if (apres.lit < 50) failures.push(`canvas quasi vide après le 2e morceau (${apres.lit} pixels allumés)`);
 
+  // ---- la capture doit continuer à vivre pendant le show, sinon le panneau
+  // « Audio en direct » du dashboard reste figé sur les dernières valeurs.
+  // Le visualiseur en barres, lui, doit rester masqué : il se superposerait
+  // au spectacle.
+  const capture = await show.evaluate(() => {
+    const app = window.nightLight;
+    const visuel = document.querySelector("#live-stage");
+    return {
+      ouverte: app.liveCapture !== null,
+      messages: app.debugCapture.messages,
+      visuelMasque:
+        visuel === null || visuel.hasAttribute("hidden") || getComputedStyle(visuel).display === "none",
+    };
+  });
+  console.log(
+    `capture pendant le show : ${capture.ouverte ? "ouverte" : "FERMÉE"} · ${capture.messages} messages · ` +
+      `visualiseur ${capture.visuelMasque ? "masqué" : "VISIBLE"}`,
+  );
+  if (!capture.ouverte) failures.push("la capture est coupée pendant le show (panneau audio figé)");
+  if (!capture.visuelMasque) failures.push("le visualiseur en barres reste affiché par-dessus le show");
+  if ((await text(dash, "audio-rate")) === "capture fermée") {
+    failures.push("le dashboard annonce la capture fermée pendant le show");
+  }
+
   for (const erreur of erreurs) failures.push(erreur);
   await browser.close();
 } catch (error) {
