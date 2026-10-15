@@ -132,9 +132,22 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Seize familles visuelles tournantes : faisceaux, tunnel, particules, vagues, grille,
-anneaux, volets, barres, spirale, projecteurs, miroirs, défilé, tirs croisés, rideau de
-lumière, rayonnement, formes projetées.
+Vingt-deux familles visuelles tournantes. Les projecteurs se déclinent en figures de
+concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
+rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
+vortex. Les autres jouent sur la matière et la géométrie : tunnel, particules, vagues,
+grille, anneaux, volets, barres, spirale.
+
+Quelques figures méritent un mot, parce qu'elles ont une intention :
+
+| famille | ce qu'elle raconte |
+| --- | --- |
+| **pendules** | une rangée de têtes sur un portique, la vague traverse la rangée au lieu de tout basculer d'un bloc |
+| **couronne** | des têtes posées sur un arc, leurs rayons s'élancent vers le haut comme une tiare, la lumière en fait le tour |
+| **pluie de lumière** | des colonnes tombent du plafond, chacune avec son cycle et sa longueur |
+| **portique** | une porte de lumière qui s'ouvre sur les moments forts et se referme sur les passages calmes |
+| **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |
+| **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -275,7 +288,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les seize familles d'effets
+    families.ts         les vingt-deux familles d'effets
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
