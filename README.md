@@ -132,8 +132,9 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Dix familles visuelles tournantes : faisceaux, tunnel, particules, vagues, grille,
-anneaux, volets, barres, spirale, projecteurs.
+Quinze familles visuelles tournantes : faisceaux, tunnel, particules, vagues, grille,
+anneaux, volets, barres, spirale, projecteurs, miroirs, défilé, tirs croisés, rideau de
+lumière, rayonnement.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -142,7 +143,29 @@ boucle :
 | --- | --- | --- |
 | **phrase** | 5-8 s | famille principale, palette, humeur (calme / pulsé / explosif / aérien / sombre) |
 | **variation** | milieu de chaque phrase | une seconde famille surgit brièvement, avec sa propre teinte |
-| **dérive** | en continu | la teinte glisse de 14°/s, la saturation et l'étalement respirent |
+| **dérive** | en continu | la teinte glisse lentement (0,4°/s) et respire de ±14° autour de celle de la scène |
+
+### La couleur
+
+Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
+sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
+plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémentaire :
+
+- chaque scène reste dans la fenêtre de l'une ou de l'autre ;
+- les **moments forts basculent sur la complémentaire** — c'est le saut de couleur qui marque
+  un refrain ou un drop ;
+- les projecteurs ne sont pas monochromes : **une lampe sur deux** (projecteurs, défilé, rideau,
+  miroirs), **un coin sur deux** (tirs croisés) et la moitié du rayonnement prennent la
+  complémentaire ;
+- l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
+  blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
+  que l'impact se voie ;
+- les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
+
+### La transition
+
+Le passage du direct au show programmé (et le retour) n'est pas une coupure : l'image s'ouvre
+depuis le noir avec un front lumineux qui balaie l'écran, sur environ 1,5 s.
 
 Deux couches sont visibles en permanence : la famille de la phrase et une couche de fond
 discrète, de sorte qu'une image montre toujours deux mondes superposés.
@@ -225,7 +248,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les six familles d'effets
+    families.ts         les quinze familles d'effets
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
