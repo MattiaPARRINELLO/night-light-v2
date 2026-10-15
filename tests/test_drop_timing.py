@@ -15,7 +15,7 @@ import numpy as np
 import soundfile as sf
 
 SR = 22050
-ROOT = Path("/home/mattia/Documents/dev/perso/night-light-v2")
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from server.analysis import analyze_file  # noqa: E402

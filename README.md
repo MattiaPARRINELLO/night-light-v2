@@ -1,8 +1,15 @@
 # Night Light — light show musical
 
+[![CI](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml)
+[![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](./LICENSE)
+
 Application **personnelle** (une seule personne, aucune authentification) : tu déposes un
 morceau, le serveur l'analyse avec librosa, et le navigateur joue un spectacle lumineux
 synchronisé sur la musique.
+
+![Trois instants du spectacle](./docs/images/spectacle-1.webp)
+![Anneaux et faisceaux](./docs/images/spectacle-2.webp)
+![Faisceaux croisés](./docs/images/spectacle-3.webp)
 
 ```
 morceau (glisser-déposer)
@@ -31,6 +38,9 @@ bun run dev            # API + interface via Portless → https://nightlight.loc
 
 Sans Portless : `bun run api` (API) et `bunx vite` (interface) séparément, puis ouvrir
 l'adresse affichée par Vite.
+
+Pour ne lancer que l'API (par exemple derrière un proxy existant), `./run-night-light.sh`
+démarre `uvicorn` sur `HOST`/`PORT` (127.0.0.1:8000 par défaut).
 
 ## Utiliser
 
@@ -64,14 +74,24 @@ Prérequis :
    à côté du projet : le serveur l'appelle en sous-processus.
 
    ```bash
-   git clone https://github.com/Stensel8/streamrip ~/Documents/dev/forks/streamrip
-   uv tool install ~/Documents/dev/forks/streamrip
+   git clone https://github.com/Stensel8/streamrip ~/.local/share/night-light/streamrip
+   uv tool install ~/.local/share/night-light/streamrip
    ```
+
+   > streamrip exige **Python ≥ 3.14** ; le serveur d'analyse, lui, tourne sur
+   > **Python 3.11 à 3.13** (voir `pyproject.toml`). Les deux environnements sont
+   > indépendants.
 
 2. **Le cookie ARL de ta session Deezer**, dans `DEEZER_ARL` (voir `.env.example`). Il se
    lit dans les cookies du navigateur connecté à Deezer : DevTools → Application →
    Cookies → `arl`. Sans lui, la récupération est refusée avec un message explicite, et le
    reste de l'application fonctionne normalement.
+
+> ⚠️ **Avertissement.** Cette récupération télécharge des morceaux depuis Deezer en
+> s'appuyant sur une session personnelle, ce qui est contraire aux conditions
+> d'utilisation de Deezer et peut poser un problème de droits. La fonctionnalité est
+> **désactivée tant que `DEEZER_ARL` est vide** et n'a de sens que dans un cadre
+> strictement privé. Pour un usage partagé, préfère le dépôt de fichiers locaux.
 
 Le provider (`server/retrieve/deezer.py`) n'appelle que le CLI : il écrit pour streamrip une
 copie privée (`0600`) de sa configuration dans le répertoire de cache, y pose le cookie et
@@ -95,7 +115,9 @@ force le niveau de qualité le plus bas. Aucun secret n'est écrit dans le dép�
   ni versionné ni journalisé : il n'est recopié que dans la configuration privée (`0600`)
   que streamrip utilise, dans le répertoire de cache.
 
-**N'expose pas ce serveur à Internet** : il n'a pas d'authentification.
+**N'expose pas ce serveur à Internet** : il n'a pas d'authentification. Il
+**refuse de démarrer** sur une adresse non locale (`HOST=0.0.0.0` par exemple) ;
+il faut lever explicitement ce garde-fou avec `ALLOW_NETWORK=1`.
 
 ## Ce que l'analyse produit
 
@@ -132,11 +154,11 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Vingt-deux familles visuelles tournantes. Les projecteurs se déclinent en figures de
+Vingt-cinq familles visuelles tournantes. Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
-vortex. Les autres jouent sur la matière et la géométrie : tunnel, particules, vagues,
-grille, anneaux, volets, barres, spirale.
+vortex, lyres. Les autres jouent sur la matière et la géométrie : tunnel, particules,
+vagues, grille, anneaux, volets, barres, spirale, rosace, treillis.
 
 Quelques figures méritent un mot, parce qu'elles ont une intention :
 
@@ -149,6 +171,9 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |
 | **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
 | **formes projetées** | des gobos (cercle, anneau, losange, triangle) répartis dans tout le cadre ; quand elles sont nombreuses, une ou deux basculent sur la couleur opposée au lieu de se déplacer |
+| **lyres** | une rangée de têtes fines au sol, la vague traverse la rangée par décalage de phase — chacune s'incline tour à tour |
+| **rosace** | huit pétales en V répartis au tour, un hexagone et un triangle qui tournent en sens contraires |
+| **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -258,11 +283,22 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 ## Vérifier
 
 ```bash
-bun run test            # types (tsc) + tests front + tests serveur
+bun run lint            # oxlint (front) + ruff (serveur)
+bun run typecheck       # types (tsc)
+bun run test            # types + tests front + tests serveur
+bun run build           # build de production dans dist/
 bun run check:browser   # parcours complet dans un vrai navigateur (Playwright)
 bun run check:sync      # synchronisation Show ↔ lecteur, sans lecteur réel
 bun run check:dashboard # écran de show + dashboard, de bout en bout
-bunx vite build         # build de production dans dist/
+```
+
+Les vérifications navigateur (`check:*`) exigent un environnement préparé :
+
+```bash
+uv sync                                 # crée .venv (le serveur est lancé via .venv/bin/uvicorn)
+bun add -D playwright                   # client Playwright
+bunx playwright install chromium        # navigateur
+bun run build                           # l'API sert dist/ pour ce type de test
 ```
 
 Les tests couvrent le cœur pur (courbes, scènes, couleurs, rendu déterministe), le serveur
@@ -306,7 +342,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les vingt-deux familles d'effets
+    families.ts         les vingt-cinq familles d'effets
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
@@ -345,6 +381,7 @@ src/dashboard/          tableau de bord (page + styles)
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |
+| `ALLOW_NETWORK` | *(vide)* | lève le refus de démarrer sur une adresse non locale (voir Sécurité) |
 
 ## Le tableau de bord (`/dashboard`)
 
@@ -525,3 +562,7 @@ noyer la console.
 
 Les valeurs de l'overlay et les lignes de console sont écrites par
 [`src/core/debug.ts`](./src/core/debug.ts) (`dbgLog`, `dbgThrottled`).
+
+## Licence
+
+[MIT](./LICENSE).

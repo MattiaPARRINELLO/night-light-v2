@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .models import Candidate, TrackQuery, audio_cache_key, normalize_text
+from .models import TrackQuery, audio_cache_key, normalize_text
 
 
 class AudioCacheError(Exception):
@@ -39,7 +39,7 @@ class CacheEntry:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "CacheEntry":
+    def from_dict(cls, payload: dict[str, Any]) -> CacheEntry:
         data = dict(payload)
         data["path"] = Path(data["path"])
         known = {f.name for f in cls.__dataclass_fields__.values()}
@@ -183,7 +183,9 @@ class AudioCache:
                 metadata_payload.pop("path", None)
                 metadata_payload["path"] = str(target_path)
 
-                metadata_tmp_fd, metadata_tmp_name = tempfile.mkstemp(prefix="metadata-", dir=str(entry_dir))
+                metadata_tmp_fd, metadata_tmp_name = tempfile.mkstemp(
+                    prefix="metadata-", dir=str(entry_dir)
+                )
                 os.close(metadata_tmp_fd)
                 metadata_tmp_path = Path(metadata_tmp_name)
                 metadata_tmp_path.write_text(

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import math
 import shutil
-import subprocess
 import struct
+import subprocess
 import threading
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 SAMPLE_RATE = 16000
@@ -184,10 +185,8 @@ class SystemAudioCapture:
                 self._proc.terminate()
                 self._proc.wait(timeout=2.0)
             except (OSError, subprocess.TimeoutExpired):
-                try:
+                with contextlib.suppress(OSError):
                     self._proc.kill()
-                except OSError:
-                    pass
             self._proc = None
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=2.0)

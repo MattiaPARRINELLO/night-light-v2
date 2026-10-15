@@ -15,7 +15,14 @@ import soundfile as sf
 SR = 22050
 
 
-def _envelope(t: np.ndarray, attack: float, hold: float, release: float, period: float, duration: float) -> np.ndarray:
+def _envelope(
+    t: np.ndarray,
+    attack: float,
+    hold: float,
+    release: float,
+    period: float,
+    duration: float,
+) -> np.ndarray:
     env = np.zeros_like(t)
     n_a, n_h, n_r = int(attack * SR), int(hold * SR), int(release * SR)
     for start in np.arange(0, duration - 0.05, period):
@@ -34,7 +41,9 @@ def _envelope(t: np.ndarray, attack: float, hold: float, release: float, period:
     return np.clip(env, 0.0, 1.0)
 
 
-def write_synthetic_track(path: Path, duration: float = 12.0, bpm: float = 128.0, level: float = 0.9) -> float:
+def write_synthetic_track(
+    path: Path, duration: float = 12.0, bpm: float = 128.0, level: float = 0.9
+) -> float:
     """Écrit un WAV de test et renvoie le tempo réel utilisé."""
     t = np.arange(int(SR * duration)) / SR
     beat = 60.0 / bpm
@@ -81,7 +90,9 @@ def _snare_hits(rng: np.random.Generator, length: int, duration: float) -> np.nd
         width = int(0.06 * 22050)
         if index + width >= length:
             break
-        hits[index : index + width] += rng.standard_normal(width) * np.exp(-np.linspace(0, 6, width))
+        hits[index : index + width] += rng.standard_normal(width) * np.exp(
+            -np.linspace(0, 6, width)
+        )
     return hits * 0.4
 
 
@@ -103,13 +114,13 @@ def write_rich_track(path: Path, duration: float = 60.0) -> None:
     pad = np.zeros_like(t)
     for index, start in enumerate(np.arange(0, duration, 6)):
         freq = [196.0, 220.0, 261.63, 293.66, 246.94][index % 5]
-        envelope = np.exp(-((t - start) / 3.0) ** 2)
+        envelope = np.exp(-(((t - start) / 3.0) ** 2))
         pad += np.sin(2 * np.pi * freq * t) * envelope * 0.13
 
     chords = np.zeros_like(t)
     for index, start in enumerate(np.arange(0, duration, 3)):
         base = 196.0 * (1 + (index % 4) * 0.06)
-        envelope = np.exp(-((t - start) / 0.5) ** 2)
+        envelope = np.exp(-(((t - start) / 0.5) ** 2))
         chords += np.sin(2 * np.pi * base * t) * envelope * 0.1
         chords += np.sin(2 * np.pi * base * 1.5 * t) * envelope * 0.06
 

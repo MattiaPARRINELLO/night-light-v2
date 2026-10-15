@@ -12,7 +12,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8836;
 const API = `http://127.0.0.1:${API_PORT}`;
 const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
-const { chromium } = await import("/home/mattia/node_modules/playwright");
+const { loadChromium } = await import("./playwright.mjs");
+const chromium = await loadChromium();
 
 const workspace = mkdtempSync(join(tmpdir(), "night-light-fondu-"));
 // Piste « riche » : le troisième quart (30-45 s) est intense et homogène, donc

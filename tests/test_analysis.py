@@ -100,6 +100,10 @@ def test_progression_reportee(tmp_path: Path) -> None:
 
 
 def test_detect_builds_sur_courbe_synthetique() -> None:
-    points = [[0.0, 0.2]] + [[float(i), min(1.0, 0.2 + 0.06 * i)] for i in range(1, 25)] + [[30.0, 1.0]] * 5
+    points = (
+        [[0.0, 0.2]]
+        + [[float(i), min(1.0, 0.2 + 0.06 * i)] for i in range(1, 25)]
+        + [[30.0, 1.0]] * 5
+    )
     builds = detect_builds(points, 30.0)
     assert builds, "une montée continue doit être détectée"

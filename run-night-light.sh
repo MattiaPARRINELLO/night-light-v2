@@ -15,15 +15,26 @@ if [[ -z "${DEEZER_ARL:-}" ]]; then
     echo "Attention : DEEZER_ARL n'est pas défini. La récupération Deezer restera désactivée." >&2
 fi
 
-if [[ ! -x "$ROOT/.venv/bin/uvicorn" ]]; then
-    echo "Binaires manquants : .venv/bin/uvicorn. Lance d'abord la préparation de l'environnement Python." >&2
+if ! command -v uv >/dev/null 2>&1; then
+    echo "uv est requis (https://docs.astral.sh/uv/). Installe-le d'abord." >&2
     exit 1
 fi
 
 export HOST="${HOST:-127.0.0.1}"
 export PORT="${PORT:-8000}"
 
-"$ROOT/.venv/bin/uvicorn" server.main:app --host "$HOST" --port "$PORT" "$@" &
+case "$HOST" in
+    127.0.0.1 | localhost | ::1 | "[::1]") ;;
+    *)
+        if [[ "${ALLOW_NETWORK:-}" != "1" ]]; then
+            echo "HOST=$HOST n'est pas une adresse locale. Night Light n'a aucune" >&2
+            echo "authentification : ne l'expose pas. Force avec ALLOW_NETWORK=1." >&2
+            exit 1
+        fi
+        ;;
+esac
+
+uv run --directory "$ROOT" uvicorn server.main:app --host "$HOST" --port "$PORT" "$@" &
 UVICORN_PID=$!
 
 kill_descendants() {

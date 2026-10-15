@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: types, tests front & serveur, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Dépendances front
+        run: bun install --frozen-lockfile
+
+      - name: Types (tsc)
+        run: bun run typecheck
+
+      - name: Tests front
+        run: bun test tests/
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests serveur
+        run: uv run pytest tests/ -q
+
+      - name: Build de production
+        run: bun run build
+
+  browser:
+    name: parcours navigateur (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Dépendances front
+        run: bun install --frozen-lockfile
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Préparer l'environnement Python
+        run: uv sync
+
+      - name: Navigateur Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build servi par l'API
+        run: bun run build
+
+      - name: Vérification navigateur
+        run: bun tests/browser_check.mjs

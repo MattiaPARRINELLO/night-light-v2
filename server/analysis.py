@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 import librosa
 import numpy as np
@@ -80,9 +80,7 @@ def decode_with_ffmpeg(path: Path, sample_rate: int) -> np.ndarray | None:
         "-",
     ]
     try:
-        completed = subprocess.run(
-            command, capture_output=True, timeout=120, check=False
-        )
+        completed = subprocess.run(command, capture_output=True, timeout=120, check=False)
     except (OSError, subprocess.SubprocessError):
         return None
     if completed.returncode != 0 or len(completed.stdout) < 4096:
@@ -189,7 +187,7 @@ def curve_to_points(
     grid = np.arange(0.0, duration + step * 0.5, step)
     resampled = np.interp(grid, times, values, left=0.0, right=0.0)
     resampled = _smooth(np.clip(resampled, 0.0, 1.0), 0.14, rate_hz)
-    return [[round(float(t), 3), round(float(v), 2)] for t, v in zip(grid, resampled)]
+    return [[round(float(t), 3), round(float(v), 2)] for t, v in zip(grid, resampled, strict=False)]
 
 
 def band_energy(
@@ -260,9 +258,7 @@ def detect_sections(
     phase: Phase,
 ) -> list[dict]:
     report(phase, 0.2, "Caractéristiques spectrales")
-    mel = librosa.feature.melspectrogram(
-        y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64
-    )
+    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
     mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
     chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=HOP)
     features = np.vstack([mfcc, chroma])
@@ -279,9 +275,7 @@ def detect_sections(
         | {0.0, round(float(duration), 3)}
     )
     edges = [
-        edge
-        for index, edge in enumerate(edges)
-        if index == 0 or edge - edges[index - 1] > 0.75
+        edge for index, edge in enumerate(edges) if index == 0 or edge - edges[index - 1] > 0.75
     ]
     if edges[-1] < duration:
         edges.append(round(float(duration), 3))
@@ -336,9 +330,7 @@ def detect_sections(
 # ------------------------------------------------------------------ montées
 
 
-def _snap_to_onset(
-    target: float, onsets: list[float] | None, window: float = 0.3
-) -> float:
+def _snap_to_onset(target: float, onsets: list[float] | None, window: float = 0.3) -> float:
     """Recale `target` sur l'attaque (onset) la plus proche, si elle existe.
 
     L'oreille entend l'attaque, pas le milieu de l'enveloppe : sans ce recadrage,
@@ -397,17 +389,11 @@ def detect_builds(
         # 2 s après le son.
         pic = slice(start_index, min(end_index + 1, len(gradient)))
         if pic.stop > pic.start:
-            end = float(
-                times[min(int(np.argmax(gradient[pic])) + pic.start, len(times) - 1)]
-            )
+            end = float(times[min(int(np.argmax(gradient[pic])) + pic.start, len(times) - 1)])
             # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
             end = _snap_to_onset(end, onsets)
         # Une vraie montée gagne nettement en niveau, pas seulement quelques %.
-        if (
-            2.0 <= end - start <= 30.0
-            and strength > 0.3
-            and strength - start_level > 0.18
-        ):
+        if 2.0 <= end - start <= 30.0 and strength > 0.3 and strength - start_level > 0.18:
             builds.append(
                 {
                     "start": round(start, 3),
@@ -437,12 +423,8 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
     """
     try:
         rng = np.random.default_rng(0)
-        noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(
-            np.float32
-        )
-        onset_env = librosa.onset.onset_strength(
-            y=noise, sr=sample_rate, hop_length=HOP
-        )
+        noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(np.float32)
+        onset_env = librosa.onset.onset_strength(y=noise, sr=sample_rate, hop_length=HOP)
         librosa.beat.beat_track(
             onset_envelope=onset_env, sr=sample_rate, hop_length=HOP, trim=False
         )
@@ -503,7 +485,8 @@ def analyze_file(
     if duration > settings.max_duration_sec:
         raise AnalysisError(
             "too_long",
-            f"Morceau trop long ({duration / 60:.1f} min). Limite : {settings.max_duration_sec / 60:.0f} min.",
+            f"Morceau trop long ({duration / 60:.1f} min). Limite : "
+            f"{settings.max_duration_sec / 60:.0f} min.",
         )
 
     spectrum = np.abs(librosa.stft(y, n_fft=NFFT, hop_length=HOP))
@@ -515,18 +498,12 @@ def analyze_file(
 
     # Lissage large : sans lui les courbes servent le battement du morceau et
     # feraient clignoter les effets au lieu de suivre son énergie.
-    bass = normalize_curve(
-        _smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate)
-    )
-    mid = normalize_curve(
-        _smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate)
-    )
+    bass = normalize_curve(_smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate))
+    mid = normalize_curve(_smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate))
     high = normalize_curve(
         _smooth(band_energy(spectrum, frequencies, 2000, 10000), 0.35, frame_rate)
     )
-    rms = normalize_curve(
-        _smooth(librosa.feature.rms(y=y, hop_length=HOP)[0], 0.35, frame_rate)
-    )
+    rms = normalize_curve(_smooth(librosa.feature.rms(y=y, hop_length=HOP)[0], 0.35, frame_rate))
     progress(phases[1], 1.0, "bandes basses / médiums / aigus")
 
     energy_raw = 0.62 * rms + 0.38 * ((bass + mid + high) / 3.0)
@@ -545,9 +522,7 @@ def analyze_file(
         phases[3],
     )
     progress(phases[4], 0.5, "détection des montées")
-    energy_points = curve_to_points(
-        frame_times, energy, settings.curve_rate_hz, duration
-    )
+    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
     builds = detect_builds(energy_points, duration, onsets)
     progress(phases[4], 1.0, f"{len(builds)} montées repérées")
     progress(phases[5], 1.0, "données du spectacle prêtes")

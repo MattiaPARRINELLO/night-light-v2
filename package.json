@@ -2,6 +2,7 @@
   "name": "night-light-v2",
   "version": "2.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Light show musical personnel : analyse audio serveur (librosa) + spectacle visuel synchronise dans le navigateur.",
   "engines": {
@@ -15,6 +16,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint && uv run ruff check .",
     "test": "bun scripts/test.mjs",
     "check:browser": "bun tests/browser_check.mjs",
     "check:sync": "bun tests/sync_check.mjs",
@@ -25,10 +27,9 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "latest",
+    "oxlint": "^1.88.0",
+    "playwright": "^1.50.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
-  },
-  "peerDependencies": {
-    "typescript": "^7.0.2"
   }
 }

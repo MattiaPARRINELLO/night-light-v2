@@ -339,11 +339,11 @@ describe("diversite du spectacle", () => {
 
   test("un long morceau exploite toutes les familles visuelles", () => {
     const long = analysis({
-      duration: 300,
+      duration: 600,
       sections: [
-        { start: 0, end: 100, label: "calme", energy: 0.25 },
-        { start: 100, end: 200, label: "intense", energy: 0.8 },
-        { start: 200, end: 300, label: "montee", energy: 0.6 },
+        { start: 0, end: 200, label: "calme", energy: 0.25 },
+        { start: 200, end: 400, label: "intense", energy: 0.8 },
+        { start: 400, end: 600, label: "montee", energy: 0.6 },
       ],
     });
     const plan = buildShowPlan(long, false);

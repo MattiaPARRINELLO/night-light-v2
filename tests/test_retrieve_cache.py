@@ -11,7 +11,14 @@ def test_put_get_round_trip(tmp_path: Path) -> None:
     source.write_bytes(b"fake-audio-payload-123")
     key = "abc123"
 
-    entry = cache.put(key, source, duration_sec=12.5, provider="wikimedia", title="Demo", artist="Artist")
+    entry = cache.put(
+        key,
+        source,
+        duration_sec=12.5,
+        provider="wikimedia",
+        title="Demo",
+        artist="Artist",
+    )
     assert entry.path.is_file()
     assert entry.size_bytes == source.stat().st_size
     assert entry.content_hash == hashlib.sha256(source.read_bytes()).hexdigest()

@@ -225,15 +225,12 @@ def match_playback(
     if duration_sec > 0 and state.duration_ms is not None:
         duration_delta = abs((state.duration_ms / 1000.0) - duration_sec)
 
-    if title.strip():
-        if title_similarity < title_threshold:
-            reasons.append("weak_title")
-    if artist.strip() and state.artist:
-        if artist_similarity < 0.75:
-            reasons.append("weak_artist")
-    if duration_delta is not None:
-        if duration_delta > duration_tolerance_sec:
-            reasons.append("duration_mismatch")
+    if title.strip() and title_similarity < title_threshold:
+        reasons.append("weak_title")
+    if artist.strip() and state.artist and artist_similarity < 0.75:
+        reasons.append("weak_artist")
+    if duration_delta is not None and duration_delta > duration_tolerance_sec:
+        reasons.append("duration_mismatch")
     if state.status != "playing":
         reasons.append("not_playing")
 

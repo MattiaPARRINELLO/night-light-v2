@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from server import main
-from server.config import load_settings
 from server.retrieve.models import Candidate, TrackQuery
 from server.retrieve.resolver import RetrievalResult, RetrievalTimings
 from tests.make_fixture import write_synthetic_track
@@ -49,13 +48,17 @@ def test_resolve_requires_title(client: TestClient) -> None:
     assert response.status_code in {400, 422}
 
 
-def test_resolve_endpoint_runs_and_produces_track(client: TestClient, tmp_path: Path, monkeypatch) -> None:
+def test_resolve_endpoint_runs_and_produces_track(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
     audio = tmp_path / "resolved.wav"
     write_synthetic_track(audio, duration=4.0)
 
     fake_result = RetrievalResult(
         query=TrackQuery(title="Synthetic", artist="Test", duration_sec=4.0),
-        candidate=Candidate(provider="cache", source_id="x", title="Synthetic", artist="Test", duration_sec=4.0),
+        candidate=Candidate(
+            provider="cache", source_id="x", title="Synthetic", artist="Test", duration_sec=4.0
+        ),
         cache_entry_path=audio,
         timings=RetrievalTimings(0.1, 0.1, 0.1, 0.0, 0.3),
         from_cache=False,
