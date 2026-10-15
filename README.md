@@ -132,9 +132,9 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Quinze familles visuelles tournantes : faisceaux, tunnel, particules, vagues, grille,
+Seize familles visuelles tournantes : faisceaux, tunnel, particules, vagues, grille,
 anneaux, volets, barres, spirale, projecteurs, miroirs, défilé, tirs croisés, rideau de
-lumière, rayonnement.
+lumière, rayonnement, formes projetées.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -144,6 +144,23 @@ boucle :
 | **phrase** | 5-8 s | famille principale, palette, humeur (calme / pulsé / explosif / aérien / sombre) |
 | **variation** | milieu de chaque phrase | une seconde famille surgit brièvement, avec sa propre teinte |
 | **dérive** | en continu | la teinte glisse lentement (0,4°/s) et respire de ±14° autour de celle de la scène |
+
+### Rien n'apparaît ni ne disparaît d'un coup
+
+Trois règles, toutes vérifiées par des tests :
+
+- **les mouvements sont calés sur le tempo** (`beatSwing`) : la cible change à chaque pas,
+  l'interpolation arrive sur les 70 % du pas puis tient — le projecteur se réoriente *sur* le
+  temps fort et reste en place le reste du temps ;
+- **chaque élément s'allume et s'éteint progressivement** (`elementEnvelope`) : montée
+  lissée, maintien, extinction lissée, jamais de saut. Le cycle se compte en temps forts et
+  chaque élément a son décalage, donc ils s'allument l'un après l'autre ;
+- **la couche de fond est commune à tout le morceau** (`plan.backdrop`) : c'est l'élément qui
+  reste à l'écran quand tout le reste change. Avec le fond, le halo et la poussière — qui ne
+  dépendent plus du fondu de scène — l'écran ne passe jamais par le noir entre deux scènes.
+
+L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
+contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
 
 ### La couleur
 
@@ -248,7 +265,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les quinze familles d'effets
+    families.ts         les seize familles d'effets
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
