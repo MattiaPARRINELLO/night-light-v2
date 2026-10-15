@@ -15,10 +15,13 @@ import { buildShowPlan, type FamilyId } from "../src/core/show";
 import {
   beamLayers,
   beatSwing,
+  curvedBeam,
   drawFamily,
   elementEnvelope,
   GRAND_BALAYAGE_BEATS,
+  hazeFineRadiusPixels,
   hazeRadiusPixels,
+  type HazeLayer,
   type HazeTarget,
   PETIT_ELEMENT_BEATS,
   rowPositions,
@@ -82,6 +85,8 @@ function fakeContext() {
     moveTo: (x: number, y: number) => operations.push(`moveTo:${x.toFixed(1)},${y.toFixed(1)}`),
     lineTo: (x: number, y: number) => operations.push(`lineTo:${x.toFixed(1)},${y.toFixed(1)}`),
     arc: (x: number, y: number, r: number) => operations.push(`arc:${x.toFixed(1)},${y.toFixed(1)},${r.toFixed(1)}`),
+    quadraticCurveTo: (x1: number, y1: number, x2: number, y2: number) =>
+      operations.push(`quadraticCurveTo:${x1.toFixed(1)},${y1.toFixed(1)},${x2.toFixed(1)},${y2.toFixed(1)}`),
     fill: () => operations.push("fill"),
     stroke: () => operations.push("stroke"),
     createLinearGradient: (...args: number[]) => {
@@ -169,14 +174,34 @@ function renderAt(time: number, analysisData: Analysis = analysis(), settings = 
  * Surface de fumée de test : deux contextes enregistreurs, comme dans le
  * navigateur (dépôt des faisceaux, puis passe de flou).
  */
-function fakeHaze(): { haze: HazeTarget; depot: string[]; flou: string[] } {
-  const depot = fakeContext();
-  const flou = fakeContext();
-  return {
-    haze: { ctx: depot.ctx, blurPass: flou.ctx, scale: 0.5, used: false },
-    depot: depot.operations,
-    flou: flou.operations,
+/** Ce qu'une nappe de test a reçu et ce qu'elle a flouté. */
+interface FausseNappe {
+  depot: string[];
+  flou: string[];
+}
+
+/** Nombre de dessins réellement déposés dans une nappe : un faisceau droit est
+ * rempli, un faisceau courbe est tracé. */
+function dessins(nappe: FausseNappe): number {
+  return nappe.depot.filter((operation) => operation === "fill" || operation === "stroke").length;
+}
+
+/**
+ * Nappes de fumée de test : deux nappes, chacune avec son dépôt et sa passe de
+ * flou, comme dans le navigateur.
+ */
+function fakeHaze(): { haze: HazeTarget; fine: FausseNappe; large: FausseNappe } {
+  const cree = (): { layer: HazeLayer; vu: FausseNappe } => {
+    const depot = fakeContext();
+    const flou = fakeContext();
+    return {
+      layer: { ctx: depot.ctx, blurPass: flou.ctx, scale: 0.5, used: false },
+      vu: { depot: depot.operations, flou: flou.operations },
+    };
   };
+  const fine = cree();
+  const large = cree();
+  return { haze: { fine: fine.layer, large: large.layer }, fine: fine.vu, large: large.vu };
 }
 
 describe("rendu déterministe", () => {
@@ -849,30 +874,66 @@ describe("faisceaux adoucis", () => {
     expect(large[0]!.footHalfWidth).toBeGreaterThan(30);
   });
 
-  test("le rayon de la surface de fumee suit la taille de l'ecran", () => {
-    // Le rayon doit croître avec l'écran : le même spectacle doit être aussi
+  test("le rayon des nappes suit la taille de l'ecran", () => {
+    // Les rayons doivent croître avec l'écran : le même spectacle doit être aussi
     // diffusé sur une télévision et sur un mur de projection.
     expect(hazeRadiusPixels(1920, 1080, 0.95)).toBeGreaterThan(hazeRadiusPixels(1280, 720, 0.95));
     expect(hazeRadiusPixels(1280, 720, 0.95)).toBeGreaterThanOrEqual(5);
     expect(hazeRadiusPixels(4000, 2000, 0.95)).toBeLessThanOrEqual(16);
+    expect(hazeFineRadiusPixels(1280, 720, 0.95)).toBeGreaterThanOrEqual(2);
+    expect(hazeFineRadiusPixels(4000, 2000, 0.95)).toBeLessThanOrEqual(8);
+    // La nappe fine doit rester nettement plus discrète que la large : c'est
+    // tout l'intérêt d'en avoir deux.
+    expect(hazeFineRadiusPixels(1280, 720, 0.95)).toBeLessThan(hazeRadiusPixels(1280, 720, 0.95));
     // Sur une machine qui souffle, la diffusion est plus discrète — mais elle est
     // là quand même.
     expect(hazeRadiusPixels(1280, 720, 0.45)).toBeGreaterThan(0);
     expect(hazeRadiusPixels(1280, 720, 0.45)).toBeLessThan(hazeRadiusPixels(1280, 720, 0.95));
   });
 
+  test("un trait ne diffuse pas comme un gros faisceau", () => {
+    // C'est la leçon de la pluie de lumière : un rayon de flou unique broie tout
+    // ce qui est plus étroit que lui, et les colonnes disparaissaient. Chaque
+    // faisceau part donc dans la nappe qui lui convient.
+    expect(hazeFineRadiusPixels(1280, 720, 1)).toBeLessThan(hazeRadiusPixels(1280, 720, 1));
+
+    const { haze, fine, large } = fakeHaze();
+    const ctx = fakeContext().ctx;
+    const dessine = (width: number) =>
+      softBeam(ctx, {
+        x: 100,
+        y: 100,
+        angle: 0,
+        length: 300,
+        width,
+        hue: 300,
+        saturation: 0.8,
+        lightness: 0.6,
+        alpha: 0.4,
+        quality: 1,
+        fumee: haze,
+      });
+
+    dessine(6); // colonne de pluie, branche d'étoile
+    expect(dessins(fine)).toBeGreaterThan(0);
+    expect(large.depot.filter((operation) => operation === "fill")).toHaveLength(0);
+
+    dessine(90); // projecteur de wash
+    expect(dessins(large)).toBeGreaterThan(0);
+  });
+
   test("la fumee ne s'eteint jamais, meme quand la machine souffle", () => {
     // C'est ce que l'on corrige ici : le flou disparaissait d'un coup dès que la
     // qualité descendait, et le spectacle passait « de tout à rien ». Le dépôt
-    // dans la surface de fumée et sa passe de flou doivent avoir lieu à tous les
-    // paliers : seule la résolution de la surface change.
+    // dans une nappe et sa passe de flou doivent avoir lieu à tous les paliers :
+    // seule la résolution des nappes change.
     const vue = new TrackView(analysis());
     const plan = buildShowPlan(analysis(), false);
 
     for (const qualite of [1, 0.75, 0.45, 0.3]) {
       let depose = 0;
       for (let temps = 0; temps < 60; temps += 0.5) {
-        const { haze, depot, flou } = fakeHaze();
+        const { haze, fine, large } = fakeHaze();
         renderFrame({
           ctx: fakeContext().ctx,
           width: 1280,
@@ -887,28 +948,34 @@ describe("faisceaux adoucis", () => {
           frame: Math.round(temps * 60),
           haze,
         });
-        if (haze.used) {
+        for (const nappe of [fine, large]) {
+          const floutee = nappe.flou.filter((operation) => operation.startsWith("filter:blur(")).length;
+          if (floutee === 0) {
+            // Une nappe que rien n'a nourrie n'est pas floutée en vain.
+            expect(dessins(nappe)).toBe(0);
+            continue;
+          }
           depose += 1;
-          expect(depot.filter((operation) => operation === "fill").length).toBeGreaterThan(0);
-          expect(flou.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(1);
+          expect(dessins(nappe)).toBeGreaterThan(0);
+          expect(floutee).toBe(1);
         }
       }
       expect(depose).toBeGreaterThan(0);
     }
   });
 
-  test("tous les faisceaux passent par une seule passe de flou", () => {
-    // C'est le cœur de l'optimisation : chaque faisceau est déposé dans la
-    // surface de fumée, et cette surface n'est floutée qu'une fois par image. Le
-    // flou direct — une passe pleine toile PAR projecteur — faisait tomber le
-    // spectacle à 2 images par seconde sur une scène chargée, contre 40 ici.
+  test("chaque nappe est floutee une seule fois par image", () => {
+    // C'est le cœur de l'optimisation : chaque faisceau est déposé dans une nappe,
+    // et chaque nappe n'est floutée qu'une fois par image. Le flou direct — une
+    // passe pleine toile PAR projecteur — faisait tomber le spectacle à 2 images
+    // par seconde sur une scène chargée, contre 40 ici.
     const vue = new TrackView(analysis());
     const plan = buildShowPlan(analysis(), false);
     let vuLaFumee = false;
 
     for (let temps = 0; temps < 60; temps += 0.25) {
       const { ctx, operations } = fakeContext();
-      const { haze, depot, flou } = fakeHaze();
+      const { haze, fine, large } = fakeHaze();
       renderFrame({
         ctx,
         width: 1280,
@@ -923,25 +990,58 @@ describe("faisceaux adoucis", () => {
         frame: Math.round(temps * 60),
         haze,
       });
-      if (!haze.used) {
-        // Aucun faisceau à cette image : rien ne doit être flouté en vain.
-        expect(flou).toHaveLength(0);
-        expect(operations).not.toContain("drawImage");
-        continue;
+      let remontees = 0;
+      for (const nappe of [fine, large]) {
+        const floutee = nappe.flou.filter((operation) => operation.startsWith("filter:blur(")).length;
+        if (floutee === 0) {
+          // Rien n'y a été dessiné : la nappe n'est pas floutée en vain.
+          expect(dessins(nappe)).toBe(0);
+          continue;
+        }
+        vuLaFumee = true;
+        remontees += 1;
+        // Les faisceaux y sont bien déposés — remplis s'ils sont droits, tracés
+        // s'ils s'enroulent...
+        expect(dessins(nappe)).toBeGreaterThan(0);
+        // ...la nappe est floutée en UNE passe, et remontée en UNE fois.
+        expect(floutee).toBe(1);
+        expect(nappe.flou.filter((operation) => operation === "drawImage").length).toBe(1);
       }
-      vuLaFumee = true;
-      // Les faisceaux y sont bien déposés...
-      expect(depot.filter((operation) => operation === "fill").length).toBeGreaterThan(0);
-      // ...la surface est floutée en UNE passe, et remontée en UNE fois.
-      expect(flou.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(1);
-      expect(flou.filter((operation) => operation === "drawImage").length).toBe(1);
-      expect(operations.filter((operation) => operation === "drawImage").length).toBe(1);
+      // Une remontée par nappe utilisée, et pas une de plus.
+      expect(operations.filter((operation) => operation === "drawImage").length).toBe(remontees);
       // Aucun flou ne part directement sur la toile : c'est tout l'intérêt.
       expect(operations.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(0);
     }
 
     // Le wash et les familles à faisceaux doivent finir par y passer.
     expect(vuLaFumee).toBe(true);
+  });
+
+  test("un faisceau courbe s'enroule au lieu de filer droit", () => {
+    // C'est ce qui fait lire un vortex : un rayon droit ne tourne pas.
+    const { ctx, operations } = fakeContext();
+    curvedBeam(ctx, {
+      x: 100,
+      y: 100,
+      angle: 0,
+      length: 300,
+      width: 8,
+      courbure: Math.PI / 2,
+      hue: 300,
+      saturation: 0.8,
+      lightness: 0.6,
+      alpha: 0.4,
+      quality: 1,
+    });
+    expect(operations.filter((operation) => operation.startsWith("quadraticCurveTo:")).length).toBeGreaterThan(0);
+    expect(operations.filter((operation) => operation === "stroke").length).toBeGreaterThan(0);
+    // La courbe s'arrête là où l'enroulement la mène, pas droit devant : avec un
+    // quart de tour d'enroulement, le bout du rayon est à la verticale.
+    const courbe = operations.find((operation) => operation.startsWith("quadraticCurveTo:"))!;
+    const nombres = courbe.split(":")[1]!.split(",").map(Number);
+    const [ex, ey] = [nombres[2], nombres[3]];
+    expect(Number(ex)).toBeCloseTo(100, 0);
+    expect(Number(ey)).toBeGreaterThan(350);
   });
 
   test("un faisceau souple dessine plusieurs passages", () => {

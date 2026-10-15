@@ -9,7 +9,7 @@ import {
   type ShowPlan,
 } from "../core/show";
 import { drawTransition, renderFrame, sceneHue, variationStrength } from "../core/render";
-import type { HazeTarget } from "../core/families";
+import type { HazeLayer, HazeTarget } from "../core/families";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
 import {
   EMPTY_LIVE_AUDIO,
@@ -89,6 +89,31 @@ function num(value: number | undefined): string {
   return Number.isFinite(value) ? (value as number).toFixed(3) : "—";
 }
 
+/** Prépare une nappe de fumée à partir de ses deux surfaces de travail. */
+function preparerNappe(canvases: readonly [HTMLCanvasElement, HTMLCanvasElement]): HazeLayer | undefined {
+  const ctx = canvases[0].getContext("2d");
+  const blurPass = canvases[1].getContext("2d");
+  if (ctx === null || blurPass === null) return undefined;
+  return { ctx, blurPass, scale: 1, used: false };
+}
+
+/**
+ * Donne à une nappe sa résolution, sans la recréer si elle est déjà bonne.
+ *
+ * Redimensionner une toile efface tout et réalloue : on ne le fait donc que
+ * lorsque la fenêtre ou le palier de qualité change.
+ */
+function dimensionnerNappe(nappe: HazeLayer, scale: number, width: number, height: number): void {
+  nappe.scale = scale;
+  const largeur = Math.max(1, Math.round(width * scale));
+  const hauteur = Math.max(1, Math.round(height * scale));
+  if (nappe.ctx.canvas.width === largeur && nappe.ctx.canvas.height === hauteur) return;
+  nappe.ctx.canvas.width = largeur;
+  nappe.ctx.canvas.height = hauteur;
+  nappe.blurPass.canvas.width = largeur;
+  nappe.blurPass.canvas.height = hauteur;
+}
+
 function seconds(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "—";
   return `${(ms / 1000).toFixed(2)} s`;
@@ -97,9 +122,11 @@ function seconds(ms: number): string {
 export class App {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
-  /** Surface de fumée (voir HazeTarget) : les faisceaux larges y sont floutés. */
-  private readonly hazeCanvas = document.createElement("canvas");
-  private readonly hazeBlurCanvas = document.createElement("canvas");
+  /** Nappes de fumée (voir HazeTarget) : deux couples de surfaces de travail. */
+  private readonly hazeCanvases = {
+    fine: [document.createElement("canvas"), document.createElement("canvas")] as const,
+    large: [document.createElement("canvas"), document.createElement("canvas")] as const,
+  };
   private haze: HazeTarget | undefined = undefined;
   private readonly audio = new AudioEngine();
 
@@ -1862,29 +1889,23 @@ export class App {
   };
 
   /**
-   * Surface de fumée, créée une fois et conservée.
+   * Nappes de fumée, créées une fois et conservées.
    *
-   * Elle est en basse résolution — c'est tout son intérêt — et ses dimensions
-   * suivent donc le palier de qualité et la taille de la fenêtre. Elle n'est
-   * recréée que lorsque l'un des deux change.
+   * Elles sont en basse résolution — c'est tout leur intérêt — et leurs
+   * dimensions suivent donc le palier de qualité et la taille de la fenêtre.
+   * Elles ne sont redimensionnées que lorsque l'un des deux change.
    */
   private hazeFor(quality: number, width: number, height: number): HazeTarget | undefined {
-    const scale = quality >= 0.9 ? 0.5 : quality >= 0.6 ? 0.4 : 0.32;
-    const largeur = Math.max(1, Math.round(width * scale));
-    const hauteur = Math.max(1, Math.round(height * scale));
-    if (this.haze !== undefined && this.hazeCanvas.width === largeur && this.hazeCanvas.height === hauteur) {
-      return this.haze;
+    if (this.haze === undefined) {
+      const fine = preparerNappe(this.hazeCanvases.fine);
+      const large = preparerNappe(this.hazeCanvases.large);
+      if (fine === undefined || large === undefined) return undefined;
+      this.haze = { fine, large };
     }
-    const canvas = this.hazeCanvas;
-    canvas.width = largeur;
-    canvas.height = hauteur;
-    const ctx = canvas.getContext("2d");
-    const flou = this.hazeBlurCanvas;
-    flou.width = largeur;
-    flou.height = hauteur;
-    const blurPass = flou.getContext("2d");
-    if (ctx === null || blurPass === null) return undefined;
-    this.haze = { ctx, blurPass, scale, used: false };
+    // La nappe fine garde plus de résolution : un trait de sept pixels au
+    // dixième de sa taille n'existe plus.
+    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.6 : 0.45, width, height);
+    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.5 : quality >= 0.6 ? 0.4 : 0.32, width, height);
     return this.haze;
   }
 

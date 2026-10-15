@@ -1,6 +1,6 @@
 import type { RenderSettings } from "../types";
 import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
-import { drawCoreGlow, drawFamily, drawWash, hazeRadiusPixels } from "./families";
+import { drawCoreGlow, drawFamily, drawWash, hazeFineRadiusPixels, hazeRadiusPixels } from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
 import { hslToRgb, shiftHue, shorthand } from "./color";
@@ -404,16 +404,18 @@ export function renderFrame(input: RenderInput): void {
   const quality = quantizeQuality(input.quality);
   const haze = reduced ? undefined : input.haze;
   if (haze !== undefined) {
-    // La surface de fumée repart vide à chaque image, et dans le même espace que
-    // les familles (des pixels CSS) : elles y déposent leurs faisceaux comme
-    // elles le feraient sur la toile.
-    haze.used = false;
-    haze.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    haze.ctx.globalCompositeOperation = "source-over";
-    haze.ctx.globalAlpha = 1;
-    haze.ctx.clearRect(0, 0, haze.ctx.canvas.width, haze.ctx.canvas.height);
-    haze.ctx.setTransform(haze.scale, 0, 0, haze.scale, 0, 0);
-    haze.ctx.globalCompositeOperation = "lighter";
+    // Les nappes repartent vides à chaque image, et dans le même espace que les
+    // familles (des pixels CSS) : elles y déposent leurs faisceaux comme elles le
+    // feraient sur la toile.
+    for (const nappe of [haze.fine, haze.large]) {
+      nappe.used = false;
+      nappe.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      nappe.ctx.globalCompositeOperation = "source-over";
+      nappe.ctx.globalAlpha = 1;
+      nappe.ctx.clearRect(0, 0, nappe.ctx.canvas.width, nappe.ctx.canvas.height);
+      nappe.ctx.setTransform(nappe.scale, 0, 0, nappe.scale, 0, 0);
+      nappe.ctx.globalCompositeOperation = "lighter";
+    }
   }
   const scene = sceneAt(plan, t);
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
@@ -566,22 +568,29 @@ export function renderFrame(input: RenderInput): void {
     drawFamily(ctx, outgoing, view, previous.family);
   }
 
-  // Fumée : les faisceaux larges ont été déposés dans une surface basse
-  // résolution. On les y floute une fois — c'est cette unique passe, et non une
-  // passe par projecteur, qui rend la diffusion tenable — puis on remonte la
-  // surface, agrandie d'autant : l'agrandissement finit d'adoucir les bords.
-  if (haze !== undefined && haze.used) {
-    const rayon = hazeRadiusPixels(width, height, quality) * haze.scale;
-    haze.blurPass.setTransform(1, 0, 0, 1, 0, 0);
-    haze.blurPass.globalCompositeOperation = "source-over";
-    haze.blurPass.globalAlpha = 1;
-    haze.blurPass.clearRect(0, 0, haze.blurPass.canvas.width, haze.blurPass.canvas.height);
-    haze.blurPass.filter = `blur(${rayon.toFixed(2)}px)`;
-    haze.blurPass.drawImage(haze.ctx.canvas, 0, 0);
-    haze.blurPass.filter = "none";
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 1;
-    ctx.drawImage(haze.blurPass.canvas, 0, 0, width, height);
+  // Fumée : les faisceaux ont été déposés dans deux nappes, l'une pour les
+  // traits, l'autre pour les gros faisceaux. Chacune est floutée une fois — c'est
+  // cette unique passe, et non une passe par projecteur, qui rend la diffusion
+  // tenable — puis remontée, agrandie d'autant : l'agrandissement finit d'adoucir
+  // les bords. Une nappe que rien n'a nourrie n'est même pas floutée.
+  if (haze !== undefined) {
+    const nappes = [
+      { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) },
+      { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) },
+    ];
+    for (const { nappe, rayon } of nappes) {
+      if (!nappe.used) continue;
+      nappe.blurPass.setTransform(1, 0, 0, 1, 0, 0);
+      nappe.blurPass.globalCompositeOperation = "source-over";
+      nappe.blurPass.globalAlpha = 1;
+      nappe.blurPass.clearRect(0, 0, nappe.blurPass.canvas.width, nappe.blurPass.canvas.height);
+      nappe.blurPass.filter = `blur(${(rayon * nappe.scale).toFixed(2)}px)`;
+      nappe.blurPass.drawImage(nappe.ctx.canvas, 0, 0);
+      nappe.blurPass.filter = "none";
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 1;
+      ctx.drawImage(nappe.blurPass.canvas, 0, 0, width, height);
+    }
   }
 
   drawDust(ctx, permanent);

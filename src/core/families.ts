@@ -44,23 +44,11 @@ export interface FrameState {
 }
 
 /**
- * Surface de fumée : les faisceaux larges y sont déposés en basse résolution,
- * puis floutés en une seule passe pour toute l'image.
- *
- * C'est la réponse au coût du flou. Un `ctx.filter` s'applique à toute la
- * surface couverte par la forme dessinée, et un faisceau large — un projecteur
- * de wash couvre l'écran — coûte donc aussi cher qu'une image entière. Vingt
- * projecteurs allumés en même temps, c'était vingt images entières à flouter par
- * image affichée : mesuré à 4 images par seconde. Déposés dans une surface quatre
- * fois plus petite et floutés une fois, ils donnent au contraire la nappe de
- * fumée la plus juste — et le coût ne dépend plus du nombre de projecteurs.
- *
- * Les faisceaux étroits, eux, restent floutés directement sur place : leur
- * emprise est minuscule, le flou ne coûte presque rien et il préserve mieux leur
- * finesse.
+ * Une nappe de fumée : où les faisceaux se déposent, et la surface où ils sont
+ * floutés.
  */
-export interface HazeTarget {
-  /** Où les familles déposent leurs faisceaux larges. */
+export interface HazeLayer {
+  /** Où les familles déposent leurs faisceaux. */
   ctx: CanvasRenderingContext2D;
   /** Seconde surface, de même taille : flouter sans relire la première. */
   blurPass: CanvasRenderingContext2D;
@@ -69,6 +57,34 @@ export interface HazeTarget {
   /** Vrai si un faisceau y a été déposé pendant cette image. */
   used: boolean;
 }
+
+/**
+ * Les nappes de fumée d'une image : une fine pour les traits, une large pour les
+ * gros faisceaux.
+ *
+ * Il en faut deux, et c'est la leçon de la pluie de lumière. Un rayon de flou
+ * unique broie tout ce qui est plus étroit que lui : les colonnes de la pluie,
+ * larges de sept pixels, disparaissaient dans une nappe rose uniforme alors
+ * qu'elles se lisaient parfaitement sans flou. Un trait doit donc diffuser moins
+ * qu'un gros pâté de lumière — comme dans une salle enfumée, où l'on voit encore
+ * la finesse d'un faisceau serré.
+ *
+ * Le coût reste borné : deux passes de flou, chacune sur une surface quatre fois
+ * plus petite que la toile, au lieu d'une passe par projecteur. La nappe qui n'a
+ * rien reçu n'est même pas floutée.
+ */
+export interface HazeTarget {
+  /** Pour les faisceaux étroits, dont le trait doit survivre au flou. */
+  fine: HazeLayer;
+  /** Pour les faisceaux larges : c'est la fumée proprement dite. */
+  large: HazeLayer;
+}
+
+/**
+ * Au-delà de cette demi-largeur, un faisceau part dans la nappe large : flouté
+ * au rayon des traits, il perdrait sa masse.
+ */
+export const BEAM_FINE_MAX = 22;
 
 export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView) => void;
 
@@ -211,16 +227,28 @@ export function beamLayers(
 }
 
 /**
- * Rayon de la passe de flou appliquée à la surface de fumée, en pixels.
+ * Rayon de la passe de flou de la nappe large, en pixels.
  *
- * Une seule valeur pour tous les faisceaux de l'image : c'est justement ce qui
- * la rend abordable — une passe, quel que soit le nombre de projecteurs — et
+ * Une seule valeur pour tous les gros faisceaux de l'image : c'est justement ce
+ * qui la rend abordable — une passe, quel que soit le nombre de projecteurs — et
  * c'est aussi plus juste, car dans une salle enfumée la diffusion est celle de
  * l'air, pas celle de la lampe.
  */
 export function hazeRadiusPixels(width: number, height: number, quality: number): number {
   const part = quality >= 0.85 ? 0.011 : 0.008;
   return Math.min(Math.max(5, Math.min(width, height) * part), quality >= 0.85 ? 16 : 11);
+}
+
+/**
+ * Rayon de la nappe fine, en pixels.
+ *
+ * Nettement plus court : il doit adoucir un trait sans l'effacer. C'est ce qui
+ * laisse les colonnes de la pluie, les branches de l'étoile ou les rayons d'un
+ * vortex se lire comme des traits de lumière, et non comme une tache.
+ */
+export function hazeFineRadiusPixels(width: number, height: number, quality: number): number {
+  const part = quality >= 0.85 ? 0.0058 : 0.004;
+  return Math.min(Math.max(2.5, Math.min(width, height) * part), quality >= 0.85 ? 8 : 6);
 }
 
 export interface BeamSpec {
@@ -274,7 +302,9 @@ export function softBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec): void {
   const tailHue = spec.tailHue ?? shiftHue(hue, 18);
   const quality = spec.quality ?? 1;
   const reduced = spec.reduced ?? false;
-  const fumee = spec.fumee;
+  // Un trait serré va dans la nappe fine, un gros faisceau dans la nappe large :
+  // c'est ce qui permet à la pluie de lumière de rester une pluie.
+  const fumee = width > BEAM_FINE_MAX ? spec.fumee?.large : spec.fumee?.fine;
   const cible = fumee?.ctx ?? ctx;
   if (fumee !== undefined) fumee.used = true;
 
@@ -303,6 +333,57 @@ function beamLayerCount(quality: number, reduced: boolean): number {
   if (quality >= 0.85) return 3;
   if (quality >= 0.55) return 2;
   return 1;
+}
+
+/**
+ * Faisceau courbe : le rayon s'enroule au lieu de filer droit.
+ *
+ * Des faisceaux droits partant tous du même point dessinent un éventail — jamais
+ * une spirale. Pour qu'on lise un vortex, il faut que la lumière tourne. Le
+ * tracé suit donc une courbe, épaissie en plusieurs passages de plus en plus
+ * fins et de plus en plus clairs, comme `beamLayers` le fait pour un faisceau
+ * droit.
+ */
+export function curvedBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec & { courbure: number }): void {
+  const { x, y, angle, length, width, hue, saturation, lightness, alpha, courbure } = spec;
+  if (alpha <= 0.002 || width <= 0.2) return;
+  const quality = spec.quality ?? 1;
+  const reduced = spec.reduced ?? false;
+  const fumee = width > BEAM_FINE_MAX ? spec.fumee?.large : spec.fumee?.fine;
+  const cible = fumee?.ctx ?? ctx;
+  if (fumee !== undefined) fumee.used = true;
+
+  // Point de contrôle : à mi-course le rayon a déjà tourné de la moitié de son
+  // enroulement, ce qui donne une spirale régulière plutôt qu'un coude.
+  const fin = angle + courbure;
+  const milieu = angle + courbure * 0.42;
+  const demi = length * 0.62;
+  const cx = x + Math.cos(milieu) * demi;
+  const cy = y + Math.sin(milieu) * demi;
+  const ex = x + Math.cos(fin) * length;
+  const ey = y + Math.sin(fin) * length;
+
+  const couches = beamLayerCount(quality, reduced);
+  const ancien = { lineWidth: cible.lineWidth, lineCap: cible.lineCap, lineJoin: cible.lineJoin };
+  cible.lineCap = "round";
+  cible.lineJoin = "round";
+  for (let i = 0; i < couches; i += 1) {
+    const t = couches === 1 ? 1 : i / (couches - 1);
+    const poids = 0.3 + 0.65 * t;
+    const gradient = cible.createLinearGradient(x, y, ex, ey);
+    gradient.addColorStop(0, paint(hue, saturation, lightness + 0.06 + 0.1 * t, alpha * poids));
+    gradient.addColorStop(0.6, paint(hue, saturation, lightness + 0.1 * t, alpha * poids * 0.5));
+    gradient.addColorStop(1, paint(shiftHue(hue, 18), saturation, lightness, 0));
+    cible.strokeStyle = gradient;
+    cible.lineWidth = width * 2 * (1 - 0.45 * t);
+    cible.beginPath();
+    cible.moveTo(x, y);
+    cible.quadraticCurveTo(cx, cy, ex, ey);
+    cible.stroke();
+  }
+  cible.lineWidth = ancien.lineWidth;
+  cible.lineCap = ancien.lineCap;
+  cible.lineJoin = ancien.lineJoin;
 }
 
 function paint(h: number, s: number, l: number, a: number): string {
@@ -1350,9 +1431,11 @@ const couronne: FamilyDraw = (ctx, f, view) => {
  */
 const pluie: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
-  const colonnes = count(18, f.quality, f.reduced);
+  const colonnes = count(16, f.quality, f.reduced);
   const positions = rowPositions(colonnes, w, w * 0.05);
-  const alpha = (0.05 + 0.24 * f.energy + 0.14 * f.beat) * f.alpha;
+  // Plus nourrie qu'avant : ces colonnes sont le seul dessin de la scène, et
+  // elles doivent tenir tête au halo du fond.
+  const alpha = (0.09 + 0.34 * f.energy + 0.2 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
   const cycle = f.reduced ? 30 : f.energy > 0.55 ? 10 : 18;
 
@@ -1362,22 +1445,26 @@ const pluie: FamilyDraw = (ctx, f, view) => {
     const allumage = elementEnvelope(f, view, i * 7 + 2, cycle, 0.65);
     if (allumage <= 0.01) continue;
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
-    // Longueur propre à chaque colonne : l'averse n'est pas régulière.
-    const longueur = h * (0.45 + hash01(i * 311 + f.seed) * 0.75) * allumage;
+    // Longueur propre à chaque colonne : l'averse n'est pas régulière. Aucune
+    // n'est courte — une colonne courte se lit comme une tache, pas comme une
+    // chute.
+    const longueur = h * (0.5 + hash01(i * 311 + f.seed) * 0.75) * allumage;
     softBeam(ctx, {
       x,
-      y: -h * 0.04,
-      angle: Math.PI / 2 + (ratio - 0.5) * 0.12,
+      y: -h * 0.05,
+      angle: Math.PI / 2 + (ratio - 0.5) * 0.1,
       length: longueur,
-      width: Math.min(w, h) * 0.009 * (0.8 + f.energy * 0.5),
+      // Assez large pour survivre à la fumée fine : en deçà, la colonne se
+      // dissout dans la nappe au lieu de tomber.
+      width: Math.min(w, h) * 0.015 * (0.8 + f.energy * 0.5),
       hue,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness,
+      lightness: f.palette.lightness + 0.05,
       alpha: alpha * allumage,
       quality: f.quality,
       reduced: f.reduced,
       fumee: f.haze,
-      footRatio: 0.5,
+      footRatio: 0.45,
     });
   }
 };
@@ -1438,34 +1525,37 @@ const portique: FamilyDraw = (ctx, f, view) => {
  */
 const etoile: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
-  const branches = f.reduced ? 5 : count(7, f.quality, false);
+  // Douze branches : avec sept, et comme chacune pulse à son tour, on n'en voyait
+  // que trois ou quatre — une croix floue, pas une étoile.
+  const branches = f.reduced ? 6 : count(12, f.quality, false);
   // Foyer qui dérive lentement dans le cadre, jamais au bord.
   const derive = Math.sin(f.t * 0.07) * 0.18;
   const cx = w * (0.5 + derive);
   const cy = h * (0.48 + Math.cos(f.t * 0.05) * 0.12);
   const portee = Math.hypot(w, h) * 1.25;
   const rotation = beatSwing(f, view, f.reduced ? 0.3 : 0.9, GRAND_BALAYAGE_BEATS) + f.t * 0.03;
-  const alpha = (0.05 + 0.26 * f.energy + 0.15 * f.beat) * f.alpha;
+  const alpha = (0.09 + 0.32 * f.energy + 0.18 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
   const cycle = f.reduced ? 24 : f.energy > 0.55 ? 8 : 14;
 
   for (let i = 0; i < branches; i += 1) {
     const part = i / branches;
     const angle = rotation + part * Math.PI * 2;
-    // Chaque branche pulse à son tour et sur sa propre longueur.
+    // Chaque branche pulse à son tour — mais sur une longueur qui varie peu :
+    // c'est ce qui garde la forme d'étoile reconnaissable.
     const pulsation = elementEnvelope(f, view, i, cycle, 0.7);
-    const longueur = portee * (0.6 + 0.5 * hash01(i * 811 + f.seed)) * (0.45 + 0.55 * pulsation);
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
     if (pulsation <= 0.01) continue;
+    const longueur = portee * (0.78 + 0.28 * hash01(i * 811 + f.seed)) * (0.45 + 0.55 * pulsation);
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
     softBeam(ctx, {
       x: cx,
       y: cy,
       angle,
       length: longueur,
-      width: Math.min(w, h) * 0.017 * (0.8 + f.energy * 0.6),
+      width: Math.min(w, h) * 0.02 * (0.8 + f.energy * 0.6),
       hue,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + 0.07,
+      lightness: f.palette.lightness + 0.11,
       alpha: alpha * pulsation,
       quality: f.quality,
       reduced: f.reduced,
@@ -1474,12 +1564,13 @@ const etoile: FamilyDraw = (ctx, f, view) => {
     });
   }
 
-  // Le foyer : une source, pas un point géométrique.
-  const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.05 + f.bass * 0.12), 1));
-  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.82, (0.16 + 0.3 * f.bass) * f.alpha));
+  // Le foyer : une source, pas un point géométrique. Serré, pour ne pas noyer
+  // les branches qu'il allume.
+  const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.045 + f.bass * 0.11), 1));
+  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.84, (0.14 + 0.26 * f.bass) * f.alpha));
   noyau.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
   ctx.fillStyle = noyau;
-  ctx.fillRect(Math.max(0, cx - w * 0.2), Math.max(0, cy - h * 0.2), w * 0.4, h * 0.4);
+  ctx.fillRect(Math.max(0, cx - w * 0.12), Math.max(0, cy - h * 0.12), w * 0.24, h * 0.24);
 };
 
 /* ------------------------------------------------------------------ vortex */
@@ -1491,28 +1582,32 @@ const etoile: FamilyDraw = (ctx, f, view) => {
  */
 const vortex: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
-  const rayons = count(19, f.quality, f.reduced);
-  const originX = w * 0.5;
-  const originY = h * 1.04;
-  const portee = Math.hypot(w, h) * 1.1;
-  const alpha = (0.05 + 0.3 * f.energy + 0.18 * f.beat) * f.alpha;
+  const rayons = count(11, f.quality, f.reduced);
+  const cx = w * 0.5;
+  const cy = h * 0.56;
+  const portee = Math.hypot(w, h) * 0.98;
+  const alpha = (0.1 + 0.34 * f.energy + 0.2 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
-  // La vrille suit l'énergie : un passage fort enroule l'éventail plus serré.
-  const vrille = 0.55 + 0.75 * f.energy;
-  const tour = beatSwing(f, view, f.reduced ? 0.5 : 1.4, GRAND_BALAYAGE_BEATS) + f.t * 0.05;
+  // La vrille suit l'énergie : un passage fort enroule la spirale plus serré.
+  const vrille = 0.9 + 0.9 * f.energy;
+  const tour = beatSwing(f, view, f.reduced ? 0.5 : 1.5, GRAND_BALAYAGE_BEATS) + f.t * 0.14;
+  // Les rayons ne partent pas tous du même point : ils s'accrochent en couronne
+  // autour du foyer, et c'est ce départ décalé qui fait tourner l'ensemble.
+  const depart = Math.min(w, h) * 0.06;
 
   for (let i = 0; i < rayons; i += 1) {
     const part = rayons === 1 ? 0.5 : i / (rayons - 1);
-    // Espacement régulier, plus une ondulation qui vrille l'éventail.
-    const base = -Math.PI * 0.62 + part * Math.PI * 1.24;
-    const angle = base + Math.sin(part * Math.PI * 2 + tour) * vrille * 0.34 + tour * 0.12;
+    const angle = tour + part * Math.PI * 2 * 0.9;
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
-    softBeam(ctx, {
-      x: originX,
-      y: originY,
+    curvedBeam(ctx, {
+      x: cx + Math.cos(angle) * depart,
+      y: cy + Math.sin(angle) * depart,
       angle,
-      length: portee,
-      width: Math.min(w, h) * 0.03 * (0.7 + f.bass * 0.8),
+      length: portee * (0.75 + 0.4 * hash01(i * 53 + f.seed)),
+      // Assez épais pour être un rayon de lumière, assez fin pour que la courbure
+      // reste lisible : un gros faisceau la perdrait dans le flou.
+      width: Math.min(w, h) * 0.019 * (0.8 + f.bass * 0.7),
+      courbure: vrille * (0.6 + 0.8 * hash01(i * 97 + f.seed)),
       hue,
       saturation: f.palette.saturation,
       lightness: f.palette.lightness,
@@ -1520,9 +1615,15 @@ const vortex: FamilyDraw = (ctx, f, view) => {
       quality: f.quality,
       reduced: f.reduced,
       fumee: f.haze,
-      footRatio: 0.05,
     });
   }
+
+  // L'œil du tourbillon : une lueur diffuse plutôt qu'une bille au centre.
+  const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.05 + f.bass * 0.14), 1));
+  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.8, (0.1 + 0.2 * f.bass) * f.alpha));
+  noyau.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  ctx.fillStyle = noyau;
+  ctx.fillRect(Math.max(0, cx - w * 0.2), Math.max(0, cy - h * 0.2), w * 0.4, h * 0.4);
 };
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
