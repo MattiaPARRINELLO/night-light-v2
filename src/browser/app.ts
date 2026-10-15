@@ -967,12 +967,12 @@ export class App {
   }
 
   private showMode(): ShowMode {
+    if (this.syncedMode && this.debugSync.phase === "SHOW_SYNCED") return "show-synced";
+    if (this.syncedMode && this.debugSync.phase === "PAUSED") return "paused";
+    if (this.syncedMode && this.debugSync.phase === "LOST") return "lost";
+    if (this.syncedMode) return "syncing";
     if (this.view !== null) return "show-local";
-    if (!this.syncedMode) return "live";
-    if (this.debugSync.phase === "PAUSED") return "paused";
-    if (this.debugSync.phase === "LOST") return "lost";
-    if (this.debugSync.phase === "SHOW_SYNCED") return "show-synced";
-    return "syncing";
+    return "live";
   }
 
   /** État complet publié vers le dashboard, ~5 fois par seconde. */
@@ -1062,12 +1062,22 @@ export class App {
     duration: number,
     analysis: Analysis,
   ): Promise<void> {
+    // Une analyse qui arrive pendant un show doit d'abord l'arrêter. Sans ça, le
+    // deuxième morceau restait bloqué par la garde ci-dessous (`syncedMode` du
+    // show précédent) et l'écran continuait d'afficher l'ancien.
+    this.stopSyncedMode();
+    this.stopLoop();
+    this.audio.pause();
+    this.view = null;
+    this.plan = null;
+    this.debugLastPlayer = null;
     this.debugSync.phase = "SYNCING";
     this.debugSync.expectedTitle = title;
     this.debugSync.attempts = 0;
     this.debug("sync", "attente d'une lecture externe correspondante", { titre: title, artiste: artist || "—", dureeSec: Number(duration.toFixed(1)) });
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      if (!this.pendingAnalysis || this.syncedMode || this.view !== null) return;
+      // `view !== null` : un show local a été forcé entre-temps, on ne le remplace pas.
+      if (!this.pendingAnalysis || this.view !== null) return;
       this.debugSync.attempts = attempt + 1;
       try {
         const state = await fetchPlaybackPosition(title, artist, duration);
@@ -1136,12 +1146,14 @@ export class App {
   }
 
   private async startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void> {
-    // Réciproque : un show local en cours doit s'arrêter, sinon ses deux
-    // boucles de rendu se chevauchent et l'état publié devient incohérent.
+    // Un show déjà en cours (calé ou local) doit s'arrêter net : sinon son
+    // minuteur et sa boucle de rendu survivent au nouveau show.
+    this.stopSyncedMode();
     this.stopLoop();
     this.audio.pause();
     this.view = null;
     this.plan = null;
+    this.debugLastPlayer = null;
     this.stopLiveMode();
     this.closeExternalCapture();
     this.liveMode = false;
