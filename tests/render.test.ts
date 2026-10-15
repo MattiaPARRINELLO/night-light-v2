@@ -15,6 +15,7 @@ import { buildShowPlan, FAMILY_LABELS, type FamilyId } from "../src/core/show";
 import {
   beamLayers,
   beatSwing,
+  colorFlip,
   curvedBeam,
   drawFamily,
   elementEnvelope,
@@ -23,8 +24,10 @@ import {
   hazeRadiusPixels,
   type HazeLayer,
   type HazeTarget,
+  lampHue,
   PETIT_ELEMENT_BEATS,
   rowPositions,
+  sceneChord,
   softBeam,
 } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
@@ -828,6 +831,158 @@ describe("allumage et extinction des elements", () => {
     const b = elementEnvelope(frame({ t: 4 }), vide, 0, 8, 0.5);
     expect(Number.isFinite(a)).toBe(true);
     expect(Number.isFinite(b)).toBe(true);
+  });
+});
+
+describe("bascule de couleur des formes", () => {
+  const view = new TrackView(analysis());
+
+  const frame = (over: Partial<Parameters<typeof colorFlip>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene: buildShowPlan(analysis(), false).scenes[0]!,
+      palette: buildShowPlan(analysis(), false).scenes[0]!.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: 42,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof colorFlip>[0];
+
+  test("la couleur opposée est atteinte, puis quittée", () => {
+    // Sans maintien, la forme resterait toujours entre deux teintes : on ne
+    // lirait jamais franchement la complémentaire.
+    let maximum = 0;
+    let minimum = 1;
+    for (let beat = 8; beat < 40; beat += 1) {
+      for (let phase = 0; phase < 1; phase += 0.05) {
+        for (let index = 0; index < 14; index += 1) {
+          const valeur = colorFlip(frame({ beatIndex: beat, beatPhase: phase }), view, index, 6);
+          maximum = Math.max(maximum, valeur);
+          minimum = Math.min(minimum, valeur);
+        }
+      }
+    }
+    expect(maximum).toBeGreaterThan(0.99);
+    expect(minimum).toBe(0);
+  });
+
+  test("la bascule est progressive, jamais un saut", () => {
+    // Le passage à l'opposée est une rotation de la roue de couleurs : d'une
+    // image à l'autre, elle avance, elle ne saute pas.
+    const pas = 1 / (60 * (60 / 128));
+    let precedent = colorFlip(frame({ beatIndex: 8, beatPhase: 0 }), view, 0, 6);
+    for (let position = 8; position < 40; position += pas) {
+      const courant = colorFlip(frame({ beatIndex: Math.floor(position), beatPhase: position % 1 }), view, 0, 6);
+      expect(Math.abs(courant - precedent)).toBeLessThan(0.1);
+      precedent = courant;
+    }
+  });
+
+  test("une minorité de formes basculent à la fois", () => {
+    // Le fond de l'idée : quand il y a beaucoup de gobos, une ou deux formes
+    // seulement virent à la complémentaire — pas tout le cadre d'un bloc.
+    let maximum = 0;
+    let auMoinsUne = false;
+    for (let beat = 8; beat < 40; beat += 1) {
+      for (let phase = 0; phase < 1; phase += 0.05) {
+        let compte = 0;
+        for (let index = 0; index < 14; index += 1) {
+          if (colorFlip(frame({ beatIndex: beat, beatPhase: phase }), view, index, 6) > 0.35) compte += 1;
+        }
+        maximum = Math.max(maximum, compte);
+        if (compte >= 1) auMoinsUne = true;
+      }
+    }
+    expect(maximum).toBeLessThanOrEqual(5);
+    expect(auMoinsUne).toBe(true);
+  });
+});
+
+describe("accords de couleurs", () => {
+  const plan = buildShowPlan(analysis(), false);
+  const scene = plan.scenes[0]!;
+
+  const frame = (over: Partial<Parameters<typeof lampHue>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene,
+      palette: scene.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: plan.seed,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof lampHue>[0];
+
+  const ecart = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+
+  test("l'accord reste dans la gamme du morceau", () => {
+    const palette = scene.palette;
+    const accord = sceneChord(palette, scene.index, plan.seed);
+    // Une scène n'est jamais monochrome : au moins trois teintes.
+    expect(accord.length).toBeGreaterThanOrEqual(3);
+    for (const hue of accord) {
+      // Toutes les teintes dérivent de celle de la scène : jamais à plus d'un
+      // demi-cercle, sinon ce serait une autre couleur, pas la même gamme.
+      expect(ecart(hue, palette.hue)).toBeLessThanOrEqual(200);
+    }
+    // L'accent du morceau fait partie de l'accord : la palette se reconnaît.
+    expect(accord.some((hue) => ecart(hue, palette.accent) < 20)).toBe(true);
+  });
+
+  test("les lampes d'une même scène portent plusieurs teintes", () => {
+    const f = frame();
+    const hues = Array.from({ length: 15 }, (_, index) => lampHue(f, index));
+    // Aucune lampe ne répète exactement sa voisine...
+    for (let index = 0; index < hues.length - 1; index += 1) {
+      expect(ecart(hues[index]!, hues[index + 1]!)).toBeGreaterThan(3);
+    }
+    // ...et la rangée déploie au moins trois couleurs distinctes.
+    expect(new Set(hues.map((hue) => Math.round(hue / 12))).size).toBeGreaterThanOrEqual(3);
+  });
+
+  test("une scène garde ses couleurs, le morceau les renouvelle", () => {
+    // Stable à l'intérieur d'une scène, quelle que soit la position...
+    for (let index = 0; index < 8; index += 1) {
+      expect(lampHue(frame({ t: 10 }), index)).toBe(lampHue(frame({ t: 40 }), index));
+    }
+    // ...et l'accord change d'une scène à l'autre : l'univers se déploie.
+    const tirages = new Set<string>();
+    for (let index = 0; index < 24; index += 1) {
+      tirages.add(sceneChord(scene.palette, index, plan.seed).map((hue) => Math.round(hue)).join(","));
+    }
+    expect(tirages.size).toBeGreaterThanOrEqual(3);
   });
 });
 

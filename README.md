@@ -170,6 +170,7 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **portique** | une porte de lumière qui s'ouvre sur les moments forts et se referme sur les passages calmes |
 | **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |
 | **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
+| **formes projetées** | des gobos (cercle, anneau, losange, triangle) répartis dans tout le cadre ; quand elles sont nombreuses, une ou deux basculent sur la couleur opposée au lieu de se déplacer |
 | **lyres** | une rangée de têtes fines au sol, la vague traverse la rangée par décalage de phase — chacune s'incline tour à tour |
 | **rosace** | huit pétales en V répartis au tour, un hexagone et un triangle qui tournent en sens contraires |
 | **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
@@ -228,9 +229,17 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
 - chaque scène reste dans la fenêtre de l'une ou de l'autre ;
 - les **moments forts basculent sur la complémentaire** — c'est le saut de couleur qui marque
   un refrain ou un drop ;
-- les projecteurs ne sont pas monochromes : **une lampe sur deux** (projecteurs, défilé, rideau,
-  miroirs), **un coin sur deux** (tirs croisés) et la moitié du rayonnement prennent la
-  complémentaire ;
+- dès qu'une scène a plusieurs sources, ses projecteurs ne sont pas monochromes : ils se
+  répartissent sur un **accord** tiré du cercle chromatique (`lampHue`). Quatre accords
+  alternent d'une scène à l'autre — demi-complémentaire, triade, carré, hexade — et l'accent
+  du morceau remplace toujours son 180 : la scène est multicolore, mais ses couleurs viennent
+  toutes de la palette du morceau. Les lampes parcourent l'accord avec un pas qui ne retombe
+  jamais sur la voisine, donc une rangée se lit comme un dégradé d'univers, pas comme deux
+  tons alternés ;
+- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur la couleur
+  opposée** (`colorFlip`) : le passage à l'opposée est une rotation de la roue de couleurs, donc
+  progressif — c'est le déplacement remplacé par la couleur, là où un motif de plus ne se lirait
+  pas ;
 - l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
