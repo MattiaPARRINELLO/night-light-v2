@@ -143,6 +143,58 @@ export function elementEnvelope(
 }
 
 /**
+ * Bascule de couleur : la part de temps pendant laquelle une forme projetée
+ * quitte sa teinte pour la complémentaire.
+ *
+ * C'est le geste qui remplace le déplacement. Quand treize gobos tournent
+ * ensemble, en faire bouger un de plus ne se lit pas — alors que le faire
+ * changer de couleur, oui. Sur scène, c'est exactement ce que fait un
+ * projecteur qui tourne sa roue de couleurs : le motif ne bouge pas, mais
+ * l'œil est attiré. La bascule tombe sur la grille rythmique (le cycle se
+ * compte en temps forts), elle n'a lieu que sur une poignée de formes, et elle
+ * est progressive — la teinte glisse vers l'opposée et revient, au lieu de
+ * sauter.
+ *
+ * `index` décale le moment de chaque forme : sans ce décalage, tout le cadre
+ * basculerait au même instant et l'effet se lirait comme un clignotement
+ * général. `probabilite` décide, à chaque cycle, si la forme bascule : réglé
+ * bas, une ou deux formes seulement portent la complémentaire à un instant
+ * donné.
+ *
+ * Renvoie 0..1 : 0 = teinte d'origine, 1 = complémentaire.
+ */
+export function colorFlip(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  cycleBeats = 8,
+  part = 0.22,
+  probabilite = 0.55,
+): number {
+  const cycle = Math.max(1, cycleBeats);
+  const duree = clamp01(part);
+  // Décalage fixe par forme : les bascules sont réparties sur le cycle, donc
+  // une ou deux seulement sont en cours à un instant donné.
+  const decalage = hash01(index * 53 + f.seed);
+  const position =
+    view.beats.length === 0
+      ? f.t / (cycle * 0.45)
+      : (f.beatIndex + clamp01(f.beatPhase)) / cycle;
+  const phase = position + decalage;
+  const moment = Math.floor(phase);
+  const local = phase - moment;
+  // Toutes les formes ne basculent pas à chaque cycle : le tirage en désigne
+  // une minorité. Sans lui, tout le cadre virait à la complémentaire d'un bloc.
+  if (hash01(moment * 7919 + index * 131 + f.seed) > probabilite) return 0;
+  if (local >= duree) return 0;
+  const montee = duree * 0.42;
+  const descente = duree * 0.42;
+  if (local < montee) return smoothstep(0, montee, local);
+  if (local < duree - descente) return 1;
+  return 1 - smoothstep(duree - descente, duree, local);
+}
+
+/**
  * Balayage calé sur le tempo.
  *
  * La cible change à chaque pas — un temps fort par défaut, ou un groupe — et
@@ -1277,12 +1329,19 @@ function drewGobo(
  * lentement, et une sur deux prend la complémentaire. C'est l'effet « boîte de
  * nuit » : beaucoup de petits motifs qui vivent indépendamment, sans jamais
  * apparaître ni disparaître d'un coup.
+ *
+ * Quand il y en a beaucoup, le mouvement ne suffit plus à se lire : une ou deux
+ * formes basculent alors franchement sur la couleur opposée (`colorFlip`). Le
+ * déplacement devient couleur — le geste du projecteur qui tourne sa roue — et
+ * l'œil est attiré sans qu'aucun motif n'ait bougé.
  */
 const gobos: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const formes = count(f.energy > 0.55 ? 14 : 9, f.quality, f.reduced);
   const rayon = Math.min(w, h) * (0.07 + f.energy * 0.05 + f.beat * 0.02);
   const cycle = f.reduced ? 28 : f.energy > 0.55 ? 9 : 20;
+  // Les bascules vivent plus vite qu'un allumage, mais restent sur la mesure.
+  const cycleBascule = f.reduced ? 10 : f.energy > 0.55 ? 6 : 9;
 
   for (let i = 0; i < formes; i += 1) {
     const enveloppe = elementEnvelope(f, view, i, cycle, 0.55);
@@ -1293,8 +1352,14 @@ const gobos: FamilyDraw = (ctx, f, view) => {
     const taille = rayon * (0.6 + hash01(i * 3001 + f.seed) * 0.7);
     const sens = i % 2 === 0 ? 1 : -1;
     const rotation = f.t * (0.08 + hash01(i * 2311 + f.seed) * 0.2) * sens;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (hash01(i * 2711 + f.seed) - 0.5) * f.palette.spread;
-    const alpha = enveloppe * (0.08 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
+    const teinte = i % 2 === 1 ? f.palette.accent : f.palette.hue + (hash01(i * 2711 + f.seed) - 0.5) * f.palette.spread;
+    // La bascule ajoute 180° : la forme porte brièvement la couleur opposée à
+    // la sienne. Comme la teinte est un angle, le passage d'une couleur à
+    // l'autre est une rotation continue de la roue — jamais un saut.
+    const bascule = colorFlip(f, view, i, cycleBascule);
+    const hue = teinte + 180 * bascule;
+    // Un léger regain accompagne la bascule : la couleur opposée doit se voir.
+    const alpha = enveloppe * (0.08 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha * (1 + 0.55 * bascule);
     if (alpha <= 0.004) continue;
     drewGobo(
       ctx,

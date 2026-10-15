@@ -15,6 +15,7 @@ import { buildShowPlan, type FamilyId } from "../src/core/show";
 import {
   beamLayers,
   beatSwing,
+  colorFlip,
   curvedBeam,
   drawFamily,
   elementEnvelope,
@@ -840,6 +841,86 @@ describe("allumage et extinction des elements", () => {
     const b = elementEnvelope(frame({ t: 4 }), vide, 0, 8, 0.5);
     expect(Number.isFinite(a)).toBe(true);
     expect(Number.isFinite(b)).toBe(true);
+  });
+});
+
+describe("bascule de couleur des formes", () => {
+  const view = new TrackView(analysis());
+
+  const frame = (over: Partial<Parameters<typeof colorFlip>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene: buildShowPlan(analysis(), false).scenes[0]!,
+      palette: buildShowPlan(analysis(), false).scenes[0]!.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: 42,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof colorFlip>[0];
+
+  test("la couleur opposée est atteinte, puis quittée", () => {
+    // Sans maintien, la forme resterait toujours entre deux teintes : on ne
+    // lirait jamais franchement la complémentaire.
+    let maximum = 0;
+    let minimum = 1;
+    for (let beat = 8; beat < 40; beat += 1) {
+      for (let phase = 0; phase < 1; phase += 0.05) {
+        for (let index = 0; index < 14; index += 1) {
+          const valeur = colorFlip(frame({ beatIndex: beat, beatPhase: phase }), view, index, 6);
+          maximum = Math.max(maximum, valeur);
+          minimum = Math.min(minimum, valeur);
+        }
+      }
+    }
+    expect(maximum).toBeGreaterThan(0.99);
+    expect(minimum).toBe(0);
+  });
+
+  test("la bascule est progressive, jamais un saut", () => {
+    // Le passage à l'opposée est une rotation de la roue de couleurs : d'une
+    // image à l'autre, elle avance, elle ne saute pas.
+    const pas = 1 / (60 * (60 / 128));
+    let precedent = colorFlip(frame({ beatIndex: 8, beatPhase: 0 }), view, 0, 6);
+    for (let position = 8; position < 40; position += pas) {
+      const courant = colorFlip(frame({ beatIndex: Math.floor(position), beatPhase: position % 1 }), view, 0, 6);
+      expect(Math.abs(courant - precedent)).toBeLessThan(0.1);
+      precedent = courant;
+    }
+  });
+
+  test("une minorité de formes basculent à la fois", () => {
+    // Le fond de l'idée : quand il y a beaucoup de gobos, une ou deux formes
+    // seulement virent à la complémentaire — pas tout le cadre d'un bloc.
+    let maximum = 0;
+    let auMoinsUne = false;
+    for (let beat = 8; beat < 40; beat += 1) {
+      for (let phase = 0; phase < 1; phase += 0.05) {
+        let compte = 0;
+        for (let index = 0; index < 14; index += 1) {
+          if (colorFlip(frame({ beatIndex: beat, beatPhase: phase }), view, index, 6) > 0.35) compte += 1;
+        }
+        maximum = Math.max(maximum, compte);
+        if (compte >= 1) auMoinsUne = true;
+      }
+    }
+    expect(maximum).toBeLessThanOrEqual(5);
+    expect(auMoinsUne).toBe(true);
   });
 });
 

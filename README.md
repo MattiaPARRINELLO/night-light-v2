@@ -148,6 +148,7 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **portique** | une porte de lumière qui s'ouvre sur les moments forts et se referme sur les passages calmes |
 | **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |
 | **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
+| **formes projetées** | des gobos (cercle, anneau, losange, triangle) répartis dans tout le cadre ; quand elles sont nombreuses, une ou deux basculent sur la couleur opposée au lieu de se déplacer |
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -206,6 +207,10 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
 - les projecteurs ne sont pas monochromes : **une lampe sur deux** (projecteurs, défilé, rideau,
   miroirs), **un coin sur deux** (tirs croisés) et la moitié du rayonnement prennent la
   complémentaire ;
+- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur la couleur
+  opposée** (`colorFlip`) : le passage à l'opposée est une rotation de la roue de couleurs, donc
+  progressif — c'est le déplacement remplacé par la couleur, là où un motif de plus ne se lirait
+  pas ;
 - l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
