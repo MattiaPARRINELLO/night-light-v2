@@ -20,7 +20,6 @@ import { TrackView } from "../core/view";
 import {
   estimatePlayerPositionMs,
   normalizePlaybackText,
-  showDriftMs,
   syncCorrection,
   syncRamp,
   syncRampDuration,
@@ -1223,9 +1222,28 @@ export class App {
 
   private startSyncedLoop(): void {
     if (this.syncedRaf !== 0) return;
-    const loop = (): void => {
+    let lastTs = 0;
+    const loop = (timestamp: number): void => {
       this.syncedRaf = requestAnimationFrame(loop);
       if (!this.syncedMode || this.syncedView === null || this.syncedPlan === null) return;
+      // Sans ce suivi, la qualité restait au maximum pendant tout le show : une
+      // scène chargée (wash complet plus une famille à faisceaux) dessinait tout
+      // en pleine résolution avec du flou partout, et l'image saccadait.
+      if (lastTs !== 0) {
+        const delta = timestamp - lastTs;
+        if (delta > 0) {
+          // Moyenne rapide : à cinq images par seconde, une moyenne lente
+          // mettrait dix secondes à voir que la machine souffre.
+          this.fps += (1000 / delta - this.fps) * 0.2;
+          this.updateQuality();
+          const band = this.quality < 0.5;
+          if (band !== this.qualityBand) {
+            this.qualityBand = band;
+            this.resize();
+          }
+        }
+      }
+      lastTs = timestamp;
       this.renderSynced();
     };
     this.syncedRaf = requestAnimationFrame(loop);
@@ -1334,11 +1352,20 @@ export class App {
         capturedAtMs: state.capturedAtMs,
       };
       this.debugLastPlayer = player;
+      // La requête de position a pris quelques centaines de millisecondes :
+      // l'instant d'`nowMs` est périmé pour comparer les deux positions, et
+      // replier un rattrapage avec un horodatage périmé faisait reculer le show
+      // de ce qui avait déjà été rattrapé.
+      const maintenant = Date.now();
       // Position réelle du lecteur, puis cible du show : le réglage de latence
       // place volontairement le show en avance sur le son (Bluetooth, HDMI…).
-      const playerMs = estimatePlayerPositionMs(player, nowMs);
+      const playerMs = estimatePlayerPositionMs(player, maintenant);
       const targetShowMs = playerMs + this.syncedLatencyMs;
-      const drift = showDriftMs(player, nowMs, this.syncedStartMs, this.syncedStartedAtEpoch, this.syncedLatencyMs);
+      // Contre le temps réellement dessiné, rattrapage en cours compris : sans
+      // ça, une correction en cours serait comptée comme une dérive à corriger,
+      // et les deux corrections se combattraient.
+      const showMs = this.showTimeMs(maintenant);
+      const drift = targetShowMs - showMs;
       // L'écart mesuré avant correction sert à décider, pas à s'afficher : ce qui
       // compte pour l'utilisateur est l'écart résiduel une fois recadré.
       const driftAvantCorrection = drift;
@@ -1368,7 +1395,7 @@ export class App {
       if (correction === "hard") {
         this.debugSync.match = "écart ≥ 1,5 s · recalage direct";
         this.syncedStartMs = targetShowMs;
-        this.syncedStartedAtEpoch = nowMs;
+        this.syncedStartedAtEpoch = maintenant;
         // Recalage volontaire : le rattrapage en cours est écrasé.
         this.syncDriftMs = 0;
         this.debug("sync", "écart important · recalage direct du show", {
@@ -1381,9 +1408,9 @@ export class App {
         // différente au lieu de sauter à la nouvelle position. On intègre
         // d'abord la part déjà rattrapée, sinon ce nouveau départ ferait
         // reculer le show.
-        this.foldSyncCorrection(nowMs);
+        this.foldSyncCorrection(maintenant);
         this.syncDriftMs = drift;
-        this.syncCorrectionStart = nowMs;
+        this.syncCorrectionStart = maintenant;
         this.syncCorrectionDur = syncRampDuration(drift);
         this.debugSync.match = "écart > 150 ms · rattrapage progressif";
         this.debug("sync", "dérive détectée · rattrapage progressif", {
@@ -1409,15 +1436,14 @@ export class App {
 
       // Affichage de l'état APRÈS correction : l'écart résiduel est la seule
       // valeur qui décrit ce que voit l'utilisateur.
-      this.debugSync.playerMs = estimatePlayerPositionMs(player, Date.now());
-      this.debugSync.showMs = this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch);
-      this.debugSync.driftMs = showDriftMs(
-        player,
-        Date.now(),
-        this.syncedStartMs,
-        this.syncedStartedAtEpoch,
-        this.syncedLatencyMs,
-      );
+      // Affichage de l'état APRÈS correction : c'est la seule valeur qui décrit
+      // ce que voit l'utilisateur, rattrapage en cours compris.
+      const affichage = Date.now();
+      const lecteurAffiche = estimatePlayerPositionMs(player, affichage);
+      const showAffiche = this.showTimeMs(affichage);
+      this.debugSync.playerMs = lecteurAffiche;
+      this.debugSync.showMs = showAffiche;
+      this.debugSync.driftMs = lecteurAffiche + this.syncedLatencyMs - showAffiche;
     } catch (error) {
       this.debugSync.phase = "LOST";
       this.debugSync.match = "position de lecture injoignable";
@@ -1882,6 +1908,14 @@ export class App {
   private updateQuality(): void {
     const wanted = quantizeQuality(this.fps / 52);
     if (wanted === this.quality) {
+      this.qualityHold = 0;
+      return;
+    }
+    // Urgence : sous trente images par seconde, on descend tout de suite. Le
+    // délai de garde évite d'osciller entre deux paliers au repos, mais à cinq
+    // images par seconde il représenterait huit secondes de saccade.
+    if (wanted < this.quality && this.fps < 30) {
+      this.quality = wanted;
       this.qualityHold = 0;
       return;
     }

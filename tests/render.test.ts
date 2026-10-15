@@ -49,6 +49,14 @@ function fakeContext() {
     // peut pas vérifier qu'un élément est réellement visible.
     _alpha: 1,
     _fill: "",
+    _filter: "none",
+    get filter() {
+      return this._filter;
+    },
+    set filter(value: string) {
+      this._filter = value;
+      operations.push(`filter:${value}`);
+    },
     get fillStyle() {
       return this._fill;
     },
@@ -494,6 +502,7 @@ function renderFamily(famille: FamilyId): string[] {
       reduced: false,
       quality: 1,
       seed: plan.seed,
+      blur: { left: 0 },
       frame: 720,
     },
     view,
@@ -602,6 +611,7 @@ describe("mouvements cales sur le tempo", () => {
       reduced: false,
       quality: 1,
       seed: 42,
+      blur: { left: 0 },
       frame: 0,
       ...over,
     }) as Parameters<typeof beatSwing>[0];
@@ -717,6 +727,7 @@ describe("allumage et extinction des elements", () => {
       reduced: false,
       quality: 1,
       seed: 42,
+      blur: { left: 0 },
       frame: 0,
       ...over,
     }) as Parameters<typeof elementEnvelope>[0];
@@ -831,9 +842,27 @@ describe("faisceaux adoucis", () => {
     expect(beamBlurPixels(40, 1, true)).toBe(0);
     expect(beamBlurPixels(40, 0.4, false)).toBe(0);
     expect(beamBlurPixels(40, 0.9, false)).toBeGreaterThan(beamBlurPixels(40, 0.6, false));
-    expect(beamBlurPixels(200, 0.95, false)).toBeLessThanOrEqual(16);
+    // Un faisceau large n'est pas flouté : le flou coûterait une surface énorme,
+    // et c'est la superposition des couches qui adoucit son bord. Sans ça, un
+    // wash complet de seize projecteurs faisait saccader l'image.
+    expect(beamBlurPixels(200, 0.95, false)).toBe(0);
+    expect(beamBlurPixels(90, 0.95, false)).toBe(0);
+    expect(beamBlurPixels(48, 0.95, false)).toBeGreaterThan(0);
     // Un trait fin garde un minimum de diffusion, sinon il reste un fil net.
     expect(beamBlurPixels(2, 0.9, false)).toBeGreaterThanOrEqual(2.5);
+  });
+
+  test("le nombre de flous est budgété par image", () => {
+    // Le flou est ce qui coûte le plus cher : une scène qui allume vingt
+    // projecteurs d'un coup en floutait vingt, et l'image saccadait (mesuré :
+    // 4 images par seconde au lieu de 36). Le budget borne ce coût.
+    const flous = (temps: number) =>
+      renderAt(temps, analysis(), DEFAULT_SETTINGS, 1).filter((operation) => operation.startsWith("filter:blur(")).length;
+
+    // `beams` dessine jusqu'à vingt faisceaux : huit flous au maximum.
+    const compte = flous(12.02);
+    expect(compte).toBeGreaterThan(0);
+    expect(compte).toBeLessThanOrEqual(8);
   });
 
   test("un faisceau souple dessine plusieurs passages", () => {

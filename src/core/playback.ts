@@ -74,14 +74,13 @@ export function syncCorrection(
 /**
  * Durée d'un rattrapage progressif, en millisecondes.
  *
- * Choisie pour que la vitesse du show ne change jamais de plus de 50 % pendant
- * la correction : sur 400 ms, un écart de 200 ms demande au show de courir 50 %
- * plus vite, ce qui ne se voit pas. Un écart plus grand se rattrape donc plus
- * lentement — mais il n'y a aucune raison d'accepter que le spectacle « glisse »
- * à 1,5×, même une seconde.
+ * Choisie pour que la vitesse du show ne change jamais d'un tiers pendant la
+ * correction : un écart de 200 ms se rattrape en 600 ms, soit 1,33× — invisible.
+ * Un écart plus grand se rattrape plus lentement, et il n'y a aucune raison
+ * d'accepter que le spectacle « glisse », même une seconde.
  */
 export function syncRampDuration(driftMs: number): number {
-  return Math.max(300, Math.min(3000, Math.abs(driftMs) * 2.5));
+  return Math.max(350, Math.min(3200, Math.abs(driftMs) * 3));
 }
 
 /**

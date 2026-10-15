@@ -448,6 +448,8 @@ export function renderFrame(input: RenderInput): void {
     reduced,
     quality,
     seed: plan.seed,
+    // Huit flous par image au maximum : au-delà, le coût dépasse le gain visuel.
+    blur: { left: quality >= 0.85 ? 8 : quality >= 0.55 ? 4 : 0 },
     frame,
   };
 

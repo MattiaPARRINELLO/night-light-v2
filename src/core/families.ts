@@ -37,6 +37,15 @@ export interface FrameState {
   /** Qualité adaptative 0..1 : pilote le nombre d'éléments dessinés. */
   quality: number;
   seed: number;
+  /**
+   * Crédits de flou pour cette image.
+   *
+   * Un flou coûte cher — et beaucoup plus cher qu'un remplissage — donc on les
+   * compte : une scène qui allume vingt projecteurs d'un coup en floute huit et
+   * adoucit les autres par superposition de couches. Sans ce budget, la scène
+   * la plus chargée était aussi la plus lente, et l'image saccadait.
+   */
+  blur: { left: number };
   /** Numéro d'image. */
   frame: number;
 }
@@ -192,6 +201,11 @@ export function beamLayers(
  */
 export function beamBlurPixels(width: number, quality: number, reduced: boolean): number {
   if (reduced || quality < 0.55) return 0;
+  // Au-delà de cette largeur, on ne floute plus : le rayon étant proportionnel à
+  // la largeur, un faisceau de 80 px demanderait un flou qui couvre une immense
+  // surface, et c'est la superposition des couches qui adoucit le bord. C'est ce
+  // qui rend un wash complet (seize projecteurs) tenable.
+  if (width > 48) return 0;
   const part = quality >= 0.85 ? 0.34 : 0.2;
   return Math.min(Math.max(2.5, width * part), quality >= 0.85 ? 16 : 9);
 }
@@ -217,6 +231,8 @@ export interface BeamSpec {
   reduced?: boolean;
   /** Force un nombre de couches, pour les tests. */
   layers?: number;
+  /** Crédits de flou de l'image courante (voir FrameState.blur). */
+  flou?: { left: number };
   /** Largeur du pied en fraction de `width` : une lampe ponctuelle vaut ~0. */
   footRatio?: number;
   /** Teinte de fin de course (par défaut, la même teinte décalée). */
@@ -243,8 +259,11 @@ export function softBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec): void {
   const reduced = spec.reduced ?? false;
   const flou = beamBlurPixels(width, quality, reduced);
   // Le filtre n'existe pas partout (et pas dans le contexte de test) : on ne
-  // l'active que s'il est réellement disponible.
-  const flouter = flou > 0 && "filter" in ctx;
+  // l'active que s'il est réellement disponible, et seulement s'il reste du
+  // crédit pour cette image.
+  const credit = spec.flou;
+  const flouter = flou > 0 && "filter" in ctx && (credit === undefined || credit.left > 0);
+  if (flouter && credit !== undefined) credit.left -= 1;
   const couches = spec.layers !== undefined
     ? beamLayers(width, alpha, lightness, spec.layers, spec.footRatio ?? 0.32)
     : flouter
@@ -323,6 +342,7 @@ const beams: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
     });
   }
 
@@ -705,6 +725,7 @@ const spots: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.04,
       tailHue: shiftHue(hue, 24),
     });
@@ -771,6 +792,7 @@ const mirror: FamilyDraw = (ctx, f, view) => {
         alpha,
         quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
         footRatio: 0.03,
         tailHue: shiftHue(hue, 14),
       });
@@ -826,6 +848,7 @@ const parade: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.04,
     });
 
@@ -875,6 +898,7 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.03,
       tailHue: shiftHue(hue, 20),
     });
@@ -928,6 +952,7 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
       // pour ne pas payer seize flous pleine taille à chaque impact.
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       layers: f.reduced ? 1 : 2,
       footRatio: 0.05,
       tailHue: shiftHue(hue, 16),
@@ -1019,6 +1044,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
       alpha: intensite,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.03,
       tailHue: shiftHue(hue, 16),
     });
@@ -1077,6 +1103,7 @@ const burst: FamilyDraw = (ctx, f, view) => {
       alpha: intensite,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.03,
     });
   }
@@ -1236,6 +1263,7 @@ const pendule: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.05,
     });
     // La tête, posée sur le portique.
@@ -1292,6 +1320,7 @@ const couronne: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * allumage,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.04,
     });
     ctx.fillStyle = paint(hue, 0.95, 0.86, alpha * allumage * 1.5);
@@ -1337,6 +1366,7 @@ const pluie: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * allumage,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.5,
     });
   }
@@ -1382,6 +1412,7 @@ const portique: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.04,
     });
   }
@@ -1428,6 +1459,7 @@ const etoile: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * pulsation,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.03,
     });
   }
@@ -1477,6 +1509,7 @@ const vortex: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
+      flou: f.blur,
       footRatio: 0.05,
     });
   }

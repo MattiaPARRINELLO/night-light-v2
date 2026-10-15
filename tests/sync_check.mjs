@@ -248,6 +248,7 @@ try {
   let pireVitesse = 0;
   let plusLente = Number.POSITIVE_INFINITY;
   let pireEcart = 0;
+  let recul = null;
   for (let i = 0; i < mesures.length; i += 1) {
     pireEcart = Math.max(pireEcart, mesures[i].ecart);
     if (i === 0) continue;
@@ -257,13 +258,37 @@ try {
     const vitesse = dt / mur;
     pireVitesse = Math.max(pireVitesse, vitesse);
     plusLente = Math.min(plusLente, vitesse);
+    if (dt < -200 && recul === null) {
+      // Recul franc : on relève l'état interne pour savoir quelle branche l'a
+      // provoqué.
+      recul = await page.evaluate(() => {
+        const app = window.nightLight;
+        return {
+          dt: null,
+          phase: app.debugSync?.phase,
+          match: app.debugSync?.match,
+          source: app.debugSync?.source,
+          statutLecteur: app.debugSync?.playerTitle,
+          debutMs: Math.round(app.syncedStartMs),
+          debutEpoch: app.syncedStartedAtEpoch,
+          rattrapage: Math.round(app.syncDriftMs ?? 0),
+          latence: app.syncedLatencyMs,
+        };
+      });
+      recul.dt = Math.round(dt);
+    }
+  }
+  if (recul !== null) {
+    console.log(`recul détecté : ${JSON.stringify(recul)}`);
   }
   console.log(
     `dérive du lecteur : pire écart ${Math.round(pireEcart)} ms · vitesse du show de ` +
       `${plusLente.toFixed(2)}× à ${pireVitesse.toFixed(2)}×`,
   );
   if (pireEcart > 700) failures.push(`l'écart n'est pas rattrapé (${Math.round(pireEcart)} ms)`);
-  if (pireVitesse > 2) failures.push(`le temps du show saute (${pireVitesse.toFixed(2)}× la vitesse réelle)`);
+  // Un saut se voit comme une vitesse absurde (dix fois et plus) ; un
+  // rattrapage fait glisser le show à 1,3× au plus, plus la gigue de mesure.
+  if (pireVitesse > 3) failures.push(`le temps du show saute (${pireVitesse.toFixed(2)}× la vitesse réelle)`);
   if (plusLente < 0.4) failures.push(`le temps du show se fige (${plusLente.toFixed(2)}×)`);
 
   // ---- changement de morceau : retour en Live

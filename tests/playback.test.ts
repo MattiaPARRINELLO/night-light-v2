@@ -81,10 +81,11 @@ describe("rattrapage progressif de la synchronisation", () => {
   it("la durée reste bornée pour que la vitesse du show reste crédible", () => {
     // Un petit écart se rattrape sans qu'on le voie ; un gros écart met plus
     // longtemps, mais jamais au point de faire « glisser » le spectacle.
-    expect(syncRampDuration(40)).toBe(300);
-    expect(syncRampDuration(300)).toBe(750);
-    expect(syncRampDuration(1400)).toBe(3000);
-    // La vitesse demandée au show pendant le rattrapage reste sous 50 %.
+    expect(syncRampDuration(40)).toBe(350);
+    expect(syncRampDuration(300)).toBe(900);
+    expect(syncRampDuration(1400)).toBe(3200);
+    // La vitesse demandée au show pendant le rattrapage reste sous 50 % : un
+    // écart de 1500 ms met 3,2 s à se rattraper, jamais une glissade brutale.
     for (const ecart of [160, 300, 600, 1200, 1499]) {
       expect(Math.abs(ecart) / syncRampDuration(ecart)).toBeLessThanOrEqual(0.5);
     }

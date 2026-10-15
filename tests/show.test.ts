@@ -187,6 +187,8 @@ describe("flashs", () => {
       seed: 1,
       frame: 0,
       ...overrides,
+      // Après le spread : le budget de flou doit toujours être défini.
+      blur: overrides.blur ?? { left: 0 },
     };
   }
 
