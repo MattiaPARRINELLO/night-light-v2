@@ -369,13 +369,6 @@ input[type="range"]::-moz-range-thumb {
 
 .drop-shell.is-hidden { transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none; }
 
-.control-toggle {
-  position: fixed;
-  right: 12px;
-  bottom: 12px;
-  z-index: 30;
-}
-
 
 /* ---------------------------------------------------------------- analyse compact */
 #screen-analysis {
@@ -432,9 +425,6 @@ body.kiosk #screen-error,
 body.kiosk #screen-show,
 body.kiosk #hud,
 body.kiosk .notice-list,
-/* Le bouton « Afficher panneau » est créé par le script et vit hors des écrans :
-   sans cette règle, il restait seul au milieu d'un show censé être nu. */
-body.kiosk .control-toggle,
 body.kiosk #scrim {
   display: none !important;
 }

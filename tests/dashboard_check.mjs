@@ -187,18 +187,20 @@ try {
   const kiosk = await show.evaluate(() => document.body.classList.contains("kiosk"));
   if (!kiosk) failures.push("l'écran de show n'est pas passé en kiosk");
 
-  // Aucune interface ne doit subsister : on force l'apparition du bouton
-  // « Afficher panneau » (celui qui traînait au milieu du show) puis on relève
-  // tout ce qui reste réellement peint à l'écran.
-  await show.evaluate(() => {
+  // Le bouton « Afficher panneau » a été supprimé (il ajoutait un overlay sur
+  // l'écran de show) : on vérifie qu'il n'existe plus du tout, puis on relève
+  // tout ce qui reste réellement peint à l'écran en mode kiosk.
+  const boutonSupprime = await show.evaluate(() => {
+    const restes = document.querySelectorAll("#btn-show-dock, .control-toggle");
+    // On masque le dock : sans le bouton supprimé, rien ne doit réapparaître.
     document.getElementById("dock-panel")?.classList.add("is-hidden");
-    const bouton = document.getElementById("btn-show-dock");
-    if (bouton !== null) bouton.hidden = false;
+    return restes.length;
   });
   await show.waitForTimeout(500);
+  if (boutonSupprime > 0) failures.push(`le bouton « Afficher panneau » existe encore (${boutonSupprime})`);
   const residuel = await show.evaluate(() => {
     const visibles = [];
-    for (const node of document.querySelectorAll("button, input, select, aside, main, .panel, .control-toggle, .hud")) {
+    for (const node of document.querySelectorAll("button, input, select, aside, main, .panel, .hud")) {
       if (node.id === "stage" || node.id === "live-stage" || node.id === "debug-overlay") continue;
       let cache = false;
       for (let current = node; current !== null; current = current.parentElement) {

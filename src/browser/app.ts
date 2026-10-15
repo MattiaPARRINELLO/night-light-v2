@@ -201,7 +201,6 @@ export class App {
     this.bindDrop();
     this.bindResolve();
     this.bindLiveCapture();
-    this.bindDockToggle();
     this.bindLatencyControls();
     showScreen("drop");
     void this.startLiveMode();
@@ -776,7 +775,6 @@ export class App {
     this.stopSyncedMode();
     this.liveMode = true;
     this.debug("live", "retour au mode live");
-    this.bindDockToggle();
     this.bindLatencyControls();
     void this.startLiveMode();
     el<HTMLButtonElement>("btn-cancel-analysis").hidden = false;
@@ -1077,28 +1075,6 @@ export class App {
     link.publishState(state);
   }
 
-  private bindDockToggle(): void {
-    const dock = document.getElementById("dock-panel");
-    if (dock === null) return;
-    const hide = document.getElementById("btn-hide-dock");
-    // Ce bouton vit hors des écrans (donc hors du mode kiosk) : c'est
-    // `body.kiosk .control-toggle` qui le masque quand un dashboard pilote.
-    const show = document.createElement("button");
-    show.id = "btn-show-dock";
-    show.type = "button";
-    show.className = "btn btn-ghost control-toggle";
-    show.textContent = "Afficher panneau";
-    show.hidden = true;
-    document.body.append(show);
-    hide?.addEventListener("click", () => {
-      dock.classList.add("is-hidden");
-      show.hidden = false;
-    });
-    show.addEventListener("click", () => {
-      dock.classList.remove("is-hidden");
-      show.hidden = true;
-    });
-  }
 
 
   private async tryAutoSynced(
