@@ -132,6 +132,23 @@ const BEAT_DRIVE_MAX_BUILDS = 2;
 const BEAT_DRIVE_WEIGHT = 0.6;
 
 /**
+ * Plancher visuel de l'énergie.
+ *
+ * L'analyse normalise l'énergie en échelle logarithmique (le 10e centile tombe
+ * à 0), ce qui écrase les couplets : un passage audible se retrouve à 0,05, et
+ * toutes les familles — dont l'alpha vaut `0,05 + 0,32 × énergie` — deviennent
+ * invisibles. L'écran est noir en pleine musique. On garde la dynamique (un
+ * couplet reste plus calme qu'un refrain) mais on pose un plancher, pour que le
+ * show ne s'éteigne jamais.
+ */
+export const ENERGY_FLOOR = 0.26;
+
+/** Élément réellement dessiné : jamais sous le plancher visuel. */
+export function visibleEnergy(energy: number): number {
+  return Math.max(ENERGY_FLOOR, clamp01(energy));
+}
+
+/**
  * Force de l'évènement musical à l'instant `t` : 0 quand rien ne se passe, 1 sur
  * un kick franc dans un passage soutenu.
  *
@@ -303,8 +320,7 @@ export function renderFrame(input: RenderInput): void {
   const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
   const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
   const variation = reduced ? 0 : variationStrength(scene, t);
-  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
-  const palette: Palette = {
+  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);  const palette: Palette = {
     name: scene.palette.name,
     hue: sceneHue(scene, t, drop, variation, reduced),
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
@@ -319,7 +335,7 @@ export function renderFrame(input: RenderInput): void {
     dpr,
     scene,
     palette,
-    energy: liveAudio !== undefined ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3) : view.energyAt(t),
+    energy: liveAudio !== undefined ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3) : visibleEnergy(view.energyAt(t)),
     bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
     mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
     high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),

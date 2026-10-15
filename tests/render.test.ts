@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { beatDrive, beatStrength, flashAdmitted, renderFrame, sceneHue } from "../src/core/render";
+import { beatDrive, beatStrength, ENERGY_FLOOR, flashAdmitted, renderFrame, sceneHue, visibleEnergy } from "../src/core/render";
 import { buildShowPlan } from "../src/core/show";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
@@ -19,14 +19,14 @@ function fakeContext() {
   };
   const ctx = {
     canvas: { width: 0, height: 0 },
-    globalAlpha: 1,
     globalCompositeOperation: "source-over",
     lineWidth: 1,
     lineCap: "butt",
     lineJoin: "miter",
     strokeStyle: "",
-    // Le style est enregistré à l'affectation : sans ça, impossible de
-    // distinguer un flash blanc d'un remplissage plein écran d'une famille.
+    // Les styles et l'alpha sont enregistrés à l'affectation : sans ça, on ne
+    // peut pas vérifier qu'un élément est réellement visible.
+    _alpha: 1,
     _fill: "",
     get fillStyle() {
       return this._fill;
@@ -34,6 +34,13 @@ function fakeContext() {
     set fillStyle(value: string) {
       this._fill = value;
       operations.push(`fillStyle:${value}`);
+    },
+    get globalAlpha() {
+      return this._alpha;
+    },
+    set globalAlpha(value: number) {
+      this._alpha = value;
+      operations.push(`alpha:${Number(value.toFixed(4))}`);
     },
     setTransform: () => operations.push("setTransform"),
     clearRect: () => operations.push("clearRect"),
@@ -395,6 +402,68 @@ describe("moderation des flashs", () => {
       renderAt(8.02, analysis({ builds })).filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
     const sansMontee = flashs([]);
     expect(sansMontee).toBeLessThanOrEqual(3); // fond + flash éventuel + vignette
+  });
+});
+
+describe("plancher visuel de l'energie", () => {
+  /** Moyenne des alpha réellement posés pendant une image. */
+  function alphaMoyen(time: number, data: Analysis): number {
+    const trace = renderAt(time, data);
+    const alphas: number[] = [];
+    for (const operation of trace) {
+      const match = /^alpha:([\d.]+)$/.exec(operation);
+      if (match !== null) alphas.push(Number(match[1]));
+    }
+    return alphas.reduce((total, value) => total + value, 0) / Math.max(alphas.length, 1);
+  }
+
+  test("un couplet audible reste visible", () => {
+    // Énergie écrasée par la normalisation logarithmique : c'est exactement le
+    // cas d'un couplet, et sans plancher l'écran est noir en pleine musique.
+    const calme = (energie: number) =>
+      analysis({
+        energy: [
+          [0, energie],
+          [30, energie],
+          [60, energie],
+        ],
+        bass: [[0, 0.4], [60, 0.4]],
+        mid: [[0, 0.4], [60, 0.4]],
+        high: [[0, 0.4], [60, 0.4]],
+      });
+
+    // Tout ce qui est sous le plancher donne la même image : le plancher agit.
+    expect(alphaMoyen(42.02, calme(0.02))).toBeCloseTo(alphaMoyen(42.02, calme(0.05)), 6);
+
+    // Et cette image n'est pas noire : sans plancher, l'alpha des familles
+    // vaudrait `0,05 + 0,32 × 0,05` soit ~0,066, contre ~0,13 avec le plancher.
+    const moyen = alphaMoyen(42.02, calme(0.05));
+    expect(moyen).toBeGreaterThan(0.09);
+    // Un refrain reste nettement plus lumineux qu'un couplet : les termes fixes
+    // des alpha (fond, poussière) amortissent le rapport, mais la dynamique est
+    // bien là — 0,95 d'énergie contre un plancher à 0,26.
+    expect(alphaMoyen(42.02, analysis({ energy: [[0, 0.95], [30, 0.95], [60, 0.95]] }))).toBeGreaterThan(moyen * 1.4);
+  });
+
+  test("le plancher n'ecrase pas la dynamique", () => {
+    const fort = analysis({ energy: [[0, 0.95], [30, 0.95], [60, 0.95]] });
+    const calme = analysis({
+      energy: [[0, 0.05], [30, 0.05], [60, 0.05]],
+      bass: [[0, 0.4], [60, 0.4]],
+      mid: [[0, 0.4], [60, 0.4]],
+      high: [[0, 0.4], [60, 0.4]],
+    });
+    const moyenFort = alphaMoyen(42.02, fort);
+    const moyenCalme = alphaMoyen(42.02, calme);
+    // Un refrain reste nettement plus lumineux qu'un couplet.
+    expect(moyenFort).toBeGreaterThan(moyenCalme * 1.4);
+  });
+
+  test("visibleEnergy applique le plancher sans dépasser 1", () => {
+    expect(visibleEnergy(0)).toBe(ENERGY_FLOOR);
+    expect(visibleEnergy(0.05)).toBe(ENERGY_FLOOR);
+    expect(visibleEnergy(0.6)).toBe(0.6);
+    expect(visibleEnergy(2)).toBe(1);
   });
 });
 

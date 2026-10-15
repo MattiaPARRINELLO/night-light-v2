@@ -355,8 +355,20 @@ Deux conséquences, et un réglage :
   drop et dosé par l'énergie locale. Un morceau dynamique ne voit rien changer, un morceau plat
   respire au rythme du beat.
 
-### Modération des flashs
+### Pourquoi le show ne s'éteint jamais
 
+L'analyse normalise l'énergie en échelle logarithmique — le 10e centile tombe à 0
+— ce qui écrase les couplets. Un passage audible se retrouvait à 0,05, et comme
+l'alpha de chaque famille vaut `0,05 + 0,32 × énergie`, l'écran devenait **noir en
+pleine musique**.
+
+Le rendu pose donc un plancher visuel (`ENERGY_FLOOR = 0.26`, `visibleEnergy`)
+exclusivement sur ce qu'il dessine, jamais sur les données d'analyse : un couplet
+reste plus calme qu'un refrain (0,26 contre 0,95 d'énergie) mais rien ne
+disparaît. Les gardes de montées, de sections et de drops continuent de voir
+l'énergie réelle.
+
+### Modération des flashs
 Trop de flashs fatiguent une salle autant qu'un écran. Deux gardes, toutes deux des fonctions
 pures du temps musical (donc déterministes : après une pause ou un saut, la même image sort) :
 
