@@ -35,10 +35,16 @@ def test_position_avance_avec_le_temps(fake: FakePlayer) -> None:
     assert state.title == "Neon Skyline"
     assert state.duration_ms == 12_000
 
+    # On mesure le temps réellement écoulé : sous charge, une machine lente
+    # allonge l'appel à `playerctl` et la position avance d'autant.
+    debut = time.monotonic()
     time.sleep(0.5)
     later = get_playback_state(title="Neon Skyline", duration_sec=12.0)
+    ecoule_ms = (time.monotonic() - debut) * 1000
     avance = later.position_ms - state.position_ms
-    assert 400 <= avance <= 700, f"avance inattendue : {avance} ms"
+    assert ecoule_ms - 250 <= avance <= ecoule_ms + 400, (
+        f"avance {avance} ms pour {ecoule_ms:.0f} ms écoulés"
+    )
 
 
 def test_pause_fige_la_position(fake: FakePlayer) -> None:
