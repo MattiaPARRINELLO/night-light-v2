@@ -14,7 +14,9 @@ export type FamilyId =
   | "spots"
   | "mirror"
   | "parade"
-  | "crossfire";
+  | "crossfire"
+  | "curtain"
+  | "burst";
 
 export interface Scene {
   index: number;
@@ -85,6 +87,8 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   mirror: "miroirs",
   parade: "défilé",
   crossfire: "tirs croisés",
+  curtain: "rideau de lumière",
+  burst: "rayonnement",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -108,6 +112,8 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "mirror",
   "parade",
   "crossfire",
+  "curtain",
+  "burst",
 ];
 const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -119,6 +125,8 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "mirror",
   "parade",
   "crossfire",
+  "curtain",
+  "burst",
 ];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { beatDrive, beatStrength, ENERGY_FLOOR, flashAdmitted, renderFrame, sceneHue, visibleEnergy } from "../src/core/render";
-import { buildShowPlan } from "../src/core/show";
+import { buildShowPlan, type FamilyId } from "../src/core/show";
+import { drawFamily, rowPositions } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -464,6 +465,76 @@ describe("plancher visuel de l'energie", () => {
     expect(visibleEnergy(0.05)).toBe(ENERGY_FLOOR);
     expect(visibleEnergy(0.6)).toBe(0.6);
     expect(visibleEnergy(2)).toBe(1);
+  });
+});
+
+/** Dessine une seule famille, pour vérifier sa géométrie. */
+function renderFamily(famille: FamilyId): string[] {
+  const { ctx, operations } = fakeContext();
+  const data = analysis();
+  const view = new TrackView(data);
+  const plan = buildShowPlan(data, false);
+  const scene = plan.scenes[0]!;
+  drawFamily(
+    ctx,
+    {
+      t: 12.0,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene,
+      palette: scene.palette,
+      energy: 0.7,
+      bass: 0.6,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.8,
+      beatPhase: 0.3,
+      beatIndex: 24,
+      build: 0.5,
+      buildStrength: 0.7,
+      surge: 0.4,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: plan.seed,
+      frame: 720,
+    },
+    view,
+    famille,
+  );
+  return operations;
+}
+
+describe("les effets remplissent la scene", () => {
+  test("une rangee de projecteurs deborde des deux bords", () => {
+    // Le défaut constaté : la rangée s'arrêtait aux bords, donc dès qu'elle
+    // s'inclinait, le côté vers lequel elle se penche restait noir.
+    const positions = rowPositions(9, 1280, 1280 * 0.14);
+    expect(positions[0]).toBeLessThan(0);
+    expect(positions[positions.length - 1]).toBeGreaterThan(1280);
+    // Et les lampes restent régulièrement espacées.
+    const ecarts = positions.slice(1).map((x, index) => x - (positions[index] ?? 0));
+    for (const ecart of ecarts) expect(ecart).toBeCloseTo(ecarts[0] ?? 0, 6);
+  });
+
+  test("une seule lampe reste au centre", () => {
+    expect(rowPositions(1, 1280, 100)).toEqual([640]);
+    expect(rowPositions(0, 1280, 100)).toEqual([]);
+  });
+
+  test("le rideau et le rayonnement dessinent hors cadre", () => {
+    // Preuve visuelle : les deux nouveaux effets tracent au-delà des bords, donc
+    // aucune zone de l'écran ne peut rester vide quand ils s'inclinent.
+    for (const famille of ["curtain", "burst", "parade"] as const) {
+      const operations = renderFamily(famille);
+      const deborde = operations.some((operation) => {
+        const coordonnees = [...operation.matchAll(/(-?\d+\.\d+)/g)].map((match) => Number(match[1]));
+        return coordonnees.some((valeur) => valeur < -20 || valeur > 1300);
+      });
+      expect(deborde).toBe(true);
+    }
   });
 });
 

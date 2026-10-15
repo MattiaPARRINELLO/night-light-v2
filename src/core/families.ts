@@ -561,8 +561,10 @@ const parade: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const lamps = count(9, f.quality, f.reduced);
   if (lamps < 1) return;
-  const gap = w / (lamps + 1);
-  const reach = Math.hypot(w, h) * 1.25;
+  // La rangée déborde des deux bords (voir `rowPositions`) : c'est ce qui évite
+  // le trou du côté vers lequel les faisceaux se penchent.
+  const positions = rowPositions(lamps, w, w * 0.14);
+  const reach = Math.hypot(w, h) * 1.35;
   // Deux battements superposés : le balayage principal est lent, la petite
   // modulation lui donne un rythme irrégulier qui évite l'effet métronome.
   const sweep = Math.sin(f.t * 0.16) * 0.6 + Math.sin(f.t * 0.43) * 0.14;
@@ -571,14 +573,14 @@ const parade: FamilyDraw = (ctx, f) => {
   const alpha = (0.05 + 0.24 * f.energy + 0.12 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < lamps; i += 1) {
-    const ratio = lamps === 1 ? 0.5 : i / (lamps - 1);
+  for (let i = 0; i < positions.length; i += 1) {
+    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     // Léger décalage par lampe : la rangée reste parallèle sans être rigide.
     const angle = tilt + (hash01(i * 311 + f.seed) - 0.5) * 0.07;
     const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const aperture = (0.02 + hash01(i * 433 + f.seed) * 0.014) * (0.7 + f.bass * 0.8 + f.beat * 0.25);
     const range = reach * (0.75 + hash01(i * 557 + f.seed) * 0.6);
-    const originX = gap * (i + 1);
+    const originX = positions[i] ?? 0;
     const gradient = ctx.createLinearGradient(
       originX,
       lampY,
@@ -721,6 +723,132 @@ export function drawCoreGlow(ctx: CanvasRenderingContext2D, f: FrameState): void
   ctx.fillRect(Math.max(0, cx - radius), Math.max(0, cy - radius), Math.min(w, radius * 2), Math.min(h, radius * 2));
 }
 
+/* ------------------------------------------------------- rideau de faisceaux */
+
+/**
+ * Positions d'une rangée de projecteurs le long d'un bord.
+ *
+ * La rangée **déborde des deux côtés** : une rangée arrêtée aux bords laisse un
+ * trou du côté vers lequel les faisceaux se penchent, puisque la lumière
+ * inclinée quitte la zone couverte par les lampes. C'est le défaut que
+ * `rowPositions` corrige une fois pour toutes.
+ */
+export function rowPositions(count: number, width: number, margin: number): number[] {
+  if (count < 1) return [];
+  if (count === 1) return [width * 0.5];
+  const step = (width + margin * 2) / (count - 1);
+  const out: number[] = [];
+  for (let i = 0; i < count; i += 1) out.push(-margin + step * i);
+  return out;
+}
+
+/**
+ * Rideau de lumière : des faisceaux serrés qui montent du plancher sur toute la
+ * largeur, bords compris, et s'ouvrent en éventail. C'est l'effet qui remplit le
+ * mieux une salle vue de loin — aucune zone ne reste sombre, même quand les
+ * faisceaux s'inclinent — et il porte les moments forts sans dépendre d'un
+ * mouvement de caméra.
+ */
+const curtain: FamilyDraw = (ctx, f) => {
+  const { width: w, height: h } = f;
+  const rangs = count(15, f.quality, f.reduced);
+  const length = Math.hypot(w, h) * 1.15;
+  const positions = rowPositions(rangs, w, w * 0.11);
+  const balance = Math.sin(f.t * (f.reduced ? 0.1 : 0.28)) * (f.reduced ? 0.06 : 0.22);
+  const alpha = (0.05 + 0.26 * f.energy + 0.16 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let i = 0; i < positions.length; i += 1) {
+    const originX = positions[i] ?? 0;
+    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
+    const angle = -Math.PI / 2 + (ratio - 0.5) * 0.55 + balance;
+    // Teinte répartie sur toute la palette, avec un léger décalage par faisceau
+    // pour que le rideau ne soit jamais monochrome.
+    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    // Une onde court le long du rideau : chaque faisceau a sa phase, donc la
+    // lumière « voyage » au lieu de clignoter en bloc.
+    const phase = Math.sin(f.t * 1.5 - ratio * 5.4) * 0.5 + 0.5;
+    const aperture = (0.01 + 0.016 * hash01(i * 271 + f.seed)) * (0.6 + phase * 0.8 + f.beat * 0.3);
+    const portee = length * (0.78 + phase * 0.35);
+    const intensite = alpha * (0.5 + phase * 0.7);
+    const tipX = originX + Math.cos(angle) * portee;
+    const tipY = h + Math.sin(angle) * portee;
+
+    const gradient = ctx.createLinearGradient(originX, h, tipX, tipY);
+    gradient.addColorStop(0, paint(hue, 0.92, 0.78, intensite));
+    gradient.addColorStop(0.55, paint(hue, 0.88, 0.64, intensite * 0.5));
+    gradient.addColorStop(1, paint(shiftHue(hue, 16), 0.86, 0.6, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(originX, h);
+    ctx.lineTo(tipX + Math.cos(angle + Math.PI / 2) * portee * aperture, tipY + Math.sin(angle + Math.PI / 2) * portee * aperture);
+    ctx.lineTo(tipX - Math.cos(angle + Math.PI / 2) * portee * aperture, tipY - Math.sin(angle + Math.PI / 2) * portee * aperture);
+    ctx.closePath();
+    ctx.fill();
+
+    // Le pied de chaque projecteur reste visible : c'est ce qui donne
+    // l'impression d'une rangée d'appareils au sol.
+    ctx.fillStyle = paint(hue, 0.95, 0.85, intensite * 1.4);
+    ctx.beginPath();
+    ctx.arc(originX, h, 2.5 + f.beat * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/* ------------------------------------------------------------- rayonnement */
+
+/**
+ * Rayonnement : un tour complet de faisceaux partant du centre de l'image,
+ * comme un projecteur rotatif de salle. Les faisceaux dépassent largement les
+ * bords, donc le cadre est entièrement balayé quel que soit l'angle, et la
+ * rotation est continue — c'est l'effet « soirée » par excellence.
+ */
+const burst: FamilyDraw = (ctx, f) => {
+  const { width: w, height: h } = f;
+  const cx = w * 0.5;
+  const cy = h * 0.52;
+  const rayons = count(18, f.quality, f.reduced);
+  const reach = Math.hypot(w, h) * 1.5;
+  const rotation = f.t * (f.reduced ? 0.09 : 0.22);
+  const alpha = (0.045 + 0.24 * f.energy + 0.15 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let i = 0; i < rayons; i += 1) {
+    const ratio = i / rayons;
+    const angle = rotation + ratio * Math.PI * 2;
+    // Deux teintes opposées : la moitié des rayons prend la couleur
+    // complémentaire, ce qui casse l'uniformité et remplit mieux la salle.
+    const complementaire = i % 2 === 1;
+    const hue = complementaire
+      ? f.palette.hue + 180 + (ratio - 0.5) * 40
+      : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const aperture = (0.012 + 0.02 * hash01(i * 613 + f.seed)) * (0.7 + f.energy * 0.9 + f.beat * 0.4);
+    const portee = reach * (0.7 + 0.3 * hash01(i * 719 + f.seed));
+    const intensite = alpha * (complementaire ? 0.72 : 1);
+    const tipX = cx + Math.cos(angle) * portee;
+    const tipY = cy + Math.sin(angle) * portee;
+
+    const gradient = ctx.createLinearGradient(cx, cy, tipX, tipY);
+    gradient.addColorStop(0, paint(hue, 0.9, 0.8, intensite));
+    gradient.addColorStop(0.4, paint(hue, 0.88, 0.66, intensite * 0.55));
+    gradient.addColorStop(1, paint(hue, 0.86, 0.6, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(tipX + Math.cos(angle + Math.PI / 2) * portee * aperture, tipY + Math.sin(angle + Math.PI / 2) * portee * aperture);
+    ctx.lineTo(tipX - Math.cos(angle + Math.PI / 2) * portee * aperture, tipY - Math.sin(angle + Math.PI / 2) * portee * aperture);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Le moyeu : la source, toujours au centre, qui respire avec les basses.
+  const moyeu = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.08 + f.bass * 0.16), 1));
+  moyeu.addColorStop(0, paint(f.palette.hue, 0.9, 0.86, (0.2 + 0.3 * f.bass) * f.alpha));
+  moyeu.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  ctx.fillStyle = moyeu;
+  ctx.fillRect(0, 0, w, h);
+};
+
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   beams,
   tunnel,
@@ -735,6 +863,8 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   mirror,
   parade,
   crossfire,
+  curtain,
+  burst,
 };
 
 export function drawFamily(

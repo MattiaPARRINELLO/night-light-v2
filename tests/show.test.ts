@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, caractereAt, sceneAt, sceneCadence, sceneWeight, type ShowPlan } from "../src/core/show";
+import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type ShowPlan } from "../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../src/core/color";
 import { flashAlpha } from "../src/core/render";
 import type { FrameState } from "../src/core/render";
@@ -210,7 +210,7 @@ describe("diversite du spectacle", () => {
     expect(hueBuckets.size).toBeGreaterThanOrEqual(4);
   });
 
-  test("un long morceau exploite les treize familles visuelles", () => {
+  test("un long morceau exploite toutes les familles visuelles", () => {
     const long = analysis({
       duration: 300,
       sections: [
@@ -221,7 +221,10 @@ describe("diversite du spectacle", () => {
     });
     const plan = buildShowPlan(long, false);
     expect(plan.scenes.length).toBeGreaterThan(15);
-    expect(new Set(plan.scenes.map((scene) => scene.family)).size).toBe(13);
+    // Le compte vient des libellés : ajouter une famille sans la rendre
+    // atteignable par le plan fait échouer ce test, et c'est voulu.
+    const toutes = Object.keys(FAMILY_LABELS).length;
+    expect(new Set(plan.scenes.map((scene) => scene.family)).size).toBe(toutes);
   });
 
   test("la cadence depend du nombre d'evenements du morceau", () => {
