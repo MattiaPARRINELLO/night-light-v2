@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05060a" />
+    <meta name="description" content="Tableau de bord de Night Light : état du show, capture audio, synchronisation et réglages." />
+    <title>Night Light — Contrôle</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A1%3C%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/src/styles/base.css" />
+    <link rel="stylesheet" href="/src/dashboard/dashboard.css" />
+  </head>
+  <body class="dashboard">
+    <div class="dash">
+      <header class="dash-head">
+        <div class="dash-brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>Night Light</h1>
+            <p class="dash-sub">Contrôle du spectacle</p>
+          </div>
+        </div>
+        <div class="dash-status" id="status">
+          <span class="pill pill-off" id="link-pill">Show hors ligne</span>
+          <span class="pill" id="mode-pill">Live</span>
+        </div>
+      </header>
+
+      <!-- Indicateurs clés -->
+      <section class="dash-cards" aria-label="Indicateurs clés">
+        <article class="card">
+          <p class="card-label">Mode</p>
+          <p class="card-value" id="kpi-mode">—</p>
+          <p class="card-note" id="kpi-screen">écran : —</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Capture audio</p>
+          <p class="card-value" id="kpi-capture">—</p>
+          <p class="card-note" id="kpi-capture-note">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Position show</p>
+          <p class="card-value" id="kpi-position">—</p>
+          <p class="card-note" id="kpi-position-note">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Écart au son</p>
+          <p class="card-value" id="kpi-drift">—</p>
+          <p class="card-note" id="kpi-drift-note">—</p>
+        </article>
+      </section>
+
+      <div class="dash-grid">
+        <!-- Audio en direct -->
+        <section class="panel" aria-label="Audio en direct">
+          <header class="panel-head">
+            <h2>Audio en direct</h2>
+            <span class="panel-tag" id="audio-rate">—</span>
+          </header>
+          <canvas id="audio-canvas" width="640" height="180" aria-label="Spectre audio en direct"></canvas>
+          <dl class="readout">
+            <div><dt>RMS</dt><dd id="val-rms">—</dd></div>
+            <div><dt>Énergie</dt><dd id="val-energy">—</dd></div>
+            <div><dt>Basses</dt><dd id="val-bass">—</dd></div>
+            <div><dt>Médiums</dt><dd id="val-mid">—</dd></div>
+            <div><dt>Aigus</dt><dd id="val-high">—</dd></div>
+            <div><dt>Transitoire</dt><dd id="val-transient">—</dd></div>
+          </dl>
+          <canvas id="rms-canvas" width="640" height="120" aria-label="Niveau sonore sur la dernière minute"></canvas>
+          <p class="panel-note">Niveau sur les 60 dernières secondes</p>
+        </section>
+
+        <!-- Synchronisation -->
+        <section class="panel" aria-label="Synchronisation">
+          <header class="panel-head">
+            <h2>Synchronisation</h2>
+            <span class="panel-tag" id="sync-source">—</span>
+          </header>
+          <div class="sync-rows">
+            <div class="sync-row">
+              <span class="sync-label">Lecteur</span>
+              <span class="sync-value" id="sync-player">—</span>
+            </div>
+            <div class="sync-row">
+              <span class="sync-label">Show</span>
+              <span class="sync-value" id="sync-show">—</span>
+            </div>
+            <div class="sync-row">
+              <span class="sync-label">Écart</span>
+              <span class="sync-value" id="sync-drift">—</span>
+            </div>
+            <div class="sync-row">
+              <span class="sync-label">Morceau attendu</span>
+              <span class="sync-value" id="sync-expected">—</span>
+            </div>
+            <div class="sync-row">
+              <span class="sync-label">Morceau lu</span>
+              <span class="sync-value" id="sync-read">—</span>
+            </div>
+            <div class="sync-row">
+              <span class="sync-label">Verdict</span>
+              <span class="sync-value" id="sync-match">—</span>
+            </div>
+          </div>
+          <canvas id="drift-canvas" width="640" height="120" aria-label="Écart de synchronisation sur la dernière minute"></canvas>
+          <p class="panel-note">Écart sur les 60 dernières secondes — la bande grise est la tolérance de 150 ms</p>
+        </section>
+
+        <!-- Source du morceau -->
+        <section class="panel" aria-label="Source du morceau">
+          <header class="panel-head"><h2>Lancer un morceau</h2></header>
+
+          <div id="dropzone" class="dash-drop" role="button" tabindex="0">
+            <p class="dash-drop-title">Dépose un fichier audio</p>
+            <p class="dash-drop-sub">MP3, WAV, OGG, FLAC, M4A — analysé puis supprimé</p>
+            <button id="btn-pick" class="btn btn-ghost" type="button">Choisir un fichier</button>
+            <input id="file-input" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" class="visually-hidden" />
+          </div>
+
+          <div class="dash-progress" id="analyze-progress" hidden>
+            <div class="progress-bar"><span id="analyze-fill" class="progress-fill"></span></div>
+            <div class="progress-row">
+              <span id="analyze-phase" class="progress-phase">Préparation</span>
+              <span id="analyze-percent" class="progress-percent">0 %</span>
+            </div>
+          </div>
+
+          <form id="resolve-form" class="dash-form" novalidate>
+            <p class="dash-form-title">Ou par titre</p>
+            <label class="field field-text">
+              <span class="field-label">Titre</span>
+              <input id="resolve-title" type="text" placeholder="Ex. Get Lucky" />
+            </label>
+            <label class="field field-text">
+              <span class="field-label">Artiste</span>
+              <input id="resolve-artist" type="text" placeholder="Ex. Daft Punk" />
+            </label>
+            <button id="btn-resolve" class="btn btn-primary" type="submit">Rechercher et analyser</button>
+          </form>
+          <p class="panel-note" id="limits-note">—</p>
+        </section>
+
+        <!-- Réglages -->
+        <section class="panel" aria-label="Réglages du spectacle">
+          <header class="panel-head"><h2>Réglages</h2></header>
+
+          <label class="field">
+            <span class="field-label">Intensité <b id="intensity-value">100 %</b></span>
+            <input id="intensity" type="range" min="20" max="150" value="100" />
+          </label>
+          <label class="field">
+            <span class="field-label">Flashs <b id="flashes-value">90 %</b></span>
+            <input id="flashes" type="range" min="0" max="150" value="90" />
+          </label>
+
+          <div class="hud-toggles">
+            <label class="switch"><input id="chk-reduced" type="checkbox" /><span>Intensité réduite</span></label>
+            <label class="switch"><input id="chk-noflash" type="checkbox" /><span>Sans flashs</span></label>
+          </div>
+
+          <hr class="dash-sep" />
+
+          <label class="field field-text">
+            <span class="field-label">Latence (ms)</span>
+            <input id="latency" type="number" min="-500" max="1000" step="10" value="0" />
+          </label>
+          <div class="dash-actions">
+            <button id="latency-wired" class="btn btn-ghost" type="button">Filaire</button>
+            <button id="latency-bt" class="btn btn-ghost" type="button">Bluetooth</button>
+            <button id="latency-calibrate" class="btn btn-ghost" type="button">Caler</button>
+          </div>
+          <p class="panel-note">Le show est avancé d'autant sur le son : à régler quand les effets arrivent en retard.</p>
+        </section>
+
+        <!-- Actions -->
+        <section class="panel" aria-label="Actions">
+          <header class="panel-head"><h2>Actions</h2></header>
+          <div class="dash-actions dash-actions-stack">
+            <button id="btn-capture" class="btn btn-ghost" type="button">Couper la capture</button>
+            <button id="btn-force-live" class="btn btn-ghost" type="button">Revenir en Live</button>
+            <button id="btn-force-show" class="btn btn-ghost" type="button">Forcer le show local</button>
+            <button id="btn-debug" class="btn btn-ghost" type="button">Overlay de debug</button>
+            <button id="btn-cancel" class="btn btn-ghost" type="button">Annuler l'analyse</button>
+          </div>
+          <p class="panel-note">
+            L'écran de show n'a aucune interface : tout se règle ici. Raccourcis sur cet écran :
+            <b>D</b> overlay, <b>S</b> show local, <b>Échap</b> annuler, <b>F</b> plein écran.
+          </p>
+        </section>
+
+        <!-- Journal -->
+        <section class="panel panel-wide" aria-label="Journal">
+          <header class="panel-head">
+            <h2>Journal</h2>
+            <span class="panel-tag" id="log-count">—</span>
+          </header>
+          <pre id="log" class="dash-log">En attente de l'écran de show…</pre>
+        </section>
+      </div>
+    </div>
+
+    <script type="module" src="/src/dashboard/main.ts"></script>
+  </body>
+</html>

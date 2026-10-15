@@ -180,6 +180,7 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 bun run test            # types (tsc) + tests front + tests serveur
 bun run check:browser   # parcours complet dans un vrai navigateur (Playwright)
 bun run check:sync      # synchronisation Show ↔ lecteur, sans lecteur réel
+bun run check:dashboard # écran de show + dashboard, de bout en bout
 bunx vite build         # build de production dans dist/
 ```
 
@@ -215,7 +216,8 @@ Deux régressions sont couvertes par ces tests :
 ## Structure
 
 ```
-index.html              interface (écrans dépôt / analyse / erreur / show)
+index.html              écran de show : la toile, rien d'autre
+dashboard.html          tableau de bord : tout ce qui se règle et se lit
 src/
   main.ts               démarrage
   types.ts              schéma de l'analyse et réglages de rendu
@@ -230,6 +232,8 @@ src/
     liveAudio.ts        caractéristiques audio live (normalisation, lissage)
     playback.ts         position du lecteur, dérive, corrélation (purs)
     debug.ts            journal de debug partagé (console + overlay)
+  shared/
+    control.ts          protocole show ↔ dashboard (BroadcastChannel)
   browser/
     app.ts              orchestration (dépôt, analyse, show, raccourcis)
     audio.ts            lecture et position musicale
@@ -245,6 +249,7 @@ server/
 tests/                  tests front, tests serveur, vérification navigateur
                         (dont fake_playerctl.py : faux lecteur pour la synchro)
 scripts/                démarrage dev et lancement des tests
+src/dashboard/          tableau de bord (page + styles)
 ```
 
 ## Variables d'environnement
@@ -259,6 +264,47 @@ scripts/                démarrage dev et lancement des tests
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |
+
+## Le tableau de bord (`/dashboard`)
+
+Deux pages, deux rôles. L'écran de show (`/`) n'est plus qu'une toile ; tout ce qui se lit et
+se règle vit sur `/dashboard`, ouvert sur un autre écran :
+
+```bash
+bun run dev        # puis http://localhost:5173/dashboard (voir WEB_PORT)
+```
+
+| Sur l'écran de show | Sur le dashboard |
+| --- | --- |
+| le canvas, en plein écran | mode, capture, positions, écart au son |
+| aucun bouton, aucun panneau | spectre live, niveaux, courbes de 60 s |
+| raccourcis `D` `S` `Échap` `F` | dépôt de fichier, recherche par titre |
+| | intensité, flashs, réduit, sans flashs |
+| | latence (+ presets filaire / Bluetooth, calage) |
+| | forcer Live / Show, couper la capture, overlay |
+
+### Comment les deux pages se parlent
+
+`BroadcastChannel` sur l'origine courante (`src/shared/control.ts`) :
+
+- le show **publie** son état complet 5 fois par seconde ;
+- le dashboard **envoie** des commandes (`set-latency`, `set-settings`, `capture`,
+  `force-live`, `force-show`, `debug-overlay`, `analysis-ready`…).
+
+Aucun état sur le serveur, aucun rechargement : deux onglets du même navigateur suffisent, sur
+deux écrans. Le protocole est versionné — deux versions différentes s'ignorent au lieu de se
+comprendre de travers.
+
+Le dashboard fait lui-même l'analyse : il dépose ou résout le morceau, puis transmet l'analyse
+à l'écran de show, qui se charge du calage sur le lecteur. Le fichier audio ne traverse donc
+jamais le canal.
+
+### L'écran de show sait vivre seul
+
+Tant qu'aucun dashboard ne lui parle, `/` reste une application normale (dépôt, analyse,
+show) : les tests et l'usage à un seul écran continuent de fonctionner. Dès qu'un dashboard se
+manifeste, la classe `kiosk` masque toute l'interface ; si le dashboard disparaît plus de 3 s,
+elle est retirée et l'écran redevient utilisable. Pas de piège de l'écran noir.
 
 ## Synchronisation Show / lecture externe
 

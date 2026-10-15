@@ -20,6 +20,7 @@ import { TrackView } from "../core/view";
 import { estimatePlayerPositionMs, normalizePlaybackText, showDriftMs, syncCorrection } from "../core/playback";
 import type { ExternalPlaybackState } from "../core/playback";
 import { dbgLog, dbgThrottled, debugLog, type DebugCategory } from "../core/debug";
+import { ControlLink, type DashboardCommand, type ShowMode, type ShowState } from "../shared/control";
 import type { Analysis, RenderSettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import { el, setDropError, setPlaying, setShowError, setStatus, setUploadState, showScreen } from "./ui";
@@ -155,6 +156,15 @@ export class App {
   };
   private debugTimer: number | null = null;
   private debugLastPlayer: ExternalPlaybackState | null = null;
+
+  /* ---- lien avec le dashboard ---- */
+  private control: ControlLink | null = null;
+  /** Dernier signe de vie du dashboard, en millisecondes epoch. */
+  private controllerAt = 0;
+  private controlTimer: number | null = null;
+  private flashSlider = 0.9;
+  private noflash = false;
+  private lastError: { title: string; message: string; detail: string } | null = null;
   private debugRateWindowAt = 0;
   private debugRateWindowCount = 0;
   private debugLastSseState = "";
@@ -196,6 +206,7 @@ export class App {
     this.bindKeyboard();
     this.bindDebugToggle();
     this.debugTimer = window.setInterval(() => this.updateDebugOverlay(), 500);
+    this.bindControl();
     window.addEventListener("resize", this.resize);
     this.resize();
     void this.loadHealth();
@@ -225,6 +236,10 @@ export class App {
     window.removeEventListener("resize", this.resize);
     if (this.debugTimer !== null) window.clearInterval(this.debugTimer);
     this.debugTimer = null;
+    if (this.controlTimer !== null) window.clearInterval(this.controlTimer);
+    this.controlTimer = null;
+    this.control?.close();
+    this.control = null;
     this.stopLoop();
     this.audio.dispose();
   }
@@ -382,6 +397,11 @@ export class App {
     setStatus(`Impossible de synchroniser ${title}.`);
     this.debugSync.phase = "LOST";
     this.debugSync.match = reason;
+    this.lastError = {
+      title: "Le spectacle n'a pas pu se synchroniser",
+      message: `Aucune lecture externe correspondant à « ${title} » n'a été trouvée.`,
+      detail: reason,
+    };
     this.debug("erreur", `synchro impossible pour ${title}`, reason);
   }
 
@@ -845,6 +865,175 @@ export class App {
     localStorage.setItem("night-light-latency", String(this.syncedLatencyMs));
   }
 
+  /* ------------------------------------------------------- lien dashboard */
+
+  /**
+   * Ouvre le canal de contrôle. L'écran de show reste une application normale
+   * quand il est ouvert seul (utile pour les tests et l'usage à un seul écran) :
+   * il passe en mode « kiosk » — aucune interface, que la toile — dès qu'un
+   * dashboard lui parle, et il y revient si le dashboard disparaît.
+   */
+  private bindControl(): void {
+    this.control = new ControlLink();
+    this.control.onMessage((message) => {
+      const command = message.command;
+      if (command === undefined) return;
+      this.controllerAt = Date.now();
+      this.handleCommand(command);
+    });
+    this.controlTimer = window.setInterval(() => this.publishState(), 200);
+    this.publishState();
+  }
+
+  private handleCommand(command: DashboardCommand): void {
+    switch (command.type) {
+      case "hello":
+        break;
+      case "set-latency":
+        this.setLatency(command.ms);
+        break;
+      case "set-settings":
+        this.applySettings(command.patch);
+        break;
+      case "capture":
+        if (command.on) this.startExternalCapture(true);
+        else this.closeExternalCapture();
+        break;
+      case "force-live":
+        this.backToDrop();
+        break;
+      case "force-show": {
+        const analysis = this.pendingAnalysis;
+        if (analysis !== null) {
+          this.debug("show", "show analysé local demandé depuis le dashboard");
+          void this.startShow(analysis);
+        }
+        break;
+      }
+      case "cancel-analysis":
+        this.analysisController?.abort();
+        this.backToDrop();
+        break;
+      case "debug-overlay":
+        this.setDebugOverlay(command.on);
+        break;
+      case "analysis-ready":
+        this.receiveAnalysis(command);
+        break;
+    }
+    // Une commande change presque toujours quelque chose d'visible.
+    this.publishState();
+  }
+
+  /** Analyse faite par le dashboard : le show prend le relais et se cale. */
+  private receiveAnalysis(command: Extract<DashboardCommand, { type: "analysis-ready" }>): void {
+    this.jobId = command.jobId;
+    this.pendingTitle = command.title;
+    this.pendingAnalysis = command.analysis;
+    this.lastError = null;
+    this.debug("analyse", "analyse reçue du dashboard", {
+      titre: command.title,
+      dureeSec: Number(command.analysis.duration.toFixed(1)),
+      temps: command.analysis.beats.length,
+      montees: command.analysis.builds.length,
+    });
+    void this.tryAutoSynced(command.title, command.artist, command.analysis.duration, command.analysis);
+  }
+
+  private setLatency(ms: number): void {
+    this.syncedLatencyMs = Math.max(-500, Math.min(1000, Math.round(ms)));
+    localStorage.setItem("night-light-latency", String(this.syncedLatencyMs));
+    // Sans ça, le dashboard continue d'afficher l'ancienne valeur : il ne peut
+    // pas vérifier que son réglage est bien arrivé.
+    this.debugSync.latencyMs = this.syncedLatencyMs;
+    const input = document.getElementById("latency-offset") as HTMLInputElement | null;
+    if (input !== null) input.value = String(this.syncedLatencyMs);
+  }
+
+  private applySettings(patch: Partial<ShowState["settings"]>): void {
+    if (patch.intensity !== undefined) this.settings.intensity = Math.max(0, Math.min(2, patch.intensity));
+    if (patch.flashes !== undefined) this.flashSlider = Math.max(0, Math.min(2, patch.flashes));
+    if (patch.reduced !== undefined) this.settings.reduced = patch.reduced;
+    if (patch.noflash !== undefined) this.noflash = patch.noflash;
+    this.settings.flashes = this.noflash ? 0 : this.flashSlider;
+    this.refreshPlan();
+  }
+
+  private setDebugOverlay(on: boolean): void {
+    if (this.debugOverlayActive === on) return;
+    this.debugOverlayActive = on;
+    const overlay = document.getElementById("debug-overlay");
+    if (overlay !== null) overlay.toggleAttribute("hidden", !on);
+  }
+
+  private showMode(): ShowMode {
+    if (this.view !== null) return "show-local";
+    if (!this.syncedMode) return "live";
+    if (this.debugSync.phase === "PAUSED") return "paused";
+    if (this.debugSync.phase === "LOST") return "lost";
+    if (this.debugSync.phase === "SHOW_SYNCED") return "show-synced";
+    return "syncing";
+  }
+
+  /** État complet publié vers le dashboard, ~5 fois par seconde. */
+  private publishState(): void {
+    const link = this.control;
+    if (link === null) return;
+    const controlled = Date.now() - this.controllerAt < 3000;
+    document.body.classList.toggle("kiosk", controlled);
+    const state: ShowState = {
+      version: 1,
+      at: Date.now(),
+      page: "show",
+      screen: document.querySelector(".screen.is-active")?.id?.replace("screen-", "") as ShowState["screen"] ?? "drop",
+      mode: this.showMode(),
+      controlled,
+      capture: {
+        open: this.liveCapture !== null,
+        state: this.debugCapture.state,
+        source: this.debugCapture.source,
+        error: this.debugCapture.error,
+        rate: this.debugCapture.rate,
+        messages: this.debugCapture.messages,
+        lastAt: this.debugCapture.lastAt,
+      },
+      audio: { ...this.liveAudioRaw },
+      smooth: { ...this.liveAudio },
+      render: {
+        liveFps: this.liveFps,
+        liveQuality: this.liveQuality,
+        liveFrame: this.liveFrame,
+        showFps: this.fps,
+        quality: this.quality,
+        frame: this.frame,
+      },
+      sync: { ...this.debugSync },
+      analysis:
+        this.pendingAnalysis === null
+          ? null
+          : {
+              title: this.pendingTitle,
+              artist: "",
+              durationSec: this.pendingAnalysis.duration,
+              tempo: this.pendingAnalysis.tempo,
+              beats: this.pendingAnalysis.beats.length,
+              builds: this.pendingAnalysis.builds.length,
+              sections: this.pendingAnalysis.sections.length,
+            },
+      settings: {
+        intensity: this.settings.intensity,
+        flashes: this.flashSlider,
+        reduced: this.settings.reduced,
+        noflash: this.noflash,
+      },
+      limits: this.limits === null ? null : { ...this.limits },
+      debugOverlay: this.debugOverlayActive,
+      error: this.lastError,
+      log: debugLog.lines(10),
+    };
+    link.publishState(state);
+  }
+
   private bindDockToggle(): void {
     const dock = document.getElementById("dock-panel");
     if (dock === null) return;
@@ -947,6 +1136,12 @@ export class App {
   }
 
   private async startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void> {
+    // Réciproque : un show local en cours doit s'arrêter, sinon ses deux
+    // boucles de rendu se chevauchent et l'état publié devient incohérent.
+    this.stopLoop();
+    this.audio.pause();
+    this.view = null;
+    this.plan = null;
     this.stopLiveMode();
     this.closeExternalCapture();
     this.liveMode = false;
@@ -1302,18 +1497,25 @@ export class App {
     });
     this.audio.setVolume(0.8);
 
+    this.settings.intensity = Number(el<HTMLInputElement>("intensity").value) / 100;
+    this.flashSlider = Number(el<HTMLInputElement>("flashes").value) / 100;
+    this.noflash = el<HTMLInputElement>("chk-noflash").checked;
+    this.settings.flashes = this.noflash ? 0 : this.flashSlider;
+
     el<HTMLInputElement>("intensity").addEventListener("input", () => {
       this.settings.intensity = Number(el<HTMLInputElement>("intensity").value) / 100;
     });
     el<HTMLInputElement>("flashes").addEventListener("input", () => {
-      this.settings.flashes = Number(el<HTMLInputElement>("flashes").value) / 100;
+      this.flashSlider = Number(el<HTMLInputElement>("flashes").value) / 100;
+      this.settings.flashes = this.noflash ? 0 : this.flashSlider;
     });
     el<HTMLInputElement>("chk-reduced").addEventListener("change", () => {
       this.settings.reduced = el<HTMLInputElement>("chk-reduced").checked;
       this.refreshPlan();
     });
     el<HTMLInputElement>("chk-noflash").addEventListener("change", () => {
-      this.settings.flashes = el<HTMLInputElement>("chk-noflash").checked ? 0 : this.readFlashSlider();
+      this.noflash = el<HTMLInputElement>("chk-noflash").checked;
+      this.settings.flashes = this.noflash ? 0 : this.flashSlider;
     });
 
     const seek = el<HTMLInputElement>("seek");
@@ -1357,11 +1559,12 @@ export class App {
     });
   }
 
-  private readFlashSlider(): number {
-    return Number(el<HTMLInputElement>("flashes").value) / 100;
-  }
-
   private async startShow(analysis: Analysis): Promise<void> {
+    // Les deux modes de show sont exclusifs : sans ça, le minuteur de
+    // resynchronisation continue de tourner et finit par voir un « changement
+    // de morceau » face au lecteur, ce qui coupait le show local net.
+    this.stopSyncedMode();
+    this.debugLastPlayer = null;
     this.stopLiveMode();
     this.closeExternalCapture();
     this.liveMode = false;

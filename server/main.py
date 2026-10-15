@@ -490,8 +490,18 @@ async def audio_levels(request: Request) -> StreamingResponse:
 def mount_frontend() -> None:
     """Sert le build statique si l'API est utilisée sans proxy (mode léger)."""
     dist = Path(__file__).resolve().parent.parent / "dist"
-    if dist.is_dir():
-        app.mount("/", StaticFiles(directory=str(dist), html=True), name="frontend")
+    if not dist.is_dir():
+        return
+
+    dashboard = dist / "dashboard.html"
+    if dashboard.is_file():
+        # StaticFiles(html=True) cherche `/dashboard/index.html` : sans cette
+        # route explicite, l'URL propre /dashboard renverrait 404.
+        @app.get("/dashboard", include_in_schema=False)
+        async def dashboard_page() -> FileResponse:
+            return FileResponse(dashboard)
+
+    app.mount("/", StaticFiles(directory=str(dist), html=True), name="frontend")
 
 
 mount_frontend()

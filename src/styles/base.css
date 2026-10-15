@@ -420,3 +420,31 @@ input[type="range"]::-moz-range-thumb {
   white-space: pre;
   pointer-events: none;
 }
+
+
+/* ------------------------------------------------------------- mode kiosk */
+/* Un dashboard est connecté : l'écran de projection n'est plus qu'une toile.
+   Toute l'interface vit sur /dashboard. Si le dashboard disparaît, la classe
+   est retirée et l'application redevient utilisable seule. */
+body.kiosk #screen-drop,
+body.kiosk #screen-analysis,
+body.kiosk #screen-error,
+body.kiosk #screen-show,
+body.kiosk #hud,
+body.kiosk .notice-list,
+body.kiosk #scrim {
+  display: none !important;
+}
+
+/* Le canvas doit occuper tout l'écran, sans marge ni ascenseur. */
+body.kiosk {
+  overflow: hidden;
+  background: #000;
+}
+
+body.kiosk #stage {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+}

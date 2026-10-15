@@ -18,7 +18,7 @@ export default defineConfig({
   },
   preview: {
     host: "127.0.0.1",
-    port: 4173,
+    port: 4178,
     strictPort: false,
     proxy,
   },
@@ -27,5 +27,12 @@ export default defineConfig({
     target: "es2022",
     sourcemap: true,
     assetsDir: "assets",
+    // Deux pages : l'écran de show (toile nue) et le tableau de bord.
+    rollupOptions: {
+      input: {
+        index: "index.html",
+        dashboard: "dashboard.html",
+      },
+    },
   },
 });
