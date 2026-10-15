@@ -162,6 +162,16 @@ Trois règles, toutes vérifiées par des tests :
 L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
 contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
 
+### Des faisceaux diffus
+
+Les projecteurs ne dessinent pas des triangles aux arêtes nettes : `softBeam` donne à
+chaque faisceau un bord fondu, comme de la lumière dans la fumée d'une salle. Un flou
+proportionnel à la largeur du faisceau (plafonné à 16 px, sinon le faisceau devient une nappe
+de brouillard) est appliqué partout où c'est possible ; à défaut — navigateur sans filtre,
+mode réduit, machine qui souffle — le profil est approché par superposition de couches
+(`beamLayers`). Mesuré à l'écran, à image identique : la marche la plus forte sur un bord
+passe de 18,3 à 7,4, à 60 images par seconde.
+
 ### La couleur
 
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
