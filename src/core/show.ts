@@ -499,12 +499,20 @@ export function sceneAt(plan: ShowPlan, t: number): Scene {
 }
 
 /** Pondération de la scène à `t` : 0 avant son début, montée pendant `fadeIn`. */
+/**
+ * Poids d'une scène dans le fondu, 0..1.
+ *
+ * Elle monte à l'entrée, **tient jusqu'à sa fin**, et ne s'éteint qu'après la
+ * frontière — pendant que la suivante monte. Les deux se croisent donc au lieu
+ * de se succéder : avant, le poids tombait à zéro dès la fin de la scène, et
+ * tout l'écran (fond compris) passait par le noir à chaque changement.
+ */
 export function sceneWeight(scene: Scene, t: number): number {
   if (t < scene.start) return 0;
   const into = t - scene.start;
   const fadeIn = clamp01(into / Math.max(scene.fadeIn, 0.001));
-  const toEnd = scene.end - t;
-  const fadeOut = clamp01(toEnd / Math.max(scene.fadeOut, 0.001));
+  const after = t - scene.end;
+  const fadeOut = after <= 0 ? 1 : 1 - clamp01(after / Math.max(scene.fadeOut, 0.001));
   return Math.min(fadeIn, fadeOut);
 }
 

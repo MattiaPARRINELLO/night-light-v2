@@ -88,13 +88,34 @@ describe("show plan", () => {
     expect(sceneAt(plan, 119.9).index).toBe(plan.scenes.length - 1);
   });
 
-  test("sceneWeight monte puis descend", () => {
+  test("le croisement de deux scenes ne creuse pas de trou", () => {
+    // Pendant le fondu, la somme des poids (scène sortante + entrante) doit
+    // rester à 1 : sans ça, l'écran s'assombrissait à chaque changement.
+    const plan = buildShowPlan(analysis(), false);
+    for (const scene of plan.scenes.slice(1)) {
+      const previous = plan.scenes[scene.index - 1];
+      if (previous === undefined) continue;
+      for (let dt = 0; dt <= scene.fadeIn; dt += 0.05) {
+        const entrante = sceneWeight(scene, scene.start + dt);
+        const sortante = 1 - dt / scene.fadeIn;
+        expect(entrante + sortante).toBeCloseTo(1, 6);
+      }
+    }
+  });
+
+  test("sceneWeight monte, tient jusqu'au bout, puis s'éteint après la frontière", () => {
     const first = buildShowPlan(analysis(), false).scenes[0];
     if (first === undefined) throw new Error("scène manquante");
     expect(sceneWeight(first, -1)).toBe(0);
     expect(sceneWeight(first, first.start + first.fadeIn / 2)).toBeCloseTo(0.5, 6);
     expect(sceneWeight(first, first.start + first.fadeIn * 2)).toBe(1);
-    expect(sceneWeight(first, first.end - 0.0001)).toBeLessThan(0.001);
+    // Plein poids jusqu'à la fin : c'est ce qui évite le trou noir entre deux
+    // scènes, le fond restant visible pendant tout le changement.
+    expect(sceneWeight(first, first.end - 0.0001)).toBe(1);
+    // L'extinction se joue après la frontière, en même temps que l'entrée de la
+    // scène suivante : les deux se croisent.
+    expect(sceneWeight(first, first.end + first.fadeOut / 2)).toBeCloseTo(0.5, 6);
+    expect(sceneWeight(first, first.end + first.fadeOut * 2)).toBe(0);
   });
 
 

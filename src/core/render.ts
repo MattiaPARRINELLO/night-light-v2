@@ -242,6 +242,13 @@ export function surgeAlpha(f: FrameState, settings: RenderSettings): number {
  * Force de la variation d'une phrase : 0 au début et à la fin, 1 autour des
  * deux tiers. Fenêtre large et bords doux, donc jamais un coup de ciseaux.
  */
+/**
+ * Force de la variation d'une phrase : 0 au début et à la fin, 1 au milieu.
+ *
+ * Les bords doivent valoir exactement 0 : l'ancienne version gardait un plancher
+ * de 0,15, donc la variation apparaissait et disparaissait d'un coup en pleine
+ * scène — un élément qui « saute » au milieu du morceau.
+ */
 export function variationStrength(scene: Scene, t: number): number {
   const span = scene.end - scene.start;
   if (span <= 0.5) return 0;
@@ -249,7 +256,7 @@ export function variationStrength(scene: Scene, t: number): number {
   if (ratio < 0.25 || ratio > 0.9) return 0;
   const local = (ratio - 0.25) / 0.65;
   const wave = Math.sin(local * Math.PI);
-  return Math.max(0, 0.15 + 0.85 * wave * wave);
+  return clamp01(wave * wave);
 }
 
 /** Opacité de la couche de fond permanente. */
@@ -442,17 +449,23 @@ export function renderFrame(input: RenderInput): void {
   drawBackground(ctx, { ...base, palette });
   ctx.globalCompositeOperation = "lighter";
 
+  // Couche permanente : le fond, le halo et la poussière ne dépendent pas du
+  // fondu de scène. C'est ce qui garantit qu'il reste toujours quelque chose à
+  // l'écran — y compris au croisement de deux scènes, où tout ce qui suit le
+  // poids de la scène disparaît un instant et l'image plonge dans le noir.
+  const permanent: FrameState = { ...base, alpha: 1 };
+
   // Scène courante + scène sortante pendant le fondu (transition fluide).
   drawFamily(ctx, base, view, scene.family);
-  drawCoreGlow(ctx, base);
+  drawCoreGlow(ctx, permanent);
 
   // Couche de fond permanente : même pendant les phrases « calmes », l'écran
   // montre deux mondes superposés au lieu d'un seul.
   if (scene.backdrop !== scene.family) {
     const backdropState: FrameState = {
-      ...base,
+      ...permanent,
       palette: { ...palette, hue: (palette.hue + 130) % 360 },
-      alpha: base.alpha * BACKDROP_ALPHA,
+      alpha: BACKDROP_ALPHA,
       intensity: base.intensity * 0.6,
     };
     drawFamily(ctx, backdropState, view, scene.backdrop);
@@ -512,17 +525,21 @@ export function renderFrame(input: RenderInput): void {
   const previous = scene.index > 0 ? plan.scenes[scene.index - 1] : undefined;
   if (previous !== undefined && t < scene.start + scene.fadeIn) {
     const ratio = clamp01((t - scene.start) / Math.max(scene.fadeIn, 0.001));
+    // Croisement exactement complémentaire : ce que la nouvelle scène n'a pas
+    // encore pris reste à l'ancienne. Chacune ayant par ailleurs sa propre
+    // extinction, la somme retombait à 0,67 au milieu du fondu et l'image
+    // s'assombrissait à chaque changement de scène.
     const outgoing: FrameState = {
       ...base,
       scene: previous,
       palette: previous.palette,
-      alpha: (1 - ratio) * sceneWeight(previous, t),
+      alpha: 1 - ratio,
       intensity: previous.intensity * settings.intensity,
     };
     drawFamily(ctx, outgoing, view, previous.family);
   }
 
-  drawDust(ctx, base);
+  drawDust(ctx, permanent);
 
   const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
   if (flash > 0.002 && flashAdmitted(view, t)) {
