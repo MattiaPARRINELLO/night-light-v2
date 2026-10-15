@@ -1,9 +1,9 @@
 import type { RenderSettings } from "../types";
 import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
-import { drawCoreGlow, drawFamily, drawWash, hazeFineRadiusPixels, hazeRadiusPixels } from "./families";
+import { contrastHue, drawCoreGlow, drawFamily, drawWash, hazeFineRadiusPixels, hazeRadiusPixels } from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
-import { hslToRgb, shiftHue, shorthand } from "./color";
+import { hslToRgb, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
@@ -80,8 +80,11 @@ function paint(h: number, s: number, l: number, a: number): string {
 function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   const glow = 0.02 + f.energy * 0.05 + f.bass * 0.05;
+  // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
+  // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
+  const contraste = contrastHue(f);
   const top = paint(f.palette.hue, f.palette.saturation, 0.035 + glow * 0.5, 1);
-  const bottom = paint(shiftHue(f.palette.hue, f.palette.spread * 0.4), f.palette.saturation, 0.05 + glow, 1);
+  const bottom = paint(contraste, f.palette.saturation, 0.05 + glow, 1);
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
   gradient.addColorStop(0, top);
   gradient.addColorStop(1, bottom);
@@ -94,8 +97,8 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
   const haloAlpha = (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha;
-  halo.addColorStop(0, paint(f.palette.hue, 0.85, 0.6, haloAlpha));
-  halo.addColorStop(1, paint(f.palette.hue, 0.85, 0.5, 0));
+  halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
+  halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
   // Le dégradé est transparent au-delà de `radius` : on ne remplit que son
   // cadre, jamais tout l'écran. Une passe plein écran de plus par image est

@@ -16,6 +16,7 @@ import {
   beamLayers,
   beatSwing,
   colorFlip,
+  contrastHue,
   curvedBeam,
   drawFamily,
   elementEnvelope,
@@ -1012,6 +1013,27 @@ describe("accords de couleurs", () => {
       tirages.add(sceneChord(scene.palette, index, plan.seed).map((hue) => Math.round(hue)).join(","));
     }
     expect(tirages.size).toBeGreaterThanOrEqual(3);
+  });
+
+  test("l'accord s'ouvre avec l'humeur du passage", () => {
+    const palette = scene.palette;
+    const maxLongueur = (mood: "sombre" | "explosif") => {
+      let max = 0;
+      for (let index = 0; index < 24; index += 1) {
+        max = Math.max(max, sceneChord(palette, index, plan.seed, mood).length);
+      }
+      return max;
+    };
+    // Même tirage, seule l'humeur change : un passage explosif déploie plus de
+    // teintes qu'un passage sombre, volontairement serré.
+    expect(maxLongueur("explosif")).toBeGreaterThan(maxLongueur("sombre"));
+  });
+
+  test("la teinte de contraste s'écarte de la dominante", () => {
+    const f = frame();
+    // Le fond et les foyers s'en servent : sans écart franc, l'image retombait
+    // sur une seule couleur, quel que soit l'accord.
+    expect(ecart(contrastHue(f), f.palette.hue)).toBeGreaterThanOrEqual(40);
   });
 });
 
