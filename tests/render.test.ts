@@ -816,6 +816,17 @@ describe("couleur", () => {
     return Math.abs(((b - a + 540) % 360) - 180);
   }
 
+  test("un impact change la lumiere sans sortir de la palette", () => {
+    const scene = buildShowPlan(analysis(), false).scenes[0]!;
+    const ecart = (a: number, b: number) => Math.abs(((b - a + 540) % 360) - 180);
+    // Impact et variation au maximum : le saut doit se voir…
+    const hue = sceneHue(scene, 12, 1, 1, false);
+    expect(ecart(hue, scene.palette.hue)).toBeGreaterThan(10);
+    // …sans faire apparaître une troisième couleur étrangère au morceau. La
+    // borne couvre l'impact (32°), la respiration (14°) et la dérive lente.
+    expect(ecart(hue, scene.palette.hue)).toBeLessThan(55);
+  });
+
   test("la dérive de teinte porte sur le temps du morceau, pas sur la scène", () => {
     const scene = buildShowPlan(analysis(), false).scenes[0]!;
     // La teinte ne doit aucune dépendance à `scene.start` : sinon elle repartait
@@ -830,7 +841,7 @@ describe("couleur", () => {
     let previous = sceneHue(scene, 0, 0, 0, false);
     for (let t = 0.1; t < 60; t += 0.1) {
       const hue = sceneHue(scene, t, 0, 0, false);
-      // 14 degrés par seconde => 1,4 degré par pas de 0,1 s.
+      // Dérive lente (0,4 °/s) + respiration : aucun saut d'un pas à l'autre.
       expect(hueGap(previous, hue)).toBeLessThan(2);
       previous = hue;
     }

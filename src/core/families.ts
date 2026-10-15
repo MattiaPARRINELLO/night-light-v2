@@ -71,7 +71,7 @@ const beams: FamilyDraw = (ctx, f) => {
     const ratio = rays === 1 ? 0.5 : i / (rays - 1);
     const wobble = Math.sin(f.t * (0.7 + hash01(i * 31 + f.seed) * 0.9) + i * 1.7) * 0.05;
     const angle = -Math.PI / 2 + (ratio - 0.5) * spread + sweep + wobble;
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const light = f.palette.lightness * (0.55 + 0.45 * f.bass);
     const alpha = (0.05 + 0.32 * f.energy + 0.2 * f.beat * f.bass) * f.alpha;
     if (alpha <= 0.002) continue;
@@ -346,7 +346,7 @@ const shutters: FamilyDraw = (ctx, f) => {
     const phase = f.t * speed * (0.6 + hash01(i * 71 + f.seed) * 0.8) + i * 0.7;
     const open = 0.5 + 0.5 * Math.sin(phase);
     const height = h * (0.06 + 0.5 * open) * (0.4 + f.energy * 1.2) + f.beat * h * 0.06;
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const alpha = (0.08 + 0.42 * f.energy + 0.2 * f.beat) * f.alpha * (0.4 + open * 0.6);
     const x = i * gap;
     const gradient = ctx.createLinearGradient(0, baseY - height, 0, baseY + height);
@@ -374,7 +374,7 @@ const bars: FamilyDraw = (ctx, f) => {
       0.6 * (band < 0.33 ? f.bass : band < 0.72 ? f.mid : f.high) *
         (0.4 + 0.6 * Math.abs(Math.sin(f.t * (0.8 + band) * (f.reduced ? 0.4 : 1.2) + i * 0.5)));
     const height = (h * 0.5) * level * (0.4 + f.energy);
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const alpha = (0.12 + 0.5 * f.energy) * f.alpha;
     const gradient = ctx.createLinearGradient(0, floor - height, 0, floor);
     gradient.addColorStop(0, paint(hue, f.palette.saturation, f.palette.lightness + 0.18, alpha));
@@ -454,7 +454,9 @@ const spots: FamilyDraw = (ctx, f) => {
     const aimY = cy + (hash01(i * 887 + f.seed) - 0.5) * h * 0.9 + drift * h * 0.2;
     const angle = Math.atan2(aimY - origin.y, aimX - origin.x);
     const aperture = (f.reduced ? 0.03 : 0.062) * (0.7 + f.energy * 0.9 + f.beat * 0.4);
-    const hue = f.palette.hue + (i / lamps) * f.palette.spread;
+    // Une lampe sur deux part sur la complémentaire : les projecteurs n'ont pas
+    // à être tous de la même couleur, c'est ce qui donne du relief à la scène.
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (i / lamps) * f.palette.spread;
     const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha;
 
     const gradient = ctx.createLinearGradient(
@@ -512,7 +514,7 @@ const mirror: FamilyDraw = (ctx, f) => {
     // balayent jamais toutes dans le même sens, le motif respire.
     const swing = Math.sin(f.t * speed + hash01(i * 1213 + f.seed) * Math.PI * 2);
     const aimX = cx + swing * w * 0.4;
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const alpha = (0.05 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
     if (alpha <= 0.002) continue;
     const aperture = (0.013 + hash01(i * 1367 + f.seed) * 0.018) * (0.7 + f.bass * 0.7 + f.beat * 0.3);
@@ -577,7 +579,7 @@ const parade: FamilyDraw = (ctx, f) => {
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     // Léger décalage par lampe : la rangée reste parallèle sans être rigide.
     const angle = tilt + (hash01(i * 311 + f.seed) - 0.5) * 0.07;
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const aperture = (0.02 + hash01(i * 433 + f.seed) * 0.014) * (0.7 + f.bass * 0.8 + f.beat * 0.25);
     const range = reach * (0.75 + hash01(i * 557 + f.seed) * 0.6);
     const originX = positions[i] ?? 0;
@@ -630,7 +632,7 @@ const crossfire: FamilyDraw = (ctx, f) => {
     // tirs restent écartés de 90° et se croisent tous au même point.
     const base = Math.atan2(cy - originY, cx - originX);
     const angle = base + breath;
-    const hue = f.palette.hue + (corner / 4) * f.palette.spread;
+    const hue = corner % 2 === 1 ? f.palette.accent : f.palette.hue + (corner / 4) * f.palette.spread;
     const aperture = (0.014 + 0.012 * hash01(corner * 97 + f.seed)) * (0.7 + f.energy * 0.8 + f.beat * 0.35);
     const gradient = ctx.createLinearGradient(
       originX,
@@ -762,9 +764,9 @@ const curtain: FamilyDraw = (ctx, f) => {
     const originX = positions[i] ?? 0;
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const angle = -Math.PI / 2 + (ratio - 0.5) * 0.55 + balance;
-    // Teinte répartie sur toute la palette, avec un léger décalage par faisceau
-    // pour que le rideau ne soit jamais monochrome.
-    const hue = f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    // Un faisceau sur deux part sur la complémentaire : le rideau n'est jamais
+    // monochrome, et la couleur alterne régulièrement sur toute la largeur.
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     // Une onde court le long du rideau : chaque faisceau a sa phase, donc la
     // lumière « voyage » au lieu de clignoter en bloc.
     const phase = Math.sin(f.t * 1.5 - ratio * 5.4) * 0.5 + 0.5;

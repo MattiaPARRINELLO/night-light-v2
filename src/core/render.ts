@@ -44,12 +44,28 @@ export const FLASH_CEILING = 0.4;
 const FLASH_MIN_GAP = 1.6;
 /** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
 const FLASH_ATTACK_SEC = 0.12;
-/** Glissement continu de la teinte, en degrés par seconde. */
-export const HUE_DRIFT_PER_SEC = 14;
-/** Teintes fortement écartées juste après un impact. */
-const DROP_HUE_JUMP = 70;
+/**
+ * Glissement continu de la teinte, en degrés par seconde.
+ *
+ * Volontairement très lent : il fait vivre la couleur sans la faire dériver hors
+ * de l'identité du morceau. À 14 °/s, un tour complet prenait 26 s — la palette
+ * choisie pour le morceau était perdue au bout d'une demi-minute.
+ */
+export const HUE_DRIFT_PER_SEC = 0.4;
+/** Respiration de la teinte autour de celle de la scène, en degrés. */
+const HUE_BREATH_DEG = 14;
+/**
+ * Saut de teinte à l'impact, en degrés.
+ *
+ * L'impact doit se voir — la couleur change franchement — mais il ne doit pas
+ * sortir le morceau de sa palette : la complémentaire joue déjà ce rôle, un
+ * saut trop grand ajoutait une troisième couleur qui ne voulait rien dire.
+ */
+const DROP_HUE_JUMP = 26;
 /** Saut de teinte quand la variation d'une phrase surgit. */
-const VARIATION_HUE_JUMP = 85;
+const VARIATION_HUE_JUMP = 30;
+/** Écart maximal à la teinte de scène, impacts compris. */
+const HUE_IMPACT_LIMIT = 32;
 /** Durée du grand wash de projecteurs après un impact, en secondes. */
 const WASH_SPAN_SEC = 4.5;
 
@@ -298,9 +314,16 @@ export function drawTransition(
  * teinte qui est vraiment à l'écran.
  */
 export function sceneHue(scene: Scene, t: number, drop: number, variation: number, reduced: boolean): number {
-  const drift = HUE_DRIFT_PER_SEC * t * (reduced ? 0.4 : 1);
-  const shift = drift + DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation;
-  return (scene.palette.hue + shift + 360) % 360;
+  const drift =
+    HUE_DRIFT_PER_SEC * t * (reduced ? 0.4 : 1) +
+    Math.sin(t * 0.11) * HUE_BREATH_DEG * (reduced ? 0.5 : 1);
+  // Les sauts sont bornés : un impact fait changer la lumière, il ne change pas
+  // de morceau.
+  const impact = Math.max(
+    -HUE_IMPACT_LIMIT,
+    Math.min(HUE_IMPACT_LIMIT, DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation),
+  );
+  return (scene.palette.hue + drift + impact + 360) % 360;
 }
 
 /**
@@ -369,12 +392,19 @@ export function renderFrame(input: RenderInput): void {
   const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
   const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
   const variation = reduced ? 0 : variationStrength(scene, t);
-  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);  const palette: Palette = {
+  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
+  const paletteHue = sceneHue(scene, t, drop, variation, reduced);
+  const palette: Palette = {
     name: scene.palette.name,
-    hue: sceneHue(scene, t, drop, variation, reduced),
+    hue: paletteHue,
+    // La complémentaire suit la dérive de la principale : l'écart entre les deux
+    // reste celui voulu par le morceau, quel que soit le glissement de teinte.
+    accent: (paletteHue + (scene.palette.accent - scene.palette.hue) + 360) % 360,
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
-    lightness: Math.min(0.8, scene.palette.lightness + drop * 0.12 + variation * 0.06),
+    // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la
+    // salle » sur un impact, sans changer la couleur du morceau.
+    lightness: Math.min(0.94, scene.palette.lightness + drop * 0.14 + variation * 0.06 + beat * 0.07),
   };
 
   const base: FrameState = {

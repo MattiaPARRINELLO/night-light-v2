@@ -141,14 +141,14 @@ describe("flashs", () => {
         family: "beams",
         variant: "tunnel",
         backdrop: "waves",
-        palette: { name: "test", hue: 200, spread: 40, saturation: 0.8, lightness: 0.6 },
+        palette: { name: "test", hue: 200, accent: 20, spread: 40, saturation: 0.8, lightness: 0.6 },
         intensity: 0.8,
         fadeIn: 1,
         fadeOut: 1,
         mood: "pulse",
         reason: "ouverture",
       },
-      palette: { name: "test", hue: 200, spread: 40, saturation: 0.8, lightness: 0.6 },
+      palette: { name: "test", hue: 200, accent: 20, spread: 40, saturation: 0.8, lightness: 0.6 },
       energy: 0.8,
       bass: 0.8,
       mid: 0.5,
@@ -194,6 +194,73 @@ describe("flashs", () => {
   test("le plafond n'est jamais dépassé, même à fond", () => {
     const value = flashAlpha(frame(), { ...DEFAULT_SETTINGS, flashes: 1.5 });
     expect(value).toBeLessThanOrEqual(0.4 * 1.5);
+  });
+});
+
+describe("palette du morceau", () => {
+  const morceau = (overrides: Partial<Analysis> = {}) =>
+    analysis({
+      duration: 240,
+      sections: [
+        { start: 0, end: 60, label: "calme", energy: 0.2 },
+        { start: 60, end: 120, label: "montee", energy: 0.5 },
+        { start: 120, end: 200, label: "intense", energy: 0.9 },
+        { start: 200, end: 240, label: "descente", energy: 0.3 },
+      ],
+      builds: [{ start: 176, end: 180, strength: 0.95 }],
+      ...overrides,
+    });
+
+  test("un morceau garde la meme identite du debut a la fin", () => {
+    const plan = buildShowPlan(morceau(), false);
+    // Toutes les scènes portent le nom de la palette du morceau : c'est ce qui
+    // donne une identité à la soirée au lieu d'un arc-en-ciel qui défile.
+    for (const scene of plan.scenes) expect(scene.palette.name).toBe(plan.track.name);
+  });
+
+  test("chaque scene reste dans la teinte du morceau ou sa complementaire", () => {
+    const plan = buildShowPlan(morceau(), false);
+    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    for (const scene of plan.scenes) {
+      const presDeLaBase = ecart(scene.palette.hue, plan.track.hue) <= plan.track.spread;
+      const presDuComplement = ecart(scene.palette.hue, plan.track.accent) <= plan.track.spread;
+      expect(presDeLaBase || presDuComplement).toBe(true);
+    }
+  });
+
+  test("les moments forts basculent sur la complementaire", () => {
+    const plan = buildShowPlan(morceau(), false);
+    const forts = plan.scenes.filter((scene) => scene.mood === "explosif");
+    expect(forts.length).toBeGreaterThan(0);
+    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    for (const scene of forts) {
+      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+    }
+  });
+
+  test("les moments forts sont vifs et clairs, les calmes sombres", () => {
+    const plan = buildShowPlan(morceau(), false);
+    const explosif = plan.scenes.find((scene) => scene.mood === "explosif");
+    const sombre = plan.scenes.find((scene) => scene.mood === "sombre" || scene.mood === "calme");
+    expect(explosif).toBeDefined();
+    expect(sombre).toBeDefined();
+    // Vif : saturation franche et luminosité haute (on s'approche du blanc),
+    // contre une teinte retenue et sombre pour les passages calmes.
+    expect(explosif!.palette.saturation).toBeGreaterThan(0.9);
+    expect(explosif!.palette.lightness).toBeGreaterThan(0.7);
+    expect(explosif!.palette.saturation).toBeGreaterThan(sombre!.palette.saturation);
+    expect(explosif!.palette.lightness).toBeGreaterThan(sombre!.palette.lightness + 0.2);
+  });
+
+  test("deux morceaux differents peuvent avoir des identites differentes", () => {
+    // Le choix vient du morceau lui-même (durée, tempo, nombre de temps) : deux
+    // morceaux distincts n'ont pas forcément la même salle.
+    const identites = new Set(
+      [0, 1, 2, 3, 4, 5, 6, 7].map(
+        (index) => buildShowPlan(morceau({ duration: 200 + index * 7, tempo: 100 + index * 9 }), false).track.name,
+      ),
+    );
+    expect(identites.size).toBeGreaterThan(1);
   });
 });
 

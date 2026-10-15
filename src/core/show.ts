@@ -57,6 +57,12 @@ export interface Palette {
   name: string;
   /** Teinte dominante, 0..360. */
   hue: number;
+  /**
+   * Teinte complémentaire, pour les sources secondaires : les projecteurs n'ont
+   * pas à être tous de la même couleur, et une complémentaire fait vivre un
+   * faisceau sur deux sans jamais jurer avec le reste.
+   */
+  accent: number;
   /** Écart entre teintes primaire et secondaire, en degrés. */
   spread: number;
   /** Saturation, 0..1. */
@@ -71,6 +77,19 @@ export interface ShowPlan {
   scenes: Scene[];
   /** Barres de mesure détectées dans le morceau, en secondes. */
   barStarts: number[];
+  /**
+   * Identité colorée du morceau, choisie une fois et tenue du premier au
+   * dernier plan : c'est elle que suit toute la salle.
+   */
+  track: TrackPalette;
+}
+
+/** Palette d'un morceau : une teinte, sa complémentaire, et leur écart. */
+export interface TrackPalette {
+  name: string;
+  hue: number;
+  accent: number;
+  spread: number;
 }
 
 export const FAMILY_LABELS: Record<FamilyId, string> = {
@@ -131,15 +150,24 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
 
-const PALETTES: Array<{ name: string; hue: number; spread: number }> = [
-  { name: "indigo", hue: 252, spread: 62 },
-  { name: "cyan", hue: 190, spread: 48 },
-  { name: "magenta", hue: 318, spread: 70 },
-  { name: "ambre", hue: 34, spread: 54 },
-  { name: "émeraude", hue: 158, spread: 44 },
-  { name: "violet-orange", hue: 274, spread: 120 },
-  { name: "corail", hue: 8, spread: 40 },
-  { name: "azur", hue: 214, spread: 66 },
+/**
+ * Palettes de morceau.
+ *
+ * Le spectacle éclaire une salle de soirée, pas un musée : les teintes sont
+ * franches et saturées, et chaque morceau garde la même identité d'un bout à
+ * l'autre (voir `buildShowPlan`). La complémentaire sert aux sources
+ * secondaires, pour qu'un faisceau sur deux parte dans l'autre couleur sans
+ * jamais jurer avec l'ensemble.
+ */
+const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
+  { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
+  { name: "ambre-azur", hue: 34, accent: 214, spread: 38 },
+  { name: "émeraude-magenta", hue: 152, accent: 320, spread: 42 },
+  { name: "azur-orange", hue: 212, accent: 26, spread: 40 },
+  { name: "corail-turquoise", hue: 6, accent: 176, spread: 36 },
+  { name: "violet-jaune", hue: 268, accent: 52, spread: 46 },
+  { name: "cyan-rose", hue: 186, accent: 336, spread: 42 },
+  { name: "jaune-bleu", hue: 48, accent: 222, spread: 40 },
 ];
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
@@ -220,11 +248,43 @@ function familyFor(caractere: Caractere, reduced: boolean, turn: number): Family
   return pick(ALL_FAMILIES);
 }
 
+/**
+ * Saturation d'une humeur. Le spectacle doit éclairer une salle : les passages
+ * forts sont franchement saturés, les passages calmes se permettent une couleur
+ * plus retenue (mais jamais grise — c'est une soirée, pas un aquarium).
+ */
+function paletteSaturation(mood: Mood): number {
+  if (mood === "sombre") return 0.55;
+  if (mood === "calme") return 0.62;
+  if (mood === "aerien") return 0.8;
+  if (mood === "explosif") return 0.96;
+  if (mood === "pulse") return 0.9;
+  return 0.84;
+}
+
+/**
+ * Luminosité d'une humeur. Les moments forts montent près du blanc — c'est ce
+ * qui « allume la salle » — et les passages calmes ou juste avant un drop
+ * restent sombres, pour que l'impact se voie.
+ */
+function paletteLightness(mood: Mood): number {
+  if (mood === "sombre") return 0.38;
+  if (mood === "calme") return 0.44;
+  if (mood === "aerien") return 0.62;
+  if (mood === "explosif") return 0.76;
+  if (mood === "pulse") return 0.68;
+  return 0.6;
+}
+
 function moodFor(caractere: Caractere, label: string): Mood {
   if (label === "silence") return "sombre";
   if (label === "montee") return "pulse";
   if (caractere.energy > 0.62) return "explosif";
-  if (caractere.energy < 0.26) return "aerien";
+  // Un passage vraiment calme reste sombre : c'est le creux qui rend l'impact
+  // lisible, et ça repose la salle entre deux montées. L'aérien est réservé aux
+  // passages modérés mais clairs dans le spectre.
+  if (caractere.energy < 0.3) return "calme";
+  if (caractere.brightness > 0.68) return "aerien";
   return "pulse";
 }
 
@@ -309,6 +369,9 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   const seed = hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
   const events = sceneBoundaries(analysis);
+  // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
+  // l'autre, et tenue du premier au dernier plan.
+  const track = TRACK_PALETTES[Math.floor(hash01(seed * 13 + 5) * TRACK_PALETTES.length)] ?? TRACK_PALETTES[0]!;
 
   const scenes: Scene[] = [];
   let previousHue = -999;
@@ -340,13 +403,22 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     const gentle = CALM_FAMILIES.filter((candidate) => candidate !== family && candidate !== variant);
     const backdrop = gentle[Math.floor(hash01(seed * 31 + turn) * gentle.length)] ?? "waves";
 
-    // La teinte tourne d'un cran à chaque changement justifié, et dérive ensuite.
-    const base = PALETTES[paletteTurn % PALETTES.length] ?? PALETTES[0]!;
+    // Les moments forts basculent sur la complémentaire du morceau : c'est le
+    // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
+    const fort = mood === "explosif" || (mood === "pulse" && caractere.energy > 0.6);
+    const ancre = fort ? track.accent : track.hue;
+    const derive = (hash01(seed + turn * 977) - 0.5) * track.spread;
     paletteTurn += 1;
-    let hue = (base.hue + Math.round((hash01(seed + paletteTurn * 977) - 0.5) * 24) + 360) % 360;
+    let hue = (ancre + derive + 360) % 360;
     const delta = ((hue - previousHue + 540) % 360) - 180;
     if (Math.abs(delta) < MIN_HUE_STEP) {
       hue = (hue + (delta >= 0 ? MIN_HUE_STEP : -MIN_HUE_STEP) + 360) % 360;
+    }
+    // ...mais il ne doit jamais faire sortir de l'identité du morceau : on
+    // ramène la teinte dans la fenêtre autour de son ancre si besoin.
+    const ecartAncre = ((hue - ancre + 540) % 360) - 180;
+    if (Math.abs(ecartAncre) > track.spread) {
+      hue = (ancre + (ecartAncre > 0 ? track.spread : -track.spread) + 360) % 360;
     }
     previousHue = hue;
 
@@ -358,11 +430,12 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
       variant,
       backdrop,
       palette: {
-        name: base.name,
+        name: track.name,
         hue,
-        spread: base.spread,
-        saturation: mood === "sombre" ? 0.6 : 0.84,
-        lightness: mood === "sombre" ? 0.42 : 0.6,
+        accent: (track.accent + derive + 360) % 360,
+        spread: track.spread,
+        saturation: paletteSaturation(mood),
+        lightness: paletteLightness(mood),
       },
       intensity: clamp01(moodIntensity(mood, caractere.energy)),
       fadeIn: index === 0 ? 0.7 : event.weight >= 1 ? 1.2 : 0.7,
@@ -380,7 +453,14 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
       family: "beams",
       variant: "tunnel",
       backdrop: "waves",
-      palette: { name: "indigo", hue: 252, spread: 62, saturation: 0.82, lightness: 0.6 },
+      palette: {
+        name: track.name,
+        hue: track.hue,
+        accent: track.accent,
+        spread: track.spread,
+        saturation: 0.88,
+        lightness: 0.64,
+      },
       intensity: 0.6,
       fadeIn: 0.7,
       fadeOut: 0.9,
@@ -393,7 +473,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   const last = scenes[scenes.length - 1];
   if (last !== undefined) last.end = round3(duration);
 
-  return { duration, seed, scenes, barStarts: barStarts(analysis) };
+  return { duration, seed, scenes, barStarts: barStarts(analysis), track };
 }
 
 function sectionLabelAt(analysis: Analysis, t: number): string {

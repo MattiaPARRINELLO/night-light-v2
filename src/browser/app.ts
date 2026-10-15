@@ -1400,7 +1400,7 @@ export class App {
           family: "beams",
           variant: "tunnel",
           backdrop: "waves",
-          palette: { name: "indigo", hue: 252, spread: 62, saturation: 0.82, lightness: 0.6 },
+          palette: { name: "magenta-cyan", hue: 318, accent: 188, spread: 44, saturation: 0.88, lightness: 0.64 },
           intensity: 0.6,
           fadeIn: 0.7,
           fadeOut: 0.9,
@@ -1409,6 +1409,7 @@ export class App {
         },
       ],
       barStarts: [],
+      track: { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
     };
   }
 
