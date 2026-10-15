@@ -374,6 +374,7 @@ src/dashboard/          tableau de bord (page + styles)
 | variable | défaut | rôle |
 | --- | --- | --- |
 | `SESSION_DIR` | `/tmp/night-light-sessions` | répertoire des sessions (fichiers audio de lecture) |
+| `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés (survit au redémarrage) |
 | `MAX_FILE_MB` | `40` | taille d'envoi maximale |
 | `MAX_DURATION_SEC` | `900` | durée de morceau maximale |
 | `ANALYZE_TIMEOUT_SEC` | `240` | délai d'analyse |

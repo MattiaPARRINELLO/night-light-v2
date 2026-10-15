@@ -22,7 +22,11 @@ from tests.make_fixture import write_synthetic_track
 def client(tmp_path: Path):
     previous_state = main.state
     previous_settings = main.settings
-    main.settings = replace(previous_settings, session_dir=str(tmp_path / "night-light-sessions"))
+    main.settings = replace(
+        previous_settings,
+        session_dir=str(tmp_path / "night-light-sessions"),
+        cache_dir=str(tmp_path / "night-light-cache"),
+    )
     main.state = main.AppState(main.settings)
     with TestClient(main.app) as test_client:
         yield test_client
@@ -178,3 +182,24 @@ def test_session_dir_valide_est_conserve(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / "night-light-sessions"
     monkeypatch.setenv("SESSION_DIR", str(target))
     assert load_settings().session_dir == str(target)
+
+
+def test_cache_dir_par_defaut_survit_au_redemarrage(monkeypatch) -> None:
+    """Le cache persistant ne doit pas vivre sous /tmp : tmpfs vidé au reboot."""
+    monkeypatch.delenv("CACHE_DIR", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    cache_dir = Path(load_settings().cache_dir)
+    assert cache_dir.is_absolute()
+    assert not cache_dir.is_relative_to(Path("/tmp"))
+    assert cache_dir == (Path.home() / ".local" / "share" / "night-light" / "cache").resolve()
+
+
+def test_cache_dir_respecte_xdg_et_override(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("CACHE_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    assert (
+        Path(load_settings().cache_dir) == (tmp_path / "data" / "night-light" / "cache").resolve()
+    )
+
+    monkeypatch.setenv("CACHE_DIR", str(tmp_path / "custom-cache"))
+    assert Path(load_settings().cache_dir) == tmp_path / "custom-cache"
