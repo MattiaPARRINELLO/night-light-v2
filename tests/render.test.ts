@@ -24,8 +24,10 @@ import {
   hazeRadiusPixels,
   type HazeLayer,
   type HazeTarget,
+  lampHue,
   PETIT_ELEMENT_BEATS,
   rowPositions,
+  sceneChord,
   softBeam,
 } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
@@ -921,6 +923,78 @@ describe("bascule de couleur des formes", () => {
     }
     expect(maximum).toBeLessThanOrEqual(5);
     expect(auMoinsUne).toBe(true);
+  });
+});
+
+describe("accords de couleurs", () => {
+  const plan = buildShowPlan(analysis(), false);
+  const scene = plan.scenes[0]!;
+
+  const frame = (over: Partial<Parameters<typeof lampHue>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene,
+      palette: scene.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: plan.seed,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof lampHue>[0];
+
+  const ecart = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+
+  test("l'accord reste dans la gamme du morceau", () => {
+    const palette = scene.palette;
+    const accord = sceneChord(palette, scene.index, plan.seed);
+    // Une scène n'est jamais monochrome : au moins trois teintes.
+    expect(accord.length).toBeGreaterThanOrEqual(3);
+    for (const hue of accord) {
+      // Toutes les teintes dérivent de celle de la scène : jamais à plus d'un
+      // demi-cercle, sinon ce serait une autre couleur, pas la même gamme.
+      expect(ecart(hue, palette.hue)).toBeLessThanOrEqual(200);
+    }
+    // L'accent du morceau fait partie de l'accord : la palette se reconnaît.
+    expect(accord.some((hue) => ecart(hue, palette.accent) < 20)).toBe(true);
+  });
+
+  test("les lampes d'une même scène portent plusieurs teintes", () => {
+    const f = frame();
+    const hues = Array.from({ length: 15 }, (_, index) => lampHue(f, index));
+    // Aucune lampe ne répète exactement sa voisine...
+    for (let index = 0; index < hues.length - 1; index += 1) {
+      expect(ecart(hues[index]!, hues[index + 1]!)).toBeGreaterThan(3);
+    }
+    // ...et la rangée déploie au moins trois couleurs distinctes.
+    expect(new Set(hues.map((hue) => Math.round(hue / 12))).size).toBeGreaterThanOrEqual(3);
+  });
+
+  test("une scène garde ses couleurs, le morceau les renouvelle", () => {
+    // Stable à l'intérieur d'une scène, quelle que soit la position...
+    for (let index = 0; index < 8; index += 1) {
+      expect(lampHue(frame({ t: 10 }), index)).toBe(lampHue(frame({ t: 40 }), index));
+    }
+    // ...et l'accord change d'une scène à l'autre : l'univers se déploie.
+    const tirages = new Set<string>();
+    for (let index = 0; index < 24; index += 1) {
+      tirages.add(sceneChord(scene.palette, index, plan.seed).map((hue) => Math.round(hue)).join(","));
+    }
+    expect(tirages.size).toBeGreaterThanOrEqual(3);
   });
 });
 

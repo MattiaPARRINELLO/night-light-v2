@@ -448,6 +448,76 @@ function count(base: number, quality: number, reduced: boolean): number {
   return Math.max(3, Math.round(scaled));
 }
 
+/* ------------------------------------------------------------------ accords */
+
+/**
+ * Accords harmoniques : les écarts de teinte dont une scène tire ses couleurs.
+ *
+ * Une scène à plusieurs sources n'est jamais monochrome, et elle n'est pas
+ * bariolée pour autant : ses teintes sont prises dans un accord du cercle
+ * chromatique. Plus le morceau change de scène, plus l'accord change : l'univers
+ * coloré se déploie sans jamais quitter l'identité du morceau.
+ */
+const ACCORDS: readonly (readonly number[])[] = [
+  [0, 150, 210], // demi-complémentaire
+  [0, 120, 240], // triade
+  [0, 90, 180, 270], // carré
+  [0, 60, 120, 180, 240, 300], // hexade : le cercle entier, par sixièmes
+];
+
+/**
+ * Teintes d'un accord, en degrés absolus.
+ *
+ * L'écart de l'accent du morceau remplace le 180 de l'accord quand celui-ci en
+ * comporte un : la complémentaire d'une scène est alors exactement celle de la
+ * palette du morceau, et non un 180 générique. Les accords sans 180 (demi-
+ * complémentaire, triade) reçoivent l'accent en second — c'est lui qui signe le
+ * morceau. Enfin, deux membres peuvent se rejoindre si l'accent tombe près d'une
+ * tierce : on écarte alors le doublon, pour que la diversité soit réelle.
+ *
+ * Le tirage ne dépend que de l'index de la scène : une scène garde son accord du
+ * début à la fin, et le morceau le renouvelle d'une scène à l'autre.
+ */
+export function sceneChord(palette: Palette, sceneIndex: number, seed: number): number[] {
+  const complement = (((palette.accent - palette.hue) % 360) + 360) % 360;
+  const tirage = hash01(sceneIndex * 7919 + seed * 131);
+  const base = ACCORDS[Math.floor(tirage * ACCORDS.length)] ?? ACCORDS[0]!;
+  const offsets = base.includes(180)
+    ? base.map((ecart) => (ecart === 180 ? complement : ecart))
+    : [0, complement, ...base.slice(1)];
+  const hues: number[] = [];
+  for (const ecart of offsets) {
+    const hue = shiftHue(palette.hue, ecart);
+    if (hues.some((deja) => Math.abs((((deja - hue) % 360) + 540) % 360 - 180) < 12)) continue;
+    hues.push(hue);
+  }
+  return hues;
+}
+
+/** Pas de parcours d'un accord : premier avec sa longueur, pour en visiter tous les membres. */
+function chordStep(length: number): number {
+  for (const pas of [2, 3, 5, 7]) if (length % pas !== 0) return pas;
+  return 1;
+}
+
+/**
+ * Teinte de la lampe `index` d'un ensemble, dans l'accord de la scène.
+ *
+ * Les lampes parcourent l'accord avec un pas premier avec sa longueur, puis une
+ * rotation tirée du seed : deux lampes voisines ne portent donc jamais la même
+ * teinte, et la rangée se lit multicolore au lieu d'alternée. Un léger écart par
+ * lampe (`spread`) achève de distinguer deux lampes de même teinte — sans jamais
+ * sortir de la gamme, puisque l'écart reste petit devant celui de l'accord.
+ */
+export function lampHue(f: FrameState, index: number): number {
+  const accord = sceneChord(f.palette, f.scene.index, f.seed);
+  const pas = chordStep(accord.length);
+  const rotation = Math.floor(hash01(f.scene.index * 104729 + f.seed) * accord.length);
+  const membre =
+    accord[((index * pas + rotation) % accord.length + accord.length) % accord.length] ?? f.palette.hue;
+  return shiftHue(membre, (hash01(index * 2711 + f.seed) - 0.5) * f.palette.spread * 0.45);
+}
+
 /* ------------------------------------------------------------------ faisceaux */
 
 const beams: FamilyDraw = (ctx, f, view) => {
@@ -467,7 +537,7 @@ const beams: FamilyDraw = (ctx, f, view) => {
     const ratio = rays === 1 ? 0.5 : i / (rays - 1);
     const wobble = Math.sin(f.t * (0.7 + hash01(i * 31 + f.seed) * 0.9) + i * 1.7) * 0.05;
     const angle = -Math.PI / 2 + (ratio - 0.5) * spread + sweep + wobble;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const light = f.palette.lightness * (0.55 + 0.45 * f.bass);
     const alpha = (0.05 + 0.32 * f.energy + 0.2 * f.beat * f.bass) * f.alpha;
     if (alpha <= 0.002) continue;
@@ -732,11 +802,10 @@ const shutters: FamilyDraw = (ctx, f) => {
   const baseY = h * 0.5;
 
   for (let i = 0; i < slats; i += 1) {
-    const ratio = slats === 1 ? 0.5 : i / (slats - 1);
     const phase = f.t * speed * (0.6 + hash01(i * 71 + f.seed) * 0.8) + i * 0.7;
     const open = 0.5 + 0.5 * Math.sin(phase);
     const height = h * (0.06 + 0.5 * open) * (0.4 + f.energy * 1.2) + f.beat * h * 0.06;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const alpha = (0.08 + 0.42 * f.energy + 0.2 * f.beat) * f.alpha * (0.4 + open * 0.6);
     const x = i * gap;
     const gradient = ctx.createLinearGradient(0, baseY - height, 0, baseY + height);
@@ -757,14 +826,13 @@ const bars: FamilyDraw = (ctx, f) => {
   const floor = h * 0.88;
 
   for (let i = 0; i < columns; i += 1) {
-    const ratio = columns === 1 ? 0.5 : i / (columns - 1);
     const band = hash01(i * 911 + f.seed);
     const level =
       0.12 +
       0.6 * (band < 0.33 ? f.bass : band < 0.72 ? f.mid : f.high) *
         (0.4 + 0.6 * Math.abs(Math.sin(f.t * (0.8 + band) * (f.reduced ? 0.4 : 1.2) + i * 0.5)));
     const height = (h * 0.5) * level * (0.4 + f.energy);
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const alpha = (0.12 + 0.5 * f.energy) * f.alpha;
     const gradient = ctx.createLinearGradient(0, floor - height, 0, floor);
     gradient.addColorStop(0, paint(hue, f.palette.saturation, f.palette.lightness + 0.18, alpha));
@@ -848,7 +916,7 @@ const spots: FamilyDraw = (ctx, f, view) => {
     const aperture = (f.reduced ? 0.03 : 0.062) * (0.7 + f.energy * 0.9 + f.beat * 0.4);
     // Une lampe sur deux part sur la complémentaire : les projecteurs n'ont pas
     // à être tous de la même couleur, c'est ce qui donne du relief à la scène.
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (i / lamps) * f.palette.spread;
+    const hue = lampHue(f, i);
     // Les projecteurs ne restent pas tous allumés : chacun a son cycle, donc la
     // salle change de visage sans qu'aucun ne s'éteigne d'un coup.
     const allumage = elementEnvelope(f, view, i * 3 + 1, f.energy > 0.55 ? 12 : 22, 0.8);
@@ -902,7 +970,6 @@ const mirror: FamilyDraw = (ctx, f, view) => {
   const reach = Math.hypot(w, h) * 1.35;
 
   for (let i = 0; i < pairs; i += 1) {
-    const ratio = pairs === 1 ? 0.5 : i / (pairs - 1);
     const row = hash01(i * 711 + f.seed);
     const originY = h * (0.1 + row * 0.8);
     const aimY = cy + (hash01(i * 911 + f.seed) - 0.5) * h * 0.62;
@@ -910,7 +977,7 @@ const mirror: FamilyDraw = (ctx, f, view) => {
     // toutes dans le même sens, le motif respire — mais sur le tempo.
     const swing = beatSwing(f, view, 0.8, GRAND_BALAYAGE_BEATS, hash01(i * 1213 + f.seed));
     const aimX = cx + swing * w * 0.4;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const alpha = (0.05 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
     if (alpha <= 0.002) continue;
     const aperture = (0.013 + hash01(i * 1367 + f.seed) * 0.018) * (0.7 + f.bass * 0.7 + f.beat * 0.3);
@@ -971,10 +1038,9 @@ const parade: FamilyDraw = (ctx, f, view) => {
   if (alpha <= 0.002) return;
 
   for (let i = 0; i < positions.length; i += 1) {
-    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     // Léger décalage par lampe : la rangée reste parallèle sans être rigide.
     const angle = tilt + (hash01(i * 311 + f.seed) - 0.5) * 0.07;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const aperture = (0.02 + hash01(i * 433 + f.seed) * 0.014) * (0.7 + f.bass * 0.8 + f.beat * 0.25);
     const range = reach * (0.75 + hash01(i * 557 + f.seed) * 0.6);
     const originX = positions[i] ?? 0;
@@ -1026,7 +1092,7 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
     // tirs restent écartés de 90° et se croisent tous au même point.
     const base = Math.atan2(cy - originY, cx - originX);
     const angle = base + breath;
-    const hue = corner % 2 === 1 ? f.palette.accent : f.palette.hue + (corner / 4) * f.palette.spread;
+    const hue = lampHue(f, corner);
     const aperture = (0.014 + 0.012 * hash01(corner * 97 + f.seed)) * (0.7 + f.energy * 0.8 + f.beat * 0.35);
     softBeam(ctx, {
       x: originX,
@@ -1078,7 +1144,7 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
     const width = 0.04 + hash01(i * 1979 + f.seed) * 0.05;
     const range = length * (0.75 + hash01(i * 2267 + f.seed) * 0.7);
     const aperture = width * (0.8 + f.energy * 0.5 + f.beat * 0.45);
-    const hue = f.palette.hue + (i / lamps) * f.palette.spread;
+    const hue = lampHue(f, i);
 
     softBeam(ctx, {
       x: origin.x,
@@ -1166,7 +1232,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
     const angle = -Math.PI / 2 + (ratio - 0.5) * 0.55 + balance;
     // Un faisceau sur deux part sur la complémentaire : le rideau n'est jamais
     // monochrome, et la couleur alterne régulièrement sur toute la largeur.
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     // Chaque faisceau s'allume et s'éteint à son tour, sur un cycle musical :
     // la lumière « voyage » le long de la rangée au lieu de clignoter en bloc.
     const phase = elementEnvelope(f, view, i, f.energy > 0.55 ? 10 : 20, 0.85);
@@ -1224,15 +1290,13 @@ const burst: FamilyDraw = (ctx, f, view) => {
   for (let i = 0; i < rayons; i += 1) {
     const ratio = i / rayons;
     const angle = rotation + ratio * Math.PI * 2;
-    // Deux teintes opposées : la moitié des rayons prend la couleur
-    // complémentaire, ce qui casse l'uniformité et remplit mieux la salle.
-    const complementaire = i % 2 === 1;
-    const hue = complementaire
-      ? f.palette.hue + 180 + (ratio - 0.5) * 40
-      : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    // Chaque rayon prend sa teinte dans l'accord de la scène : la roue est
+    // multicolore, aucun rayon ne répète son voisin.
+    const hue = lampHue(f, i);
     const aperture = (0.012 + 0.02 * hash01(i * 613 + f.seed)) * (0.7 + f.energy * 0.9 + f.beat * 0.4);
     const portee = reach * (0.7 + 0.3 * hash01(i * 719 + f.seed));
-    const intensite = alpha * (complementaire ? 0.72 : 1);
+    // Alternance de densité : les rayons ne se valent pas, la roue a du relief.
+    const intensite = alpha * (i % 2 === 1 ? 0.72 : 1);
 
     softBeam(ctx, {
       x: cx,
@@ -1352,7 +1416,7 @@ const gobos: FamilyDraw = (ctx, f, view) => {
     const taille = rayon * (0.6 + hash01(i * 3001 + f.seed) * 0.7);
     const sens = i % 2 === 0 ? 1 : -1;
     const rotation = f.t * (0.08 + hash01(i * 2311 + f.seed) * 0.2) * sens;
-    const teinte = i % 2 === 1 ? f.palette.accent : f.palette.hue + (hash01(i * 2711 + f.seed) - 0.5) * f.palette.spread;
+    const teinte = lampHue(f, i);
     // La bascule ajoute 180° : la forme porte brièvement la couleur opposée à
     // la sienne. Comme la teinte est un angle, le passage d'une couleur à
     // l'autre est une rotation continue de la roue — jamais un saut.
@@ -1405,7 +1469,7 @@ const pendule: FamilyDraw = (ctx, f, view) => {
     // portique quitte le cadre par le côté et n'éclaire plus rien.
     const balance = beatSwing(f, view, f.reduced ? 0.4 : 0.9, GRAND_BALAYAGE_BEATS, retard);
     const angle = Math.PI / 2 + balance;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const ouverture = 0.85 + 0.5 * f.beat + 0.35 * f.energy;
     softBeam(ctx, {
       x,
@@ -1460,7 +1524,7 @@ const couronne: FamilyDraw = (ctx, f, view) => {
     // ciel. Sans ce redressement, les rayons des extrémités partent à
     // l'horizontale et quittent le cadre aussitôt.
     const angle = Math.atan2(y - cy, x - cx) * 0.5 - Math.PI * 0.25;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     // Chaque faisceau s'allume à son tour : la lumière fait le tour de la couronne.
     const allumage = elementEnvelope(f, view, i, cycle, 0.8);
     if (allumage <= 0.01) continue;
@@ -1509,7 +1573,7 @@ const pluie: FamilyDraw = (ctx, f, view) => {
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const allumage = elementEnvelope(f, view, i * 7 + 2, cycle, 0.65);
     if (allumage <= 0.01) continue;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     // Longueur propre à chaque colonne : l'averse n'est pas régulière. Aucune
     // n'est courte — une colonne courte se lit comme une tache, pas comme une
     // chute.
@@ -1561,7 +1625,7 @@ const portique: FamilyDraw = (ctx, f, view) => {
     // Le balancement lent garde la porte vivante sans la faire clignoter.
     const balance = beatSwing(f, view, f.reduced ? 0.2 : 0.4, GRAND_BALAYAGE_BEATS, ratio);
     const angle = -Math.PI / 2 + penche + balance;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     softBeam(ctx, {
       x,
       y: h * 1.02,
@@ -1611,7 +1675,7 @@ const etoile: FamilyDraw = (ctx, f, view) => {
     const pulsation = elementEnvelope(f, view, i, cycle, 0.7);
     if (pulsation <= 0.01) continue;
     const longueur = portee * (0.78 + 0.28 * hash01(i * 811 + f.seed)) * (0.45 + 0.55 * pulsation);
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     softBeam(ctx, {
       x: cx,
       y: cy,
@@ -1663,7 +1727,7 @@ const vortex: FamilyDraw = (ctx, f, view) => {
   for (let i = 0; i < rayons; i += 1) {
     const part = rayons === 1 ? 0.5 : i / (rayons - 1);
     const angle = tour + part * Math.PI * 2 * 0.9;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     curvedBeam(ctx, {
       x: cx + Math.cos(angle) * depart,
       y: cy + Math.sin(angle) * depart,
