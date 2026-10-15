@@ -80,7 +80,9 @@ def decode_with_ffmpeg(path: Path, sample_rate: int) -> np.ndarray | None:
         "-",
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, timeout=120, check=False)
+        completed = subprocess.run(
+            command, capture_output=True, timeout=120, check=False
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     if completed.returncode != 0 or len(completed.stdout) < 4096:
@@ -190,7 +192,9 @@ def curve_to_points(
     return [[round(float(t), 3), round(float(v), 2)] for t, v in zip(grid, resampled)]
 
 
-def band_energy(spectrum: np.ndarray, frequencies: np.ndarray, low: float, high: float) -> np.ndarray:
+def band_energy(
+    spectrum: np.ndarray, frequencies: np.ndarray, low: float, high: float
+) -> np.ndarray:
     mask = (frequencies >= low) & (frequencies < high)
     if not mask.any():
         return np.zeros(spectrum.shape[1])
@@ -220,13 +224,16 @@ def detect_rhythm(
         tempo_value = 120.0
     report(phase, 0.8, "Temps forts et attaques")
     beats = librosa.frames_to_time(beat_frames, sr=sr, hop_length=HOP) + GROUP_DELAY_SEC
-    onsets = librosa.onset.onset_detect(
-        onset_envelope=onset_env,
-        sr=sr,
-        hop_length=HOP,
-        units="time",
-        backtrack=False,
-    ) + GROUP_DELAY_SEC
+    onsets = (
+        librosa.onset.onset_detect(
+            onset_envelope=onset_env,
+            sr=sr,
+            hop_length=HOP,
+            units="time",
+            backtrack=False,
+        )
+        + GROUP_DELAY_SEC
+    )
     unique_beats = sorted({round(float(b), 3) for b in beats})
     unique_onsets = sorted({round(float(o), 3) for o in onsets})
     return tempo_value, unique_beats, unique_onsets
@@ -253,7 +260,9 @@ def detect_sections(
     phase: Phase,
 ) -> list[dict]:
     report(phase, 0.2, "Caractéristiques spectrales")
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
+    mel = librosa.feature.melspectrogram(
+        y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64
+    )
     mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
     chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=HOP)
     features = np.vstack([mfcc, chroma])
@@ -269,7 +278,11 @@ def detect_sections(
         }
         | {0.0, round(float(duration), 3)}
     )
-    edges = [edge for index, edge in enumerate(edges) if index == 0 or edge - edges[index - 1] > 0.75]
+    edges = [
+        edge
+        for index, edge in enumerate(edges)
+        if index == 0 or edge - edges[index - 1] > 0.75
+    ]
     if edges[-1] < duration:
         edges.append(round(float(duration), 3))
 
@@ -308,7 +321,14 @@ def detect_sections(
         )
 
     if not sections:
-        sections = [{"start": 0.0, "end": round(float(duration), 3), "label": "intense", "energy": 0.5}]
+        sections = [
+            {
+                "start": 0.0,
+                "end": round(float(duration), 3),
+                "label": "intense",
+                "energy": 0.5,
+            }
+        ]
     report(phase, 1.0, f"{len(sections)} sections détectées")
     return sections
 
@@ -316,7 +336,32 @@ def detect_sections(
 # ------------------------------------------------------------------ montées
 
 
-def detect_builds(energy_points: list[list[float]], duration: float) -> list[dict]:
+def _snap_to_onset(
+    target: float, onsets: list[float] | None, window: float = 0.3
+) -> float:
+    """Recale `target` sur l'attaque (onset) la plus proche, si elle existe.
+
+    L'oreille entend l'attaque, pas le milieu de l'enveloppe : sans ce recadrage,
+    le spectacle fête le drop là où la courbe d'énergie s'aplatit, ce qui est
+    toujours un peu après le son.
+    """
+    if not onsets:
+        return target
+    best = target
+    best_delta = window
+    for onset in onsets:
+        delta = abs(float(onset) - target)
+        if delta <= best_delta:
+            best_delta = delta
+            best = float(onset)
+    return best
+
+
+def detect_builds(
+    energy_points: list[list[float]],
+    duration: float,
+    onsets: list[float] | None = None,
+) -> list[dict]:
     """Montées d'énergie suivies d'un impact."""
     if len(energy_points) < 8:
         return []
@@ -346,8 +391,23 @@ def detect_builds(energy_points: list[list[float]], duration: float) -> list[dic
         peak_slice = values[start_index : min(start_index + int(6 * rate), len(values))]
         strength = float(np.max(peak_slice)) if peak_slice.size > 0 else 0.0
         start_level = float(values[start_index])
+        # L'impact audible est le saut d'énergie le plus raide de la montée. Le
+        # `derivative` est lissé sur plusieurs secondes, donc sa fin de montée
+        # tombe après l'impact : sans ce recalcul, le spectacle fête le drop 1 à
+        # 2 s après le son.
+        pic = slice(start_index, min(end_index + 1, len(gradient)))
+        if pic.stop > pic.start:
+            end = float(
+                times[min(int(np.argmax(gradient[pic])) + pic.start, len(times) - 1)]
+            )
+            # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
+            end = _snap_to_onset(end, onsets)
         # Une vraie montée gagne nettement en niveau, pas seulement quelques %.
-        if 2.0 <= end - start <= 30.0 and strength > 0.3 and strength - start_level > 0.18:
+        if (
+            2.0 <= end - start <= 30.0
+            and strength > 0.3
+            and strength - start_level > 0.18
+        ):
             builds.append(
                 {
                     "start": round(start, 3),
@@ -377,13 +437,23 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
     """
     try:
         rng = np.random.default_rng(0)
-        noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(np.float32)
-        onset_env = librosa.onset.onset_strength(y=noise, sr=sample_rate, hop_length=HOP)
-        librosa.beat.beat_track(onset_envelope=onset_env, sr=sample_rate, hop_length=HOP, trim=False)
-        mel = librosa.feature.melspectrogram(y=noise, sr=sample_rate, n_fft=NFFT, hop_length=HOP, n_mels=64)
+        noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(
+            np.float32
+        )
+        onset_env = librosa.onset.onset_strength(
+            y=noise, sr=sample_rate, hop_length=HOP
+        )
+        librosa.beat.beat_track(
+            onset_envelope=onset_env, sr=sample_rate, hop_length=HOP, trim=False
+        )
+        mel = librosa.feature.melspectrogram(
+            y=noise, sr=sample_rate, n_fft=NFFT, hop_length=HOP, n_mels=64
+        )
         librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
         librosa.feature.chroma_stft(
-            S=librosa.stft(noise, n_fft=NFFT, hop_length=HOP), sr=sample_rate, hop_length=HOP
+            S=librosa.stft(noise, n_fft=NFFT, hop_length=HOP),
+            sr=sample_rate,
+            hop_length=HOP,
         )
         librosa.feature.rms(y=noise, hop_length=HOP)
     except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
@@ -426,7 +496,10 @@ def analyze_file(
     duration = float(len(y) / sample_rate) if sample_rate > 0 else 0.0
 
     if duration < 1.0:
-        raise AnalysisError("too_short", "Le morceau est trop court (moins d'une seconde) pour être analysé.")
+        raise AnalysisError(
+            "too_short",
+            "Le morceau est trop court (moins d'une seconde) pour être analysé.",
+        )
     if duration > settings.max_duration_sec:
         raise AnalysisError(
             "too_long",
@@ -435,15 +508,25 @@ def analyze_file(
 
     spectrum = np.abs(librosa.stft(y, n_fft=NFFT, hop_length=HOP))
     frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=NFFT)
-    frame_times = librosa.frames_to_time(np.arange(spectrum.shape[1]), sr=sample_rate, hop_length=HOP)
+    frame_times = librosa.frames_to_time(
+        np.arange(spectrum.shape[1]), sr=sample_rate, hop_length=HOP
+    )
     frame_rate = sample_rate / float(HOP)
 
     # Lissage large : sans lui les courbes servent le battement du morceau et
     # feraient clignoter les effets au lieu de suivre son énergie.
-    bass = normalize_curve(_smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate))
-    mid = normalize_curve(_smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate))
-    high = normalize_curve(_smooth(band_energy(spectrum, frequencies, 2000, 10000), 0.35, frame_rate))
-    rms = normalize_curve(_smooth(librosa.feature.rms(y=y, hop_length=HOP)[0], 0.35, frame_rate))
+    bass = normalize_curve(
+        _smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate)
+    )
+    mid = normalize_curve(
+        _smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate)
+    )
+    high = normalize_curve(
+        _smooth(band_energy(spectrum, frequencies, 2000, 10000), 0.35, frame_rate)
+    )
+    rms = normalize_curve(
+        _smooth(librosa.feature.rms(y=y, hop_length=HOP)[0], 0.35, frame_rate)
+    )
     progress(phases[1], 1.0, "bandes basses / médiums / aigus")
 
     energy_raw = 0.62 * rms + 0.38 * ((bass + mid + high) / 3.0)
@@ -462,8 +545,10 @@ def analyze_file(
         phases[3],
     )
     progress(phases[4], 0.5, "détection des montées")
-    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
-    builds = detect_builds(energy_points, duration)
+    energy_points = curve_to_points(
+        frame_times, energy, settings.curve_rate_hz, duration
+    )
+    builds = detect_builds(energy_points, duration, onsets)
     progress(phases[4], 1.0, f"{len(builds)} montées repérées")
     progress(phases[5], 1.0, "données du spectacle prêtes")
 
