@@ -47,6 +47,18 @@ def _float_env(name: str, default: float) -> float:
         return default
 
 
+def _bool_env(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "vrai", "yes", "oui", "on"}
+
+
+def is_loopback_host(host: str) -> bool:
+    """Vrai si l'hôte est une adresse locale (par défaut du serveur)."""
+    return host.strip().lower() in {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
 @dataclass(frozen=True)
 class Settings:
     host: str
@@ -61,6 +73,7 @@ class Settings:
     workers: int
     sample_rate: int
     curve_rate_hz: float
+    allow_network: bool
 
     @property
     def max_file_mb(self) -> float:
@@ -85,4 +98,5 @@ def load_settings() -> Settings:
         workers=max(1, _int_env("ANALYZE_WORKERS", 1)),
         sample_rate=_int_env("ANALYSIS_SAMPLE_RATE", 22050),
         curve_rate_hz=_float_env("CURVE_RATE_HZ", 20),
+        allow_network=_bool_env("ALLOW_NETWORK"),
     )

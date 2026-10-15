@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from . import sniff
 from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
 from .audio_capture import get_audio_capture
-from .config import Settings, load_settings
+from .config import Settings, is_loopback_host, load_settings
 from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
 from .playback_position import get_playback_state, match_playback
 from .retrieve.cache import AudioCache
@@ -37,9 +37,7 @@ from .store import SessionStore
 
 MAX_ACTIVE_JOBS = 24
 _LOGGER = logging.getLogger("night-light.resolve")
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 PURGE_INTERVAL_SEC = 20
 
 AUDIO_MEDIA_TYPES = {
@@ -149,9 +147,7 @@ class AppState:
 
         def report(phase: str, progress: float, message: str) -> None:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
-            _LOGGER.info(
-                "Résolution %s : %s (%.0f%%) %s", job_id, phase, progress * 100, message
-            )
+            _LOGGER.info("Résolution %s : %s (%.0f%%) %s", job_id, phase, progress * 100, message)
 
         try:
             result = resolve_track(
@@ -228,6 +224,26 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
 
 
 settings = load_settings()
+
+
+def enforce_network_guard(current: Settings) -> None:
+    """Refuse un écouteur réseau non local : le serveur n'a aucune authentification.
+
+    Un utilisateur qui expose l'API sur Internet ouvrirait la lecture et
+    l'analyse à n'importe qui. Le garde-fou est un refus explicite, levé par
+    `ALLOW_NETWORK=1` en connaissance de cause.
+    """
+    if is_loopback_host(current.host) or current.allow_network:
+        return
+    raise SystemExit(
+        f"HOST={current.host!r} n'est pas une adresse locale. Night Light n'a "
+        "aucune authentification : ne l'expose pas sur le réseau. Utilise "
+        "HOST=127.0.0.1, ou force avec ALLOW_NETWORK=1 si tu sais ce que tu fais."
+    )
+
+
+enforce_network_guard(settings)
+
 state = AppState(settings)
 
 
@@ -334,9 +350,7 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
 
     job = state.store.create(filename, len(content))
     if job.audio_path is None:
-        raise HTTPException(
-            status_code=500, detail="Impossible de créer l'espace de travail."
-        )
+        raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
     audio_path = job.audio_path.with_name(f"audio.{detected.extension_hint or 'bin'}")
     job.audio_path = audio_path
     audio_path.write_bytes(content)
@@ -368,24 +382,16 @@ async def resolve(request: ResolveRequest) -> JSONResponse:
 
     if not request.title or not request.title.strip():
         raise HTTPException(status_code=400, detail="Le titre est requis.")
-    duration = (
-        request.duration_sec if request.duration_sec is not None else request.duration
-    )
+    duration = request.duration_sec if request.duration_sec is not None else request.duration
     duration = float(duration or 0.0)
     artist = request.artist or ""
 
-    filename = " - ".join(
-        part for part in (request.title.strip(), artist.strip()) if part
-    )
+    filename = " - ".join(part for part in (request.title.strip(), artist.strip()) if part)
     job = state.store.create(filename, 0)
     if job.audio_path is None:
-        raise HTTPException(
-            status_code=500, detail="Impossible de créer l'espace de travail."
-        )
+        raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
 
-    track_key = (
-        request.track_key or f"{request.title.strip()}|{artist.strip()}"
-    ).strip()
+    track_key = (request.track_key or f"{request.title.strip()}|{artist.strip()}").strip()
     state.current_track_key = track_key
     state.executor.submit(
         state.run_resolve,
@@ -427,9 +433,7 @@ async def delete_session(job_id: str) -> dict[str, str]:
 async def track(job_id: str) -> FileResponse:
     job = state.store.get(job_id)
     if job is None or job.audio_path is None or not job.audio_path.exists():
-        raise HTTPException(
-            status_code=404, detail="Morceau indisponible (session expirée ?)."
-        )
+        raise HTTPException(status_code=404, detail="Morceau indisponible (session expirée ?).")
     extension = job.audio_path.suffix.lstrip(".").lower()
     media_type = AUDIO_MEDIA_TYPES.get(extension, "application/octet-stream")
     return FileResponse(

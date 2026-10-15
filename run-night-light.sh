@@ -23,6 +23,17 @@ fi
 export HOST="${HOST:-127.0.0.1}"
 export PORT="${PORT:-8000}"
 
+case "$HOST" in
+    127.0.0.1 | localhost | ::1 | "[::1]") ;;
+    *)
+        if [[ "${ALLOW_NETWORK:-}" != "1" ]]; then
+            echo "HOST=$HOST n'est pas une adresse locale. Night Light n'a aucune" >&2
+            echo "authentification : ne l'expose pas. Force avec ALLOW_NETWORK=1." >&2
+            exit 1
+        fi
+        ;;
+esac
+
 "$ROOT/.venv/bin/uvicorn" server.main:app --host "$HOST" --port "$PORT" "$@" &
 UVICORN_PID=$!
 

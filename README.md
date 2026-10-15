@@ -112,7 +112,9 @@ force le niveau de qualité le plus bas. Aucun secret n'est écrit dans le dép�
   ni versionné ni journalisé : il n'est recopié que dans la configuration privée (`0600`)
   que streamrip utilise, dans le répertoire de cache.
 
-**N'expose pas ce serveur à Internet** : il n'a pas d'authentification.
+**N'expose pas ce serveur à Internet** : il n'a pas d'authentification. Il
+**refuse de démarrer** sur une adresse non locale (`HOST=0.0.0.0` par exemple) ;
+il faut lever explicitement ce garde-fou avec `ALLOW_NETWORK=1`.
 
 ## Ce que l'analyse produit
 
@@ -364,6 +366,7 @@ src/dashboard/          tableau de bord (page + styles)
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |
+| `ALLOW_NETWORK` | *(vide)* | lève le refus de démarrer sur une adresse non locale (voir Sécurité) |
 
 ## Le tableau de bord (`/dashboard`)
 
