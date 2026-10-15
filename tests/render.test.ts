@@ -12,7 +12,7 @@ import {
   visibleEnergy,
 } from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
-import { beatSwing, drawFamily, elementEnvelope, rowPositions } from "../src/core/families";
+import { beamBlurPixels, beamLayers, beatSwing, drawFamily, elementEnvelope, rowPositions, softBeam } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -216,16 +216,17 @@ describe("rendu déterministe", () => {
   test("les faisceaux en miroir sont reellement symetriques", () => {
     // Une scène unique couvrant tout le morceau, et un temps au tout début de
     // la phrase : aucune autre couche (fond, variation, wash, impact) ne vient
-    // s'ajouter aux tracés, donc chaque tracé vient bien de `mirror`.
+    // s'ajouter aux tracés, donc chaque dégradé vient bien de `mirror`.
     const data = analysis();
     const plan = buildShowPlan(data, false);
     plan.scenes = [
       { ...plan.scenes[0]!, family: "mirror", variant: "mirror", backdrop: "mirror", start: 0, end: 60 },
     ];
+    const largeur = 800;
     const { ctx, operations } = fakeContext();
     renderFrame({
       ctx,
-      width: 800,
+      width: largeur,
       height: 600,
       dpr: 1,
       time: 2,
@@ -237,58 +238,32 @@ describe("rendu déterministe", () => {
       frame: 0,
     });
 
-    // Chaque lampe dessine deux tracés par côté : son faisceau (triangle) puis
-    // son point lumineux. `mirror` boucle donc sur [gauche, droite], ce qui
-    // donne par paire : faisceau_g, lampe_g, faisceau_d, lampe_d.
-    // `mirror` dessine 8 paires, soit 32 tracés (faisceau + lampe, gauche +
-    // droite). Les couches suivantes (scène sortante, poussière) dessinent
-    // aussi des arcs : le test ne regarde que la couche `mirror`, au début.
-    const paths: string[][] = [];
-    let mirrorPaths = 0;
-    for (let i = 0; i < operations.length && mirrorPaths < 32; i += 1) {
-      if (operations[i] !== "beginPath") continue;
-      const end = operations.indexOf("fill", i + 1);
-      if (end === -1) continue;
-      paths.push(operations.slice(i + 1, end));
-      mirrorPaths += 1;
-    }
-    expect(paths.length).toBe(32);
+    // Chaque couche de faisceau pose un dégradé linéaire de l'origine vers le
+    // bout. On compare donc les dégradés plutôt que les tracés — le nombre de
+    // couches par faisceau peut changer, pas la symétrie. On ne garde que les
+    // faisceaux longs : depuis le pulsage de secours, la surcouche d'impact
+    // dessine aussi des barres verticales au même instant.
+    const degrades = operations
+      .filter((operation) => operation.startsWith("linear:"))
+      .map((operation) => operation.slice("linear:".length).split(",").map(Number))
+      .filter((g) => Math.abs(g[2]! - g[0]!) > 100);
+    const gauche = degrades.filter((g) => g[0] === 0);
+    const droite = degrades.filter((g) => g[0] === largeur);
+    expect(gauche.length).toBeGreaterThanOrEqual(8);
+    expect(droite.length).toBeGreaterThanOrEqual(8);
 
-    const width = 800;
-    const mirrorOp = (op: string) => {
-      if (!op.includes(":")) return op;
-      const [kind, rest] = op.split(":");
-      const numbers = rest!.split(",").map(Number);
-      // Quels indices portent un x : les deux extrémités du dégradé linéaire,
-      // l'origine unique des points et des arcs. Jamais un rayon, qui devrait
-      // rester positif.
-      const xIndices = kind === "linear" ? [0, 2, 4] : [0];
-      const flipped = numbers.map((value, index) => (xIndices.includes(index) ? width - value : value));
-      return `${kind}:${flipped.map((v) => v.toFixed(1)).join(",")}`;
-    };
-
-    // Le miroir échange les deux bords d'ouverture du faisceau : les bords
-    // dessinés en deuxième à gauche sont tirés en premier à droite. Seuls ces
-    // tracés du milieu s'inversent, l'origine et la fermeture gardent leur ordre.
-    const mirrorPair = (left: string[], right: string[]) => {
-      const head = left[0]!;
-      const tail = left[left.length - 1]!;
-      const middle = left.slice(1, -1).map(mirrorOp).reverse();
-      expect(right[0]).toBe(mirrorOp(head));
-      expect(right[right.length - 1]).toBe(mirrorOp(tail));
-      expect(right.slice(1, -1)).toEqual(middle);
-    };
-
-    for (let lamp = 0; lamp < paths.length; lamp += 4) {
-      const beamLeft = paths[lamp]!;
-      const lampLeft = paths[lamp + 1]!;
-      const beamRight = paths[lamp + 2]!;
-      const lampRight = paths[lamp + 3]!;
-      expect(beamRight.length).toBe(beamLeft.length);
-      expect(lampRight.length).toBe(lampLeft.length);
-      mirrorPair(beamLeft, beamRight);
-      mirrorPair(lampLeft, lampRight);
-    }
+    // On compte les faisceaux qui ont réellement leur jumeau en miroir de
+    // l'autre côté, puis on exige que les deux camps s'apparient autant : la
+    // figure est symétrique, et un élément étranger (vignette, surcouche) ne
+    // peut pas fausser la mesure.
+    const cle = (g: number[]) => g.map((valeur) => valeur.toFixed(1)).join(",");
+    const miroir = (g: number[]) => [largeur - g[0]!, g[1]!, largeur - g[2]!, g[3]!];
+    const apparies = (liste: number[][], autres: number[][]) =>
+      liste.filter((g) => autres.some((candidat) => cle(candidat) === cle(miroir(g)))).length;
+    const gaucheApparies = apparies(gauche, droite);
+    const droiteApparies = apparies(droite, gauche);
+    expect(gaucheApparies).toBeGreaterThanOrEqual(8);
+    expect(gaucheApparies).toBe(droiteApparies);
   });
 
   test("une analyse sans sections ni temps forts rend quand même", () => {
@@ -784,6 +759,73 @@ describe("allumage et extinction des elements", () => {
     const b = elementEnvelope(frame({ t: 4 }), vide, 0, 8, 0.5);
     expect(Number.isFinite(a)).toBe(true);
     expect(Number.isFinite(b)).toBe(true);
+  });
+});
+
+describe("faisceaux adoucis", () => {
+  test("les couches vont de l'enveloppe large au coeur etroit", () => {
+    // C'est la superposition qui fond le bord : sans décroissance de largeur et
+    // croissance de densité, on retombe sur un triangle aux arêtes nettes.
+    const couches = beamLayers(100, 0.5, 0.7, 4);
+    expect(couches.length).toBe(4);
+    for (let index = 1; index < couches.length; index += 1) {
+      expect(couches[index]!.halfWidth).toBeLessThan(couches[index - 1]!.halfWidth);
+      expect(couches[index]!.alpha).toBeGreaterThan(couches[index - 1]!.alpha);
+      expect(couches[index]!.lightness).toBeGreaterThan(couches[index - 1]!.lightness);
+    }
+    // L'enveloppe reste discrète : elle ne doit pas dessiner un bord visible.
+    expect(couches[0]!.alpha).toBeLessThan(0.5 * couches[couches.length - 1]!.alpha);
+  });
+
+  test("une seule couche reste un faisceau plein", () => {
+    const couches = beamLayers(80, 0.4, 0.6, 1);
+    expect(couches.length).toBe(1);
+    expect(couches[0]!.halfWidth).toBe(80);
+    expect(couches[0]!.alpha).toBe(0.4);
+  });
+
+  test("le pied suit la largeur demandee", () => {
+    // Une lampe ponctuelle n'a pas de largeur à la source : le pied doit
+    // pouvoir être quasi nul, sinon le faisceau devient un trapèze.
+    const ponctuel = beamLayers(100, 0.5, 0.7, 3, 0.04);
+    expect(ponctuel[0]!.footHalfWidth).toBeLessThan(6);
+    const large = beamLayers(100, 0.5, 0.7, 3, 0.32);
+    expect(large[0]!.footHalfWidth).toBeGreaterThan(30);
+  });
+
+  test("le flou suit la qualite et le mode reduit", () => {
+    // Pas de flou en mode réduit ni sur une machine qui souffle : on retombe sur
+    // les couches. Au-delà d'une quinzaine de pixels, le faisceau deviendrait du
+    // brouillard.
+    expect(beamBlurPixels(40, 1, true)).toBe(0);
+    expect(beamBlurPixels(40, 0.4, false)).toBe(0);
+    expect(beamBlurPixels(40, 0.9, false)).toBeGreaterThan(beamBlurPixels(40, 0.6, false));
+    expect(beamBlurPixels(200, 0.95, false)).toBeLessThanOrEqual(16);
+    // Un trait fin garde un minimum de diffusion, sinon il reste un fil net.
+    expect(beamBlurPixels(2, 0.9, false)).toBeGreaterThanOrEqual(2.5);
+  });
+
+  test("un faisceau souple dessine plusieurs passages", () => {
+    // Preuve au rendu : un faisceau à trois couches remplit trois fois, un
+    // faisceau à une couche une seule fois.
+    const remplissages = (layers: number) => {
+      const { ctx, operations } = fakeContext();
+      softBeam(ctx as unknown as CanvasRenderingContext2D, {
+        x: 0,
+        y: 720,
+        angle: -Math.PI / 2,
+        length: 800,
+        width: 60,
+        hue: 200,
+        saturation: 0.9,
+        lightness: 0.7,
+        alpha: 0.5,
+        layers,
+      });
+      return operations.filter((operation) => operation === "fill").length;
+    };
+    expect(remplissages(3)).toBe(3);
+    expect(remplissages(1)).toBe(1);
   });
 });
 

@@ -122,6 +122,148 @@ export function beatSwing(
   return depart + (arrivee - depart) * smoothstep(0, 0.7, local);
 }
 
+/* --------------------------------------------------------------- faisceaux */
+
+/** Une couche du faisceau : de l'enveloppe la plus large au cœur le plus dense. */
+export interface BeamLayer {
+  /** Demi-largeur au bout du faisceau. */
+  halfWidth: number;
+  /** Demi-largeur au pied (au niveau du projecteur). */
+  footHalfWidth: number;
+  alpha: number;
+  lightness: number;
+}
+
+/**
+ * Profil d'un faisceau, de l'extérieur vers le cœur.
+ *
+ * Un projecteur dans une salle enfumée ne dessine pas un triangle net : la
+ * lumière diffuse, donc le bord est flou et le centre dense. On empile pour ça
+ * quelques couches de plus en plus étroites et de plus en plus lumineuses ; leur
+ * somme donne une section de lumière fondue sur les bords.
+ */
+export function beamLayers(
+  width: number,
+  alpha: number,
+  lightness: number,
+  layers = 3,
+  footRatio = 0.32,
+): BeamLayer[] {
+  const nombre = Math.max(1, Math.round(layers));
+  if (nombre === 1) {
+    return [{ halfWidth: width, footHalfWidth: width * footRatio, alpha, lightness }];
+  }
+  const out: BeamLayer[] = [];
+  for (let index = 0; index < nombre; index += 1) {
+    const t = index / (nombre - 1);
+    out.push({
+      halfWidth: width * (1 - 0.52 * t),
+      footHalfWidth: width * footRatio * (1 - 0.6 * t),
+      // L'enveloppe est à peine visible, le cœur porte la lumière : leur
+      // superposition donne la décroissance douce d'un bord de faisceau.
+      alpha: alpha * (0.26 + 0.62 * t),
+      lightness: lightness + 0.1 * t,
+    });
+  }
+  return out;
+}
+
+/**
+ * Rayon de flou d'un faisceau, en pixels.
+ *
+ * C'est lui qui donne l'épaisseur de fumée : sans lui, un faisceau reste un
+ * triangle aux arêtes nettes. Proportionnel à la largeur du faisceau — les gros
+ * pâtés de lumière sont plus diffus que les traits fins — mais plafonné : au-delà
+ * d'une quinzaine de pixels, le faisceau devient une nappe de brouillard et on
+ * perd la forme.
+ */
+export function beamBlurPixels(width: number, quality: number, reduced: boolean): number {
+  if (reduced || quality < 0.55) return 0;
+  const part = quality >= 0.85 ? 0.34 : 0.2;
+  return Math.min(Math.max(2.5, width * part), quality >= 0.85 ? 16 : 9);
+}
+
+export interface BeamSpec {
+  /** Origine, au niveau du projecteur. */
+  x: number;
+  y: number;
+  /** Direction du faisceau, en radians. */
+  angle: number;
+  length: number;
+  /** Demi-largeur au bout. */
+  width: number;
+  hue: number;
+  saturation: number;
+  lightness: number;
+  alpha: number;
+  /**
+   * Qualité adaptative et mode réduit. Ils décident du flou — donc de la fumée —
+   * et, si le navigateur ne sait pas flouter, du nombre de couches de repli.
+   */
+  quality?: number;
+  reduced?: boolean;
+  /** Force un nombre de couches, pour les tests. */
+  layers?: number;
+  /** Largeur du pied en fraction de `width` : une lampe ponctuelle vaut ~0. */
+  footRatio?: number;
+  /** Teinte de fin de course (par défaut, la même teinte décalée). */
+  tailHue?: number;
+}
+
+/**
+ * Dessine un faisceau souple.
+ *
+ * Deux façons d'adoucir le bord, dans cet ordre :
+ * 1. un flou — c'est ce qui ressemble le plus à de la lumière dans la fumée ;
+ * 2. à défaut, une superposition de couches de plus en plus étroites, qui
+ *    approche le même profil sans dépendre d'un filtre.
+ */
+export function softBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec): void {
+  const { x, y, angle, length, width, hue, saturation, lightness, alpha } = spec;
+  if (alpha <= 0.002 || width <= 0.2) return;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const px = -dy;
+  const py = dx;
+  const tailHue = spec.tailHue ?? shiftHue(hue, 18);
+  const quality = spec.quality ?? 1;
+  const reduced = spec.reduced ?? false;
+  const flou = beamBlurPixels(width, quality, reduced);
+  // Le filtre n'existe pas partout (et pas dans le contexte de test) : on ne
+  // l'active que s'il est réellement disponible.
+  const flouter = flou > 0 && "filter" in ctx;
+  const couches = spec.layers !== undefined
+    ? beamLayers(width, alpha, lightness, spec.layers, spec.footRatio ?? 0.32)
+    : flouter
+      ? beamLayers(width, alpha, lightness, 1, spec.footRatio ?? 0.32)
+      : beamLayers(width, alpha, lightness, beamLayerCount(quality, reduced), spec.footRatio ?? 0.32);
+
+  if (flouter) ctx.filter = `blur(${flou.toFixed(1)}px)`;
+  for (const couche of couches) {
+    const gradient = ctx.createLinearGradient(x, y, x + dx * length, y + dy * length);
+    gradient.addColorStop(0, paint(hue, saturation, couche.lightness + 0.06, couche.alpha));
+    gradient.addColorStop(0.45, paint(hue, saturation, couche.lightness, couche.alpha * 0.55));
+    gradient.addColorStop(1, paint(tailHue, saturation, couche.lightness, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(x + px * couche.footHalfWidth, y + py * couche.footHalfWidth);
+    ctx.lineTo(x + dx * length + px * couche.halfWidth, y + dy * length + py * couche.halfWidth);
+    ctx.lineTo(x + dx * length - px * couche.halfWidth, y + dy * length - py * couche.halfWidth);
+    ctx.lineTo(x - px * couche.footHalfWidth, y - py * couche.footHalfWidth);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (flouter) ctx.filter = "none";
+}
+
+/** Nombre de couches d'un faisceau selon la qualité : plus la machine souffle, plus le bord est travaillé. */
+function beamLayerCount(quality: number, reduced: boolean): number {
+  if (reduced) return 1;
+  if (quality >= 0.85) return 3;
+  if (quality >= 0.55) return 2;
+  return 1;
+}
+
 function paint(h: number, s: number, l: number, a: number): string {
   return shorthand(hslToRgb({ h, s, l }), a);
 }
@@ -156,26 +298,19 @@ const beams: FamilyDraw = (ctx, f, view) => {
     const alpha = (0.05 + 0.32 * f.energy + 0.2 * f.beat * f.bass) * f.alpha;
     if (alpha <= 0.002) continue;
     const width = widthBase * (0.5 + hash01(i * 57 + f.seed) * 0.9) * (0.7 + f.bass * 0.7);
-    const dx = Math.cos(angle);
-    const dy = Math.sin(angle);
-    const px = -dy;
-    const py = dx;
-    const tipX = originX + dx * length;
-    const tipY = originY + dy * length;
-
-    const gradient = ctx.createLinearGradient(originX, originY, tipX, tipY);
-    gradient.addColorStop(0, paint(f.palette.hue, f.palette.saturation, light + 0.12, alpha));
-    gradient.addColorStop(0.45, paint(hue, f.palette.saturation, light, alpha * 0.5));
-    gradient.addColorStop(1, paint(shiftHue(hue, 18), f.palette.saturation, light, 0));
-
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(originX + px * width * 0.32, originY + py * width * 0.32);
-    ctx.lineTo(tipX + px * width * 1.15, tipY + py * width * 1.15);
-    ctx.lineTo(tipX - px * width * 1.15, tipY - py * width * 1.15);
-    ctx.lineTo(originX - px * width * 0.32, originY - py * width * 0.32);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: originX,
+      y: originY,
+      angle,
+      length,
+      width: width * 1.15,
+      hue,
+      saturation: f.palette.saturation,
+      lightness: light,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+    });
   }
 
   // Halo au point de fuite, piloté par les basses.
@@ -545,21 +680,21 @@ const spots: FamilyDraw = (ctx, f, view) => {
     if (allumage <= 0.01) continue;
     const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha * allumage;
 
-    const gradient = ctx.createLinearGradient(
-      origin.x,
-      origin.y,
-      origin.x + Math.cos(angle) * length,
-      origin.y + Math.sin(angle) * length,
-    );
-    gradient.addColorStop(0, paint(hue, 0.85, 0.72, alpha));
-    gradient.addColorStop(1, paint(shiftHue(hue, 24), 0.85, 0.6, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(origin.x, origin.y);
-    ctx.lineTo(origin.x + Math.cos(angle - aperture) * length, origin.y + Math.sin(angle - aperture) * length);
-    ctx.lineTo(origin.x + Math.cos(angle + aperture) * length, origin.y + Math.sin(angle + aperture) * length);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: origin.x,
+      y: origin.y,
+      angle,
+      length,
+      width: Math.tan(aperture) * length,
+      hue,
+      saturation: 0.85,
+      lightness: 0.72,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.04,
+      tailHue: shiftHue(hue, 24),
+    });
 
     // Lampe elle-même : un point lumineux sur son bord.
     ctx.fillStyle = paint(hue, 0.9, 0.82, alpha * 1.5);
@@ -611,22 +746,21 @@ const mirror: FamilyDraw = (ctx, f, view) => {
       const targetX = side < 0 ? aimX : w - aimX;
       const angle = Math.atan2(aimY - originY, targetX - originX);
       const range = reach * (0.8 + hash01(i * 1517 + f.seed) * 0.5);
-      const gradient = ctx.createLinearGradient(
-        originX,
-        originY,
-        originX + Math.cos(angle) * range,
-        originY + Math.sin(angle) * range,
-      );
-      gradient.addColorStop(0, paint(hue, 0.9, 0.76, alpha));
-      gradient.addColorStop(0.55, paint(shiftHue(hue, 14), 0.86, 0.66, alpha * 0.5));
-      gradient.addColorStop(1, paint(shiftHue(hue, 14), 0.86, 0.62, 0));
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.moveTo(originX, originY);
-      ctx.lineTo(originX + Math.cos(angle - aperture) * range, originY + Math.sin(angle - aperture) * range);
-      ctx.lineTo(originX + Math.cos(angle + aperture) * range, originY + Math.sin(angle + aperture) * range);
-      ctx.closePath();
-      ctx.fill();
+      softBeam(ctx, {
+        x: originX,
+        y: originY,
+        angle,
+        length: range,
+        width: Math.tan(aperture) * range,
+        hue,
+        saturation: 0.9,
+        lightness: 0.76,
+        alpha,
+        quality: f.quality,
+      reduced: f.reduced,
+        footRatio: 0.03,
+        tailHue: shiftHue(hue, 14),
+      });
 
       ctx.fillStyle = paint(hue, 0.92, 0.82, alpha * 1.4);
       ctx.beginPath();
@@ -667,22 +801,20 @@ const parade: FamilyDraw = (ctx, f, view) => {
     const aperture = (0.02 + hash01(i * 433 + f.seed) * 0.014) * (0.7 + f.bass * 0.8 + f.beat * 0.25);
     const range = reach * (0.75 + hash01(i * 557 + f.seed) * 0.6);
     const originX = positions[i] ?? 0;
-    const gradient = ctx.createLinearGradient(
-      originX,
-      lampY,
-      originX + Math.cos(angle) * range,
-      lampY + Math.sin(angle) * range,
-    );
-    gradient.addColorStop(0, paint(hue, 0.88, 0.74, alpha));
-    gradient.addColorStop(0.7, paint(shiftHue(hue, 18), 0.84, 0.64, alpha * 0.45));
-    gradient.addColorStop(1, paint(shiftHue(hue, 18), 0.84, 0.6, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(originX, lampY);
-    ctx.lineTo(originX + Math.cos(angle - aperture) * range, lampY + Math.sin(angle - aperture) * range);
-    ctx.lineTo(originX + Math.cos(angle + aperture) * range, lampY + Math.sin(angle + aperture) * range);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: originX,
+      y: lampY,
+      angle,
+      length: range,
+      width: Math.tan(aperture) * range,
+      hue,
+      saturation: 0.88,
+      lightness: 0.74,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.04,
+    });
 
     ctx.fillStyle = paint(hue, 0.9, 0.8, alpha * 1.3);
     ctx.beginPath();
@@ -718,22 +850,21 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
     const angle = base + breath;
     const hue = corner % 2 === 1 ? f.palette.accent : f.palette.hue + (corner / 4) * f.palette.spread;
     const aperture = (0.014 + 0.012 * hash01(corner * 97 + f.seed)) * (0.7 + f.energy * 0.8 + f.beat * 0.35);
-    const gradient = ctx.createLinearGradient(
-      originX,
-      originY,
-      originX + Math.cos(angle) * reach,
-      originY + Math.sin(angle) * reach,
-    );
-    gradient.addColorStop(0, paint(hue, 0.9, 0.78, alpha));
-    gradient.addColorStop(0.35, paint(hue, 0.88, 0.68, alpha * 0.7));
-    gradient.addColorStop(1, paint(shiftHue(hue, 20), 0.86, 0.62, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(originX, originY);
-    ctx.lineTo(originX + Math.cos(angle - aperture) * reach, originY + Math.sin(angle - aperture) * reach);
-    ctx.lineTo(originX + Math.cos(angle + aperture) * reach, originY + Math.sin(angle + aperture) * reach);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: originX,
+      y: originY,
+      angle,
+      length: reach,
+      width: Math.tan(aperture) * reach,
+      hue,
+      saturation: 0.9,
+      lightness: 0.78,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.03,
+      tailHue: shiftHue(hue, 20),
+    });
 
     ctx.fillStyle = paint(hue, 0.92, 0.84, alpha * 1.5);
     ctx.beginPath();
@@ -768,22 +899,24 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
     const aperture = width * (0.8 + f.energy * 0.5 + f.beat * 0.45);
     const hue = f.palette.hue + (i / lamps) * f.palette.spread;
 
-    const gradient = ctx.createLinearGradient(
-      origin.x,
-      origin.y,
-      origin.x + Math.cos(angle) * range,
-      origin.y + Math.sin(angle) * range,
-    );
-    gradient.addColorStop(0, paint(hue, 0.8, 0.74, alpha));
-    gradient.addColorStop(0.6, paint(shiftHue(hue, 16), 0.85, 0.64, alpha * 0.4));
-    gradient.addColorStop(1, paint(shiftHue(hue, 16), 0.85, 0.6, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(origin.x, origin.y);
-    ctx.lineTo(origin.x + Math.cos(angle - aperture) * range, origin.y + Math.sin(angle - aperture) * range);
-    ctx.lineTo(origin.x + Math.cos(angle + aperture) * range, origin.y + Math.sin(angle + aperture) * range);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: origin.x,
+      y: origin.y,
+      angle,
+      length: range,
+      width: Math.tan(aperture) * range,
+      hue,
+      saturation: 0.85,
+      lightness: 0.74,
+      alpha,
+      // Le wash couvre tout l'écran : on se contente du repli à deux couches,
+      // pour ne pas payer seize flous pleine taille à chaque impact.
+      quality: f.quality,
+      reduced: f.reduced,
+      layers: f.reduced ? 1 : 2,
+      footRatio: 0.05,
+      tailHue: shiftHue(hue, 16),
+    });
   }
 };
 
@@ -858,20 +991,22 @@ const curtain: FamilyDraw = (ctx, f, view) => {
     const aperture = (0.01 + 0.016 * hash01(i * 271 + f.seed)) * (0.6 + phase * 0.8 + f.beat * 0.3);
     const portee = length * (0.78 + phase * 0.35);
     const intensite = alpha * phase;
-    const tipX = originX + Math.cos(angle) * portee;
-    const tipY = h + Math.sin(angle) * portee;
 
-    const gradient = ctx.createLinearGradient(originX, h, tipX, tipY);
-    gradient.addColorStop(0, paint(hue, 0.92, 0.78, intensite));
-    gradient.addColorStop(0.55, paint(hue, 0.88, 0.64, intensite * 0.5));
-    gradient.addColorStop(1, paint(shiftHue(hue, 16), 0.86, 0.6, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(originX, h);
-    ctx.lineTo(tipX + Math.cos(angle + Math.PI / 2) * portee * aperture, tipY + Math.sin(angle + Math.PI / 2) * portee * aperture);
-    ctx.lineTo(tipX - Math.cos(angle + Math.PI / 2) * portee * aperture, tipY - Math.sin(angle + Math.PI / 2) * portee * aperture);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: originX,
+      y: h,
+      angle,
+      length: portee,
+      width: portee * aperture,
+      hue,
+      saturation: 0.92,
+      lightness: 0.78,
+      alpha: intensite,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.03,
+      tailHue: shiftHue(hue, 16),
+    });
 
     // Le pied de chaque projecteur reste visible : c'est ce qui donne
     // l'impression d'une rangée d'appareils au sol.
@@ -914,20 +1049,21 @@ const burst: FamilyDraw = (ctx, f, view) => {
     const aperture = (0.012 + 0.02 * hash01(i * 613 + f.seed)) * (0.7 + f.energy * 0.9 + f.beat * 0.4);
     const portee = reach * (0.7 + 0.3 * hash01(i * 719 + f.seed));
     const intensite = alpha * (complementaire ? 0.72 : 1);
-    const tipX = cx + Math.cos(angle) * portee;
-    const tipY = cy + Math.sin(angle) * portee;
 
-    const gradient = ctx.createLinearGradient(cx, cy, tipX, tipY);
-    gradient.addColorStop(0, paint(hue, 0.9, 0.8, intensite));
-    gradient.addColorStop(0.4, paint(hue, 0.88, 0.66, intensite * 0.55));
-    gradient.addColorStop(1, paint(hue, 0.86, 0.6, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(tipX + Math.cos(angle + Math.PI / 2) * portee * aperture, tipY + Math.sin(angle + Math.PI / 2) * portee * aperture);
-    ctx.lineTo(tipX - Math.cos(angle + Math.PI / 2) * portee * aperture, tipY - Math.sin(angle + Math.PI / 2) * portee * aperture);
-    ctx.closePath();
-    ctx.fill();
+    softBeam(ctx, {
+      x: cx,
+      y: cy,
+      angle,
+      length: portee,
+      width: portee * aperture,
+      hue,
+      saturation: 0.9,
+      lightness: 0.8,
+      alpha: intensite,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.03,
+    });
   }
 
   // Le moyeu : la source, toujours au centre, qui respire avec les basses.
