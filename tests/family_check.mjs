@@ -12,7 +12,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8842;
 const API = `http://127.0.0.1:${API_PORT}`;
 const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
-const { chromium } = await import("/home/mattia/node_modules/playwright");
+const { loadChromium } = await import("./playwright.mjs");
+const chromium = await loadChromium();
 
 const FAMILLES = process.argv.slice(2);
 if (FAMILLES.length === 0) {

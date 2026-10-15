@@ -21,13 +21,8 @@ const API_PORT = 8818;
 const API = `http://127.0.0.1:${API_PORT}`;
 const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
 
-const playwrightPath = "/home/mattia/node_modules/playwright";
-if (!existsSync(playwrightPath)) {
-  console.error(`Playwright introuvable : ${playwrightPath}`);
-  process.exit(2);
-}
-const { createRequire } = await import("node:module");
-const { chromium } = createRequire(import.meta.url)(playwrightPath);
+const { loadChromium } = await import("./playwright.mjs");
+const chromium = await loadChromium();
 
 /** Assez long pour que le show ne soit pas figé par la fin de piste. */
 const DUREE = 90;

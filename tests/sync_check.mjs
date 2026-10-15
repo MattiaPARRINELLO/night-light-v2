@@ -25,14 +25,8 @@ const API = `http://127.0.0.1:${API_PORT}`;
 const TITLE = "Neon Skyline";
 const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
 
-const playwrightPath = "/home/mattia/node_modules/playwright";
-if (!existsSync(playwrightPath)) {
-  console.error(`Playwright introuvable : ${playwrightPath}`);
-  process.exit(2);
-}
-const { createRequire } = await import("node:module");
-const requireFromHere = createRequire(import.meta.url);
-const { chromium } = requireFromHere(playwrightPath);
+const { loadChromium } = await import("./playwright.mjs");
+const chromium = await loadChromium();
 
 const failures = [];
 

@@ -14,7 +14,8 @@ const output = process.argv[2] ?? join(root, "dist-shot");
 const rich = process.argv[3] === "rich";
 mkdirSync(output, { recursive: true });
 
-const { chromium } = await import("/home/mattia/node_modules/playwright");
+const { loadChromium } = await import("./playwright.mjs");
+const chromium = await loadChromium();
 
 const workspace = mkdtempSync(join(tmpdir(), "night-light-shot-"));
 const track = join(workspace, "piste.wav");
