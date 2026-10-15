@@ -17,7 +17,14 @@ import {
   type LiveAudioFeatures,
 } from "../core/liveAudio";
 import { TrackView } from "../core/view";
-import { estimatePlayerPositionMs, normalizePlaybackText, showDriftMs, syncCorrection } from "../core/playback";
+import {
+  estimatePlayerPositionMs,
+  normalizePlaybackText,
+  showDriftMs,
+  syncCorrection,
+  syncRamp,
+  syncRampDuration,
+} from "../core/playback";
 import type { ExternalPlaybackState } from "../core/playback";
 import { dbgLog, dbgThrottled, debugLog, type DebugCategory } from "../core/debug";
 import { ControlLink, type DashboardCommand, type ShowMode, type ShowState } from "../shared/control";
@@ -118,6 +125,10 @@ export class App {
   private syncedRaf = 0;
   private syncedTimer: number | null = null;
   private syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
+  /** Écart en cours de rattrapage, en millisecondes (0 si aucun). */
+  private syncDriftMs = 0;
+  private syncCorrectionStart = 0;
+  private syncCorrectionDur = 400;
   private syncedMode = false;
   private debugOverlayActive = false;
   /** Début (performance.now) de la transition en cours, 0 si aucune. */
@@ -854,9 +865,7 @@ export class App {
       const joueur = this.debugLastPlayer;
       const maintenant = Date.now();
       const lecteurMs = joueur === null ? sync.playerMs : estimatePlayerPositionMs(joueur, maintenant);
-      const showMs = this.syncedMode
-        ? this.syncedStartMs + (maintenant - this.syncedStartedAtEpoch)
-        : sync.showMs;
+      const showMs = this.syncedMode ? this.showTimeMs(maintenant) : sync.showMs;
       const ecartMs =
         joueur === null ? sync.driftMs : lecteurMs + this.syncedLatencyMs - showMs;
       lines.push(
@@ -1197,6 +1206,7 @@ export class App {
     this.beginTransition();
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
+    this.syncDriftMs = 0;
     if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
     this.syncedTimer = window.setInterval(() => void this.resyncSynced(analysis.duration), 2500);
     this.startSyncedLoop();
@@ -1231,14 +1241,45 @@ export class App {
     this.syncedMode = false;
   }
 
+  /**
+   * Temps du show à l'instant `nowEpochMs`, rattrapage en cours compris.
+   *
+   * Le temps du show est l'entrée de tous les mouvements : le déplacer d'un
+   * coup faisait sauter les projecteurs (les wash surtout, dont le balayage est
+   * calé sur le tempo). Un écart se rattrape donc progressivement, à vitesse
+   * légèrement différente, et n'est intégré à l'origine qu'une fois rejoint.
+   */
+  /**
+   * Intègre à l'origine la part déjà rattrapée, et termine le rattrapage.
+   *
+   * Indispensable avant d'en démarrer un nouveau : repartir de zéro ferait
+   * reculer le show de tout ce qui avait déjà été corrigé — un saut en arrière,
+   * exactement ce qu'on veut éviter.
+   */
+  private foldSyncCorrection(nowEpochMs: number): void {
+    if (this.syncDriftMs === 0) return;
+    this.syncedStartMs += syncRamp(this.syncDriftMs, nowEpochMs - this.syncCorrectionStart, this.syncCorrectionDur);
+    this.syncDriftMs = 0;
+  }
+
+  private showTimeMs(nowEpochMs: number): number {
+    if (this.syncDriftMs === 0) return this.syncedStartMs + (nowEpochMs - this.syncedStartedAtEpoch);
+    const ecoule = nowEpochMs - this.syncCorrectionStart;
+    if (ecoule >= this.syncCorrectionDur) {
+      // Rattrapage terminé : on l'intègre à l'origine. La valeur est la même de
+      // part et d'autre, donc aucun saut.
+      this.foldSyncCorrection(nowEpochMs);
+      return this.syncedStartMs + (nowEpochMs - this.syncedStartedAtEpoch);
+    }
+    const base = this.syncedStartMs + (nowEpochMs - this.syncedStartedAtEpoch);
+    return base + syncRamp(this.syncDriftMs, ecoule, this.syncCorrectionDur);
+  }
+
   private renderSynced(): void {
     const view = this.syncedView;
     const plan = this.syncedPlan;
     if (view === null || plan === null) return;
-    // Horloge epoch, la même que celle du serveur : indispensable pour comparer
-    // la position du show à celle du lecteur.
-    const elapsed = Date.now() - this.syncedStartedAtEpoch;
-    const time = Math.max(0, (this.syncedStartMs + elapsed) / 1000);
+    const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
     try {
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
@@ -1307,6 +1348,8 @@ export class App {
         this.debugSync.match = "lecture en pause · show figé";
         this.syncedStartedAtEpoch = Date.now();
         this.syncedStartMs = playerMs;
+        // L'origine est réécrite : le rattrapage en cours n'a plus lieu d'être.
+        this.syncDriftMs = 0;
         this.debug("sync", "lecture en pause · show figé sur place", {
           positionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
         });
@@ -1326,17 +1369,26 @@ export class App {
         this.debugSync.match = "écart ≥ 1,5 s · recalage direct";
         this.syncedStartMs = targetShowMs;
         this.syncedStartedAtEpoch = nowMs;
+        // Recalage volontaire : le rattrapage en cours est écrasé.
+        this.syncDriftMs = 0;
         this.debug("sync", "écart important · recalage direct du show", {
           ecartMs: Math.round(driftAvantCorrection),
           nouvellePositionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
           positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
         });
       } else if (correction === "soft") {
-        this.syncedStartMs = targetShowMs - (nowMs - this.syncedStartedAtEpoch);
-        this.debugSync.match = "écart > 150 ms · origine recalculée";
-        this.debug("sync", "dérive détectée · origine du show recalculée", {
+        // Rattrapage progressif : le show se recale à vitesse légèrement
+        // différente au lieu de sauter à la nouvelle position. On intègre
+        // d'abord la part déjà rattrapée, sinon ce nouveau départ ferait
+        // reculer le show.
+        this.foldSyncCorrection(nowMs);
+        this.syncDriftMs = drift;
+        this.syncCorrectionStart = nowMs;
+        this.syncCorrectionDur = syncRampDuration(drift);
+        this.debugSync.match = "écart > 150 ms · rattrapage progressif";
+        this.debug("sync", "dérive détectée · rattrapage progressif", {
           ecartMs: Math.round(driftAvantCorrection),
-          positionShowSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+          dureeMs: this.syncCorrectionDur,
           positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
         });
       } else {

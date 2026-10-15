@@ -1,5 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { crossCorrelation, estimatePlayerPositionMs, normalizePlaybackText, showDriftMs, syncCorrection } from "../src/core/playback";
+import {
+  crossCorrelation,
+  estimatePlayerPositionMs,
+  normalizePlaybackText,
+  showDriftMs,
+  syncCorrection,
+  syncRamp,
+  syncRampDuration,
+} from "../src/core/playback";
 
 describe("playback helpers", () => {
   it("normalizes versions", () => {
@@ -45,6 +53,41 @@ describe("syncCorrection", () => {
   it("recale directement au-delà de 1,5 s", () => {
     expect(syncCorrection(1500)).toBe("hard");
     expect(syncCorrection(-2500)).toBe("hard");
+  });
+});
+
+describe("rattrapage progressif de la synchronisation", () => {
+  it("le décalage part de zéro et rejoint l'écart", () => {
+    // C'est ce qui évite le saut : au moment de la correction, le temps du show
+    // ne bouge pas ; il glisse ensuite jusqu'à la bonne position.
+    expect(syncRamp(240, 0, 400)).toBe(0);
+    expect(syncRamp(240, 200, 400)).toBe(120);
+    expect(syncRamp(240, 400, 400)).toBe(240);
+    // Une fois la durée écoulée, on ne dépasse jamais l'écart.
+    expect(syncRamp(240, 900, 400)).toBe(240);
+  });
+
+  it("le rattrapage est continu", () => {
+    // Aucune marche : c'est la propriété qui garantit que le projecteur ne
+    // saute pas pendant la correction.
+    let precedent = syncRamp(-300, 0, 500);
+    for (let ecoule = 10; ecoule <= 500; ecoule += 10) {
+      const courant = syncRamp(-300, ecoule, 500);
+      expect(Math.abs(courant - precedent)).toBeLessThan(8);
+      precedent = courant;
+    }
+  });
+
+  it("la durée reste bornée pour que la vitesse du show reste crédible", () => {
+    // Un petit écart se rattrape sans qu'on le voie ; un gros écart met plus
+    // longtemps, mais jamais au point de faire « glisser » le spectacle.
+    expect(syncRampDuration(40)).toBe(300);
+    expect(syncRampDuration(300)).toBe(750);
+    expect(syncRampDuration(1400)).toBe(3000);
+    // La vitesse demandée au show pendant le rattrapage reste sous 50 %.
+    for (const ecart of [160, 300, 600, 1200, 1499]) {
+      expect(Math.abs(ecart) / syncRampDuration(ecart)).toBeLessThanOrEqual(0.5);
+    }
   });
 });
 

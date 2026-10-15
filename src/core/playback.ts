@@ -1,3 +1,5 @@
+import { clamp01 } from "./series";
+
 export interface ExternalPlaybackState {
   source: "mpris" | "spotify" | "none" | string;
   status: "playing" | "paused" | "stopped" | string;
@@ -67,6 +69,32 @@ export function syncCorrection(
   if (abs >= hardThresholdMs) return "hard";
   if (abs > softThresholdMs) return "soft";
   return "none";
+}
+
+/**
+ * Durée d'un rattrapage progressif, en millisecondes.
+ *
+ * Choisie pour que la vitesse du show ne change jamais de plus de 50 % pendant
+ * la correction : sur 400 ms, un écart de 200 ms demande au show de courir 50 %
+ * plus vite, ce qui ne se voit pas. Un écart plus grand se rattrape donc plus
+ * lentement — mais il n'y a aucune raison d'accepter que le spectacle « glisse »
+ * à 1,5×, même une seconde.
+ */
+export function syncRampDuration(driftMs: number): number {
+  return Math.max(300, Math.min(3000, Math.abs(driftMs) * 2.5));
+}
+
+/**
+ * Décalage à appliquer au temps du show pendant un rattrapage.
+ *
+ * Part de zéro et rejoint `driftMs` : le show se recale en douceur, à vitesse
+ * légèrement différente, au lieu de sauter d'un coup à la nouvelle position.
+ * C'est la correction « douce » — sans elle, tous les mouvements calés sur le
+ * tempo (les wash, notamment) sautaient d'un coup à chaque resynchronisation.
+ */
+export function syncRamp(driftMs: number, elapsedMs: number, durationMs: number): number {
+  if (durationMs <= 0) return driftMs;
+  return driftMs * clamp01(elapsedMs / durationMs);
 }
 
 export function crossCorrelation(reference: number[], signal: number[]): { lag: number; score: number } | null {

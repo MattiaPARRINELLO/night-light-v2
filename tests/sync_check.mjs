@@ -179,10 +179,13 @@ try {
       async () => {
         const { sync } = await readOverlay(page);
         if (sync !== null) echantillons.push(sync);
+        // La resynchronisation ne passe que toutes les 2,5 s et la requête de
+        // position ajoute son délai : le show arrive donc jusqu'à ~3 s après la
+        // nouvelle position. On exige un mouvement franc, pas la position exacte.
         return (
           sync !== null &&
           Math.abs(sync.ecart) <= 300 &&
-          (delta < 0 ? sync.show <= base - 2 : sync.show >= base + 2)
+          (delta < 0 ? sync.show <= base - 1.5 : sync.show >= base + 1.5)
         );
       },
       20000,
@@ -208,6 +211,60 @@ try {
   if (hautApresAvance <= basApresRecul) {
     failures.push(`la trajectoire n'a pas remonté (${basApresRecul.toFixed(2)} s → ${hautApresAvance.toFixed(2)} s)`);
   }
+
+  // ---- dérive lente du lecteur : le show doit se recaler en douceur
+  // On fait avancer l'horloge du faux lecteur 4 % plus vite que le temps réel :
+  // l'écart grandit donc de ~40 ms par seconde et franchit le seuil de 150 ms.
+  // Avant la correction progressive, ce recalage déplaçait le temps du show d'un
+  // coup, et tous les mouvements calés sur le tempo sautaient (les wash surtout).
+  const derive = await readOverlay(page);
+  const baseDerive = derive.sync?.show ?? 0;
+  fake.state({
+    status: "Playing",
+    title: TITLE,
+    artist: "",
+    album: "",
+    length_us: 200_000_000,
+    position: Math.max(baseDerive, 1),
+    rate: 1.04,
+  });
+  // On lit le temps réellement utilisé par le rendu, pas l'overlay : celui-ci
+  // n'est rafraîchi que toutes les 500 ms, et sa granularité se confondrait
+  // avec un saut.
+  const mesures = [];
+  for (let i = 0; i < 120; i += 1) {
+    const mesure = await page.evaluate(() => ({
+      t: window.nightLight.showTimeMs(Date.now()),
+      ecart: Math.abs(window.nightLight.debugSync?.driftMs ?? 0),
+    }));
+    mesures.push({ ...mesure, mur: Date.now() });
+    await page.waitForTimeout(80);
+  }
+
+  // Ce qu'on juge est la vitesse du show entre deux mesures, pas la différence
+  // brute : l'intervalle réel varie (aller-retour Playwright), alors qu'un saut
+  // de temps se voit comme une vitesse aberrante. Un rattrapage progressif
+  // demande au show de courir au plus 1,5 fois plus vite.
+  let pireVitesse = 0;
+  let plusLente = Number.POSITIVE_INFINITY;
+  let pireEcart = 0;
+  for (let i = 0; i < mesures.length; i += 1) {
+    pireEcart = Math.max(pireEcart, mesures[i].ecart);
+    if (i === 0) continue;
+    const dt = mesures[i].t - mesures[i - 1].t;
+    const mur = mesures[i].mur - mesures[i - 1].mur;
+    if (mur < 20) continue;
+    const vitesse = dt / mur;
+    pireVitesse = Math.max(pireVitesse, vitesse);
+    plusLente = Math.min(plusLente, vitesse);
+  }
+  console.log(
+    `dérive du lecteur : pire écart ${Math.round(pireEcart)} ms · vitesse du show de ` +
+      `${plusLente.toFixed(2)}× à ${pireVitesse.toFixed(2)}×`,
+  );
+  if (pireEcart > 700) failures.push(`l'écart n'est pas rattrapé (${Math.round(pireEcart)} ms)`);
+  if (pireVitesse > 2) failures.push(`le temps du show saute (${pireVitesse.toFixed(2)}× la vitesse réelle)`);
+  if (plusLente < 0.4) failures.push(`le temps du show se fige (${plusLente.toFixed(2)}×)`);
 
   // ---- changement de morceau : retour en Live
   fake.state({ status: "Playing", title: "Tout autre morceau", artist: "", album: "", length_us: 11_000_000, position: 1.0 });

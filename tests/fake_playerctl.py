@@ -17,7 +17,8 @@ L'état attend un JSON :
       "album": "",
       "length_us": 12000000,
       "position": 4.0,
-      "updated_at": 1791970000.0
+      "updated_at": 1791970000.0,
+      "rate": 1.0
     }
 
 La position avance toute seule quand `status` vaut `playing`, ce qui permet de
@@ -53,7 +54,10 @@ def load_state() -> dict:
 def current_position(state: dict) -> float:
     position = float(state.get("position", 0.0) or 0.0)
     if str(state.get("status", "")).lower() == "playing":
-        position += max(0.0, time.time() - float(state.get("updated_at", 0.0) or 0.0))
+        # `rate` permet de faire dériver volontairement l'horloge du lecteur :
+        # 1.03 = il avance 3 % plus vite, donc l'écart avec le show grandit.
+        rate = float(state.get("rate", 1.0) or 1.0)
+        position += max(0.0, time.time() - float(state.get("updated_at", 0.0) or 0.0)) * rate
     return max(0.0, position)
 
 
