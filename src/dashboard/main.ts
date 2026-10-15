@@ -272,6 +272,17 @@ class Dashboard {
     log.textContent = state.log.length === 0 ? "Rien à signaler." : state.log.join("\n");
     el<HTMLElement>("log-count").textContent = `${state.log.length} lignes`;
 
+    // Un repli s'annonce en bas, sans prendre l'écran : c'est une information,
+    // pas une erreur.
+    const notice = el<HTMLElement>("notice");
+    if (state.notice === null) {
+      notice.hidden = true;
+      notice.textContent = "";
+    } else {
+      notice.hidden = false;
+      notice.textContent = state.notice.text;
+    }
+
     // Les contrôles reflètent l'état réel du show, même réglé au clavier.
     el<HTMLButtonElement>("btn-capture").textContent = state.capture.open
       ? "Couper la capture"

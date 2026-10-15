@@ -168,6 +168,9 @@ export class App {
   private flashSlider = 0.9;
   private noflash = false;
   private lastError: { title: string; message: string; detail: string } | null = null;
+  /** Avis discret affiché en bas, sans jamais prendre l'écran. */
+  private notice: { text: string; at: number } | null = null;
+  private noticeTimer: number | null = null;
   private debugRateWindowAt = 0;
   private debugRateWindowCount = 0;
   private debugLastSseState = "";
@@ -389,23 +392,46 @@ export class App {
     }
   }
 
-  private showSyncFailed(title: string, reason: string): void {
-    setShowError(
-      "Le spectacle n'a pas pu se synchroniser",
-      `Aucune lecture externe correspondant à « ${title} » n'a été trouvée. Lance la lecture du morceau puis relance-le.`,
-      reason,
-    );
-    el<HTMLElement>("dock-panel").classList.remove("is-hidden");
-    showScreen("error");
-    setStatus(`Impossible de synchroniser ${title}.`);
+  /**
+   * Morceau non reconnu côté lecteur : ce n'est pas une erreur, c'est un repli.
+   * On repasse en direct — qui réagit au son — et on se contente d'un avis
+   * discret, plutôt que d'un écran d'erreur qui prend toute la salle.
+   */
+  private fallbackToLive(title: string, reason: string): void {
     this.debugSync.phase = "LOST";
     this.debugSync.match = reason;
-    this.lastError = {
-      title: "Le spectacle n'a pas pu se synchroniser",
-      message: `Aucune lecture externe correspondant à « ${title} » n'a été trouvée.`,
-      detail: reason,
-    };
-    this.debug("erreur", `synchro impossible pour ${title}`, reason);
+    this.setNotice(`« ${title} » non reconnu — synchronisation sur le son en direct`);
+    this.debug("attention", `morceau « ${title} » non reconnu · repli sur le direct`, reason);
+    this.lastError = null;
+    this.backToDrop();
+  }
+
+  /** Avis discret en bas d'écran, jamais un écran d'erreur. */
+  private setNotice(text: string): void {
+    this.notice = { text, at: Date.now() };
+    const node = document.getElementById("notice");
+    if (node !== null) {
+      node.textContent = text;
+      node.hidden = false;
+    }
+    // L'avis s'efface tout seul : il informe, il ne s'installe pas. Le dashboard
+    // garde l'information tant qu'un nouveau morceau n'a pas été reconnu.
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = window.setTimeout(() => {
+      const bar = document.getElementById("notice");
+      if (bar !== null) bar.hidden = true;
+    }, 12000);
+  }
+
+  private clearNotice(): void {
+    this.notice = null;
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
+    const node = document.getElementById("notice");
+    if (node !== null) {
+      node.textContent = "";
+      node.hidden = true;
+    }
   }
 
   private bindAnalysis(): void {
@@ -939,6 +965,7 @@ export class App {
     this.pendingTitle = command.title;
     this.pendingAnalysis = command.analysis;
     this.lastError = null;
+    this.clearNotice();
     this.debug("analyse", "analyse reçue du dashboard", {
       titre: command.title,
       dureeSec: Number(command.analysis.duration.toFixed(1)),
@@ -1044,6 +1071,7 @@ export class App {
       limits: this.limits === null ? null : { ...this.limits },
       debugOverlay: this.debugOverlayActive,
       error: this.lastError,
+      notice: this.notice,
       log: debugLog.lines(10),
     };
     link.publishState(state);
@@ -1159,7 +1187,7 @@ export class App {
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
     // Aucune lecture correspondante pendant 20 s : on renonce proprement.
-    this.showSyncFailed(title, "Aucune position MPRIS/Spotify correspondante pendant 20 s.");
+    this.fallbackToLive(title, "Aucune position MPRIS/Spotify correspondante pendant 20 s.");
   }
 
   private async startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void> {

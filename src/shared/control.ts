@@ -98,6 +98,11 @@ export interface ShowState {
   limits: { maxFileBytes: number; maxDurationSec: number } | null;
   debugOverlay: boolean;
   error: { title: string; message: string; detail: string } | null;
+  /**
+   * Information discrète, affichée en bas : un repli n'est pas une erreur et ne
+   * doit jamais prendre l'écran.
+   */
+  notice: { text: string; at: number } | null;
   /** Dernières lignes du journal de debug, pour le journal du dashboard. */
   log: string[];
 }
@@ -199,6 +204,7 @@ export function emptyShowState(): ShowState {
     limits: null,
     debugOverlay: false,
     error: null,
+    notice: null,
     log: [],
   };
 }

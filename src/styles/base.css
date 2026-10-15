@@ -451,3 +451,25 @@ body.kiosk #stage {
   width: 100vw;
   height: 100vh;
 }
+
+
+/* ------------------------------------------------------------------ avis */
+/* Un repli (morceau non reconnu) n'est pas une erreur : on l'annonce en bas,
+   discrètement, sans jamais prendre l'écran. */
+.notice-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 40;
+  margin: 0;
+  padding: 6px 14px;
+  max-width: min(90vw, 620px);
+  border: 1px solid rgba(150, 190, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(8, 12, 22, 0.78);
+  backdrop-filter: blur(10px);
+  color: #cfdcf3;
+  font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-align: center;
+}

@@ -399,3 +399,25 @@
   .dash-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .card-value { font-size: 21px; }
 }
+
+
+/* ------------------------------------------------------------------ avis */
+/* Un morceau non reconnu n'est pas une erreur : une ligne discrète en bas vaut
+   mieux qu'un bandeau qui alarme. */
+.dash-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 50;
+  margin: 0;
+  padding: 7px 16px;
+  max-width: min(90vw, 720px);
+  border: 1px solid rgba(150, 190, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(10, 14, 26, 0.9);
+  backdrop-filter: blur(10px);
+  color: #cfdcf3;
+  font-size: 12.5px;
+  text-align: center;
+}
