@@ -8,7 +8,7 @@ import {
   sceneAt,
   type ShowPlan,
 } from "../core/show";
-import { renderFrame, sceneHue, variationStrength } from "../core/render";
+import { drawTransition, renderFrame, sceneHue, variationStrength } from "../core/render";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
 import {
   EMPTY_LIVE_AUDIO,
@@ -120,6 +120,9 @@ export class App {
   private syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
   private syncedMode = false;
   private debugOverlayActive = false;
+  /** Début (performance.now) de la transition en cours, 0 si aucune. */
+  private transitionStart = 0;
+  private transitionDuration = 1500;
   private liveMode = true;
   private liveTimeStart = performance.now();
   private liveQuality = 1;
@@ -1186,6 +1189,8 @@ export class App {
 
     this.syncedView = new TrackView(analysis);
     this.syncedPlan = buildShowPlan(analysis, this.effectiveReduced());
+    // Le show s'ouvre depuis le noir au lieu d'apparaître d'un coup.
+    this.beginTransition();
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
     if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
@@ -1246,6 +1251,7 @@ export class App {
         frame: this.frame,
       });
       this.frame += 1;
+      this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));
       console.error("Rendu synchronisé interrompu", error);
@@ -1415,6 +1421,7 @@ export class App {
     await this.ensureLiveView();
     this.startExternalCapture(true);
     this.startLiveLoop();
+    this.beginTransition();
     this.debug("live", "mode live démarré · capture du son du PC ouverte");
   }
 
@@ -1489,6 +1496,7 @@ export class App {
         liveAudio: this.liveAudio,
       });
       this.liveFrame += 1;
+      this.drawTransitionIfNeeded(time, plan);
       if (this.liveFrame % 120 === 0) {
         dbgThrottled(
           "live-render",
@@ -1609,6 +1617,7 @@ export class App {
     };
     this.view = new TrackView(analysis);
     this.plan = buildShowPlan(analysis, this.effectiveReduced());
+    this.beginTransition();
     this.audio.load(audioUrl(this.jobId));
     const detectedPosition = this.nowPlaying?.positionSec;
     if (this.nowPlaying?.status === "playing" && Number.isFinite(detectedPosition)) {
@@ -1837,6 +1846,33 @@ export class App {
     this.updateHud();
   }
 
+  /* --------------------------------------------------------------- transition */
+
+  /**
+   * Déclenche une ouverture depuis le noir. Utilisée à chaque changement de
+   * nature du spectacle : entrée dans le show programmé, retour au direct,
+   * lancement du show local.
+   */
+  private beginTransition(durationMs = 1500): void {
+    this.transitionStart = performance.now();
+    this.transitionDuration = Math.max(200, durationMs);
+  }
+
+  /**
+   * Ouvre l'image : voile noir qui se lève, avec un front lumineux qui balaie.
+   * Appelée après chaque rendu, pendant la transition uniquement.
+   */
+  private drawTransitionIfNeeded(time: number, plan: ShowPlan): void {
+    if (this.transitionStart === 0) return;
+    const progress = (performance.now() - this.transitionStart) / this.transitionDuration;
+    if (progress >= 1) {
+      this.transitionStart = 0;
+      return;
+    }
+    const scene = sceneAt(plan, Math.max(0, time));
+    drawTransition(this.ctx, this.canvas.clientWidth, this.canvas.clientHeight, progress, scene.palette.hue);
+  }
+
   private renderAt(time: number): void {
     const view = this.view;
     const plan = this.plan;
@@ -1858,6 +1894,7 @@ export class App {
         frame: this.frame,
       });
       this.frame += 1;
+      this.drawTransitionIfNeeded(clamped, plan);
     } catch (error) {
       // Le rendu a échoué : on descend d'un palier. La valeur reste quantifiée,
       // sinon le nombre d'éléments recommencerait à varier à chaque image.

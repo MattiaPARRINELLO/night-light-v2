@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
-import { beatDrive, beatStrength, ENERGY_FLOOR, flashAdmitted, renderFrame, sceneHue, visibleEnergy } from "../src/core/render";
+import {
+  beatDrive,
+  beatStrength,
+  drawTransition,
+  ENERGY_FLOOR,
+  flashAdmitted,
+  renderFrame,
+  sceneHue,
+  transitionAlpha,
+  visibleEnergy,
+} from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
 import { drawFamily, rowPositions } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
@@ -535,6 +545,51 @@ describe("les effets remplissent la scene", () => {
       });
       expect(deborde).toBe(true);
     }
+  });
+});
+
+describe("transition entre les moments du spectacle", () => {
+  /** Remplissages plein écran avec leur alpha, pour juger le voile. */
+  function voile(progress: number) {
+    const { ctx, operations } = fakeContext();
+    drawTransition(ctx, 1280, 720, progress, 210);
+    return operations;
+  }
+
+  test("le voile s'ouvre progressivement jusqu'au spectacle nu", () => {
+    // De l'opacité forte au départ jusqu'à plus rien : c'est ce qui distingue
+    // une transition d'une coupure sèche.
+    expect(transitionAlpha(0)).toBeCloseTo(0.95, 2);
+    expect(transitionAlpha(0.5)).toBeLessThan(transitionAlpha(0.25));
+    expect(transitionAlpha(1)).toBe(0);
+    // Au bout, plus aucune opération : le rendu n'est pas alourdi.
+    expect(voile(1)).toEqual([]);
+  });
+
+  test("le front lumineux balaie l'ecran puis sort", () => {
+    const pleinEcrans = (ops: string[]) => ops.filter((op) => op.startsWith("fillRect:0.0,0.0,1280.0,720.0")).length;
+    /** Abscisse de la bande lumineuse (le remplissage qui n'est pas le voile). */
+    const front = (progress: number) => {
+      const rect = voile(progress).find(
+        (op) => op.startsWith("fillRect:") && !op.startsWith("fillRect:0.0,0.0,1280.0,720.0"),
+      );
+      return rect === undefined ? null : Number(rect.slice("fillRect:".length).split(",")[0]);
+    };
+
+    // Aux extrêmes, le front est hors cadre : seul le voile est dessiné.
+    expect(pleinEcrans(voile(0.02))).toBe(1);
+    expect(front(0.02)).toBeNull();
+    expect(front(0.99)).toBeNull();
+
+    // Au milieu, il balaie : la bande existe et avance avec la progression.
+    expect(front(0.3)).not.toBeNull();
+    expect(front(0.7)).not.toBeNull();
+    expect(front(0.7)!).toBeGreaterThan(front(0.3)!);
+  });
+
+  test("rien n'est dessine une fois la transition finie", () => {
+    expect(voile(1.4)).toEqual([]);
+    expect(voile(2)).toEqual([]);
   });
 });
 

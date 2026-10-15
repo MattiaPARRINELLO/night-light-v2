@@ -239,6 +239,55 @@ export function variationStrength(scene: Scene, t: number): number {
 /** Opacité de la couche de fond permanente. */
 const BACKDROP_ALPHA = 0.3;
 
+/* --------------------------------------------------------------- transition */
+
+/**
+ * Opacité du voile de transition, pour une progression 0..1.
+ *
+ * Dense au tout début puis relâché : la lumière « monte » au lieu de s'ouvrir
+ * linéairement, ce qui se lit mieux de loin.
+ */
+export function transitionAlpha(progress: number): number {
+  return Math.pow(1 - clamp01(progress), 1.6) * 0.95;
+}
+
+/**
+ * Transition entre deux moments du spectacle — passage du direct au show
+ * programmé, ou retour au direct.
+ *
+ * Sans elle, l'image changeait d'un coup : le show « apparaissait ». On ouvre
+ * depuis le noir avec un front lumineux qui balaie l'écran, ce qui donne
+ * l'impression d'un rideau qui s'écarte plutôt que d'une coupure.
+ */
+export function drawTransition(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  progress: number,
+  hue: number,
+): void {
+  const p = clamp01(progress);
+  if (p >= 1) return;
+
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = `rgba(3,5,12,${transitionAlpha(p).toFixed(3)})`;
+  ctx.fillRect(0, 0, width, height);
+
+  // Front lumineux : il part du bord gauche, hors cadre, et sort à droite.
+  const front = p * 1.3 - 0.15;
+  if (front <= 0 || front >= 1) return;
+  const x = front * width;
+  const demi = width * 0.3;
+  const bande = ctx.createLinearGradient(x - demi, 0, x + demi, 0);
+  const intensite = (1 - p) * 0.45;
+  bande.addColorStop(0, paint(hue, 0.7, 0.62, 0));
+  bande.addColorStop(0.5, paint(hue, 0.85, 0.82, intensite));
+  bande.addColorStop(1, paint(hue, 0.7, 0.62, 0));
+  ctx.fillStyle = bande;
+  ctx.fillRect(Math.max(0, x - demi), 0, Math.min(width, demi * 2), height);
+}
+
 /**
  * Teinte réellement dessinée à l'instant `t`.
  *
