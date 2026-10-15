@@ -1790,10 +1790,11 @@ const lyre: FamilyDraw = (ctx, f, view) => {
 
   for (let i = 0; i < positions.length; i += 1) {
     const x = positions[i] ?? 0;
-    const part = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const phase = f.t * vitesse * Math.PI * 2 - i * 0.95 + cadence;
     const angle = -Math.PI / 2 + Math.sin(phase) * amplitude;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    // Chaque lyre porte sa teinte, prise dans l'accord de la scène : la rangée
+    // est multicolore, comme un vrai portique réglé tête par tête.
+    const hue = lampHue(f, i);
     // Une lyre est une tête fine : c'est ce qui distingue son faisceau d'un
     // projecteur de wash, et c'est ce qui garde la figure nette.
     softBeam(ctx, {
@@ -1847,7 +1848,7 @@ const mandala: FamilyDraw = (ctx, f, view) => {
   for (let i = 0; i < petales; i += 1) {
     const part = petales === 1 ? 0.5 : i / petales;
     const base = tour + part * Math.PI * 2;
-    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    const hue = lampHue(f, i);
     const allumage = elementEnvelope(f, view, i * 5, f.reduced ? 26 : f.energy > 0.55 ? 8 : 14, 0.75);
     if (allumage <= 0.01) continue;
     for (const cote of [-1, 1]) {
@@ -1886,8 +1887,10 @@ const mandala: FamilyDraw = (ctx, f, view) => {
     ctx.stroke();
   };
   const respiration = 1 + 0.16 * f.bass + 0.1 * f.beat;
-  polygone(6, rayon * 0.19 * respiration, -tour * 0.7, 1.6 + f.beat * 2, f.palette.hue, 1.6);
-  polygone(3, rayon * 0.34 * respiration, tour * 0.5 + Math.PI * 0.5, 1.2 + f.beat * 1.6, f.palette.accent, 1.1);
+  // Les deux polygones prennent deux teintes de l'accord : ils se distinguent
+  // l'un de l'autre sans sortir de la gamme de la scène.
+  polygone(6, rayon * 0.19 * respiration, -tour * 0.7, 1.6 + f.beat * 2, lampHue(f, petales), 1.6);
+  polygone(3, rayon * 0.34 * respiration, tour * 0.5 + Math.PI * 0.5, 1.2 + f.beat * 1.6, lampHue(f, petales + 1), 1.1);
 };
 
 /* ---------------------------------------------------------------- treillis */
@@ -1926,7 +1929,9 @@ const treillis: FamilyDraw = (ctx, f) => {
       // cadre au lieu de commencer au milieu.
       const x = w * 0.5 + nx * d - Math.cos(theta) * portee * 0.5;
       const y = h * 0.5 + ny * d - Math.sin(theta) * portee * 0.5;
-      const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue;
+      // Les deux nappes ne partagent pas leurs teintes : décaler l'index de la
+      // seconde donne un maillage à quatre couleurs au lieu de deux.
+      const hue = lampHue(f, i + (sens > 0 ? 0 : brins));
       softBeam(ctx, {
         x,
         y,

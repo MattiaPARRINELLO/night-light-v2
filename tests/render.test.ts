@@ -544,6 +544,35 @@ function renderFamily(famille: FamilyId): string[] {
 }
 
 describe("les effets remplissent la scene", () => {
+  /** Teintes distinctes (par pas de 30°) présentes dans les couleurs enregistrées. */
+  const teintes = (operations: string[]): number => {
+    const buckets = new Set<number>();
+    for (const operation of operations) {
+      const match = /rgba?\((\d+),(\d+),(\d+)/.exec(operation);
+      if (match === null) continue;
+      const r = Number(match[1]) / 255;
+      const g = Number(match[2]) / 255;
+      const b = Number(match[3]) / 255;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      if (max - min < 0.05) continue;
+      let hue: number;
+      if (max === r) hue = 60 * (((g - b) / (max - min)) % 6);
+      else if (max === g) hue = 60 * ((b - r) / (max - min) + 2);
+      else hue = 60 * ((r - g) / (max - min) + 4);
+      buckets.add(Math.floor((((hue % 360) + 360) % 360) / 30));
+    }
+    return buckets.size;
+  };
+
+  test("les figures à plusieurs têtes portent plusieurs teintes", () => {
+    // Une rangée de lyres, un maillage ou une rosace ne doivent pas retomber
+    // sur deux tons alternés : leur lumière vient de l'accord de la scène.
+    for (const famille of ["lyre", "treillis", "mandala"] as FamilyId[]) {
+      expect(teintes(renderFamily(famille))).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   test("une rangee de projecteurs deborde des deux bords", () => {
     // Le défaut constaté : la rangée s'arrêtait aux bords, donc dès qu'elle
     // s'inclinait, le côté vers lequel elle se penche restait noir.
