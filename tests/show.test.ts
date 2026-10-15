@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type ShowPlan } from "../src/core/show";
+import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../src/core/color";
 import { flashAlpha } from "../src/core/render";
 import type { FrameState } from "../src/core/render";
@@ -285,6 +285,45 @@ describe("palette du morceau", () => {
   });
 });
 
+describe("continuite entre les scenes", () => {
+  /** Morceau long à quatre caractères : les scènes y sont nombreuses. */
+  const morceau = () =>
+    analysis({
+      duration: 240,
+      sections: [
+        { start: 0, end: 60, label: "calme", energy: 0.2 },
+        { start: 60, end: 120, label: "montee", energy: 0.5 },
+        { start: 120, end: 200, label: "intense", energy: 0.9 },
+        { start: 200, end: 240, label: "descente", energy: 0.3 },
+      ],
+      builds: [{ start: 176, end: 180, strength: 0.95 }],
+    });
+
+  test("toutes les scenes partagent la meme couche de fond", () => {
+    // C'est l'élément commun qui rend les changements de scène presque
+    // imperceptibles : il est à l'écran du début à la fin du morceau.
+    const plan = buildShowPlan(morceau(), false);
+    expect(plan.backdrop.length).toBeGreaterThan(0);
+    for (const scene of plan.scenes) expect(scene.backdrop).toBe(plan.backdrop);
+  });
+
+  test("aucune scene ne prend la place de la couche commune", () => {
+    // Sans cette garde, la scène dont la famille est la couche de fond la
+    // remplacerait et il ne resterait aucun élément partagé — donc un trou de
+    // continuité au milieu du morceau.
+    const plan = buildShowPlan(morceau(), false);
+    for (const scene of plan.scenes) expect(scene.family).not.toBe(plan.backdrop);
+  });
+
+  test("la couche commune est la meme d'un morceau a l'autre quand il est identique", () => {
+    // Déterminisme : même analyse, même spectacle.
+    const a = buildShowPlan(morceau(), false);
+    const b = buildShowPlan(morceau(), false);
+    expect(a.backdrop).toBe(b.backdrop);
+    expect(a.track.name).toBe(b.track.name);
+  });
+});
+
 describe("diversite du spectacle", () => {
   test("les phrases renouvellent regulierement l'ambiance", () => {
     const long = analysis({ duration: 90, sections: [{ start: 0, end: 90, label: "intense", energy: 0.8 }] });
@@ -309,10 +348,19 @@ describe("diversite du spectacle", () => {
     });
     const plan = buildShowPlan(long, false);
     expect(plan.scenes.length).toBeGreaterThan(15);
+    // Compte toutes les familles réellement dessinées : la famille principale,
+    // la variation, et la couche de fond commune — qui n'apparaît jamais comme
+    // famille principale, justement parce qu'elle est partagée par tout le
+    // morceau.
+    const dessinees = new Set<FamilyId>();
+    for (const scene of plan.scenes) {
+      dessinees.add(scene.family);
+      dessinees.add(scene.variant);
+      dessinees.add(scene.backdrop);
+    }
     // Le compte vient des libellés : ajouter une famille sans la rendre
     // atteignable par le plan fait échouer ce test, et c'est voulu.
-    const toutes = Object.keys(FAMILY_LABELS).length;
-    expect(new Set(plan.scenes.map((scene) => scene.family)).size).toBe(toutes);
+    expect(dessinees.size).toBe(Object.keys(FAMILY_LABELS).length);
   });
 
   test("la cadence depend du nombre d'evenements du morceau", () => {

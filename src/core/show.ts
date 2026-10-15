@@ -83,6 +83,12 @@ export interface ShowPlan {
    * dernier plan : c'est elle que suit toute la salle.
    */
   track: TrackPalette;
+  /**
+   * Couche de fond commune à toutes les scènes : l'élément qui reste à l'écran
+   * quand tout le reste change, donc ce qui rend les changements de scène
+   * presque imperceptibles.
+   */
+  backdrop: FamilyId;
 }
 
 /** Palette d'un morceau : une teinte, sa complémentaire, et leur écart. */
@@ -376,6 +382,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
   // l'autre, et tenue du premier au dernier plan.
   const track = TRACK_PALETTES[Math.floor(hash01(seed * 13 + 5) * TRACK_PALETTES.length)] ?? TRACK_PALETTES[0]!;
+  // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
+  // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
+  // remarque à peine. Choisie une fois, tenue du début à la fin.
+  const fond = CALM_FAMILIES[Math.floor(hash01(seed * 31 + 7) * CALM_FAMILIES.length)] ?? "waves";
 
   const scenes: Scene[] = [];
   let previousHue = -999;
@@ -404,8 +414,15 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     const others = pool.filter((candidate) => candidate !== family);
     const variant = others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
 
-    const gentle = CALM_FAMILIES.filter((candidate) => candidate !== family && candidate !== variant);
-    const backdrop = gentle[Math.floor(hash01(seed * 31 + turn) * gentle.length)] ?? "waves";
+    // La couche de fond est la même pour tout le morceau (voir `fond`) : si la
+    // scène tombe dessus, elle prendrait sa place et il ne resterait aucun
+    // élément commun avec les autres scènes. On reste dans la même classe — une
+    // scène calme ne devient pas agitée pour autant.
+    let principale = family;
+    if (principale === fond) {
+      const memeClasse = CALM_FAMILIES.filter((candidate) => candidate !== fond);
+      principale = memeClasse[Math.floor(hash01(seed * 17 + turn) * memeClasse.length)] ?? "waves";
+    }
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
@@ -430,9 +447,9 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
       index: turn,
       start: round3(start),
       end: round3(Math.min(end, duration)),
-      family,
+      family: principale,
       variant,
-      backdrop,
+      backdrop: fond,
       palette: {
         name: track.name,
         hue,
@@ -477,7 +494,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   const last = scenes[scenes.length - 1];
   if (last !== undefined) last.end = round3(duration);
 
-  return { duration, seed, scenes, barStarts: barStarts(analysis), track };
+  return { duration, seed, scenes, barStarts: barStarts(analysis), track, backdrop: fond };
 }
 
 function sectionLabelAt(analysis: Analysis, t: number): string {

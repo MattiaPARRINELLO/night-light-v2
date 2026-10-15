@@ -1438,6 +1438,7 @@ export class App {
       ],
       barStarts: [],
       track: { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
+      backdrop: "waves",
     };
   }
 
