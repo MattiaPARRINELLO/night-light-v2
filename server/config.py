@@ -8,6 +8,19 @@ from pathlib import Path
 
 DEFAULT_SESSION_DIR = "/tmp/night-light-sessions"
 SESSION_DIR_NAME = "night-light-sessions"
+DEFAULT_CACHE_DIR_NAME = "night-light"
+
+
+def _default_cache_dir() -> Path:
+    """Cache persistant des morceaux, hors de `/tmp` pour survivre au redémarrage.
+
+    Contrairement aux sessions (jetables, sous `/tmp`), le cache doit durer : on
+    suit la convention XDG (`XDG_DATA_HOME`, sinon `~/.local/share`), comme le
+    `streamrip` installé à côté du projet.
+    """
+    base = (os.environ.get("XDG_DATA_HOME") or "").strip()
+    root = Path(base).expanduser() if base else Path.home() / ".local" / "share"
+    return (root / DEFAULT_CACHE_DIR_NAME / "cache").resolve()
 
 
 def _clean_session_dir(raw: str | None) -> Path:
@@ -82,6 +95,8 @@ class Settings:
 
 def load_settings() -> Settings:
     session_dir = _clean_session_dir(os.environ.get("SESSION_DIR"))
+    cache_override = (os.environ.get("CACHE_DIR") or "").strip()
+    cache_dir = Path(cache_override).expanduser() if cache_override else _default_cache_dir()
     return Settings(
         host=os.environ.get("HOST", "127.0.0.1"),
         port=_int_env("PORT", 8787),
@@ -90,10 +105,7 @@ def load_settings() -> Settings:
         analyze_timeout_sec=_float_env("ANALYZE_TIMEOUT_SEC", 240),
         session_ttl_sec=_float_env("SESSION_TTL_SEC", 1800),
         session_dir=str(session_dir),
-        cache_dir=str(
-            os.environ.get("CACHE_DIR")
-            or (Path(session_dir).resolve().parent / "night-light-cache")
-        ),
+        cache_dir=str(cache_dir),
         deezer_arl=(os.environ.get("DEEZER_ARL") or "").strip(),
         workers=max(1, _int_env("ANALYZE_WORKERS", 1)),
         sample_rate=_int_env("ANALYSIS_SAMPLE_RATE", 22050),

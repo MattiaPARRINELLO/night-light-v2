@@ -21,6 +21,7 @@ def client(tmp_path: Path):
     main.settings = replace(
         previous_settings,
         session_dir=str(tmp_path / "night-light-sessions"),
+        cache_dir=str(tmp_path / "night-light-cache"),
         deezer_arl="arl-test",
     )
     main.state = main.AppState(main.settings)
