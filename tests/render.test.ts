@@ -654,6 +654,21 @@ describe("mouvements cales sur le tempo", () => {
     }
   });
 
+  test("un passage fort balaie plus large qu'un passage calme", () => {
+    // L'ampleur suit l'énergie : la même famille ne bouge pas pareil dans un
+    // couplet et dans un refrain.
+    const amplitude = (energy: number) => {
+      const valeurs: number[] = [];
+      for (let beat = 8; beat < 24; beat += 1) {
+        for (let phase = 0; phase < 1; phase += 0.25) {
+          valeurs.push(beatSwing(frame({ beatIndex: beat, beatPhase: phase, energy }), view, 1, 1));
+        }
+      }
+      return Math.max(...valeurs) - Math.min(...valeurs);
+    };
+    expect(amplitude(0.95)).toBeGreaterThan(amplitude(0.15) * 1.3);
+  });
+
   test("un decalage par lampe les desynchronise", () => {
     const premiere = beatSwing(frame({ beatPhase: 0.4 }), view, 1, 1, 0);
     const seconde = beatSwing(frame({ beatPhase: 0.4 }), view, 1, 1, 0.31);
@@ -743,6 +758,24 @@ describe("allumage et extinction des elements", () => {
     expect(Math.min(...valeurs)).toBeLessThan(Math.max(...valeurs));
     // Et il y a toujours de la lumière : le rideau ne s'éteint jamais en entier.
     expect(Math.max(...valeurs)).toBeGreaterThan(2);
+  });
+
+  test("un passage fort allume et eteint plus souvent", () => {
+    // À durée égale, un cycle court bascule plus souvent : c'est ce qui fait
+    // vivre la lumière plus vite dans un passage fort.
+    const basculements = (cycle: number) => {
+      let total = 0;
+      let allume = elementEnvelope(frame({ beatIndex: 8, beatPhase: 0 }), view, 0, cycle, 0.5) > 0;
+      const fin = 8 + 96;
+      for (let position = 8; position < fin; position += 0.1) {
+        const courant =
+          elementEnvelope(frame({ beatIndex: Math.floor(position), beatPhase: position % 1 }), view, 0, cycle, 0.5) > 0;
+        if (courant !== allume) total += 1;
+        allume = courant;
+      }
+      return total;
+    };
+    expect(basculements(8)).toBeGreaterThan(basculements(24));
   });
 
   test("sans grille rythmique, le cycle se compte en secondes", () => {

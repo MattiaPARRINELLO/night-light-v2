@@ -112,8 +112,11 @@ export function beatSwing(
   const position = f.beatIndex + clamp01(f.beatPhase) + offset;
   const bloc = Math.floor(position / pas);
   const local = clamp01(position / pas - bloc);
-  const depart = (hash01(bloc * 7919 + f.seed) - 0.5) * spread;
-  const arrivee = (hash01((bloc + 1) * 7919 + f.seed) - 0.5) * spread;
+  // L'ampleur suit l'énergie : une salle calme se contente d'un balayage
+  // étroit, un passage fort ouvre largement. La cadence, elle, suit le tempo.
+  const ampleur = spread * (0.7 + 0.5 * clamp01(f.energy));
+  const depart = (hash01(bloc * 7919 + f.seed) - 0.5) * ampleur;
+  const arrivee = (hash01((bloc + 1) * 7919 + f.seed) - 0.5) * ampleur;
   // La course se fait sur les 70 % du pas : le faisceau est en place juste
   // après le temps fort, puis tient sa position le reste du temps.
   return depart + (arrivee - depart) * smoothstep(0, 0.7, local);
@@ -538,7 +541,7 @@ const spots: FamilyDraw = (ctx, f, view) => {
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (i / lamps) * f.palette.spread;
     // Les projecteurs ne restent pas tous allumés : chacun a son cycle, donc la
     // salle change de visage sans qu'aucun ne s'éteigne d'un coup.
-    const allumage = elementEnvelope(f, view, i * 3 + 1, 20, 0.8);
+    const allumage = elementEnvelope(f, view, i * 3 + 1, f.energy > 0.55 ? 12 : 22, 0.8);
     if (allumage <= 0.01) continue;
     const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha * allumage;
 
@@ -850,7 +853,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     // Chaque faisceau s'allume et s'éteint à son tour, sur un cycle musical :
     // la lumière « voyage » le long de la rangée au lieu de clignoter en bloc.
-    const phase = elementEnvelope(f, view, i, 16, 0.85);
+    const phase = elementEnvelope(f, view, i, f.energy > 0.55 ? 10 : 20, 0.85);
     if (phase <= 0.01) continue;
     const aperture = (0.01 + 0.016 * hash01(i * 271 + f.seed)) * (0.6 + phase * 0.8 + f.beat * 0.3);
     const portee = length * (0.78 + phase * 0.35);
@@ -1010,7 +1013,7 @@ const gobos: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const formes = count(f.energy > 0.55 ? 14 : 9, f.quality, f.reduced);
   const rayon = Math.min(w, h) * (0.07 + f.energy * 0.05 + f.beat * 0.02);
-  const cycle = f.reduced ? 24 : f.energy > 0.55 ? 12 : 18;
+  const cycle = f.reduced ? 28 : f.energy > 0.55 ? 9 : 20;
 
   for (let i = 0; i < formes; i += 1) {
     const enveloppe = elementEnvelope(f, view, i, cycle, 0.55);
