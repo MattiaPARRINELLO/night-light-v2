@@ -33,6 +33,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Outils système (ffmpeg)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Tests serveur
         run: uv run pytest tests/ -q
 

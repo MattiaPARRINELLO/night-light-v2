@@ -101,8 +101,15 @@ try {
 
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const consoleErrors = [];
+  // La capture du son du PC dépend de PipeWire/PulseAudio, absents sur une
+  // machine d'intégration sans serveur audio : son échec y est attendu et ne
+  // dit rien du parcours testé. On l'ignore pour ne garder que les vraies
+  // erreurs, celles qui trahiraient une régression.
+  const captureError = /parec\/pactl indisponible|capture en erreur/i;
   page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (message.type() === "error" && !captureError.test(message.text())) {
+      consoleErrors.push(message.text());
+    }
   });
   page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
