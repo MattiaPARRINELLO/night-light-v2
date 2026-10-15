@@ -5,33 +5,34 @@ et le serveur écoute par défaut sur 127.0.0.1 uniquement.
 """
 
 from __future__ import annotations
-import json
 
 import asyncio
-import logging
 import atexit
+import json
+import logging
 import shutil
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager, suppress
 from importlib import metadata
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from . import sniff
-from pydantic import BaseModel
-from .retrieve.models import TrackQuery
-from .retrieve.cache import AudioCache
-from .retrieve.deezer import DeezerProvider
-from .retrieve.resolver import resolve_track, RetrievalError
 from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
+from .audio_capture import get_audio_capture
 from .config import Settings, load_settings
 from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
-from .playback_position import get_playback_state, match_playback, PlaybackState
-from .audio_capture import get_audio_capture
+from .playback_position import get_playback_state, match_playback
+from .retrieve.cache import AudioCache
+from .retrieve.deezer import DeezerProvider
+from .retrieve.models import TrackQuery
+from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
 MAX_ACTIVE_JOBS = 24
@@ -200,10 +201,8 @@ class AppState:
     async def shutdown(self) -> None:
         if self.purge_task is not None:
             self.purge_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self.purge_task
-            except asyncio.CancelledError:
-                pass
         self.executor.shutdown(wait=False, cancel_futures=True)
         self.store.purge_all()
 

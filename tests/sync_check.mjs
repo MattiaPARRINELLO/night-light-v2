@@ -184,7 +184,6 @@ try {
       },
       20000,
     );
-    const valeurs = echantillons.map((sample) => sample.show);
     const dernier = echantillons.at(-1)?.show ?? base;
     console.log(
       `${label} : lecteur ${lecteurActuel.toFixed(2)} s → ${cible.toFixed(2)} s · ` +

@@ -46,7 +46,7 @@ function launch(name, command, args, env = {}) {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-const api = launch(
+launch(
   "api",
   "uv",
   ["run", "uvicorn", "server.main:app", "--host", "127.0.0.1", "--port", apiPort],

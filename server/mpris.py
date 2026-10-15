@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 PLAYERCTL = "playerctl"
@@ -127,7 +126,8 @@ def _choose_player(players: list[str], previous: NowPlaying) -> tuple[str, bool]
     best_score = max(item[2] for item in infos)
     best = [item for item in infos if item[2] == best_score]
     ambiguous = len(best) > 1 and best_score < 100
-    # Si plusieurs players jouent vraiment, garder celui dont les métadonnées sont les plus récentes heuristiquement:
+    # Si plusieurs players jouent vraiment, garder celui dont les métadonnées
+    # sont les plus récentes heuristiquement :
     if sum(1 for item in infos if item[1]["status"] == "playing") > 1:
         # Sans horodatage MPRIS fiable, on ne tranche pas arbitrairement.
         playing = [item for item in infos if item[1]["status"] == "playing"]

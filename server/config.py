@@ -77,7 +77,10 @@ def load_settings() -> Settings:
         analyze_timeout_sec=_float_env("ANALYZE_TIMEOUT_SEC", 240),
         session_ttl_sec=_float_env("SESSION_TTL_SEC", 1800),
         session_dir=str(session_dir),
-        cache_dir=str(os.environ.get('CACHE_DIR') or (Path(session_dir).resolve().parent / 'night-light-cache')),
+        cache_dir=str(
+            os.environ.get("CACHE_DIR")
+            or (Path(session_dir).resolve().parent / "night-light-cache")
+        ),
         deezer_arl=(os.environ.get("DEEZER_ARL") or "").strip(),
         workers=max(1, _int_env("ANALYZE_WORKERS", 1)),
         sample_rate=_int_env("ANALYSIS_SAMPLE_RATE", 22050),

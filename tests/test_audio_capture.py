@@ -1,4 +1,3 @@
-import shutil
 import subprocess
 from unittest.mock import patch
 
@@ -26,27 +25,34 @@ def test_acquire_unavailable_sets_error() -> None:
 
 def test_refcount_releases_process() -> None:
     capture = SystemAudioCapture()
-    with patch("server.audio_capture.shutil.which", return_value="/usr/bin/fake"):
-        with patch("server.audio_capture.subprocess.Popen") as popen:
-            popen.return_value.stdout = None
-            with patch.object(capture, "_default_monitor", return_value="sink.monitor"):
-                capture.acquire()
-                assert capture._clients == 1
-                capture.release()
-                assert capture._clients == 0
+    with (
+        patch("server.audio_capture.shutil.which", return_value="/usr/bin/fake"),
+        patch("server.audio_capture.subprocess.Popen") as popen,
+        patch.object(capture, "_default_monitor", return_value="sink.monitor"),
+    ):
+        popen.return_value.stdout = None
+        capture.acquire()
+        assert capture._clients == 1
+        capture.release()
+        assert capture._clients == 0
     assert capture.level().state in {"inactive", "error"}
 
 
 def test_default_monitor_prefers_running_sink() -> None:
     capture = SystemAudioCapture()
+
     def fake_run(args, *extra, **kwargs):
         if args == ["pactl", "get-default-sink"]:
-            return subprocess.CompletedProcess(args=args, returncode=0, stdout="alsa_output.pci.monitor\n", stderr="")
+            return subprocess.CompletedProcess(
+                args=args, returncode=0, stdout="alsa_output.pci.monitor\n", stderr=""
+            )
         return subprocess.CompletedProcess(
-            args=args, returncode=0,
+            args=args,
+            returncode=0,
             stdout="1\talsa_output.pci.monitor\tmodule\ts16le\t2ch\t44100Hz\tRUNNING\n",
             stderr="",
         )
+
     with patch("server.audio_capture.subprocess.run", side_effect=fake_run):
         assert capture._default_monitor() == "alsa_output.pci.monitor.monitor"
 

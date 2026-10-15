@@ -71,9 +71,8 @@ def main(argv: list[str]) -> int:
         return 0
 
     state = load_state()
-    player = ""
     if argv[:1] == ["-p"] and len(argv) > 1:
-        player = argv[1]
+        argv[1]
         argv = argv[2:]
 
     if argv[:1] == ["metadata"]:

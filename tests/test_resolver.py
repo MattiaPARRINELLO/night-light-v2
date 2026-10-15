@@ -15,8 +15,22 @@ def test_ambiguous_match_is_reported(tmp_path: Path) -> None:
 
         def search(self, query):
             return [
-                Candidate(provider="fake", source_id="a", title="Canon in D major", artist="Kevin", duration_sec=355.0, url="https://x/a"),
-                Candidate(provider="fake", source_id="b", title="Canon in D minor", artist="Kevin", duration_sec=355.0, url="https://x/b"),
+                Candidate(
+                    provider="fake",
+                    source_id="a",
+                    title="Canon in D major",
+                    artist="Kevin",
+                    duration_sec=355.0,
+                    url="https://x/a",
+                ),
+                Candidate(
+                    provider="fake",
+                    source_id="b",
+                    title="Canon in D minor",
+                    artist="Kevin",
+                    duration_sec=355.0,
+                    url="https://x/b",
+                ),
             ]
 
         def download(self, candidate, destination):
@@ -44,7 +58,15 @@ def test_concurrent_same_track_downloads_once(tmp_path: Path) -> None:
 
         def search(self, query):
             return [
-                Candidate(provider="fake", source_id="one", title=query.title, artist=query.artist, duration_sec=query.duration_sec, url="https://x/a", container="wav")
+                Candidate(
+                    provider="fake",
+                    source_id="one",
+                    title=query.title,
+                    artist=query.artist,
+                    duration_sec=query.duration_sec,
+                    url="https://x/a",
+                    container="wav",
+                )
             ]
 
         def download(self, candidate, destination):

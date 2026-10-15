@@ -55,9 +55,9 @@ const occupation = (page) =>
     const w = node.width;
     const h = node.height;
     const data = node.getContext("2d").getImageData(0, 0, w, h).data;
-    const colonnes = new Array(3).fill(0);
-    const lignes = new Array(3).fill(0);
-    const totaux = new Array(3).fill(0);
+    const colonnes = [0, 0, 0];
+    const lignes = [0, 0, 0];
+    const totaux = [0, 0, 0];
     let allumes = 0;
     let total = 0;
     for (let y = 0; y < h; y += 3) {
@@ -179,7 +179,6 @@ try {
           return out;
         };
         const fam = app.syncedPlan.scenes[0].family;
-        const t = (app.syncedStartMs + (Date.now() - app.syncedStartedAtEpoch)) / 1000;
         return { fam, haut: ligne(Math.round(h * 0.2)), milieu: ligne(Math.round(h * 0.5)), bas: ligne(Math.round(h * 0.85)) };
       });
       console.log(`  profil ${profil.fam} — haut  : ${profil.haut.join(" ")}`);

@@ -1185,7 +1185,7 @@ describe("flashs", () => {
         pending = operation.slice("fillStyle:".length);
         continue;
       }
-      if (operation === "fillRect:0.0,0.0,1280.0,720.0" && /^rgba\(255,255,255,/.test(pending)) {
+      if (operation === "fillRect:0.0,0.0,1280.0,720.0" && pending.startsWith("rgba(255,255,255,")) {
         total += 1;
       }
     }

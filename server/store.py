@@ -73,7 +73,12 @@ class SessionStore:
             job_id = uuid.uuid4().hex
         session_dir = (self.root / job_id).resolve()
         session_dir.mkdir(parents=True, exist_ok=True)
-        job = Job(id=job_id, filename=filename, size_bytes=size_bytes, audio_path=session_dir / "audio")
+        job = Job(
+            id=job_id,
+            filename=filename,
+            size_bytes=size_bytes,
+            audio_path=session_dir / "audio",
+        )
         with self._lock:
             self._jobs[job_id] = job
         return job
@@ -153,7 +158,9 @@ class SessionStore:
     def purge_expired(self) -> int:
         now = time.time()
         with self._lock:
-            expired = [job_id for job_id, job in self._jobs.items() if now - job.created_at > self.ttl_sec]
+            expired = [
+                job_id for job_id, job in self._jobs.items() if now - job.created_at > self.ttl_sec
+            ]
         for job_id in expired:
             self.drop(job_id)
         return len(expired)

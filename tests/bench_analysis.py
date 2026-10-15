@@ -1,6 +1,6 @@
 """Chronomètre et inspection d'une analyse, hors API.
 
-    uv run python tests/bench_analysis.py /tmp/piste.wav
+uv run python tests/bench_analysis.py /tmp/piste.wav
 """
 
 from __future__ import annotations
@@ -28,18 +28,23 @@ def lap(label, fn):
 
 
 def main(path: str) -> None:
-    audio, sr = lap("load 22050 mono", lambda: librosa.load(path, sr=settings.sample_rate, mono=True))
+    audio, sr = lap(
+        "load 22050 mono",
+        lambda: librosa.load(path, sr=settings.sample_rate, mono=True),
+    )
     duration = len(audio) / sr
     print(f"{path} — {duration:.1f} s @ {sr} Hz")
 
     lap("onset_strength", lambda: librosa.onset.onset_strength(y=audio, sr=sr, hop_length=HOP))
     lap(
         "beat_track",
-        lambda: librosa.beat.beat_track(onset_envelope=None, y=audio, sr=sr, hop_length=HOP, trim=False),
+        lambda: librosa.beat.beat_track(
+            onset_envelope=None, y=audio, sr=sr, hop_length=HOP, trim=False
+        ),
     )
     lap("stft 2048/512", lambda: np.abs(librosa.stft(audio, n_fft=NFFT, hop_length=HOP)))
 
-    mel = librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
+    librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
     lap(
         "mfcc + chroma",
         lambda: librosa.feature.chroma_stft(
@@ -53,9 +58,15 @@ def main(path: str) -> None:
     result = analyze_file(Path(path), settings, report=lambda message, progress: None)
     print(f"\nanalyse complète         {time.perf_counter() - start:6.2f}s")
     print(f"tempo {result.tempo} | temps forts {len(result.beats)} | attaques {len(result.onsets)}")
-    print(f"sections ({_section_count(duration)} visées) :", [(s["start"], s["end"], s["label"], s["energy"]) for s in result.sections])
+    print(
+        f"sections ({_section_count(duration)} visées) :",
+        [(s["start"], s["end"], s["label"], s["energy"]) for s in result.sections],
+    )
     print("montées :", result.builds)
-    print("courbes :", {name: len(getattr(result, name)) for name in ("energy", "bass", "mid", "high")})
+    print(
+        "courbes :",
+        {name: len(getattr(result, name)) for name in ("energy", "bass", "mid", "high")},
+    )
 
 
 if __name__ == "__main__":

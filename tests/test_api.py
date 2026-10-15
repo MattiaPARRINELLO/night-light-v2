@@ -109,7 +109,10 @@ def test_fichier_trop_volumineux(client: TestClient) -> None:
     main.settings = replace(previous, max_file_bytes=2048)
     main.state.settings = main.settings
     try:
-        response = client.post("/api/analyze", files={"file": ("gros.wav", b"\x00" * 8192, "audio/wav")})
+        response = client.post(
+            "/api/analyze",
+            files={"file": ("gros.wav", b"\x00" * 8192, "audio/wav")},
+        )
     finally:
         main.settings = previous
         main.state.settings = previous
@@ -120,7 +123,9 @@ def test_fichier_trop_volumineux(client: TestClient) -> None:
 def test_piste_trop_courte(client: TestClient, tmp_path: Path) -> None:
     tiny = tmp_path / "tropcourt.wav"
     sf.write(tiny, [0.0] * 2000, 22050, subtype="PCM_16")
-    response = client.post("/api/analyze", files={"file": ("tropcourt.wav", tiny.read_bytes(), "audio/wav")})
+    response = client.post(
+        "/api/analyze", files={"file": ("tropcourt.wav", tiny.read_bytes(), "audio/wav")}
+    )
     job_id = response.json()["jobId"]
     job = wait_for_job(client, job_id)
     assert job["status"] == "error"
@@ -134,7 +139,9 @@ def test_morceau_trop_long(client: TestClient, tmp_path: Path) -> None:
     try:
         track = tmp_path / "long.wav"
         write_synthetic_track(track, duration=8.0)
-        response = client.post("/api/analyze", files={"file": ("long.wav", track.read_bytes(), "audio/wav")})
+        response = client.post(
+            "/api/analyze", files={"file": ("long.wav", track.read_bytes(), "audio/wav")}
+        )
         job_id = response.json()["jobId"]
         job = wait_for_job(client, job_id)
     finally:
@@ -154,7 +161,6 @@ def test_repertoire_session_dangereux_refuse(tmp_path: Path) -> None:
 
 
 def test_session_dir_vide_retombe_sur_le_defaut(monkeypatch) -> None:
-    from server.config import load_settings
 
     monkeypatch.setenv("SESSION_DIR", "")
     assert load_settings().session_dir == "/tmp/night-light-sessions"
@@ -168,7 +174,6 @@ def test_session_dir_vide_retombe_sur_le_defaut(monkeypatch) -> None:
 
 
 def test_session_dir_valide_est_conserve(monkeypatch, tmp_path: Path) -> None:
-    from server.config import load_settings
 
     target = tmp_path / "night-light-sessions"
     monkeypatch.setenv("SESSION_DIR", str(target))

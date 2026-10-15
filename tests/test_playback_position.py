@@ -1,12 +1,18 @@
 from unittest.mock import patch
-import subprocess
 
 import server.playback_position as pp
-from server.playback_position import get_playback_state, normalize_text, text_similarity, match_playback
+from server.playback_position import (
+    get_playback_state,
+    match_playback,
+    normalize_text,
+)
 
 
 def test_normalize_text_strips_accents_and_versions() -> None:
-    assert normalize_text("Daft Punk — Get Lucky (feat. Pharrell) [Remastered]") == "daft punk get lucky"
+    assert (
+        normalize_text("Daft Punk — Get Lucky (feat. Pharrell) [Remastered]")
+        == "daft punk get lucky"
+    )
 
 
 def test_match_accepts_title_and_duration() -> None:
@@ -32,12 +38,32 @@ def test_get_playback_state_none_without_playerctl() -> None:
 
 
 def test_choose_prefers_playing_player() -> None:
-    with patch.object(pp, "_playerctl_available", return_value=True), \
-         patch.object(pp, "_list_players", return_value=["dead", "live"]), \
-         patch.object(pp, "_metadata_for", side_effect=lambda p: {
-             "dead": {"status": "paused", "title": "Song", "artist": "A", "album": "", "duration_ms": 1000, "position_sec": 0.0},
-             "live": {"status": "playing", "title": "Song", "artist": "A", "album": "", "duration_ms": 1000, "position_sec": 1.0},
-         }[p]):
+    with (
+        patch.object(pp, "_playerctl_available", return_value=True),
+        patch.object(pp, "_list_players", return_value=["dead", "live"]),
+        patch.object(
+            pp,
+            "_metadata_for",
+            side_effect=lambda p: {
+                "dead": {
+                    "status": "paused",
+                    "title": "Song",
+                    "artist": "A",
+                    "album": "",
+                    "duration_ms": 1000,
+                    "position_sec": 0.0,
+                },
+                "live": {
+                    "status": "playing",
+                    "title": "Song",
+                    "artist": "A",
+                    "album": "",
+                    "duration_ms": 1000,
+                    "position_sec": 1.0,
+                },
+            }[p],
+        ),
+    ):
         state = get_playback_state(title="Song", artist="A")
     assert state.source == "mpris"
     assert state.status == "playing"

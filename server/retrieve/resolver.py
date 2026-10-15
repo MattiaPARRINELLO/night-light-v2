@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import tempfile
 import time
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
-from typing import Any
 
 from .cache import AudioCache, AudioCacheError
 from .match import MatchThresholds, validate_match
@@ -57,10 +57,8 @@ def resolve_track(
 
     def report(phase: str, ratio: float, detail: str) -> None:
         if progress is not None:
-            try:
+            with suppress(Exception):
                 progress(phase, max(0.0, min(1.0, ratio)), detail)
-            except Exception:  # noqa: BLE001
-                pass
 
     with cache.lock_for(key):
         report("Cache", 0.0, "Vérification du cache persistant")
@@ -70,7 +68,14 @@ def resolve_track(
         if hit is not None:
             return RetrievalResult(
                 query=query,
-                candidate=Candidate(provider="cache", source_id=key, title=query.title, artist=query.artist, duration_sec=query.duration_sec, local_path=hit.path),
+                candidate=Candidate(
+                    provider="cache",
+                    source_id=key,
+                    title=query.title,
+                    artist=query.artist,
+                    duration_sec=query.duration_sec,
+                    local_path=hit.path,
+                ),
                 cache_entry_path=hit.path,
                 timings=RetrievalTimings(0.0, 0.0, 0.0, 0.0, time.monotonic() - total_start),
                 from_cache=True,
@@ -93,7 +98,9 @@ def resolve_track(
             if result.accepted:
                 accepted.append((result.score, candidate))
         if not accepted:
-            raise RetrievalError("no_match", "aucun candidat ne correspond aux métadonnées demandées")
+            raise RetrievalError(
+                "no_match", "aucun candidat ne correspond aux métadonnées demandées"
+            )
         accepted.sort(key=lambda item: item[0], reverse=True)
         validation_elapsed = time.monotonic() - validation_start
         report("Validation", 1.0, f"{len(accepted)} correspondance(s) retenue(s)")
@@ -105,7 +112,19 @@ def resolve_track(
             canonical = " ".join(
                 token
                 for token in normalize_text(cand.title).split()
-                if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"}
+                if token
+                not in {
+                    "official",
+                    "audio",
+                    "video",
+                    "clip",
+                    "officiel",
+                    "originale",
+                    "provided",
+                    "youtube",
+                    "topic",
+                    "original",
+                }
             )
             key = normalize_text(f"{canonical}|{cand.artist}")
             if key in seen_keys:
@@ -113,16 +132,49 @@ def resolve_track(
             seen_keys.add(key)
             unique.append((score, cand))
         if len(unique) >= 2:
-            candidate_core = " ".join(token for token in unique[0][1].normalized_title.split() if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"})
-            query_core = " ".join(token for token in query.normalized_title.split() if token not in {"official", "audio", "video", "clip", "officiel", "originale", "provided", "youtube", "topic", "original"})
+            candidate_core = " ".join(
+                token
+                for token in unique[0][1].normalized_title.split()
+                if token
+                not in {
+                    "official",
+                    "audio",
+                    "video",
+                    "clip",
+                    "officiel",
+                    "originale",
+                    "provided",
+                    "youtube",
+                    "topic",
+                    "original",
+                }
+            )
+            query_core = " ".join(
+                token
+                for token in query.normalized_title.split()
+                if token
+                not in {
+                    "official",
+                    "audio",
+                    "video",
+                    "clip",
+                    "officiel",
+                    "originale",
+                    "provided",
+                    "youtube",
+                    "topic",
+                    "original",
+                }
+            )
             top_exact_title = candidate_core == query_core
-            if not top_exact_title or unique[0][0] < thresholds.min_score:
-                if unique[0][0] >= thresholds.min_score and (unique[0][0] - unique[1][0]) < 2.0:
-                    raise RetrievalError(
-                        "ambiguous_match",
-                        "Plusieurs correspondances trop proches : précise le titre, l'artiste ou la durée.",
-                    )
-
+            if (not top_exact_title or unique[0][0] < thresholds.min_score) and (
+                unique[0][0] >= thresholds.min_score and (unique[0][0] - unique[1][0]) < 2.0
+            ):
+                raise RetrievalError(
+                    "ambiguous_match",
+                    "Plusieurs correspondances trop proches : précise le titre, "
+                    "l'artiste ou la durée.",
+                )
 
         download_root = (downloads_dir or (cache.root.parent / "retrieval-downloads")).resolve()
         download_root.mkdir(parents=True, exist_ok=True)
