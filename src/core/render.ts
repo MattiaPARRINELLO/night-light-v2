@@ -1,7 +1,7 @@
 import type { RenderSettings } from "../types";
 import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
-import { drawCoreGlow, drawFamily, drawWash } from "./families";
-import type { FrameState } from "./families";
+import { drawCoreGlow, drawFamily, drawWash, hazeRadiusPixels } from "./families";
+import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
 import { hslToRgb, shiftHue, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
@@ -28,6 +28,12 @@ export interface RenderInput {
   frame: number;
   /** Caractéristiques audio live optionnelles, pour le mode réactif. */
   liveAudio?: LiveAudioFeatures;
+  /**
+   * Surface de fumée, créée et conservée par l'appelant. Sans elle, les
+   * faisceaux larges retombent sur la superposition de couches : le spectacle
+   * reste juste, mais perd la diffusion dans la fumée.
+   */
+  haze?: HazeTarget;
 }
 
 export type { FrameState };
@@ -396,6 +402,19 @@ export function renderFrame(input: RenderInput): void {
   // l'appelant : c'est ce qui garantit qu'une variation de fps ne change jamais
   // le nombre d'éléments d'une image à l'autre (voir QUALITY_STEPS).
   const quality = quantizeQuality(input.quality);
+  const haze = reduced ? undefined : input.haze;
+  if (haze !== undefined) {
+    // La surface de fumée repart vide à chaque image, et dans le même espace que
+    // les familles (des pixels CSS) : elles y déposent leurs faisceaux comme
+    // elles le feraient sur la toile.
+    haze.used = false;
+    haze.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    haze.ctx.globalCompositeOperation = "source-over";
+    haze.ctx.globalAlpha = 1;
+    haze.ctx.clearRect(0, 0, haze.ctx.canvas.width, haze.ctx.canvas.height);
+    haze.ctx.setTransform(haze.scale, 0, 0, haze.scale, 0, 0);
+    haze.ctx.globalCompositeOperation = "lighter";
+  }
   const scene = sceneAt(plan, t);
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
@@ -448,8 +467,7 @@ export function renderFrame(input: RenderInput): void {
     reduced,
     quality,
     seed: plan.seed,
-    // Huit flous par image au maximum : au-delà, le coût dépasse le gain visuel.
-    blur: { left: quality >= 0.85 ? 8 : quality >= 0.55 ? 4 : 0 },
+    haze,
     frame,
   };
 
@@ -551,6 +569,24 @@ export function renderFrame(input: RenderInput): void {
       intensity: previous.intensity * settings.intensity,
     };
     drawFamily(ctx, outgoing, view, previous.family);
+  }
+
+  // Fumée : les faisceaux larges ont été déposés dans une surface basse
+  // résolution. On les y floute une fois — c'est cette unique passe, et non une
+  // passe par projecteur, qui rend la diffusion tenable — puis on remonte la
+  // surface, agrandie d'autant : l'agrandissement finit d'adoucir les bords.
+  if (haze !== undefined && haze.used) {
+    const rayon = hazeRadiusPixels(width, height, quality) * haze.scale;
+    haze.blurPass.setTransform(1, 0, 0, 1, 0, 0);
+    haze.blurPass.globalCompositeOperation = "source-over";
+    haze.blurPass.globalAlpha = 1;
+    haze.blurPass.clearRect(0, 0, haze.blurPass.canvas.width, haze.blurPass.canvas.height);
+    haze.blurPass.filter = `blur(${rayon.toFixed(2)}px)`;
+    haze.blurPass.drawImage(haze.ctx.canvas, 0, 0);
+    haze.blurPass.filter = "none";
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(haze.blurPass.canvas, 0, 0, width, height);
   }
 
   drawDust(ctx, permanent);

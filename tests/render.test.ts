@@ -13,12 +13,13 @@ import {
 } from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
 import {
-  beamBlurPixels,
   beamLayers,
   beatSwing,
   drawFamily,
   elementEnvelope,
   GRAND_BALAYAGE_BEATS,
+  hazeRadiusPixels,
+  type HazeTarget,
   PETIT_ELEMENT_BEATS,
   rowPositions,
   softBeam,
@@ -73,6 +74,7 @@ function fakeContext() {
     },
     setTransform: () => operations.push("setTransform"),
     clearRect: () => operations.push("clearRect"),
+    drawImage: () => operations.push("drawImage"),
     fillRect: (x: number, y: number, w: number, h: number) =>
       operations.push(`fillRect:${x.toFixed(1)},${y.toFixed(1)},${w.toFixed(1)},${h.toFixed(1)}`),
     beginPath: () => operations.push("beginPath"),
@@ -144,8 +146,7 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
   };
 }
 
-function renderAt(time: number, analysisData: Analysis = analysis(), settings = DEFAULT_SETTINGS, quality = 1) {
-  const { ctx, operations } = fakeContext();
+function renderAt(time: number, analysisData: Analysis = analysis(), settings = DEFAULT_SETTINGS, quality = 1) {  const { ctx, operations } = fakeContext();
   const view = new TrackView(analysisData);
   const plan = buildShowPlan(analysisData, settings.reduced);
   renderFrame({
@@ -162,6 +163,20 @@ function renderAt(time: number, analysisData: Analysis = analysis(), settings = 
     frame: Math.round(time * 60),
   });
   return operations;
+}
+
+/**
+ * Surface de fumée de test : deux contextes enregistreurs, comme dans le
+ * navigateur (dépôt des faisceaux, puis passe de flou).
+ */
+function fakeHaze(): { haze: HazeTarget; depot: string[]; flou: string[] } {
+  const depot = fakeContext();
+  const flou = fakeContext();
+  return {
+    haze: { ctx: depot.ctx, blurPass: flou.ctx, scale: 0.5, used: false },
+    depot: depot.operations,
+    flou: flou.operations,
+  };
 }
 
 describe("rendu déterministe", () => {
@@ -502,7 +517,6 @@ function renderFamily(famille: FamilyId): string[] {
       reduced: false,
       quality: 1,
       seed: plan.seed,
-      blur: { left: 0 },
       frame: 720,
     },
     view,
@@ -611,7 +625,6 @@ describe("mouvements cales sur le tempo", () => {
       reduced: false,
       quality: 1,
       seed: 42,
-      blur: { left: 0 },
       frame: 0,
       ...over,
     }) as Parameters<typeof beatSwing>[0];
@@ -727,7 +740,6 @@ describe("allumage et extinction des elements", () => {
       reduced: false,
       quality: 1,
       seed: 42,
-      blur: { left: 0 },
       frame: 0,
       ...over,
     }) as Parameters<typeof elementEnvelope>[0];
@@ -835,34 +847,99 @@ describe("faisceaux adoucis", () => {
     expect(large[0]!.footHalfWidth).toBeGreaterThan(30);
   });
 
-  test("le flou suit la qualite et le mode reduit", () => {
-    // Pas de flou en mode réduit ni sur une machine qui souffle : on retombe sur
-    // les couches. Au-delà d'une quinzaine de pixels, le faisceau deviendrait du
-    // brouillard.
-    expect(beamBlurPixels(40, 1, true)).toBe(0);
-    expect(beamBlurPixels(40, 0.4, false)).toBe(0);
-    expect(beamBlurPixels(40, 0.9, false)).toBeGreaterThan(beamBlurPixels(40, 0.6, false));
-    // Un faisceau large n'est pas flouté : le flou coûterait une surface énorme,
-    // et c'est la superposition des couches qui adoucit son bord. Sans ça, un
-    // wash complet de seize projecteurs faisait saccader l'image.
-    expect(beamBlurPixels(200, 0.95, false)).toBe(0);
-    expect(beamBlurPixels(90, 0.95, false)).toBe(0);
-    expect(beamBlurPixels(48, 0.95, false)).toBeGreaterThan(0);
-    // Un trait fin garde un minimum de diffusion, sinon il reste un fil net.
-    expect(beamBlurPixels(2, 0.9, false)).toBeGreaterThanOrEqual(2.5);
+  test("le rayon de la surface de fumee suit la taille de l'ecran", () => {
+    // Le rayon doit croître avec l'écran : le même spectacle doit être aussi
+    // diffusé sur une télévision et sur un mur de projection.
+    expect(hazeRadiusPixels(1920, 1080, 0.95)).toBeGreaterThan(hazeRadiusPixels(1280, 720, 0.95));
+    expect(hazeRadiusPixels(1280, 720, 0.95)).toBeGreaterThanOrEqual(5);
+    expect(hazeRadiusPixels(4000, 2000, 0.95)).toBeLessThanOrEqual(16);
+    // Sur une machine qui souffle, la diffusion est plus discrète — mais elle est
+    // là quand même.
+    expect(hazeRadiusPixels(1280, 720, 0.45)).toBeGreaterThan(0);
+    expect(hazeRadiusPixels(1280, 720, 0.45)).toBeLessThan(hazeRadiusPixels(1280, 720, 0.95));
   });
 
-  test("le nombre de flous est budgété par image", () => {
-    // Le flou est ce qui coûte le plus cher : une scène qui allume vingt
-    // projecteurs d'un coup en floutait vingt, et l'image saccadait (mesuré :
-    // 4 images par seconde au lieu de 36). Le budget borne ce coût.
-    const flous = (temps: number) =>
-      renderAt(temps, analysis(), DEFAULT_SETTINGS, 1).filter((operation) => operation.startsWith("filter:blur(")).length;
+  test("la fumee ne s'eteint jamais, meme quand la machine souffle", () => {
+    // C'est ce que l'on corrige ici : le flou disparaissait d'un coup dès que la
+    // qualité descendait, et le spectacle passait « de tout à rien ». Le dépôt
+    // dans la surface de fumée et sa passe de flou doivent avoir lieu à tous les
+    // paliers : seule la résolution de la surface change.
+    const vue = new TrackView(analysis());
+    const plan = buildShowPlan(analysis(), false);
 
-    // `beams` dessine jusqu'à vingt faisceaux : huit flous au maximum.
-    const compte = flous(12.02);
-    expect(compte).toBeGreaterThan(0);
-    expect(compte).toBeLessThanOrEqual(8);
+    for (const qualite of [1, 0.75, 0.45, 0.3]) {
+      let depose = 0;
+      for (let temps = 0; temps < 60; temps += 0.5) {
+        const { haze, depot, flou } = fakeHaze();
+        renderFrame({
+          ctx: fakeContext().ctx,
+          width: 1280,
+          height: 720,
+          dpr: 1,
+          time: temps,
+          view: vue,
+          plan,
+          settings: DEFAULT_SETTINGS,
+          reducedMotion: false,
+          quality: qualite,
+          frame: Math.round(temps * 60),
+          haze,
+        });
+        if (haze.used) {
+          depose += 1;
+          expect(depot.filter((operation) => operation === "fill").length).toBeGreaterThan(0);
+          expect(flou.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(1);
+        }
+      }
+      expect(depose).toBeGreaterThan(0);
+    }
+  });
+
+  test("tous les faisceaux passent par une seule passe de flou", () => {
+    // C'est le cœur de l'optimisation : chaque faisceau est déposé dans la
+    // surface de fumée, et cette surface n'est floutée qu'une fois par image. Le
+    // flou direct — une passe pleine toile PAR projecteur — faisait tomber le
+    // spectacle à 2 images par seconde sur une scène chargée, contre 40 ici.
+    const vue = new TrackView(analysis());
+    const plan = buildShowPlan(analysis(), false);
+    let vuLaFumee = false;
+
+    for (let temps = 0; temps < 60; temps += 0.25) {
+      const { ctx, operations } = fakeContext();
+      const { haze, depot, flou } = fakeHaze();
+      renderFrame({
+        ctx,
+        width: 1280,
+        height: 720,
+        dpr: 1,
+        time: temps,
+        view: vue,
+        plan,
+        settings: DEFAULT_SETTINGS,
+        reducedMotion: false,
+        quality: 1,
+        frame: Math.round(temps * 60),
+        haze,
+      });
+      if (!haze.used) {
+        // Aucun faisceau à cette image : rien ne doit être flouté en vain.
+        expect(flou).toHaveLength(0);
+        expect(operations).not.toContain("drawImage");
+        continue;
+      }
+      vuLaFumee = true;
+      // Les faisceaux y sont bien déposés...
+      expect(depot.filter((operation) => operation === "fill").length).toBeGreaterThan(0);
+      // ...la surface est floutée en UNE passe, et remontée en UNE fois.
+      expect(flou.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(1);
+      expect(flou.filter((operation) => operation === "drawImage").length).toBe(1);
+      expect(operations.filter((operation) => operation === "drawImage").length).toBe(1);
+      // Aucun flou ne part directement sur la toile : c'est tout l'intérêt.
+      expect(operations.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(0);
+    }
+
+    // Le wash et les familles à faisceaux doivent finir par y passer.
+    expect(vuLaFumee).toBe(true);
   });
 
   test("un faisceau souple dessine plusieurs passages", () => {

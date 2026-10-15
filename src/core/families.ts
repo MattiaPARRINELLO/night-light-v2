@@ -37,17 +37,37 @@ export interface FrameState {
   /** Qualité adaptative 0..1 : pilote le nombre d'éléments dessinés. */
   quality: number;
   seed: number;
-  /**
-   * Crédits de flou pour cette image.
-   *
-   * Un flou coûte cher — et beaucoup plus cher qu'un remplissage — donc on les
-   * compte : une scène qui allume vingt projecteurs d'un coup en floute huit et
-   * adoucit les autres par superposition de couches. Sans ce budget, la scène
-   * la plus chargée était aussi la plus lente, et l'image saccadait.
-   */
-  blur: { left: number };
+  /** Surface de fumée de l'image, quand le rendu en fournit une. */
+  haze?: HazeTarget;
   /** Numéro d'image. */
   frame: number;
+}
+
+/**
+ * Surface de fumée : les faisceaux larges y sont déposés en basse résolution,
+ * puis floutés en une seule passe pour toute l'image.
+ *
+ * C'est la réponse au coût du flou. Un `ctx.filter` s'applique à toute la
+ * surface couverte par la forme dessinée, et un faisceau large — un projecteur
+ * de wash couvre l'écran — coûte donc aussi cher qu'une image entière. Vingt
+ * projecteurs allumés en même temps, c'était vingt images entières à flouter par
+ * image affichée : mesuré à 4 images par seconde. Déposés dans une surface quatre
+ * fois plus petite et floutés une fois, ils donnent au contraire la nappe de
+ * fumée la plus juste — et le coût ne dépend plus du nombre de projecteurs.
+ *
+ * Les faisceaux étroits, eux, restent floutés directement sur place : leur
+ * emprise est minuscule, le flou ne coûte presque rien et il préserve mieux leur
+ * finesse.
+ */
+export interface HazeTarget {
+  /** Où les familles déposent leurs faisceaux larges. */
+  ctx: CanvasRenderingContext2D;
+  /** Seconde surface, de même taille : flouter sans relire la première. */
+  blurPass: CanvasRenderingContext2D;
+  /** Rapport de résolution de la surface (0,5 = deux fois plus petite). */
+  scale: number;
+  /** Vrai si un faisceau y a été déposé pendant cette image. */
+  used: boolean;
 }
 
 export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView) => void;
@@ -191,23 +211,16 @@ export function beamLayers(
 }
 
 /**
- * Rayon de flou d'un faisceau, en pixels.
+ * Rayon de la passe de flou appliquée à la surface de fumée, en pixels.
  *
- * C'est lui qui donne l'épaisseur de fumée : sans lui, un faisceau reste un
- * triangle aux arêtes nettes. Proportionnel à la largeur du faisceau — les gros
- * pâtés de lumière sont plus diffus que les traits fins — mais plafonné : au-delà
- * d'une quinzaine de pixels, le faisceau devient une nappe de brouillard et on
- * perd la forme.
+ * Une seule valeur pour tous les faisceaux de l'image : c'est justement ce qui
+ * la rend abordable — une passe, quel que soit le nombre de projecteurs — et
+ * c'est aussi plus juste, car dans une salle enfumée la diffusion est celle de
+ * l'air, pas celle de la lampe.
  */
-export function beamBlurPixels(width: number, quality: number, reduced: boolean): number {
-  if (reduced || quality < 0.55) return 0;
-  // Au-delà de cette largeur, on ne floute plus : le rayon étant proportionnel à
-  // la largeur, un faisceau de 80 px demanderait un flou qui couvre une immense
-  // surface, et c'est la superposition des couches qui adoucit le bord. C'est ce
-  // qui rend un wash complet (seize projecteurs) tenable.
-  if (width > 48) return 0;
-  const part = quality >= 0.85 ? 0.34 : 0.2;
-  return Math.min(Math.max(2.5, width * part), quality >= 0.85 ? 16 : 9);
+export function hazeRadiusPixels(width: number, height: number, quality: number): number {
+  const part = quality >= 0.85 ? 0.011 : 0.008;
+  return Math.min(Math.max(5, Math.min(width, height) * part), quality >= 0.85 ? 16 : 11);
 }
 
 export interface BeamSpec {
@@ -231,8 +244,8 @@ export interface BeamSpec {
   reduced?: boolean;
   /** Force un nombre de couches, pour les tests. */
   layers?: number;
-  /** Crédits de flou de l'image courante (voir FrameState.blur). */
-  flou?: { left: number };
+  /** Surface de fumée de l'image (voir HazeTarget). */
+  fumee?: HazeTarget;
   /** Largeur du pied en fraction de `width` : une lampe ponctuelle vaut ~0. */
   footRatio?: number;
   /** Teinte de fin de course (par défaut, la même teinte décalée). */
@@ -242,10 +255,14 @@ export interface BeamSpec {
 /**
  * Dessine un faisceau souple.
  *
- * Deux façons d'adoucir le bord, dans cet ordre :
- * 1. un flou — c'est ce qui ressemble le plus à de la lumière dans la fumée ;
- * 2. à défaut, une superposition de couches de plus en plus étroites, qui
- *    approche le même profil sans dépendre d'un filtre.
+ * L'adoucissement du bord passe par la surface de fumée : le faisceau y est
+ * déposé, la surface est floutée une fois pour toute l'image, puis remontée. Le
+ * flou est ainsi payé une seule fois, quel que soit le nombre de projecteurs
+ * allumés — c'est ce qui permet de le garder partout, sur toutes les machines.
+ *
+ * Sans surface (mode réduit, ou navigateur sans toile), on retombe sur la
+ * superposition de couches de plus en plus étroites, qui approche le même profil
+ * sans dépendre d'un filtre.
  */
 export function softBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec): void {
   const { x, y, angle, length, width, hue, saturation, lightness, alpha } = spec;
@@ -257,35 +274,27 @@ export function softBeam(ctx: CanvasRenderingContext2D, spec: BeamSpec): void {
   const tailHue = spec.tailHue ?? shiftHue(hue, 18);
   const quality = spec.quality ?? 1;
   const reduced = spec.reduced ?? false;
-  const flou = beamBlurPixels(width, quality, reduced);
-  // Le filtre n'existe pas partout (et pas dans le contexte de test) : on ne
-  // l'active que s'il est réellement disponible, et seulement s'il reste du
-  // crédit pour cette image.
-  const credit = spec.flou;
-  const flouter = flou > 0 && "filter" in ctx && (credit === undefined || credit.left > 0);
-  if (flouter && credit !== undefined) credit.left -= 1;
-  const couches = spec.layers !== undefined
-    ? beamLayers(width, alpha, lightness, spec.layers, spec.footRatio ?? 0.32)
-    : flouter
-      ? beamLayers(width, alpha, lightness, 1, spec.footRatio ?? 0.32)
-      : beamLayers(width, alpha, lightness, beamLayerCount(quality, reduced), spec.footRatio ?? 0.32);
+  const fumee = spec.fumee;
+  const cible = fumee?.ctx ?? ctx;
+  if (fumee !== undefined) fumee.used = true;
 
-  if (flouter) ctx.filter = `blur(${flou.toFixed(1)}px)`;
+  const nombre = spec.layers ?? (fumee !== undefined ? 2 : beamLayerCount(quality, reduced));
+  const couches = beamLayers(width, alpha, lightness, nombre, spec.footRatio ?? 0.32);
+
   for (const couche of couches) {
-    const gradient = ctx.createLinearGradient(x, y, x + dx * length, y + dy * length);
+    const gradient = cible.createLinearGradient(x, y, x + dx * length, y + dy * length);
     gradient.addColorStop(0, paint(hue, saturation, couche.lightness + 0.06, couche.alpha));
     gradient.addColorStop(0.45, paint(hue, saturation, couche.lightness, couche.alpha * 0.55));
     gradient.addColorStop(1, paint(tailHue, saturation, couche.lightness, 0));
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.moveTo(x + px * couche.footHalfWidth, y + py * couche.footHalfWidth);
-    ctx.lineTo(x + dx * length + px * couche.halfWidth, y + dy * length + py * couche.halfWidth);
-    ctx.lineTo(x + dx * length - px * couche.halfWidth, y + dy * length - py * couche.halfWidth);
-    ctx.lineTo(x - px * couche.footHalfWidth, y - py * couche.footHalfWidth);
-    ctx.closePath();
-    ctx.fill();
+    cible.fillStyle = gradient;
+    cible.beginPath();
+    cible.moveTo(x + px * couche.footHalfWidth, y + py * couche.footHalfWidth);
+    cible.lineTo(x + dx * length + px * couche.halfWidth, y + dy * length + py * couche.halfWidth);
+    cible.lineTo(x + dx * length - px * couche.halfWidth, y + dy * length - py * couche.halfWidth);
+    cible.lineTo(x - px * couche.footHalfWidth, y - py * couche.footHalfWidth);
+    cible.closePath();
+    cible.fill();
   }
-  if (flouter) ctx.filter = "none";
 }
 
 /** Nombre de couches d'un faisceau selon la qualité : plus la machine souffle, plus le bord est travaillé. */
@@ -342,7 +351,7 @@ const beams: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
     });
   }
 
@@ -725,7 +734,7 @@ const spots: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.04,
       tailHue: shiftHue(hue, 24),
     });
@@ -792,7 +801,7 @@ const mirror: FamilyDraw = (ctx, f, view) => {
         alpha,
         quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
         footRatio: 0.03,
         tailHue: shiftHue(hue, 14),
       });
@@ -848,7 +857,7 @@ const parade: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.04,
     });
 
@@ -898,7 +907,7 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.03,
       tailHue: shiftHue(hue, 20),
     });
@@ -948,11 +957,12 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
       saturation: 0.85,
       lightness: 0.74,
       alpha,
-      // Le wash couvre tout l'écran : on se contente du repli à deux couches,
-      // pour ne pas payer seize flous pleine taille à chaque impact.
+      // Le wash couvre tout l'écran : ses seize faisceaux sont larges, donc tous
+      // déposés dans la surface de fumée et floutés en une seule passe. C'est
+      // exactement ce qui rend cet impact tenable.
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       layers: f.reduced ? 1 : 2,
       footRatio: 0.05,
       tailHue: shiftHue(hue, 16),
@@ -1044,7 +1054,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
       alpha: intensite,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.03,
       tailHue: shiftHue(hue, 16),
     });
@@ -1103,7 +1113,7 @@ const burst: FamilyDraw = (ctx, f, view) => {
       alpha: intensite,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.03,
     });
   }
@@ -1263,7 +1273,7 @@ const pendule: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.05,
     });
     // La tête, posée sur le portique.
@@ -1320,7 +1330,7 @@ const couronne: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * allumage,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.04,
     });
     ctx.fillStyle = paint(hue, 0.95, 0.86, alpha * allumage * 1.5);
@@ -1366,7 +1376,7 @@ const pluie: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * allumage,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.5,
     });
   }
@@ -1412,7 +1422,7 @@ const portique: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.04,
     });
   }
@@ -1459,7 +1469,7 @@ const etoile: FamilyDraw = (ctx, f, view) => {
       alpha: alpha * pulsation,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.03,
     });
   }
@@ -1509,7 +1519,7 @@ const vortex: FamilyDraw = (ctx, f, view) => {
       alpha,
       quality: f.quality,
       reduced: f.reduced,
-      flou: f.blur,
+      fumee: f.haze,
       footRatio: 0.05,
     });
   }

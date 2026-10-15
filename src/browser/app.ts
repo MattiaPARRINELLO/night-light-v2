@@ -9,6 +9,7 @@ import {
   type ShowPlan,
 } from "../core/show";
 import { drawTransition, renderFrame, sceneHue, variationStrength } from "../core/render";
+import type { HazeTarget } from "../core/families";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
 import {
   EMPTY_LIVE_AUDIO,
@@ -96,6 +97,10 @@ function seconds(ms: number): string {
 export class App {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
+  /** Surface de fumée (voir HazeTarget) : les faisceaux larges y sont floutés. */
+  private readonly hazeCanvas = document.createElement("canvas");
+  private readonly hazeBlurCanvas = document.createElement("canvas");
+  private haze: HazeTarget | undefined = undefined;
   private readonly audio = new AudioEngine();
 
   private view: TrackView | null = null;
@@ -1312,6 +1317,7 @@ export class App {
         reducedMotion: this.reducedMotion,
         quality: this.quality,
         frame: this.frame,
+        haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
       });
       this.frame += 1;
       this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
@@ -1577,6 +1583,7 @@ export class App {
         reducedMotion: this.reducedMotion,
         quality: this.liveQuality,
         frame: this.liveFrame,
+        haze: this.hazeFor(this.liveQuality, this.canvas.clientWidth, this.canvas.clientHeight),
         liveAudio: this.liveAudio,
       });
       this.liveFrame += 1;
@@ -1854,6 +1861,33 @@ export class App {
     this.refreshPlan();
   };
 
+  /**
+   * Surface de fumée, créée une fois et conservée.
+   *
+   * Elle est en basse résolution — c'est tout son intérêt — et ses dimensions
+   * suivent donc le palier de qualité et la taille de la fenêtre. Elle n'est
+   * recréée que lorsque l'un des deux change.
+   */
+  private hazeFor(quality: number, width: number, height: number): HazeTarget | undefined {
+    const scale = quality >= 0.9 ? 0.5 : quality >= 0.6 ? 0.4 : 0.32;
+    const largeur = Math.max(1, Math.round(width * scale));
+    const hauteur = Math.max(1, Math.round(height * scale));
+    if (this.haze !== undefined && this.hazeCanvas.width === largeur && this.hazeCanvas.height === hauteur) {
+      return this.haze;
+    }
+    const canvas = this.hazeCanvas;
+    canvas.width = largeur;
+    canvas.height = hauteur;
+    const ctx = canvas.getContext("2d");
+    const flou = this.hazeBlurCanvas;
+    flou.width = largeur;
+    flou.height = hauteur;
+    const blurPass = flou.getContext("2d");
+    if (ctx === null || blurPass === null) return undefined;
+    this.haze = { ctx, blurPass, scale, used: false };
+    return this.haze;
+  }
+
   private resize = (): void => {
     const dpr = Math.min(window.devicePixelRatio || 1, this.quality < 0.5 ? 1.25 : 2);
     const width = Math.max(1, this.canvas.clientWidth);
@@ -1984,6 +2018,7 @@ export class App {
         reducedMotion: this.reducedMotion,
         quality: this.quality,
         frame: this.frame,
+        haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
       });
       this.frame += 1;
       this.drawTransitionIfNeeded(clamped, plan);

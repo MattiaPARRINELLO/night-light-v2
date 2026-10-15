@@ -178,12 +178,21 @@ contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus 
 ### Des faisceaux diffus
 
 Les projecteurs ne dessinent pas des triangles aux arêtes nettes : `softBeam` donne à
-chaque faisceau un bord fondu, comme de la lumière dans la fumée d'une salle. Un flou
-proportionnel à la largeur du faisceau (plafonné à 16 px, sinon le faisceau devient une nappe
-de brouillard) est appliqué partout où c'est possible ; à défaut — navigateur sans filtre,
-mode réduit, machine qui souffle — le profil est approché par superposition de couches
-(`beamLayers`). Mesuré à l'écran, à image identique : la marche la plus forte sur un bord
-passe de 18,3 à 7,4, à 60 images par seconde.
+chaque faisceau un bord fondu, comme de la lumière dans la fumée d'une salle.
+
+Le flou n'est pas appliqué sur place, faisceau par faisceau : il passe par une **surface de
+fumée**. Les faisceaux y sont déposés en basse résolution, la surface est floutée **une seule
+fois** par image, puis remontée — l'agrandissement finit d'adoucir les bords. C'est ce qui
+rend la diffusion tenable : un `ctx.filter` s'applique à toute la surface couverte, et chaque
+appel coûte en pratique une passe pleine toile. Vingt projecteurs allumés ensemble, c'était
+donc vingt passes pleine toile par image affichée — mesuré à **2 images par seconde**, contre
+**40** avec la surface de fumée, sur la même scène et à qualité égale.
+
+Le rayon du flou suit la taille de l'écran (5 à 16 px) : le même spectacle est aussi diffusé
+sur une télévision que sur un mur de projection. Il ne s'éteint **jamais** — même sur une
+machine qui souffle, où seule la résolution de la surface baisse. À défaut de surface
+(navigateur sans toile, mode réduit), le profil est approché par superposition de couches
+(`beamLayers`).
 
 ### La couleur
 
