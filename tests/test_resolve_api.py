@@ -119,3 +119,54 @@ def test_resolve_without_deezer_arl_is_reported(client: TestClient) -> None:
     assert job["status"] == "error"
     assert job["error"]["code"] == "deezer_not_configured"
     assert "DEEZER_ARL" in job["error"]["detail"]
+
+
+def test_resolve_stack_prioritises_latest_and_keeps_skipped(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    """Le dernier morceau passe devant ; les morceaux sautés restent en stock."""
+    import threading
+
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=3.0)
+
+    resolved_order: list[str] = []
+    first_started = threading.Event()
+    release_first = threading.Event()
+
+    def fake_resolve(query, provider, cache, **kwargs):
+        resolved_order.append(query.title)
+        if query.title == "A":
+            # Le premier morceau est déjà en cours quand on saute au suivant.
+            first_started.set()
+            release_first.wait(timeout=5.0)
+        return RetrievalResult(
+            query=query,
+            candidate=Candidate(
+                provider="cache", source_id=query.title, title=query.title, artist=query.artist
+            ),
+            cache_entry_path=audio,
+            timings=RetrievalTimings(0.0, 0.0, 0.0, 0.0, 0.0),
+            from_cache=False,
+        )
+
+    monkeypatch.setattr("server.main.resolve_track", fake_resolve)
+
+    job_a = client.post("/api/resolve", json={"title": "A", "artist": "Z"}).json()["jobId"]
+    assert first_started.wait(timeout=5.0)
+    job_b = client.post("/api/resolve", json={"title": "B", "artist": "Z"}).json()["jobId"]
+    job_c = client.post("/api/resolve", json={"title": "C", "artist": "Z"}).json()["jobId"]
+
+    release_first.set()
+
+    done_a = _wait_for_job(client, job_a)
+    done_b = _wait_for_job(client, job_b)
+    done_c = _wait_for_job(client, job_c)
+
+    # A (déjà lancé) puis C (le dernier demandé) avant B : une pile, pas une file.
+    assert resolved_order == ["A", "C", "B"], resolved_order
+    # Les morceaux sautés ont bien été téléchargés (en stock) mais pas analysés
+    # ni affichés : ils sont marqués périmés.
+    assert done_a["status"] == "error" and done_a["error"]["code"] == "stale_result"
+    assert done_b["status"] == "error" and done_b["error"]["code"] == "stale_result"
+    assert done_c["status"] == "done", done_c

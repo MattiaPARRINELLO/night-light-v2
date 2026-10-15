@@ -6,6 +6,12 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Modifié
+
+- Résolution des morceaux suivie comme une **pile** et non une file : le morceau
+  courant est téléchargé et analysé en premier ; les morceaux sautés sont
+  téléchargés ensuite pour rester en cache, mais sans être affichés.
+
 ## [2.0.0]
 
 ### Ajouté

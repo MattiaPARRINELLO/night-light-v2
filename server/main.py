@@ -11,9 +11,11 @@ import atexit
 import json
 import logging
 import shutil
+import threading
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -66,6 +68,17 @@ class ResolveRequest(BaseModel):
     track_key: str | None = None
 
 
+@dataclass(frozen=True)
+class PendingResolve:
+    """Une résolution en attente, prête à être exécutée plus tard."""
+
+    job_id: str
+    title: str
+    artist: str
+    duration_sec: float
+    track_key: str
+
+
 class AppState:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -76,6 +89,49 @@ class AppState:
         self.purge_task: asyncio.Task[None] | None = None
         self.current_track_key = ""
         self.resolve_pending = False
+        # Les résolutions attendent dans une **pile**, pas une file : le morceau
+        # le plus récent est dépilé en premier, donc celui qu'on écoute est
+        # téléchargé et analysé avant les morceaux qu'on a sautés. Ces derniers
+        # restent dans la pile : ils sont téléchargés ensuite (mis en cache, donc
+        # « en stock »), mais jamais analysés ni affichés — `current_track_key`
+        # les marque comme périmés.
+        self._resolve_cond = threading.Condition()
+        self._resolve_stack: list[PendingResolve] = []
+        self._resolve_stop = False
+        self._resolve_thread: threading.Thread | None = None
+
+    def submit_resolve(self, request: PendingResolve) -> None:
+        """Empile une résolution ; le dernier morceau demandé passe devant."""
+        with self._resolve_cond:
+            self.current_track_key = request.track_key
+            self.resolve_pending = True
+            self._resolve_stack.append(request)
+            self._resolve_cond.notify()
+        if self._resolve_thread is None:
+            self._resolve_thread = threading.Thread(
+                target=self._resolve_worker, name="resolve", daemon=True
+            )
+            self._resolve_thread.start()
+
+    def _resolve_worker(self) -> None:
+        while True:
+            with self._resolve_cond:
+                while not self._resolve_stack and not self._resolve_stop:
+                    self._resolve_cond.wait()
+                if self._resolve_stop:
+                    return
+                # Pile : on dépile par le haut, donc le morceau le plus récent.
+                request = self._resolve_stack.pop()
+            try:
+                self.run_resolve(
+                    request.job_id,
+                    request.title,
+                    request.artist,
+                    request.duration_sec,
+                    request.track_key,
+                )
+            except Exception:  # noqa: BLE001 - un job ne doit pas tuer le worker
+                _LOGGER.exception("Résolution interrompue id=%s", request.job_id)
 
     def drop_audio(self, job_id: str) -> None:
         job = self.store.get(job_id)
@@ -195,6 +251,11 @@ class AppState:
         self.run_analysis(job_id)
 
     async def shutdown(self) -> None:
+        with self._resolve_cond:
+            self._resolve_stop = True
+            self._resolve_cond.notify_all()
+        if self._resolve_thread is not None:
+            await asyncio.to_thread(self._resolve_thread.join, 2.0)
         if self.purge_task is not None:
             self.purge_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -392,14 +453,14 @@ async def resolve(request: ResolveRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
 
     track_key = (request.track_key or f"{request.title.strip()}|{artist.strip()}").strip()
-    state.current_track_key = track_key
-    state.executor.submit(
-        state.run_resolve,
-        job.id,
-        request.title.strip(),
-        artist.strip(),
-        duration,
-        track_key,
+    state.submit_resolve(
+        PendingResolve(
+            job_id=job.id,
+            title=request.title.strip(),
+            artist=artist.strip(),
+            duration_sec=duration,
+            track_key=track_key,
+        )
     )
     return JSONResponse(
         status_code=202,

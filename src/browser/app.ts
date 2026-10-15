@@ -137,6 +137,10 @@ export class App {
   private jobId = "";
   private limits: Limits | null = null;
   private analysisController: AbortController | null = null;
+  /** Numéro de la résolution en cours : incrémenté à chaque nouvelle demande. */
+  private resolveSeq = 0;
+  /** Vrai quand la résolution en cours suit le lecteur (et non une action manuelle). */
+  private autoResolving = false;
   private pendingAnalysis: Analysis | null = null;
   private pendingTitle = "";
   private lastAutoTrackKey = "";
@@ -382,6 +386,7 @@ export class App {
 
     const controller = new AbortController();
     this.analysisController = controller;
+    this.autoResolving = false;
     this.debug("analyse", `fichier déposé · ${title}`, {
       tailleMo: Number((file.size / 1048576).toFixed(1)),
       type: file.type || "inconnu",
@@ -520,10 +525,20 @@ export class App {
     });
   }
 
-  private async handleResolve(title: string, artist: string, duration: number | undefined, trackKey?: string): Promise<void> {
+  private async handleResolve(
+    title: string,
+    artist: string,
+    duration: number | undefined,
+    trackKey?: string,
+    auto = false,
+  ): Promise<void> {
     const status = el<HTMLElement>("resolve-status");
+    // Chaque tentative porte un numéro : une résolution remplacée par un morceau
+    // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
+    const seq = (this.resolveSeq += 1);
     const controller = new AbortController();
     this.analysisController = controller;
+    this.autoResolving = auto;
     this.pendingTitle = title;
     this.pendingAnalysis = null;
     el<HTMLElement>("dock-panel").classList.add("is-hidden");
@@ -558,6 +573,7 @@ export class App {
         },
         trackKey,
       );
+      if (seq !== this.resolveSeq) return;
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
       document.body.dataset.analysisReady = "true";
@@ -571,6 +587,7 @@ export class App {
       void this.tryAutoSynced(title, artist, analysis.duration, analysis);
       status.hidden = true;
     } catch (error) {
+      if (seq !== this.resolveSeq) return;
       if (error instanceof ApiError && error.code === "aborted") {
         this.debug("analyse", "recherche annulée par l'utilisateur");
         this.backToDrop();
@@ -588,7 +605,11 @@ export class App {
       status.classList.add("is-error");
       status.textContent = message;
     } finally {
-      this.analysisController = null;
+      // Une résolution remplacée ne doit pas éteindre le contrôleur de la suivante.
+      if (this.analysisController === controller) {
+        this.analysisController = null;
+        this.autoResolving = false;
+      }
     }
   }
 
@@ -641,16 +662,25 @@ export class App {
     const data = this.nowPlaying;
     if (data === null || !data.available || data.ambiguous || data.status !== "playing") return;
     if (data.title.trim() === "" || data.artist.trim() === "") return;
-    if (this.analysisController !== null) return;
     const key = `${data.title.trim()}|${data.artist.trim()}`;
     if (key === this.lastAutoTrackKey) return;
+    // Le morceau a changé. Si une résolution automatique tournait encore pour le
+    // morceau précédent — qu'on vient de sauter —, on l'abandonne : c'est le
+    // morceau écouté maintenant qui doit être prêt en premier, comme une pile.
+    // Le serveur, lui, finira de télécharger le morceau sauté pour le garder en
+    // stock, mais sans l'analyser ni l'afficher. Une action manuelle (dépôt ou
+    // saisie) n'est jamais interrompue par le suivi du lecteur.
+    if (this.analysisController !== null) {
+      if (!this.autoResolving) return;
+      this.analysisController.abort();
+    }
     this.lastAutoTrackKey = key;
     el<HTMLInputElement>("resolve-title").value = data.title;
     el<HTMLInputElement>("resolve-artist").value = data.artist;
     if (data.durationSec !== null && data.durationSec !== undefined && data.durationSec > 0) {
       el<HTMLInputElement>("resolve-duration").value = String(Math.round(data.durationSec));
     }
-    await this.handleResolve(data.title, data.artist, data.durationSec ?? undefined, key);
+    await this.handleResolve(data.title, data.artist, data.durationSec ?? undefined, key, true);
   }
 
   private startLiveRender(): void {
