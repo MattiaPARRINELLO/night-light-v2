@@ -12,7 +12,17 @@ import {
   visibleEnergy,
 } from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
-import { beamBlurPixels, beamLayers, beatSwing, drawFamily, elementEnvelope, rowPositions, softBeam } from "../src/core/families";
+import {
+  beamBlurPixels,
+  beamLayers,
+  beatSwing,
+  drawFamily,
+  elementEnvelope,
+  GRAND_BALAYAGE_BEATS,
+  PETIT_ELEMENT_BEATS,
+  rowPositions,
+  softBeam,
+} from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -627,6 +637,27 @@ describe("mouvements cales sur le tempo", () => {
       expect(Math.abs(courant - precedent)).toBeLessThan(1.2);
       precedent = courant;
     }
+  });
+
+  test("les grands balayages glissent bien plus lentement que les petits elements", () => {
+    // La cible d'un grand balayage change une fois par phrase, et la course
+    // dure toute la phrase : le mouvement est une longue glissade. Un petit
+    // élément parcourt la sienne en deux temps. C'est cette lenteur qui fait la
+    // beauté des éventails et des wash.
+    const vitesse = (pas: number) => {
+      let precedent = beatSwing(frame({ beatIndex: 32, beatPhase: 0 }), view, 1, pas);
+      let max = 0;
+      for (let beat = 32; beat < 32 + GRAND_BALAYAGE_BEATS * 2; beat += 1) {
+        const courant = beatSwing(frame({ beatIndex: beat, beatPhase: 0 }), view, 1, pas);
+        max = Math.max(max, Math.abs(courant - precedent));
+        precedent = courant;
+      }
+      return max;
+    };
+    const lent = vitesse(GRAND_BALAYAGE_BEATS);
+    const rapide = vitesse(PETIT_ELEMENT_BEATS);
+    expect(lent).toBeLessThan(rapide / 4);
+    expect(GRAND_BALAYAGE_BEATS).toBeGreaterThan(PETIT_ELEMENT_BEATS * 4);
   });
 
   test("un passage fort balaie plus large qu'un passage calme", () => {

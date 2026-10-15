@@ -46,6 +46,19 @@ export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: Tr
 /* ------------------------------------------------------------------ tempo */
 
 /**
+ * Pas des grands balayages, en temps forts.
+ *
+ * Une phrase entière : les éventails, rideaux et défilés ne changent donc de
+ * direction que toutes les ~16 pulsations (7 à 8 secondes). C'est leur lenteur
+ * qui fait leur beauté — les faire bouger sur deux temps les agitait et on
+ * perdait l'effet de nappe.
+ */
+export const GRAND_BALAYAGE_BEATS = 16;
+
+/** Pas des petits éléments (projecteurs, formes) : ils vivent plus vite. */
+export const PETIT_ELEMENT_BEATS = 2;
+
+/**
  * Enveloppe d'allumage et d'extinction d'un élément.
  *
  * Un projecteur ne s'allume pas d'un coup : il monte, tient, puis s'éteint. Le
@@ -284,7 +297,7 @@ const beams: FamilyDraw = (ctx, f, view) => {
   const rays = count(f.energy > 0.55 ? 20 : 13, f.quality, f.reduced);
   // Un pas tous les deux temps forts : l'éventail se réoriente sur la musique,
   // la dérive continue n'étant plus qu'un très léger fond.
-  const sweep = beatSwing(f, view, f.reduced ? 0.4 : 0.62, 2) + f.t * (f.reduced ? 0.02 : 0.04);
+  const sweep = beatSwing(f, view, f.reduced ? 0.4 : 0.62, GRAND_BALAYAGE_BEATS) + f.t * (f.reduced ? 0.02 : 0.04);
   const widthBase = Math.min(w, h) * 0.055 * (0.45 + f.bass * 0.9);
   const length = Math.hypot(w, h) * 0.95;
 
@@ -666,7 +679,7 @@ const spots: FamilyDraw = (ctx, f, view) => {
     const origin = spotOrigin(i, w, h, f.seed);
     // Chaque lampe a son propre décalage : la salle n'est jamais éclairée
     // d'un seul mouvement, mais tout le monde reste sur le tempo.
-    const drift = beatSwing(f, view, sweep, i % 3 === 0 ? 2 : 1, i * 0.31);
+    const drift = beatSwing(f, view, sweep, i % 3 === 0 ? PETIT_ELEMENT_BEATS * 2 : PETIT_ELEMENT_BEATS, i * 0.31);
     const aimX = cx + (hash01(i * 733 + f.seed) - 0.5) * w * 0.9 + drift * w * 0.35;
     const aimY = cy + (hash01(i * 887 + f.seed) - 0.5) * h * 0.9 + drift * h * 0.2;
     const angle = Math.atan2(aimY - origin.y, aimX - origin.x);
@@ -732,7 +745,7 @@ const mirror: FamilyDraw = (ctx, f, view) => {
     const aimY = cy + (hash01(i * 911 + f.seed) - 0.5) * h * 0.62;
     // Un décalage entre deux lampes voisines : les paires ne balayent jamais
     // toutes dans le même sens, le motif respire — mais sur le tempo.
-    const swing = beatSwing(f, view, 0.8, 2, hash01(i * 1213 + f.seed));
+    const swing = beatSwing(f, view, 0.8, GRAND_BALAYAGE_BEATS, hash01(i * 1213 + f.seed));
     const aimX = cx + swing * w * 0.4;
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const alpha = (0.05 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
@@ -787,7 +800,7 @@ const parade: FamilyDraw = (ctx, f, view) => {
   const positions = rowPositions(lamps, w, w * 0.14);
   const reach = Math.hypot(w, h) * 1.35;
   // Un pas tous les deux temps forts : la rangée s'incline *avec* la musique.
-  const sweep = beatSwing(f, view, f.reduced ? 0.3 : 0.7, 2);
+  const sweep = beatSwing(f, view, f.reduced ? 0.3 : 0.7, GRAND_BALAYAGE_BEATS);
   const tilt = -Math.PI / 2 + sweep;
   const lampY = h * 0.98;
   const alpha = (0.05 + 0.24 * f.energy + 0.12 * f.beat) * f.alpha;
@@ -837,7 +850,7 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
   const cx = w * 0.5;
   const cy = h * 0.5;
   const reach = Math.hypot(w, h) * 1.45;
-  const breath = beatSwing(f, view, f.reduced ? 0.12 : 0.34, 2);
+  const breath = beatSwing(f, view, f.reduced ? 0.12 : 0.34, GRAND_BALAYAGE_BEATS);
   const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -882,12 +895,14 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   const lamps = count(16, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.35;
-  const sweep = 0.42;
+  const sweep = 0.26;
   const alpha = (0.13 + 0.12 * f.energy + 0.04 * f.beat) * f.alpha;
 
   for (let i = 0; i < lamps; i += 1) {
     const origin = spotOrigin(i * 3 + 1, w, h, f.seed + 17);
-    const phase = f.t * (0.22 + hash01(i * 1291 + f.seed) * 0.35) + i * 1.9;
+    // Période de 20 à 50 s selon la lampe : les nappes glissent au lieu de
+    // balayer, ce qui est exactement ce qu'on attend d'un wash.
+    const phase = f.t * (0.08 + hash01(i * 1291 + f.seed) * 0.14) + i * 1.9;
     const target = i % 2 === 0
       ? { x: w * (0.1 + hash01(i * 1543 + f.seed) * 0.8), y: h * 0.5 }
       : { x: w * 0.5, y: h * (0.1 + hash01(i * 1777 + f.seed) * 0.8) };
@@ -973,7 +988,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
   const rangs = count(15, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.15;
   const positions = rowPositions(rangs, w, w * 0.11);
-  const balance = beatSwing(f, view, f.reduced ? 0.08 : 0.26, 4);
+  const balance = beatSwing(f, view, f.reduced ? 0.08 : 0.26, GRAND_BALAYAGE_BEATS);
   const alpha = (0.05 + 0.26 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -1033,7 +1048,7 @@ const burst: FamilyDraw = (ctx, f, view) => {
   const reach = Math.hypot(w, h) * 1.5;
   // La tête tourne par quarts de tour sur la mesure, avec un léger glissement
   // continu : ça tourne, mais ça tourne sur la musique.
-  const rotation = beatSwing(f, view, f.reduced ? 0.4 : 1.1, 4) + f.t * (f.reduced ? 0.02 : 0.05);
+  const rotation = beatSwing(f, view, f.reduced ? 0.4 : 1.1, GRAND_BALAYAGE_BEATS) + f.t * (f.reduced ? 0.02 : 0.05);
   const alpha = (0.045 + 0.24 * f.energy + 0.15 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 

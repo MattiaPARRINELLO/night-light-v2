@@ -66,8 +66,6 @@ const DROP_HUE_JUMP = 26;
 const VARIATION_HUE_JUMP = 30;
 /** Écart maximal à la teinte de scène, impacts compris. */
 const HUE_IMPACT_LIMIT = 32;
-/** Durée du grand wash de projecteurs après un impact, en secondes. */
-const WASH_SPAN_SEC = 4.5;
 
 function paint(h: number, s: number, l: number, a: number): string {
   return shorthand(hslToRgb({ h, s, l }), a);
@@ -210,6 +208,21 @@ export function beatDrive(view: TrackView, t: number, builds: number): number {
  * commence avec l'impact et s'étire sur ~3 s, donc « l'impact puis la salle
  * entière qui balaie ».
  */
+/** Durée du grand wash de projecteurs après un impact, en secondes. */
+const WASH_SPAN_SEC = 6.5;
+
+/** Opacité d'un wash : montée vive, tenue, puis longue extinction sans coupure. */
+export function washAlpha(ageSec: number, strength: number): number {
+  if (ageSec < 0) return 0;
+  const tenue = 0.35;
+  if (ageSec <= tenue) return clamp01(strength);
+  // Fenêtre quadratique : lente au début, puis elle rejoint exactement zéro à la
+  // fin de la fenêtre. Une exponentielle tronquée par la fenêtre, elle, se
+  // coupait net au bout de quelques secondes.
+  const reste = clamp01(1 - (ageSec - tenue) / Math.max(WASH_SPAN_SEC - tenue, 0.001));
+  return clamp01(strength * reste * reste);
+}
+
 export function washStrength(view: TrackView, t: number, sceneCount: number): number {
   if (sceneCount === 0) return 0;
   let peak = 0;
@@ -217,10 +230,9 @@ export function washStrength(view: TrackView, t: number, sceneCount: number): nu
   // tout le morceau à chaque image.
   for (const build of view.buildsEndingIn(t - WASH_SPAN_SEC, t + 0.2)) {
     const age = t - build.end;
-    // Montée rapide, tenue, puis descente douce.
-    const rise = age < 0 ? 1 + age / 0.15 : 1;
-    const fall = age < 0.25 ? 1 : Math.exp(-(age - 0.25) / 2.4);
-    const value = rise * fall * build.strength;
+    // Montée vive avant l'impact, puis nappe lente qui s'efface.
+    const rise = age < 0 ? clamp01(1 + age / 0.15) : 1;
+    const value = rise * washAlpha(age, build.strength);
     if (value > peak) peak = value;
   }
   return clamp01(peak);
