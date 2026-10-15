@@ -1,4 +1,4 @@
-import type { FamilyId, Palette, Scene } from "./show";
+import type { FamilyId, Mood, Palette, Scene } from "./show";
 import { clamp01, hash01, mix, smoothstep } from "./series";
 import { hslToRgb, shiftHue, shorthand } from "./color";
 import type { TrackView } from "./view";
@@ -466,6 +466,36 @@ const ACCORDS: readonly (readonly number[])[] = [
 ];
 
 /**
+ * Accords par humeur.
+ *
+ * C'est le geste qui rend la couleur lisible : un passage calme tient deux ou
+ * trois teintes serrées, un passage fort ouvre le cercle jusqu'à l'hexade. La
+ * couleur du spectacle devient donc un récit — elle s'élargit avec la musique —
+ * au lieu d'un tirage au sort. Le tirage par scène reste, mais *à l'intérieur*
+ * de cette famille d'accords, pour que deux scènes voisines ne se ressemblent
+ * jamais tout à fait.
+ */
+const ACCORDS_PAR_HUMEUR: Record<Mood, readonly (readonly number[])[]> = {
+  sombre: [[0, 150, 210]],
+  calme: [
+    [0, 150, 210],
+    [0, 120, 240],
+  ],
+  aerien: [
+    [0, 120, 240],
+    [0, 90, 180, 270],
+  ],
+  pulse: [
+    [0, 120, 240],
+    [0, 90, 180, 270],
+  ],
+  explosif: [
+    [0, 90, 180, 270],
+    [0, 60, 120, 180, 240, 300],
+  ],
+};
+
+/**
  * Teintes d'un accord, en degrés absolus.
  *
  * L'écart de l'accent du morceau remplace le 180 de l'accord quand celui-ci en
@@ -475,13 +505,17 @@ const ACCORDS: readonly (readonly number[])[] = [
  * morceau. Enfin, deux membres peuvent se rejoindre si l'accent tombe près d'une
  * tierce : on écarte alors le doublon, pour que la diversité soit réelle.
  *
- * Le tirage ne dépend que de l'index de la scène : une scène garde son accord du
- * début à la fin, et le morceau le renouvelle d'une scène à l'autre.
+ * Le tirage ne dépend que de l'index de la scène et de son humeur : une scène
+ * garde son accord du début à la fin, le morceau le renouvelle d'une scène à
+ * l'autre.
  */
-export function sceneChord(palette: Palette, sceneIndex: number, seed: number): number[] {
+export function sceneChord(palette: Palette, sceneIndex: number, seed: number, mood?: Mood): number[] {
   const complement = (((palette.accent - palette.hue) % 360) + 360) % 360;
   const tirage = hash01(sceneIndex * 7919 + seed * 131);
-  const base = ACCORDS[Math.floor(tirage * ACCORDS.length)] ?? ACCORDS[0]!;
+  // Sans humeur (appelant de test, ou contexte sans scène), on retombe sur la
+  // gamme complète : le tirage reste alors purement fonctionnel.
+  const candidats = mood !== undefined ? ACCORDS_PAR_HUMEUR[mood] : ACCORDS;
+  const base = candidats[Math.floor(tirage * candidats.length)] ?? ACCORDS[0]!;
   const offsets = base.includes(180)
     ? base.map((ecart) => (ecart === 180 ? complement : ecart))
     : [0, complement, ...base.slice(1)];
@@ -510,12 +544,35 @@ function chordStep(length: number): number {
  * sortir de la gamme, puisque l'écart reste petit devant celui de l'accord.
  */
 export function lampHue(f: FrameState, index: number): number {
-  const accord = sceneChord(f.palette, f.scene.index, f.seed);
+  const accord = sceneChord(f.palette, f.scene.index, f.seed, f.scene.mood);
   const pas = chordStep(accord.length);
   const rotation = Math.floor(hash01(f.scene.index * 104729 + f.seed) * accord.length);
   const membre =
     accord[((index * pas + rotation) % accord.length + accord.length) % accord.length] ?? f.palette.hue;
   return shiftHue(membre, (hash01(index * 2711 + f.seed) - 0.5) * f.palette.spread * 0.45);
+}
+
+/**
+ * Teinte de contraste d'une scène : le membre de l'accord le plus éloigné de sa
+ * teinte dominante.
+ *
+ * C'est ce qui empêche l'image d'être d'une seule couleur : le fond, le halo
+ * commun et le foyer de chaque famille s'en servent, donc la scène porte
+ * toujours au moins deux teintes distinctes, même quand toutes les formes
+ * partagent la même gamme.
+ */
+export function contrastHue(f: FrameState): number {
+  const accord = sceneChord(f.palette, f.scene.index, f.seed, f.scene.mood);
+  let best = f.palette.hue;
+  let bestGap = -1;
+  for (const hue of accord) {
+    const gap = Math.abs((((hue - f.palette.hue) % 360) + 540) % 360 - 180);
+    if (gap > bestGap) {
+      bestGap = gap;
+      best = hue;
+    }
+  }
+  return best;
 }
 
 /* ------------------------------------------------------------------ faisceaux */
@@ -560,9 +617,10 @@ const beams: FamilyDraw = (ctx, f, view) => {
 
   // Halo au point de fuite, piloté par les basses.
   const haloRadius = Math.min(w, h) * (0.16 + f.bass * 0.4 + f.beat * 0.08);
+  const haloHue = contrastHue(f);
   const halo = ctx.createRadialGradient(originX, originY, 0, originX, originY, Math.max(haloRadius, 1));
-  halo.addColorStop(0, paint(f.palette.hue, 0.9, 0.72, (0.16 + 0.34 * f.bass) * f.alpha));
-  halo.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  halo.addColorStop(0, paint(haloHue, 0.9, 0.72, (0.16 + 0.34 * f.bass) * f.alpha));
+  halo.addColorStop(1, paint(haloHue, 0.9, 0.6, 0));
   ctx.fillStyle = halo;
   ctx.fillRect(0, originY - haloRadius, w, haloRadius * 1.2);
 };
@@ -582,7 +640,10 @@ const tunnel: FamilyDraw = (ctx, f) => {
     const depth = (i / rings + f.t * speed) % 1;
     const radius = Math.pow(depth, 2.4) * maxRadius + 6;
     const fade = clamp01(depth * 1.35) * (1 - depth * 0.65);
-    const hue = f.palette.hue + depth * f.palette.spread * 0.6;
+    // Les anneaux du tunnel portent l'accord de la scène au lieu d'un dégradé
+    // d'une seule teinte : c'est là que la monotonie se voyait le plus, ces
+    // familles occupant les passages calmes.
+    const hue = lampHue(f, i);
     const alpha = (0.06 + 0.4 * f.energy) * fade * f.alpha;
     if (alpha <= 0.004) continue;
     ctx.strokeStyle = paint(hue, f.palette.saturation, f.palette.lightness, alpha);
@@ -597,6 +658,7 @@ const tunnel: FamilyDraw = (ctx, f) => {
   const turn = f.t * (f.reduced ? 0.1 : 0.3);
   for (let i = 0; i < spokes; i += 1) {
     const angle = turn + (i / spokes) * Math.PI * 2;
+    const hue = lampHue(f, i);
     const alpha = (0.05 + 0.2 * f.mid) * f.alpha;
     const gradient = ctx.createLinearGradient(
       cx,
@@ -604,8 +666,8 @@ const tunnel: FamilyDraw = (ctx, f) => {
       cx + Math.cos(angle) * maxRadius,
       cy + Math.sin(angle) * maxRadius,
     );
-    gradient.addColorStop(0, paint(f.palette.hue, 0.9, 0.7, alpha));
-    gradient.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+    gradient.addColorStop(0, paint(hue, 0.9, 0.7, alpha));
+    gradient.addColorStop(1, paint(hue, 0.9, 0.6, 0));
     ctx.strokeStyle = gradient;
     ctx.lineWidth = 1.2;
     ctx.beginPath();
@@ -634,7 +696,9 @@ const particles: FamilyDraw = (ctx, f, view) => {
     const x = cx + Math.cos(orbit) * ring;
     const y = cy + Math.sin(orbit) * ring * (0.55 + seedC * 0.45) + Math.sin(f.t * 0.7 + seedA * 9) * h * 0.03;
     const size = (0.7 + seedC * 2.2) * (0.6 + f.high * 1.1 + f.beat * 0.5);
-    const hue = f.palette.hue + seedA * f.palette.spread;
+    // Chaque particule prend un membre de l'accord : le nuage devient un semis
+    // de teintes au lieu d'un dégradé d'une seule couleur.
+    const hue = lampHue(f, i);
     const alpha = (0.12 + 0.55 * f.energy * (0.4 + seedC * 0.6)) * f.alpha;
     ctx.fillStyle = paint(hue, f.palette.saturation, f.palette.lightness + 0.08, alpha);
     ctx.beginPath();
@@ -654,7 +718,7 @@ const particles: FamilyDraw = (ctx, f, view) => {
     const y = cy + (seedB - 0.5) * h * 0.7;
     const r = (6 + age * 90) * (0.6 + f.high);
     const alpha = clamp01(1 - age / 0.35) * 0.5 * f.alpha * (0.3 + f.high);
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.palette.spread * 0.5), 0.7, 0.78, alpha);
+    ctx.strokeStyle = paint(contrastHue(f), 0.7, 0.78, alpha);
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -673,7 +737,7 @@ const waves: FamilyDraw = (ctx, f) => {
     const ratio = lines === 1 ? 0.5 : i / (lines - 1);
     const baseY = h * mix(0.78, 0.3, ratio) + Math.sin(f.t * 0.35 + i) * h * 0.015;
     const amp = h * (0.018 + 0.07 * f.mid + 0.05 * f.bass) * (0.5 + ratio);
-    const hue = f.palette.hue + ratio * f.palette.spread * 0.8;
+    const hue = lampHue(f, i);
     const alpha = (0.1 + 0.4 * f.energy) * (0.4 + ratio * 0.6) * f.alpha;
     const grad = ctx.createLinearGradient(0, baseY - amp, w, baseY + amp);
     grad.addColorStop(0, paint(hue, f.palette.saturation, f.palette.lightness, alpha));
@@ -716,14 +780,17 @@ const grid: FamilyDraw = (ctx, f) => {
   const columns = count(15, f.quality, f.reduced);
   const speed = f.reduced ? 0.12 : 0.35;
   const depthLines = count(14, f.quality, f.reduced);
-  const hue = f.palette.hue;
+  // Deux membres de l'accord : les colonnes et les lignes de fuite ne partagent
+  // donc pas la même teinte, et la grille n'est plus d'une seule couleur.
+  const hue = lampHue(f, 0);
+  const hueFuite = lampHue(f, 1);
 
   ctx.lineWidth = 1.1;
   for (let i = 0; i < columns; i += 1) {
     const ratio = columns === 1 ? 0.5 : i / (columns - 1);
     const x = (ratio - 0.5) * 2;
     const alpha = (0.05 + 0.18 * f.energy) * f.alpha * (1 - Math.abs(x) * 0.35);
-    ctx.strokeStyle = paint(shiftHue(hue, f.palette.spread * 0.3), f.palette.saturation, f.palette.lightness, alpha);
+    ctx.strokeStyle = paint(hue, f.palette.saturation, f.palette.lightness, alpha);
     ctx.beginPath();
     ctx.moveTo(w * 0.5 + x * w * 0.03, horizon);
     ctx.lineTo(w * 0.5 + x * w * 0.9, h * 1.02);
@@ -735,7 +802,7 @@ const grid: FamilyDraw = (ctx, f) => {
     const y = horizon + Math.pow(z, 2.2) * (h - horizon) * 1.25;
     if (y > h * 1.05) continue;
     const alpha = (0.05 + 0.22 * f.energy) * clamp01(z * 1.4) * f.alpha;
-    ctx.strokeStyle = paint(shiftHue(hue, -f.palette.spread * 0.2), f.palette.saturation, f.palette.lightness, alpha);
+    ctx.strokeStyle = paint(hueFuite, f.palette.saturation, f.palette.lightness, alpha);
     ctx.lineWidth = 0.8 + z * 2.2;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -747,7 +814,7 @@ const grid: FamilyDraw = (ctx, f) => {
   const horizonGlow = ctx.createLinearGradient(0, horizon - h * 0.08, 0, horizon + h * 0.05);
   horizonGlow.addColorStop(0, paint(hue, 0.9, 0.65, 0));
   horizonGlow.addColorStop(0.7, paint(hue, 0.9, 0.68, (0.1 + 0.3 * f.energy) * f.alpha));
-  horizonGlow.addColorStop(1, paint(shiftHue(hue, f.palette.spread), 0.9, 0.6, 0));
+  horizonGlow.addColorStop(1, paint(hueFuite, 0.9, 0.6, 0));
   ctx.fillStyle = horizonGlow;
   ctx.fillRect(0, horizon - h * 0.08, w, h * 0.13);
 };
@@ -771,7 +838,7 @@ const rings: FamilyDraw = (ctx, f, view) => {
     const radius = 10 + Math.pow(progress, 0.55) * maxRadius;
     const fade = 1 - progress;
     const alpha = (0.1 + 0.45 * f.energy) * fade * f.alpha * (i === 0 ? 1 : 0.55);
-    ctx.strokeStyle = paint(f.palette.hue + i * 12, f.palette.saturation, f.palette.lightness, alpha);
+    ctx.strokeStyle = paint(lampHue(f, i), f.palette.saturation, f.palette.lightness, alpha);
     ctx.lineWidth = Math.max(0.8, 5 * fade * (0.5 + f.bass));
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -784,7 +851,7 @@ const rings: FamilyDraw = (ctx, f, view) => {
     const phase = (f.t * 0.8 + i / pulses) % 1;
     const radius = 12 + phase * maxRadius * 0.7;
     const alpha = (1 - phase) * (0.05 + 0.3 * f.bass) * f.alpha;
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.palette.spread * phase), f.palette.saturation, 0.68, alpha);
+    ctx.strokeStyle = paint(lampHue(f, i), f.palette.saturation, 0.68, alpha);
     ctx.lineWidth = 1 + 3 * f.beat * f.bass;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -862,7 +929,7 @@ const spiral: FamilyDraw = (ctx, f) => {
 
   for (let arm = 0; arm < arms; arm += 1) {
     const armOffset = (arm / arms) * Math.PI * 2;
-    const hue = f.palette.hue + (arm / arms) * f.palette.spread;
+    const hue = lampHue(f, arm);
     for (let step = 0; step < perArm; step += 1) {
       const ratio = step / perArm;
       const angle = armOffset + turn * (1 + ratio * 1.6) + ratio * Math.PI * 1.4;
@@ -1182,9 +1249,12 @@ export function drawCoreGlow(ctx: CanvasRenderingContext2D, f: FrameState): void
   const alpha = (0.05 + 0.17 * f.bass + 0.09 * f.beat) * f.alpha;
   if (alpha <= 0.003) return;
   const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-  gradient.addColorStop(0, paint(f.palette.hue, 0.72, 0.72, alpha));
-  gradient.addColorStop(0.35, paint(f.palette.hue, 0.8, 0.6, alpha * 0.4));
-  gradient.addColorStop(1, paint(f.palette.hue, 0.8, 0.5, 0));
+  // Le halo commun prend la teinte de contraste : sans lui, toutes les familles
+  // concentriques posaient le même centre monochrome, quelle que soit la scène.
+  const teinte = contrastHue(f);
+  gradient.addColorStop(0, paint(teinte, 0.72, 0.72, alpha));
+  gradient.addColorStop(0.35, paint(teinte, 0.8, 0.6, alpha * 0.4));
+  gradient.addColorStop(1, paint(teinte, 0.8, 0.5, 0));
   ctx.fillStyle = gradient;
   // Cadre du dégradé seulement : le halo est nul au-delà de `radius`, remplir
   // tout l'écran ajoutait une passe additive plein écran par image.
@@ -1317,8 +1387,9 @@ const burst: FamilyDraw = (ctx, f, view) => {
 
   // Le moyeu : la source, toujours au centre, qui respire avec les basses.
   const moyeu = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.08 + f.bass * 0.16), 1));
-  moyeu.addColorStop(0, paint(f.palette.hue, 0.9, 0.86, (0.2 + 0.3 * f.bass) * f.alpha));
-  moyeu.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  const teinteMoyeu = contrastHue(f);
+  moyeu.addColorStop(0, paint(teinteMoyeu, 0.9, 0.86, (0.2 + 0.3 * f.bass) * f.alpha));
+  moyeu.addColorStop(1, paint(teinteMoyeu, 0.9, 0.6, 0));
   ctx.fillStyle = moyeu;
   ctx.fillRect(0, 0, w, h);
 };
@@ -1696,8 +1767,9 @@ const etoile: FamilyDraw = (ctx, f, view) => {
   // Le foyer : une source, pas un point géométrique. Serré, pour ne pas noyer
   // les branches qu'il allume.
   const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.045 + f.bass * 0.11), 1));
-  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.84, (0.14 + 0.26 * f.bass) * f.alpha));
-  noyau.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  const teinteNoyau = contrastHue(f);
+  noyau.addColorStop(0, paint(teinteNoyau, 0.9, 0.84, (0.14 + 0.26 * f.bass) * f.alpha));
+  noyau.addColorStop(1, paint(teinteNoyau, 0.9, 0.6, 0));
   ctx.fillStyle = noyau;
   ctx.fillRect(Math.max(0, cx - w * 0.12), Math.max(0, cy - h * 0.12), w * 0.24, h * 0.24);
 };
@@ -1749,8 +1821,9 @@ const vortex: FamilyDraw = (ctx, f, view) => {
 
   // L'œil du tourbillon : une lueur diffuse plutôt qu'une bille au centre.
   const noyau = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(Math.min(w, h) * (0.05 + f.bass * 0.14), 1));
-  noyau.addColorStop(0, paint(f.palette.hue, 0.9, 0.8, (0.1 + 0.2 * f.bass) * f.alpha));
-  noyau.addColorStop(1, paint(f.palette.hue, 0.9, 0.6, 0));
+  const teinteOeil = contrastHue(f);
+  noyau.addColorStop(0, paint(teinteOeil, 0.9, 0.8, (0.1 + 0.2 * f.bass) * f.alpha));
+  noyau.addColorStop(1, paint(teinteOeil, 0.9, 0.6, 0));
   ctx.fillStyle = noyau;
   ctx.fillRect(Math.max(0, cx - w * 0.2), Math.max(0, cy - h * 0.2), w * 0.4, h * 0.4);
 };
@@ -1782,9 +1855,11 @@ const lyre: FamilyDraw = (ctx, f, view) => {
 
   // Le portique : une ligne de lumière au sol, plus dense vers le centre.
   const sol = ctx.createLinearGradient(0, 0, w, 0);
-  sol.addColorStop(0, paint(f.palette.hue, 0.9, 0.7, 0));
-  sol.addColorStop(0.5, paint(f.palette.hue, 0.9, 0.75, (0.12 + 0.3 * f.energy) * f.alpha));
-  sol.addColorStop(1, paint(shiftHue(f.palette.hue, f.palette.spread), 0.9, 0.7, 0));
+  const teinteSol = lampHue(f, 0);
+  const teinteCentre = contrastHue(f);
+  sol.addColorStop(0, paint(teinteSol, 0.9, 0.7, 0));
+  sol.addColorStop(0.5, paint(teinteCentre, 0.9, 0.75, (0.12 + 0.3 * f.energy) * f.alpha));
+  sol.addColorStop(1, paint(teinteSol, 0.9, 0.7, 0));
   ctx.fillStyle = sol;
   ctx.fillRect(0, y - 2, w, 2.5);
 
