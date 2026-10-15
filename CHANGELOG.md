@@ -12,7 +12,7 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 - Analyse audio serveur (librosa) : tempo, temps forts, attaques, bandes de
   fréquences, énergie, sections et montées.
-- Vingt-deux familles visuelles tournantes, sur trois échelles de renouvellement
+- Vingt-cinq familles visuelles tournantes, sur trois échelles de renouvellement
   (phrase, variation, dérive).
 - Surface de fumée pour des faisceaux diffus, sans effondrement du framerate.
 - Palette par morceau, bascule sur la complémentaire aux moments forts.

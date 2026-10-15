@@ -154,11 +154,11 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Vingt-deux familles visuelles tournantes. Les projecteurs se déclinent en figures de
+Vingt-cinq familles visuelles tournantes. Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
-vortex. Les autres jouent sur la matière et la géométrie : tunnel, particules, vagues,
-grille, anneaux, volets, barres, spirale.
+vortex, lyres. Les autres jouent sur la matière et la géométrie : tunnel, particules,
+vagues, grille, anneaux, volets, barres, spirale, rosace, treillis.
 
 Quelques figures méritent un mot, parce qu'elles ont une intention :
 
@@ -170,6 +170,9 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **portique** | une porte de lumière qui s'ouvre sur les moments forts et se referme sur les passages calmes |
 | **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |
 | **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
+| **lyres** | une rangée de têtes fines au sol, la vague traverse la rangée par décalage de phase — chacune s'incline tour à tour |
+| **rosace** | huit pétales en V répartis au tour, un hexagone et un triangle qui tournent en sens contraires |
+| **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -330,7 +333,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les vingt-deux familles d'effets
+    families.ts         les vingt-cinq familles d'effets
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API

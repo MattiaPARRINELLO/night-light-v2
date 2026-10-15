@@ -11,7 +11,7 @@ import {
   transitionAlpha,
   visibleEnergy,
 } from "../src/core/render";
-import { buildShowPlan, type FamilyId } from "../src/core/show";
+import { buildShowPlan, FAMILY_LABELS, type FamilyId } from "../src/core/show";
 import {
   beamLayers,
   beatSwing,
@@ -230,21 +230,9 @@ describe("rendu déterministe", () => {
   });
 
   test("toutes les familles visuelles rendent sans erreur", () => {
-    for (const family of [
-      "beams",
-      "tunnel",
-      "particles",
-      "waves",
-      "grid",
-      "rings",
-      "shutters",
-      "bars",
-      "spiral",
-      "spots",
-      "mirror",
-      "parade",
-      "crossfire",
-    ] as const) {
+    // La liste vient du barème des libellés : aucune famille ne peut être
+    // oubliée quand on en ajoute une.
+    for (const family of Object.keys(FAMILY_LABELS) as FamilyId[]) {
       const data = analysis();
       const plan = buildShowPlan(data, false);
       plan.scenes = plan.scenes.map((scene) => ({ ...scene, family }));
