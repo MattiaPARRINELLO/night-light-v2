@@ -39,6 +39,9 @@ bun run dev            # API + interface via Portless → https://nightlight.loc
 Sans Portless : `bun run api` (API) et `bunx vite` (interface) séparément, puis ouvrir
 l'adresse affichée par Vite.
 
+Pour ne lancer que l'API (par exemple derrière un proxy existant), `./run-night-light.sh`
+démarre `uvicorn` sur `HOST`/`PORT` (127.0.0.1:8000 par défaut).
+
 ## Utiliser
 
 1. Ouvre l'application : plein écran, zone **« Dépose ta musique ici »** (glisser-déposer
