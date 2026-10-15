@@ -17,7 +17,10 @@ export type FamilyId =
   | "crossfire"
   | "curtain"
   | "burst"
-  | "gobos";
+  | "gobos"
+  | "pendule"
+  | "couronne"
+  | "pluie";
 
 export interface Scene {
   index: number;
@@ -116,6 +119,9 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   curtain: "rideau de lumière",
   burst: "rayonnement",
   gobos: "formes projetées",
+  pendule: "pendules",
+  couronne: "couronne",
+  pluie: "pluie de lumière",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -127,7 +133,7 @@ export const MOOD_LABELS: Record<Mood, string> = {
 };
 
 /** Familles posées, pour les passages sans percussion marquée. */
-const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral"];
+const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral", "pluie"];
 /** Familles qui suivent le rythme, pour les passages cadencés. */
 const RHYTHMIC_FAMILIES: FamilyId[] = [
   "bars",
@@ -142,6 +148,9 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "curtain",
   "burst",
   "gobos",
+  "pendule",
+  "couronne",
+  "pluie",
 ];
 const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -156,6 +165,9 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "curtain",
   "burst",
   "gobos",
+  "pendule",
+  "couronne",
+  "pluie",
 ];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];

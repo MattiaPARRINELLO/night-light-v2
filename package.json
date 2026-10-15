@@ -19,7 +19,8 @@
     "check:browser": "bun tests/browser_check.mjs",
     "check:sync": "bun tests/sync_check.mjs",
     "check:dashboard": "bun tests/dashboard_check.mjs",
-    "check:fallback": "bun tests/fallback_check.mjs"
+    "check:fallback": "bun tests/fallback_check.mjs",
+    "check:family": "bun tests/family_check.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest",

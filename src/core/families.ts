@@ -1192,6 +1192,156 @@ const gobos: FamilyDraw = (ctx, f, view) => {
   }
 };
 
+/* ---------------------------------------------------------------- pendules */
+
+/**
+ * Pendules : une rangée de têtes sur un portique qui se balancent ensemble.
+ *
+ * Le balancement est lent (une phrase) et un retard court le long de la rangée :
+ * la vague traverse le portique au lieu de tout basculer d'un bloc. Les têtes
+ * des extrémités balaient plus large que celles du centre, comme un vrai
+ * balancier. C'est la figure classique d'un concert.
+ */
+const pendule: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const tetes = count(9, f.quality, f.reduced);
+  // Un faible débordement suffit : les têtes visent vers le bas, donc une tête
+  // hors cadre n'éclairerait rien du tout.
+  const positions = rowPositions(tetes, w, w * 0.03);
+  const portique = h * 0.05;
+  const portee = Math.hypot(w, h) * 1.05;
+  const alpha = (0.06 + 0.28 * f.energy + 0.16 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+
+  for (let i = 0; i < positions.length; i += 1) {
+    const x = positions[i] ?? 0;
+    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
+    // Retard le long de la rangée : la vague traverse le portique en trois temps.
+    const retard = ratio * 3;
+    // Balancement contenu : à 45° de la verticale, un faisceau partant du
+    // portique quitte le cadre par le côté et n'éclaire plus rien.
+    const balance = beatSwing(f, view, f.reduced ? 0.4 : 0.9, GRAND_BALAYAGE_BEATS, retard);
+    const angle = Math.PI / 2 + balance;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    const ouverture = 0.85 + 0.5 * f.beat + 0.35 * f.energy;
+    softBeam(ctx, {
+      x,
+      y: portique,
+      angle,
+      length: portee,
+      width: Math.min(w, h) * 0.024 * ouverture,
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness + 0.05,
+      alpha,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.05,
+    });
+    // La tête, posée sur le portique.
+    ctx.fillStyle = paint(hue, 0.95, 0.86, alpha * 1.4);
+    ctx.beginPath();
+    ctx.arc(x, portique, 2.5 + f.beat * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/* ---------------------------------------------------------------- couronne */
+
+/**
+ * Couronne : les têtes sont posées sur l'arc supérieur d'une ellipse et visent
+ * vers l'extérieur, comme une tiare. La couronne tourne lentement d'un bloc, et
+ * chaque faisceau s'allume à son tour : la lumière fait le tour de la couronne.
+ */
+const couronne: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const tetes = count(11, f.quality, f.reduced);
+  const cx = w * 0.5;
+  const cy = h * 0.68;
+  const rx = w * 0.44;
+  const ry = h * 0.34;
+  const rotation = beatSwing(f, view, f.reduced ? 0.25 : 0.7, GRAND_BALAYAGE_BEATS);
+  const portee = Math.hypot(w, h) * 1.15;
+  const alpha = (0.05 + 0.26 * f.energy + 0.15 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+  const cycle = f.reduced ? 28 : f.energy > 0.55 ? 12 : 20;
+
+  for (let i = 0; i < tetes; i += 1) {
+    const part = tetes === 1 ? 0.5 : i / (tetes - 1);
+    // Arc supérieur : la couronne se lit comme une tiare, pas comme un anneau.
+    const autour = Math.PI + part * Math.PI + rotation;
+    const x = cx + Math.cos(autour) * rx;
+    const y = cy + Math.sin(autour) * ry;
+    // Vers l'extérieur, mais relevé vers le haut : une tiare éclaire vers le
+    // ciel. Sans ce redressement, les rayons des extrémités partent à
+    // l'horizontale et quittent le cadre aussitôt.
+    const angle = Math.atan2(y - cy, x - cx) * 0.5 - Math.PI * 0.25;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (part - 0.5) * f.palette.spread;
+    // Chaque faisceau s'allume à son tour : la lumière fait le tour de la couronne.
+    const allumage = elementEnvelope(f, view, i, cycle, 0.8);
+    if (allumage <= 0.01) continue;
+    softBeam(ctx, {
+      x,
+      y,
+      angle,
+      length: portee,
+      width: Math.min(w, h) * 0.014 * (0.8 + f.energy * 0.5 + f.beat * 0.3),
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness + 0.08,
+      alpha: alpha * allumage,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.04,
+    });
+    ctx.fillStyle = paint(hue, 0.95, 0.86, alpha * allumage * 1.5);
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5 + f.beat * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+};
+
+/* ------------------------------------------------------------------- pluie */
+
+/**
+ * Pluie de lumière : des colonnes tombent du plafond, chacune s'allumant et
+ * s'éteignant à son rythme et sur une longueur qui lui est propre. Dans la
+ * fumée, ça se lit comme une averse — et comme les colonnes ne clignotent pas
+ * ensemble, la scène ne bat jamais la mesure à contretemps.
+ */
+const pluie: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const colonnes = count(18, f.quality, f.reduced);
+  const positions = rowPositions(colonnes, w, w * 0.05);
+  const alpha = (0.05 + 0.24 * f.energy + 0.14 * f.beat) * f.alpha;
+  if (alpha <= 0.002) return;
+  const cycle = f.reduced ? 30 : f.energy > 0.55 ? 10 : 18;
+
+  for (let i = 0; i < positions.length; i += 1) {
+    const x = positions[i] ?? 0;
+    const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
+    const allumage = elementEnvelope(f, view, i * 7 + 2, cycle, 0.65);
+    if (allumage <= 0.01) continue;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
+    // Longueur propre à chaque colonne : l'averse n'est pas régulière.
+    const longueur = h * (0.45 + hash01(i * 311 + f.seed) * 0.75) * allumage;
+    softBeam(ctx, {
+      x,
+      y: -h * 0.04,
+      angle: Math.PI / 2 + (ratio - 0.5) * 0.12,
+      length: longueur,
+      width: Math.min(w, h) * 0.009 * (0.8 + f.energy * 0.5),
+      hue,
+      saturation: f.palette.saturation,
+      lightness: f.palette.lightness,
+      alpha: alpha * allumage,
+      quality: f.quality,
+      reduced: f.reduced,
+      footRatio: 0.5,
+    });
+  }
+};
+
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   beams,
   tunnel,
@@ -1209,6 +1359,9 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   curtain,
   burst,
   gobos,
+  pendule,
+  couronne,
+  pluie,
 };
 
 export function drawFamily(
