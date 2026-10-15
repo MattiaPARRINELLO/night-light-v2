@@ -1,5 +1,5 @@
 import type { FamilyId, Palette, Scene } from "./show";
-import { clamp01, hash01, mix } from "./series";
+import { clamp01, hash01, mix, smoothstep } from "./series";
 import { hslToRgb, shiftHue, shorthand } from "./color";
 import type { TrackView } from "./view";
 
@@ -43,6 +43,43 @@ export interface FrameState {
 
 export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView) => void;
 
+/* ------------------------------------------------------------------ tempo */
+
+/**
+ * Balayage calé sur le tempo.
+ *
+ * La cible change à chaque pas — un temps fort par défaut, ou un groupe — et
+ * l'interpolation arrive vite puis tient la note. Les faisceaux bougent donc
+ * *avec* la musique, au lieu de dériver à côté d'elle à vitesse fixe. C'est la
+ * différence entre un projecteur qui balaie et un projecteur qui joue.
+ *
+ * `offset` décale la phase d'un projecteur : sans lui, toute la rangée partirait
+ * du même côté au même instant.
+ */
+export function beatSwing(
+  f: FrameState,
+  view: TrackView,
+  spread: number,
+  beatsPerStep = 1,
+  offset = 0,
+): number {
+  // Aucune grille détectée (mode direct, morceau sans rythme) : on retombe sur
+  // une oscillation lente plutôt qu'un balayage figé.
+  if (view.beats.length === 0) return Math.sin(f.t * 0.37 + offset) * spread * 0.5;
+
+  const pas = Math.max(1, Math.round(beatsPerStep));
+  // Le décalage porte sur la position elle-même : deux lampes voisines sont
+  // alors à des points différents de leur course, au lieu de bouger ensemble.
+  const position = f.beatIndex + clamp01(f.beatPhase) + offset;
+  const bloc = Math.floor(position / pas);
+  const local = clamp01(position / pas - bloc);
+  const depart = (hash01(bloc * 7919 + f.seed) - 0.5) * spread;
+  const arrivee = (hash01((bloc + 1) * 7919 + f.seed) - 0.5) * spread;
+  // La course se fait sur les 70 % du pas : le faisceau est en place juste
+  // après le temps fort, puis tient sa position le reste du temps.
+  return depart + (arrivee - depart) * smoothstep(0, 0.7, local);
+}
+
 function paint(h: number, s: number, l: number, a: number): string {
   return shorthand(hslToRgb({ h, s, l }), a);
 }
@@ -55,14 +92,15 @@ function count(base: number, quality: number, reduced: boolean): number {
 
 /* ------------------------------------------------------------------ faisceaux */
 
-const beams: FamilyDraw = (ctx, f) => {
+const beams: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const originX = w * 0.5;
   const originY = h * 1.02;
   const spread = (Math.PI * 0.78) / (f.reduced ? 1.15 : 1);
   const rays = count(f.energy > 0.55 ? 20 : 13, f.quality, f.reduced);
-  const rotate = f.reduced ? 0.06 : 0.16;
-  const sweep = f.t * rotate + Math.sin(f.t * 0.21) * 0.25;
+  // Un pas tous les deux temps forts : l'éventail se réoriente sur la musique,
+  // la dérive continue n'étant plus qu'un très léger fond.
+  const sweep = beatSwing(f, view, f.reduced ? 0.4 : 0.62, 2) + f.t * (f.reduced ? 0.02 : 0.04);
   const widthBase = Math.min(w, h) * 0.055 * (0.45 + f.bass * 0.9);
   const length = Math.hypot(w, h) * 0.95;
 
@@ -439,7 +477,7 @@ const spotOrigin = (i: number, w: number, h: number, seed: number) => {
   return { x: w, y: h * (0.08 + hash01(i * 677 + seed) * 0.84) };
 };
 
-const spots: FamilyDraw = (ctx, f) => {
+const spots: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const lamps = count(7, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.15;
@@ -449,7 +487,9 @@ const spots: FamilyDraw = (ctx, f) => {
 
   for (let i = 0; i < lamps; i += 1) {
     const origin = spotOrigin(i, w, h, f.seed);
-    const drift = Math.sin(f.t * (0.3 + hash01(i * 331 + f.seed) * 0.55) + i * 2.1) * sweep;
+    // Chaque lampe a son propre décalage : la salle n'est jamais éclairée
+    // d'un seul mouvement, mais tout le monde reste sur le tempo.
+    const drift = beatSwing(f, view, sweep, i % 3 === 0 ? 2 : 1, i * 0.31);
     const aimX = cx + (hash01(i * 733 + f.seed) - 0.5) * w * 0.9 + drift * w * 0.35;
     const aimY = cy + (hash01(i * 887 + f.seed) - 0.5) * h * 0.9 + drift * h * 0.2;
     const angle = Math.atan2(aimY - origin.y, aimX - origin.x);
@@ -495,7 +535,7 @@ const spots: FamilyDraw = (ctx, f) => {
  * sont volontairement étroites : un faisceau long et net se lit beaucoup mieux
  * de loin qu'un large pâté de lumière.
  */
-const mirror: FamilyDraw = (ctx, f) => {
+const mirror: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const pairs = count(8, f.quality, f.reduced);
   const cx = w * 0.5;
@@ -509,10 +549,9 @@ const mirror: FamilyDraw = (ctx, f) => {
     const row = hash01(i * 711 + f.seed);
     const originY = h * (0.1 + row * 0.8);
     const aimY = cy + (hash01(i * 911 + f.seed) - 0.5) * h * 0.62;
-    const speed = 0.16 + hash01(i * 1031 + f.seed) * 0.34;
-    // Un quart de tour de décalage entre deux lampes voisines : les paires ne
-    // balayent jamais toutes dans le même sens, le motif respire.
-    const swing = Math.sin(f.t * speed + hash01(i * 1213 + f.seed) * Math.PI * 2);
+    // Un décalage entre deux lampes voisines : les paires ne balayent jamais
+    // toutes dans le même sens, le motif respire — mais sur le tempo.
+    const swing = beatSwing(f, view, 0.8, 2, hash01(i * 1213 + f.seed));
     const aimX = cx + swing * w * 0.4;
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
     const alpha = (0.05 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
@@ -559,7 +598,7 @@ const mirror: FamilyDraw = (ctx, f) => {
  * une seule direction, une seule impulsion, comme une rangée de lampes de
  * concert qui pivote ensemble sur sa structure.
  */
-const parade: FamilyDraw = (ctx, f) => {
+const parade: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const lamps = count(9, f.quality, f.reduced);
   if (lamps < 1) return;
@@ -567,9 +606,8 @@ const parade: FamilyDraw = (ctx, f) => {
   // le trou du côté vers lequel les faisceaux se penchent.
   const positions = rowPositions(lamps, w, w * 0.14);
   const reach = Math.hypot(w, h) * 1.35;
-  // Deux battements superposés : le balayage principal est lent, la petite
-  // modulation lui donne un rythme irrégulier qui évite l'effet métronome.
-  const sweep = Math.sin(f.t * 0.16) * 0.6 + Math.sin(f.t * 0.43) * 0.14;
+  // Un pas tous les deux temps forts : la rangée s'incline *avec* la musique.
+  const sweep = beatSwing(f, view, f.reduced ? 0.3 : 0.7, 2);
   const tilt = -Math.PI / 2 + sweep;
   const lampY = h * 0.98;
   const alpha = (0.05 + 0.24 * f.energy + 0.12 * f.beat) * f.alpha;
@@ -616,12 +654,12 @@ const parade: FamilyDraw = (ctx, f) => {
  * lente élarg puis resserre l'écart, ce qui donne un effet de « ouverture de
  * porte » sans jamais cesser de converger.
  */
-const crossfire: FamilyDraw = (ctx, f) => {
+const crossfire: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const cx = w * 0.5;
   const cy = h * 0.5;
   const reach = Math.hypot(w, h) * 1.45;
-  const breath = Math.sin(f.t * (f.reduced ? 0.08 : 0.19)) * 0.3;
+  const breath = beatSwing(f, view, f.reduced ? 0.12 : 0.34, 2);
   const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -751,12 +789,12 @@ export function rowPositions(count: number, width: number, margin: number): numb
  * faisceaux s'inclinent — et il porte les moments forts sans dépendre d'un
  * mouvement de caméra.
  */
-const curtain: FamilyDraw = (ctx, f) => {
+const curtain: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const rangs = count(15, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.15;
   const positions = rowPositions(rangs, w, w * 0.11);
-  const balance = Math.sin(f.t * (f.reduced ? 0.1 : 0.28)) * (f.reduced ? 0.06 : 0.22);
+  const balance = beatSwing(f, view, f.reduced ? 0.08 : 0.26, 4);
   const alpha = (0.05 + 0.26 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -805,13 +843,15 @@ const curtain: FamilyDraw = (ctx, f) => {
  * bords, donc le cadre est entièrement balayé quel que soit l'angle, et la
  * rotation est continue — c'est l'effet « soirée » par excellence.
  */
-const burst: FamilyDraw = (ctx, f) => {
+const burst: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const cx = w * 0.5;
   const cy = h * 0.52;
   const rayons = count(18, f.quality, f.reduced);
   const reach = Math.hypot(w, h) * 1.5;
-  const rotation = f.t * (f.reduced ? 0.09 : 0.22);
+  // La tête tourne par quarts de tour sur la mesure, avec un léger glissement
+  // continu : ça tourne, mais ça tourne sur la musique.
+  const rotation = beatSwing(f, view, f.reduced ? 0.4 : 1.1, 4) + f.t * (f.reduced ? 0.02 : 0.05);
   const alpha = (0.045 + 0.24 * f.energy + 0.15 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 

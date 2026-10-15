@@ -12,7 +12,7 @@ import {
   visibleEnergy,
 } from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
-import { drawFamily, rowPositions } from "../src/core/families";
+import { beatSwing, drawFamily, rowPositions } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -590,6 +590,83 @@ describe("transition entre les moments du spectacle", () => {
   test("rien n'est dessine une fois la transition finie", () => {
     expect(voile(1.4)).toEqual([]);
     expect(voile(2)).toEqual([]);
+  });
+});
+
+describe("mouvements cales sur le tempo", () => {
+  const frame = (over: Partial<Parameters<typeof beatSwing>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene: buildShowPlan(analysis(), false).scenes[0]!,
+      palette: buildShowPlan(analysis(), false).scenes[0]!.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: 42,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof beatSwing>[0];
+
+  const view = new TrackView(analysis());
+
+  test("la cible change a chaque temps fort", () => {
+    // Le balayage doit être décidé par la grille rythmique, pas par une vitesse
+    // fixe : deux temps forts consécutifs visent des positions différentes.
+    const positions = [8, 9, 10, 11, 12].map((beatIndex) => beatSwing(frame({ beatIndex, beatPhase: 0.6 }), view, 1, 1));
+    expect(new Set(positions.map((p) => p.toFixed(3))).size).toBe(positions.length);
+    for (const position of positions) expect(Math.abs(position)).toBeLessThanOrEqual(0.5);
+  });
+
+  test("le faisceau arrive juste apres le temps fort puis tient", () => {
+    // Course sur les 70 % du pas : bien plus avancé à mi-pas qu'au départ, et
+    // quasi immobile sur la fin.
+    const depart = beatSwing(frame({ beatIndex: 8, beatPhase: 0 }), view, 2, 1);
+    const milieu = beatSwing(frame({ beatIndex: 8, beatPhase: 0.35 }), view, 2, 1);
+    const arrivee = beatSwing(frame({ beatIndex: 8, beatPhase: 0.7 }), view, 2, 1);
+    const fin = beatSwing(frame({ beatIndex: 8, beatPhase: 0.99 }), view, 2, 1);
+    expect(Math.abs(milieu - depart)).toBeGreaterThan(0.2);
+    expect(Math.abs(arrivee - milieu)).toBeGreaterThan(0.05);
+    expect(Math.abs(fin - arrivee)).toBeLessThan(0.15);
+  });
+
+  test("le balayage ne saute pas d'un pas a l'autre", () => {
+    // Continuité : à la frontière entre deux pas, la position doit être celle
+    // de l'arrivée puis repartir vers la suivante, sans discontinuité.
+    let precedent = beatSwing(frame({ beatIndex: 8, beatPhase: 0 }), view, 2, 1);
+    for (let phase = 0.1; phase <= 1; phase += 0.1) {
+      const courant = beatSwing(frame({ beatIndex: 8, beatPhase: phase }), view, 2, 1);
+      expect(Math.abs(courant - precedent)).toBeLessThan(1.2);
+      precedent = courant;
+    }
+  });
+
+  test("un decalage par lampe les desynchronise", () => {
+    const premiere = beatSwing(frame({ beatPhase: 0.4 }), view, 1, 1, 0);
+    const seconde = beatSwing(frame({ beatPhase: 0.4 }), view, 1, 1, 0.31);
+    expect(premiere).not.toBe(seconde);
+  });
+
+  test("sans grille rythmique, le balayage reste doux", () => {
+    // Mode direct : aucune grille détectée, on ne doit pas figer les faisceaux.
+    const vide = new TrackView(analysis({ beats: [] }));
+    const a = beatSwing(frame({ beatIndex: 0, beatPhase: 0 }), vide, 1, 1);
+    const b = beatSwing(frame({ beatIndex: 0, beatPhase: 0.5, t: 12.5 }), vide, 1, 1);
+    expect(Number.isFinite(a)).toBe(true);
+    expect(a).not.toBe(b);
   });
 });
 
