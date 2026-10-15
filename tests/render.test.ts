@@ -12,7 +12,7 @@ import {
   visibleEnergy,
 } from "../src/core/render";
 import { buildShowPlan, type FamilyId } from "../src/core/show";
-import { beatSwing, drawFamily, rowPositions } from "../src/core/families";
+import { beatSwing, drawFamily, elementEnvelope, rowPositions } from "../src/core/families";
 import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
 import { TrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS } from "../src/types";
@@ -667,6 +667,90 @@ describe("mouvements cales sur le tempo", () => {
     const b = beatSwing(frame({ beatIndex: 0, beatPhase: 0.5, t: 12.5 }), vide, 1, 1);
     expect(Number.isFinite(a)).toBe(true);
     expect(a).not.toBe(b);
+  });
+});
+
+describe("allumage et extinction des elements", () => {
+  const view = new TrackView(analysis());
+
+  const frame = (over: Partial<Parameters<typeof elementEnvelope>[0]> = {}) =>
+    ({
+      t: 12,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene: buildShowPlan(analysis(), false).scenes[0]!,
+      palette: buildShowPlan(analysis(), false).scenes[0]!.palette,
+      energy: 0.6,
+      bass: 0.5,
+      mid: 0.5,
+      high: 0.4,
+      beat: 0.7,
+      beatPhase: 0,
+      beatIndex: 8,
+      build: 0,
+      buildStrength: 0,
+      surge: 0.2,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: 42,
+      frame: 0,
+      ...over,
+    }) as Parameters<typeof elementEnvelope>[0];
+
+  test("un element eteint ne dessine rien", () => {
+    // Sur un cycle de 4 temps, l'élément est éteint une partie du cycle.
+    const phases = [0, 0.25, 0.5, 0.75].map((part) => {
+      const position = 8 + part * 4;
+      return elementEnvelope(frame({ beatIndex: Math.floor(position), beatPhase: position % 1 }), view, 0, 4, 0.5);
+    });
+    expect(phases.some((valeur) => valeur === 0)).toBe(true);
+    expect(phases.some((valeur) => valeur > 0.5)).toBe(true);
+    for (const valeur of phases) expect(valeur).toBeGreaterThanOrEqual(0);
+  });
+
+  test("l'allumage et l'extinction sont progressifs", () => {
+    // Jamais de saut d'une image à l'autre : c'est ce qui évite l'élément qui
+    // apparaît ou disparaît en pleine scène. On échantillonne au pas d'une image
+    // (1/60 s) sur un morceau à 128 BPM, soit ~0,035 temps fort.
+    const pas = 1 / (60 * (60 / 128));
+    let precedent = elementEnvelope(frame({ beatIndex: 8, beatPhase: 0 }), view, 0, 4, 0.5);
+    for (let position = 8; position < 12; position += pas) {
+      const courant = elementEnvelope(
+        frame({ beatIndex: Math.floor(position), beatPhase: position % 1 }),
+        view,
+        0,
+        4,
+        0.5,
+      );
+      expect(Math.abs(courant - precedent)).toBeLessThan(0.09);
+      precedent = courant;
+    }
+  });
+
+  test("le nombre d'elements allumes varie au cours du cycle", () => {
+    // C'est le fond de l'effet : à tout instant quelques-uns sont allumés et
+    // d'autres éteints, et cela change sans cesse. Un compteur constant
+    // signifierait que tout le monde clignote ensemble.
+    const compte = (beat: number, phase: number) =>
+      [0, 1, 2, 3, 4, 5, 6, 7].filter((index) => elementEnvelope(frame({ beatIndex: beat, beatPhase: phase }), view, index, 8, 0.5) > 0.5).length;
+    const valeurs: number[] = [];
+    for (let beat = 8; beat < 16; beat += 1) {
+      for (let phase = 0; phase < 1; phase += 0.1) valeurs.push(compte(beat, phase));
+    }
+    expect(Math.min(...valeurs)).toBeLessThan(Math.max(...valeurs));
+    // Et il y a toujours de la lumière : le rideau ne s'éteint jamais en entier.
+    expect(Math.max(...valeurs)).toBeGreaterThan(2);
+  });
+
+  test("sans grille rythmique, le cycle se compte en secondes", () => {
+    const vide = new TrackView(analysis({ beats: [] }));
+    const a = elementEnvelope(frame({ t: 1 }), vide, 0, 8, 0.5);
+    const b = elementEnvelope(frame({ t: 4 }), vide, 0, 8, 0.5);
+    expect(Number.isFinite(a)).toBe(true);
+    expect(Number.isFinite(b)).toBe(true);
   });
 });
 

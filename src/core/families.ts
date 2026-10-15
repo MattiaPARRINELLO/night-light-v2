@@ -46,6 +46,45 @@ export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: Tr
 /* ------------------------------------------------------------------ tempo */
 
 /**
+ * Enveloppe d'allumage et d'extinction d'un élément.
+ *
+ * Un projecteur ne s'allume pas d'un coup : il monte, tient, puis s'éteint. Le
+ * cycle se compte en temps forts — donc la lumière vit avec la musique — et
+ * `index` décale la phase de chaque élément : ils s'allument l'un après l'autre
+ * au lieu de clignoter en bloc. Les montées et descentes sont lissées, jamais
+ * des sauts : c'est ce qui évite l'élément qui « apparaît en pleine scène ».
+ *
+ * `duty` est la part du cycle pendant laquelle l'élément reste allumé.
+ */
+export function elementEnvelope(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  cycleBeats = 16,
+  duty = 0.6,
+): number {
+  const cycle = Math.max(1, cycleBeats);
+  let phase: number;
+  if (view.beats.length === 0) {
+    // Sans grille rythmique (mode direct), le cycle se compte en secondes : la
+    // lumière doit vivre quand même.
+    phase = (f.t / (cycle * 0.45) + hash01(index * 97 + f.seed)) % 1;
+  } else {
+    phase = ((f.beatIndex + clamp01(f.beatPhase)) / cycle + hash01(index * 97 + f.seed)) % 1;
+  }
+  phase = ((phase % 1) + 1) % 1;
+
+  const montee = 0.15;
+  const extinction = 0.25;
+  const allume = Math.max(montee + extinction, duty);
+  if (phase >= allume) return 0;
+  if (phase < montee) return smoothstep(0, montee, phase);
+  const debutExtinction = allume - extinction;
+  if (phase < debutExtinction) return 1;
+  return 1 - smoothstep(debutExtinction, allume, phase);
+}
+
+/**
  * Balayage calé sur le tempo.
  *
  * La cible change à chaque pas — un temps fort par défaut, ou un groupe — et
@@ -497,7 +536,11 @@ const spots: FamilyDraw = (ctx, f, view) => {
     // Une lampe sur deux part sur la complémentaire : les projecteurs n'ont pas
     // à être tous de la même couleur, c'est ce qui donne du relief à la scène.
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (i / lamps) * f.palette.spread;
-    const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha;
+    // Les projecteurs ne restent pas tous allumés : chacun a son cycle, donc la
+    // salle change de visage sans qu'aucun ne s'éteigne d'un coup.
+    const allumage = elementEnvelope(f, view, i * 3 + 1, 20, 0.8);
+    if (allumage <= 0.01) continue;
+    const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha * allumage;
 
     const gradient = ctx.createLinearGradient(
       origin.x,
@@ -805,12 +848,13 @@ const curtain: FamilyDraw = (ctx, f, view) => {
     // Un faisceau sur deux part sur la complémentaire : le rideau n'est jamais
     // monochrome, et la couleur alterne régulièrement sur toute la largeur.
     const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (ratio - 0.5) * f.palette.spread;
-    // Une onde court le long du rideau : chaque faisceau a sa phase, donc la
-    // lumière « voyage » au lieu de clignoter en bloc.
-    const phase = Math.sin(f.t * 1.5 - ratio * 5.4) * 0.5 + 0.5;
+    // Chaque faisceau s'allume et s'éteint à son tour, sur un cycle musical :
+    // la lumière « voyage » le long de la rangée au lieu de clignoter en bloc.
+    const phase = elementEnvelope(f, view, i, 16, 0.85);
+    if (phase <= 0.01) continue;
     const aperture = (0.01 + 0.016 * hash01(i * 271 + f.seed)) * (0.6 + phase * 0.8 + f.beat * 0.3);
     const portee = length * (0.78 + phase * 0.35);
-    const intensite = alpha * (0.5 + phase * 0.7);
+    const intensite = alpha * phase;
     const tipX = originX + Math.cos(angle) * portee;
     const tipY = h + Math.sin(angle) * portee;
 
@@ -891,6 +935,109 @@ const burst: FamilyDraw = (ctx, f, view) => {
   ctx.fillRect(0, 0, w, h);
 };
 
+/* ------------------------------------------------------------ formes projetées */
+
+/** Formes projetées par les gobos : cercle, anneau, losange, triangle. */
+const GOBOS = ["cercle", "anneau", "losange", "triangle"] as const;
+
+/**
+ * Dessine une forme projetée.
+ *
+ * Les sommets sont calculés à la main plutôt qu'avec `rotate` : le rendu reste
+ * une fonction pure des coordonnées, testable sans contexte graphique complet.
+ */
+function drewGobo(
+  ctx: CanvasRenderingContext2D,
+  forme: number,
+  x: number,
+  y: number,
+  rayon: number,
+  rotation: number,
+  hue: number,
+  saturation: number,
+  alpha: number,
+): void {
+  const centre = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rayon, 1));
+  centre.addColorStop(0, paint(hue, saturation, 0.78, alpha));
+  centre.addColorStop(1, paint(hue, saturation, 0.6, 0));
+
+  if (forme === 0) {
+    // Cercle plein : la tache de lumière la plus simple, et la plus lisible.
+    ctx.fillStyle = centre;
+    ctx.beginPath();
+    ctx.arc(x, y, rayon, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  const sommets = forme === 1 ? 0 : forme === 2 ? 4 : 3;
+  if (sommets === 0) {
+    // Anneau : deux cercles, le second en creux. Un anneau large se lit de loin.
+    ctx.fillStyle = centre;
+    ctx.beginPath();
+    ctx.arc(x, y, rayon, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.arc(x, y, rayon * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = "lighter";
+    return;
+  }
+
+  ctx.fillStyle = centre;
+  ctx.beginPath();
+  for (let i = 0; i < sommets; i += 1) {
+    const angle = rotation + (i / sommets) * Math.PI * 2;
+    const px = x + Math.cos(angle) * rayon;
+    const py = y + Math.sin(angle) * rayon;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/**
+ * Gobos : des formes projetées sur le mur, réparties sur tout le cadre.
+ *
+ * Chaque forme s'allume et s'éteint à son tour (`elementEnvelope`), tourne
+ * lentement, et une sur deux prend la complémentaire. C'est l'effet « boîte de
+ * nuit » : beaucoup de petits motifs qui vivent indépendamment, sans jamais
+ * apparaître ni disparaître d'un coup.
+ */
+const gobos: FamilyDraw = (ctx, f, view) => {
+  const { width: w, height: h } = f;
+  const formes = count(f.energy > 0.55 ? 14 : 9, f.quality, f.reduced);
+  const rayon = Math.min(w, h) * (0.07 + f.energy * 0.05 + f.beat * 0.02);
+  const cycle = f.reduced ? 24 : f.energy > 0.55 ? 12 : 18;
+
+  for (let i = 0; i < formes; i += 1) {
+    const enveloppe = elementEnvelope(f, view, i, cycle, 0.55);
+    if (enveloppe <= 0.01) continue;
+    // Répartition sur tout le cadre, bords compris : aucune zone ne reste vide.
+    const x = w * (0.06 + hash01(i * 1709 + f.seed) * 0.88);
+    const y = h * (0.1 + hash01(i * 2017 + f.seed) * 0.8);
+    const taille = rayon * (0.6 + hash01(i * 3001 + f.seed) * 0.7);
+    const sens = i % 2 === 0 ? 1 : -1;
+    const rotation = f.t * (0.08 + hash01(i * 2311 + f.seed) * 0.2) * sens;
+    const hue = i % 2 === 1 ? f.palette.accent : f.palette.hue + (hash01(i * 2711 + f.seed) - 0.5) * f.palette.spread;
+    const alpha = enveloppe * (0.08 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
+    if (alpha <= 0.004) continue;
+    drewGobo(
+      ctx,
+      i % GOBOS.length,
+      x,
+      y,
+      taille,
+      rotation,
+      hue,
+      Math.min(1, f.palette.saturation + 0.06),
+      alpha,
+    );
+  }
+};
+
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   beams,
   tunnel,
@@ -907,6 +1054,7 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   crossfire,
   curtain,
   burst,
+  gobos,
 };
 
 export function drawFamily(
