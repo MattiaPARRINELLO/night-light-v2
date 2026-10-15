@@ -221,14 +221,14 @@ discrète, de sorte qu'une image montre toujours deux mondes superposés.
 
 **Réactions aux moments forts** :
 
-- **drop** : quand une montée se résout sur l'impact, saut de teinte de 70°, sur-couche
-  visuelle et flash blanc pendant ~2,5 s ;
+- **drop** : quand une montée se résout sur l'impact, saut de teinte (70°), wash complet de
+  seize projecteurs et lavage blanc pendant ~2,5 s ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
   spectacle pulse sur les temps forts ;
 - **temps forts** : flashs cadencés, pulsations du noyau lumineux, ondes des anneaux.
 
 Tout cela est plafonné : un flash ne dépasse jamais 40 % d'opacité, deux flashs sont
-séparés d'au moins 0,14 s, et le mode réduit supprime les flashs, la sur-couche de drop
+séparés d'au moins 0,14 s, et le mode réduit supprime les flashs, le wash de drop
 et les variations.
 
 **Synchronisation** : chaque image est rendue à partir de `audio.currentTime`. Aucun état

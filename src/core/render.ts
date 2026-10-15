@@ -532,17 +532,12 @@ export function renderFrame(input: RenderInput): void {
     drawWash(ctx, washState);
   }
 
-  // Sur-couche d'impact : moments brefs et très soutenus, jamais en mode réduit.
+  // Lavage blanc d'impact : bref et réservé aux vrais drops, jamais en mode
+  // réduit. Il n'y a plus de sur-couche de projecteurs ici — la rangée de barres
+  // qui s'allumait en bas à chaque montée faisait « vu-mètre » et jurait avec le
+  // reste ; l'impact se lit désormais par le lavage, le wash et la lumière de la
+  // scène, qui porte déjà la couleur du morceau.
   if (drop > 0.02 && !reduced) {
-    const dropState: FrameState = {
-      ...base,
-      palette,
-      alpha: base.alpha * Math.min(1, drop * 1.3),
-      intensity: base.intensity * (1 + drop),
-      buildStrength: 1,
-    };
-    const dropFamily = plan.seed % 2 === 0 ? "bars" : "shutters";
-    drawFamily(ctx, dropState, view, dropFamily);
     const ceiling = FLASH_CEILING * Math.min(settings.flashes, 1.5);
     // Seul un vrai drop de l'analyse ouvre le lavage blanc : le pulsage de
     // secours sur les temps forts éclaire la scène, il ne blanchit pas l'écran.

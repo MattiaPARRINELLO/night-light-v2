@@ -337,14 +337,15 @@ describe("pulsage de secours sur les temps forts", () => {
     expect(beatDrive(view, 8.02, 1)).toBeCloseTo(attendu, 6);
   });
 
-  test("le rendu s'allume davantage sur un morceau sans montée", () => {
+  test("le pulsage de secours éclaire le rendu sur un morceau sans montée", () => {
     // Même analyse, sauf les montées : sans le pulsage de secours, un morceau
-    // sans montée ne dessine pas la surcouche d'impact à cet instant. Les
-    // montées de comparaison sont loin de 8,02 s, donc inactives : la seule
-    // différence d'image vient du pulsage.
-    const operations = (data: Analysis) => renderAt(8.02, data).length;
-    const sansMontee = operations(analysis({ builds: [] }));
-    const monteesLointaines = operations(
+    // sans montée resterait éteint entre deux temps forts. Il pousse désormais la
+    // palette vers le blanc et fait sauter la teinte — l'image change, sans
+    // ajouter le moindre élément (la surcouche de projecteurs qu'il déclenchait
+    // autrefois a été retirée, elle faisait « vu-mètre »).
+    const trace = (data: Analysis) => renderAt(8.02, data);
+    const sansMontee = trace(analysis({ builds: [] }));
+    const monteesLointaines = trace(
       analysis({
         builds: [
           { start: 20, end: 24, strength: 0.9 },
@@ -353,7 +354,8 @@ describe("pulsage de secours sur les temps forts", () => {
         ],
       }),
     );
-    expect(sansMontee).toBeGreaterThan(monteesLointaines);
+    expect(sansMontee.join("|")).not.toBe(monteesLointaines.join("|"));
+    expect(sansMontee.length).toBe(monteesLointaines.length);
   });
 });
 
@@ -993,9 +995,17 @@ describe("diversite a l'ecran", () => {
     expect(seen.size).toBe(4);
   });
 
-  test("un drop ajoute une sur-couche visible à l'impact", () => {
+  test("l'impact n'ajoute plus de rangee de barres", () => {
     const data = analysis();
+    // Scène imposée : on veut savoir ce qui est dessiné, et la famille « vagues »
+    // ne ressemble en rien à une rangée de barres.
     const plan = buildShowPlan(data, false);
+    const base = plan.scenes[0]!;
+    plan.scenes = [
+      { ...base, index: 0, family: "waves", variant: "waves", backdrop: "waves", start: 0, end: 1e6, fadeIn: 0 },
+    ];
+    // Même analyse des deux côtés : seule la POSITION de la montée change, donc
+    // le pulsage de secours et la palette restent comparables.
     const trace = (builds: Analysis["builds"]) => {
       const view = new TrackView({ ...data, builds });
       const { ctx, operations } = fakeContext();
@@ -1012,15 +1022,26 @@ describe("diversite a l'ecran", () => {
         quality: 1,
         frame: 0,
       });
-      return operations.join("|");
+      return operations;
     };
-    const withDrop = trace([{ start: 4, end: 8, strength: 1 }]);
-    const withoutDrop = trace([]);
-    expect(withDrop).not.toBe(withoutDrop);
-    expect(withDrop.length).toBeGreaterThan(withoutDrop.length);
+    const avecDrop = trace([{ start: 4, end: 8, strength: 1 }]);
+    const sansDrop = trace([{ start: 40, end: 44, strength: 1 }]);
+    // L'impact se voit toujours : le wash et le lavage partent bien.
+    expect(avecDrop.join("|")).not.toBe(sansDrop.join("|"));
+
+    // Une barre est un rectangle ÉTROIT. Aucune famille n'en dessine, sauf la
+    // sur-couche que l'on vient de retirer : elle en alignait une vingtaine en
+    // bas de l'écran, à chaque montée du morceau.
+    const barres = (operations: string[]) =>
+      operations.filter((operation) => {
+        const m = /^fillRect:([\d.]+),([\d.]+),([\d.]+),([\d.]+)$/.exec(operation);
+        return m !== null && Number(m[3]) < 320 * 0.5;
+      });
+    expect(barres(avecDrop)).toHaveLength(0);
+    expect(barres(sansDrop)).toHaveLength(0);
   });
 
-  test("le mode reduit supprime la sur-couche de drop", () => {
+  test("le mode reduit supprime le lavage de l'impact", () => {
     const data = analysis({ builds: [{ start: 4, end: 8, strength: 1 }] });
     const view = new TrackView(data);
     const plan = buildShowPlan(data, true);
