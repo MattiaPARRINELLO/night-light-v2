@@ -22,6 +22,17 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 - Le schéma d'analyse passe en **version 2** (sections enrichies) ; la détection
   de structure ajoute une phase d'analyse (dépendance `msaf`).
 
+### Corrigé
+
+- **Détection du morceau joué** : un lecteur qui n'expose pas l'artiste
+  (fichiers locaux, lecteurs partiels) était ignoré, l'indicateur « Lecteur
+  détecté » restait caché et la résolution automatique ne partait jamais.
+- La conversion des champs du suivi du lecteur (`position_sec`, `duration_sec`,
+  `updated_at`) est corrigée : le show reprend à la position du lecteur et la
+  durée est transmise à la résolution.
+- Une résolution automatique qui échoue (morceau absent du catalogue, Deezer non
+  configuré) ne remplace plus le show en cours par l'écran d'erreur.
+
 ## [2.0.0]
 
 ### Ajouté

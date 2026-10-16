@@ -276,12 +276,39 @@ export interface NowPlayingResponse {
   error?: string;
 }
 
+/**
+ * Convertit la charge utile serveur (snake_case) vers le type de l'interface.
+ * Sans ce passage, `positionSec`, `durationSec` et `updatedAt` restent
+ * indéfinis : le show ne reprend jamais à la position du lecteur et la durée du
+ * morceau n'est pas transmise à la résolution.
+ */
+export function normalizeNowPlaying(raw: Record<string, unknown>): NowPlayingResponse {
+  const numberOrNull = (value: unknown): number | null => {
+    if (value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return {
+    available: Boolean(raw.available),
+    player: String(raw.player ?? ""),
+    status: String(raw.status ?? "unknown"),
+    title: String(raw.title ?? ""),
+    artist: String(raw.artist ?? ""),
+    album: String(raw.album ?? ""),
+    durationSec: numberOrNull(raw.duration_sec),
+    positionSec: numberOrNull(raw.position_sec),
+    updatedAt: numberOrNull(raw.updated_at) ?? 0,
+    ambiguous: Boolean(raw.ambiguous),
+    error: typeof raw.error === "string" ? raw.error : undefined,
+  };
+}
+
 export async function fetchNowPlaying(signal?: AbortSignal): Promise<NowPlayingResponse> {
   const response = await fetch("/api/now-playing", { signal });
   if (!response.ok) {
     throw new ApiError("Lecteur indisponible.", "now_playing_unavailable", undefined, response.status);
   }
-  return (await parseJson(response)) as NowPlayingResponse;
+  return normalizeNowPlaying((await parseJson(response)) as Record<string, unknown>);
 }
 
 export interface PlaybackPositionResponse {

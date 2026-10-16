@@ -6,6 +6,7 @@
 import type { App } from "./app";
 import { ApiError, fetchNowPlaying, resolveAndAnalyze } from "../core/api";
 import { dbgThrottled } from "../core/debug";
+import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
 
 declare module "./app" {
@@ -120,15 +121,19 @@ export function installResolve(Target: { prototype: App }): void {
       if (seq !== this.resolveSeq) return;
       if (error instanceof ApiError && error.code === "aborted") {
         this.debug("analyse", "recherche annulée par l'utilisateur");
-        this.backToDrop();
+        // Une résolution automatique interrompue (morceau sauté) ne doit pas
+        // renvoyer l'utilisateur à l'écran de dépôt : le show continue.
+        if (!auto) this.backToDrop();
         return;
       }
       const message = error instanceof Error ? error.message : "Erreur inconnue pendant la résolution.";
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
       // Une résolution automatique qui échoue est une situation normale (le
-      // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur.
+      // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur. Elle ne
+      // doit donc pas remplacer le show en cours par l'écran d'erreur.
       this.debug("attention", "morceau non récupéré automatiquement", { message, detail });
+      if (auto) return;
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
       showScreen("error");
       status.hidden = false;
@@ -175,25 +180,20 @@ export function installResolve(Target: { prototype: App }): void {
   Target.prototype.updateNowPlayingUI = function (this: App): void {
     const status = document.getElementById("resolve-detected");
     if (status === null) return;
-    const data = this.nowPlaying;
-    if (data === null || !data.available || data.title === "" || data.artist === "") {
+    const label = detectedTrackLabel(this.nowPlaying);
+    if (label === null) {
       status.hidden = true;
       return;
     }
     status.hidden = false;
     status.classList.remove("is-error");
-    if (data.ambiguous) {
-      status.textContent = "Plusieurs lecteurs détectés. Import manuel recommandé.";
-      return;
-    }
-    status.textContent = `Lecteur détecté : ${data.title} — ${data.artist}${data.status === "playing" ? " (lecture)" : " (pause)"}`;
+    status.textContent = label;
   };
 
   Target.prototype.maybeAutoResolve = async function (this: App): Promise<void> {
     const data = this.nowPlaying;
-    if (data === null || !data.available || data.ambiguous || data.status !== "playing") return;
-    if (data.title.trim() === "" || data.artist.trim() === "") return;
-    const key = `${data.title.trim()}|${data.artist.trim()}`;
+    if (data === null || !shouldAutoResolve(data)) return;
+    const key = detectedTrackKey(data);
     if (key === this.lastAutoTrackKey) return;
     // Le morceau a changé. Si une résolution automatique tournait encore pour le
     // morceau précédent — qu'on vient de sauter —, on l'abandonne : c'est le
