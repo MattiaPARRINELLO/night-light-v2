@@ -425,7 +425,12 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
   // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
   // remarque à peine. Choisie une fois, tenue du début à la fin.
-  const fond = CALM_FAMILIES[Math.floor(hash01(seed * 31 + 7) * CALM_FAMILIES.length)] ?? "waves";
+  // Un fond fait partie de l'écran du début à la fin : s'il anime une figure
+  // centrée et pulsée (les anneaux), elle tourne en boucle pendant tout le
+  // morceau et finit par gêner. Le fond se prend donc parmi les familles
+  // calmes qui n'imposent pas cet effet de cercle permanent.
+  const backdropFamilies = CALM_FAMILIES.filter((family) => family !== "rings");
+  const fond = backdropFamilies[Math.floor(hash01(seed * 31 + 7) * backdropFamilies.length)] ?? "waves";
 
   const scenes: Scene[] = [];
   let previousHue = -999;
