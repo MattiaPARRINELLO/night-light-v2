@@ -12,7 +12,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from server import structure
-from server.structure import StructureSegment, _coalesce, _letters, estimate_structure
+from server.structure import (
+    StructureSegment,
+    _coalesce,
+    _group_sections,
+    _letters,
+    estimate_structure,
+)
 from tests.support.make_fixture import write_structured_track
 
 
@@ -30,6 +36,33 @@ def _describe(track: Path) -> tuple[np.ndarray, list[float], int, float]:
 
 def test_letters_ordonnees_par_premiere_apparition() -> None:
     assert _letters(["2.0", "1.0", "2.0", "0.0"]) == ["A", "B", "A", "C"]
+
+
+def test_group_sections_garde_plusieurs_groupes_repetes() -> None:
+    """Régression : un seuil trop large fondait tous les passages en un seul groupe.
+
+    Onze sections dont trois paires partagent leur matériau : le regroupement
+    doit retrouver au moins deux groupes répétés (un couplet à côté du refrain),
+    pas un unique groupe géant — sinon le morceau n'aurait aucun couplet.
+    """
+    rng = np.random.default_rng(0)
+    dim = 20
+    centers = [rng.normal(0, 4, dim) for _ in range(3)]
+    slots: list[np.ndarray | None] = [None] * 11
+    for first, second, center in ((1, 5, 0), (3, 6, 1), (4, 9, 2)):
+        slots[first] = centers[center] + rng.normal(0, 0.6, dim)
+        slots[second] = centers[center] + rng.normal(0, 0.6, dim)
+    for index, slot in enumerate(slots):
+        if slot is None:
+            slots[index] = rng.normal(0, 4, dim) + rng.normal(0, 8, dim)
+    features = np.asarray(slots)
+
+    groups = _group_sections(features)
+    counts: dict[int, int] = {}
+    for group in groups:
+        counts[group] = counts.get(group, 0) + 1
+    repeated = [group for group, count in counts.items() if count >= 2]
+    assert len(repeated) >= 2
 
 
 def test_coalesce_absorbe_les_blocs_trop_courts() -> None:

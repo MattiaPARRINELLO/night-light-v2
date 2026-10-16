@@ -42,7 +42,13 @@ _FALLBACK_STEP_SEC = 2.0
 # Seuil de rapprochement : une section rejoint un groupe si sa distance au
 # centre de ce groupe descend sous cette fraction de l'étalement typique des
 # sections du morceau. Relatif, donc valable pour tous les morceaux.
-_GROUP_THRESHOLD = 0.8
+#
+# La référence (médiane des distances entre sections) mesure l'écart entre deux
+# passages *différents* : c'est la distance au hasard. La moitié de cet écart
+# sépare donc le matériau partagé du matériau distinct. Au-delà, des sections
+# sans rapport se fondent dans un même groupe, le morceau n'a plus qu'un seul
+# groupe répété et `assign_roles` ne peut plus dégager de couplet.
+_GROUP_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -146,7 +152,8 @@ def _group_sections(section_features: np.ndarray) -> list[int]:
     Chaque section est décrite par la moyenne de ses temps forts (harmonie +
     timbre). On normalise chaque descripteur (z-score) pour équilibrer chroma et
     MFCC, puis on rattache chaque section au groupe le plus proche tant qu'elle
-    reste sous un seuil dérivé de l'étalement du morceau.
+    reste sous un seuil dérivé de l'étalement du morceau : la moitié de la
+    distance typique entre deux passages distincts.
     """
     count = len(section_features)
     if count == 0:
