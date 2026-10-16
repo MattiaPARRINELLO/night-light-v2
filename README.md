@@ -131,6 +131,7 @@ Réellement calculé par librosa sur les échantillons décodés (22 050 Hz, STF
 | basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée |
 | énergie globale | RMS + bandes, normalisation logarithmique (reste lisible dans les passages modérés) |
 | sections | regroupement agglomératif de MFCC + chroma, puis étiquetage calme/montée/intense/descente/silence |
+| structure (couplet/refrain) | chroma + MFCC agrégés par temps fort, regroupement agglomératif, puis rapprochement des sections au matériau proche (groupe A, B…) |
 | montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée |
 
 Toutes les courbes sont envoyées en points `[secondes, 0..1]` à 20 Hz — compacts et
@@ -144,8 +145,9 @@ directement échantillonnables depuis le navigateur.
   percussion marquée (ambient), elle peut désigner la moitié ou le double du tempo ressenti.
   Le spectacle s'appuie donc aussi sur les courbes d'énergie et de bandes, pas seulement sur
   les temps forts.
-- **Sections** : un regroupement automatique, pas une annotation musicale. Il donne des
-  ambiances cohérentes, pas une structure « couplet / refrain ».
+- **Sections et structure** : un regroupement automatique, pas une annotation musicale. Les
+  groupes « couplet / refrain » sont déduits de la similarité du matériau (harmonie + timbre)
+  entre sections : c'est une lecture plausible et stable, pas une vérité d'annotation.
 - La lecture dans le navigateur dépend des codecs du navigateur : si un morceau analysé
   n'est pas lisible, l'application le dit et propose un format plus sûr (WAV, MP3).
 - **Récupération Deezer** : la recherche de streamrip ne renvoie pas la durée d'un
@@ -362,6 +364,7 @@ server/
   config.py             réglages lus dans l'environnement
   sniff.py              détection du format réel par octets
   analysis.py           moteur librosa (décodage, courbes, rythme, sections, montées)
+  structure.py          groupes couplet/refrain (chroma + MFCC par temps fort)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
   retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation

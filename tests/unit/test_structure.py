@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import librosa
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -14,12 +16,16 @@ from server.structure import StructureSegment, _coalesce, _letters, estimate_str
 from tests.support.make_fixture import write_structured_track
 
 
-def msaf_disponible() -> bool:
-    try:
-        structure._load_msaf()
-    except Exception:  # noqa: BLE001 - on saute le test si msaf est absent/cassé
-        return False
-    return True
+def _describe(track: Path) -> tuple[np.ndarray, list[float], int, float]:
+    """Spectre, temps forts et durée d'un fichier, comme `analysis.py` les fournit."""
+    y, sr = librosa.load(track, sr=22050, mono=True)
+    spectrum = np.abs(librosa.stft(y, n_fft=structure.N_FFT, hop_length=structure.HOP_LENGTH))
+    _, beat_frames = librosa.beat.beat_track(y=y, sr=sr, hop_length=structure.HOP_LENGTH)
+    beats = [
+        float(t)
+        for t in librosa.frames_to_time(beat_frames, sr=sr, hop_length=structure.HOP_LENGTH)
+    ]
+    return spectrum, beats, sr, float(len(y) / sr)
 
 
 def test_letters_ordonnees_par_premiere_apparition() -> None:
@@ -40,12 +46,12 @@ def test_coalesce_absorbe_les_blocs_trop_courts() -> None:
     ]
 
 
-@pytest.mark.skipif(not msaf_disponible(), reason="msaf indisponible")
 def test_structure_repetitive_detectee(tmp_path: Path) -> None:
     track = tmp_path / "structure.wav"
     write_structured_track(track, duration_per_block=12.0)
+    spectrum, beats, sr, duration = _describe(track)
 
-    segments = estimate_structure(track)
+    segments = estimate_structure(spectrum, beats, sr, duration)
     assert segments is not None, "un morceau A-B-A-B doit être segmenté"
     assert len(segments) >= 3
 
@@ -56,6 +62,12 @@ def test_structure_repetitive_detectee(tmp_path: Path) -> None:
 
     # Les blocs se suivent, couvrent le morceau et ne se recouvrent pas.
     assert segments[0].start == 0.0
+    assert segments[-1].end == duration
     for previous, current in zip(segments, segments[1:], strict=False):
         assert current.start == pytest.approx(previous.end, abs=0.01)
         assert current.end > current.start
+
+
+def test_morceau_trop_court_sans_structure() -> None:
+    spectrum = np.ones((structure.N_FFT // 2 + 1, 50), dtype=np.float32)
+    assert estimate_structure(spectrum, [], 22050, 10.0) is None

@@ -5,51 +5,44 @@ le refrain est le même matériau musical à plusieurs endroits, le couplet auss
 Savoir qu'une section est la *répétition* d'une autre permet de lui donner le
 même éclairage (un refrain doit se reconnaître) et de doser son énergie.
 
-Le découpage s'appuie sur l'algorithme de structure musicale de `msaf`, qui
-renvoie à la fois les frontières et un **groupe** (étiquette) par section : deux
-sections étiquetées pareil sont le même passage rejoué.
+Le découpage se fait **en local**, avec librosa, sur le spectre et les temps
+forts déjà calculés par l'analyse (`server/analysis.py`) : aucune source n'est
+rechargée, aucun HPSS ni beat-tracking redondant. On décrit chaque temps fort par
+son chroma (harmonie) et ses MFCC (timbre), on segmente par regroupement
+agglomératif, puis on rapproche les sections qui partagent le même matériau pour
+leur donner une lettre de groupe (A, B…).
 
-`msaf` 0.1.80 (dernière version) est resté sur scipy < 1.12 : il fait
-`from scipy import inf`, un attribut retiré depuis. On le réinjecte avant
-l'import (voir `_load_msaf`). Rien ici n'est fatal à l'analyse : si msaf manque
-ou échoue, on renvoie `None` et l'analyse garde son découpage de repli.
+La fonction est volontairement sans état et à repli : si le morceau est trop
+court ou trop uniforme pour qu'une répétition se dégage, elle renvoie `None` et
+l'analyse garde son découpage de sections de repli.
 """
 
 from __future__ import annotations
 
-import logging
-import shutil
-import tempfile
-import threading
-import warnings
-from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
 
+import librosa
 import numpy as np
-import scipy
 
-_LOGGER = logging.getLogger("night-light.structure")
+# Doivent correspondre au STFT de `server/analysis.py` : on réutilise son spectre.
+HOP_LENGTH = 512
+N_FFT = 2048
+N_MELS = 64
+N_MFCC = 13
 
-# `msaf.config` est global : deux analyses simultanées se marcheraient dessus en
-# se partageant le même dossier temporaire. Le verrou sérialise l'appel.
-_MSAF_LOCK = threading.Lock()
-
-# Combinaison d'algorithmes retenue : `olda` (frontières) et `cnmf` (étiquettes).
-# Testée sur des morceaux A-B-A-B, elle regroupe correctement les répétitions,
-# là où les algorithmes par défaut de msaf renvoient des étiquettes vides sur du
-# matériau synthétique.
-BOUNDARIES_ID = "olda"
-LABELS_ID = "cnmf"
-
-# Longueur minimale d'un bloc : en dessous, msaf a découpé du souffle et la
-# « section » n'a pas de sens musical. On la fusionne avec sa voisine.
+# Longueur minimale d'un bloc : en dessous, c'est du souffle découpé, pas une
+# section musicale. On la fusionne avec sa voisine.
 MIN_SEGMENT_SEC = 2.5
-# En dessous de cette durée, msaf refuse de segmenter (« Audio file too short »)
-# et ne rend que les bornes début/fin : on s'épargne l'appel.
+# En dessous de cette durée, il n'y a pas de structure à apprendre d'un morceau.
 MIN_STRUCTURE_SEC = 30.0
 # Nombre minimal de blocs pour parler de structure (au moins trois passages…).
 _MIN_SEGMENTS = 3
+# Pas du repli (en secondes) quand aucun temps fort n'a été détecté.
+_FALLBACK_STEP_SEC = 2.0
+# Seuil de rapprochement : une section rejoint un groupe si sa distance au
+# centre de ce groupe descend sous cette fraction de l'étalement typique des
+# sections du morceau. Relatif, donc valable pour tous les morceaux.
+_GROUP_THRESHOLD = 0.8
 
 
 @dataclass(frozen=True)
@@ -63,51 +56,15 @@ class StructureSegment:
     group: str
 
 
-def _load_msaf():
-    """Importe msaf en réinjectant les attributs scipy retirés depuis 1.12."""
-    if not hasattr(scipy, "inf"):
-        scipy.inf = np.inf  # type: ignore[attr-defined]
-    # msaf importe `scipy.misc` (retiré) et fait jaser jsonschema : bruit inutile
-    # dans les journaux du serveur, l'import reste fonctionnel.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        import msaf  # noqa: PLC0415 - l'import doit suivre le correctif ci-dessus
-
-    return msaf
-
-
-def warmup() -> None:
-    """Charge msaf au démarrage du serveur.
-
-    L'import (et le shim scipy) prend quelques secondes : le payer au lancement
-    évite de bloquer la première analyse, dont la barre de progression resterait
-    sinon figée pendant l'import.
-    """
-    with suppress(Exception):
-        _load_msaf()
-
-
-def _process(path: Path, boundaries_id: str, labels_id: str):
-    """Appelle msaf dans un dossier temporaire isolé, à l'abri du répertoire courant.
-
-    Sans ça, msaf écrit ses features et ses estimations (`.features_msaf_tmp.json`,
-    `estimations/*.jams`) dans le répertoire courant du serveur. Le fichier de
-    features est propre à chaque appel : le laisser partagé ferait réutiliser les
-    features d'un morceau précédent, identiques en apparence mais fausses.
-    """
-    msaf = _load_msaf()
-    work_dir = Path(tempfile.mkdtemp(prefix="night-light-msaf-"))
-    try:
-        with _MSAF_LOCK:
-            msaf.config.features_tmp_file = str(work_dir / "features.json")
-            msaf.config.dataset.estimations_dir = str(work_dir / "estimations")
-            return msaf.process(str(path), boundaries_id=boundaries_id, labels_id=labels_id)
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+def section_count(duration: float) -> int:
+    """Nombre de sections visées : environ une section toutes les 30 secondes,
+    avec un minimum pour les morceaux courts."""
+    target = round(duration / 30.0) + 2 + (1 if duration < 60 else 0)
+    return int(max(3, min(14, target)))
 
 
 def _letters(labels: list[object]) -> list[str]:
-    """Traduit les étiquettes brutes de msaf en lettres ordonnées A, B, C…"""
+    """Traduit des étiquettes brutes en lettres ordonnées A, B, C…"""
     seen: dict[str, str] = {}
     out: list[str] = []
     for label in labels:
@@ -138,42 +95,143 @@ def _coalesce(segments: list[StructureSegment]) -> list[StructureSegment]:
     return out
 
 
-def estimate_structure(
-    path: Path,
-    duration: float | None = None,
-    boundaries_id: str = BOUNDARIES_ID,
-    labels_id: str = LABELS_ID,
-) -> list[StructureSegment] | None:
-    """Estime les blocs répétés d'un fichier audio, ou `None` si indécidable.
+def _frame_features(spectrum: np.ndarray, sr: int, hop_length: int) -> np.ndarray:
+    """Matrice de description par trame : chroma (harmonie) puis MFCC (timbre).
 
-    `None` est un résultat normal : morceau trop court, msaf absent ou en échec,
-    découpage dégénéré, ou aucun bloc qui se répète — dans ce cas la structure
-    n'apprendrait rien et l'analyse garde son découpage de repli.
+    On réutilise le spectre de l'analyse : pas de source rechargée. Les MFCC sont
+    normalisés par coefficient pour que ni le timbre ni l'harmonie n'écrase
+    l'autre au moment de comparer deux sections.
     """
-    if duration is not None and duration < MIN_STRUCTURE_SEC:
-        return None
-    try:
-        boundaries, labels = _process(path, boundaries_id, labels_id)
-    except Exception as error:  # noqa: BLE001 - la structure est un bonus, jamais fatal
-        _LOGGER.warning("Structure indisponible (%s) : %s", path.name, error)
+    chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=hop_length)
+    mel = librosa.feature.melspectrogram(
+        S=spectrum**2, sr=sr, n_fft=N_FFT, hop_length=hop_length, n_mels=N_MELS
+    )
+    mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=N_MFCC)
+    return np.vstack([librosa.util.normalize(mfcc, axis=1), chroma])
+
+
+def _beat_edges(
+    beats: list[float], duration: float, n_frames: int, sr: int, hop_length: int
+) -> np.ndarray:
+    """Bornes de trames de chaque temps fort, commençant à 0.
+
+    Sans temps fort exploitable, on retombe sur une grille régulière : le
+    découpage perd en finesse mais reste possible.
+    """
+    interior = np.asarray([beat for beat in beats if 0.0 < beat < duration], dtype=float)
+    if interior.size >= _MIN_SEGMENTS - 1:
+        frames = librosa.time_to_frames(interior, sr=sr, hop_length=hop_length)
+    else:
+        step = max(1, int(round(_FALLBACK_STEP_SEC * sr / hop_length)))
+        frames = np.arange(step, n_frames, step)
+    frames = np.unique(frames[(frames > 0) & (frames < n_frames)]).astype(int)
+    return np.concatenate(([0], frames, [n_frames]))
+
+
+def _sync(features: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    """Agrège les trames entre deux bornes (moyenne), une colonne par segment."""
+    columns = [
+        features[:, start:end].mean(axis=1)
+        for start, end in zip(edges[:-1], edges[1:], strict=False)
+        if end > start
+    ]
+    if not columns:
+        return np.zeros((features.shape[0], 0))
+    return np.asarray(columns).T
+
+
+def _group_sections(section_features: np.ndarray) -> list[int]:
+    """Rapproche les sections au matériau musical proche et les numérote.
+
+    Chaque section est décrite par la moyenne de ses temps forts (harmonie +
+    timbre). On normalise chaque descripteur (z-score) pour équilibrer chroma et
+    MFCC, puis on rattache chaque section au groupe le plus proche tant qu'elle
+    reste sous un seuil dérivé de l'étalement du morceau.
+    """
+    count = len(section_features)
+    if count == 0:
+        return []
+    mean = section_features.mean(axis=0, keepdims=True)
+    std = section_features.std(axis=0, keepdims=True)
+    scaled = (section_features - mean) / (std + 1e-9)
+
+    if count == 1:
+        return [0]
+    pair = np.triu_indices(count, 1)
+    spread = float(np.median(np.linalg.norm(scaled[pair[0]] - scaled[pair[1]], axis=1)))
+    threshold = max(_GROUP_THRESHOLD * spread, 1e-6)
+
+    groups: list[int] = []
+    centroids: list[np.ndarray] = []
+    for vector in scaled:
+        if centroids:
+            deltas = [float(np.linalg.norm(vector - centroid)) for centroid in centroids]
+            nearest = int(np.argmin(deltas))
+            if deltas[nearest] <= threshold:
+                groups.append(nearest)
+                centroids[nearest] = (centroids[nearest] + vector) / 2.0
+                continue
+        centroids.append(vector.copy())
+        groups.append(len(centroids) - 1)
+    return groups
+
+
+def estimate_structure(
+    spectrum: np.ndarray,
+    beats: list[float],
+    sr: int,
+    duration: float,
+    hop_length: int = HOP_LENGTH,
+) -> list[StructureSegment] | None:
+    """Estime les blocs répétés d'un morceau, ou `None` si indécidable.
+
+    `None` est un résultat normal : morceau trop court, aucune répétition nette,
+    ou découpage dégénéré — dans ce cas la structure n'apprendrait rien et
+    l'analyse garde son découpage de repli.
+    """
+    if duration < MIN_STRUCTURE_SEC or spectrum.size == 0:
         return None
 
-    times = [float(value) for value in np.atleast_1d(boundaries)]
-    groups = _letters(list(np.atleast_1d(labels)))
-    if len(groups) != len(times) - 1:
+    features = _frame_features(spectrum, sr, hop_length)
+    n_frames = features.shape[1]
+    edges = _beat_edges(beats, duration, n_frames, sr, hop_length)
+    sync = _sync(features, edges)
+    n_columns = sync.shape[1]
+    if n_columns < _MIN_SEGMENTS:
         return None
 
-    raw: list[StructureSegment] = []
-    for index in range(len(times) - 1):
-        start = times[index]
-        end = times[index + 1]
-        if end - start <= 0.3:
-            continue
-        raw.append(StructureSegment(start=round(start, 3), end=round(end, 3), group=groups[index]))
+    count = min(section_count(duration), max(_MIN_SEGMENTS, n_columns // 2))
+    bounds = np.unique(
+        np.concatenate(([0], librosa.segment.agglomerative(sync, count), [n_columns]))
+    )
+    if bounds.size < _MIN_SEGMENTS:
+        return None
+
+    column_times = librosa.frames_to_time(edges[:-1], sr=sr, hop_length=hop_length)
+    times = np.append(column_times, duration)
+
+    section_features = np.asarray(
+        [
+            sync[:, bounds[index] : bounds[index + 1]].mean(axis=1)
+            for index in range(len(bounds) - 1)
+        ]
+    )
+    groups = _letters(_group_sections(section_features))
+
+    # On ne supprime aucun bloc, même minuscule : `_coalesce` fusionne les
+    # artefacts avec leur voisin, et cela garantit que le premier bloc commence
+    # à 0 et que le dernier finit avec le morceau.
+    raw = [
+        StructureSegment(
+            start=round(float(times[bounds[index]]), 3),
+            end=round(float(times[bounds[index + 1]]), 3),
+            group=group,
+        )
+        for index, group in enumerate(groups)
+    ]
 
     segments = _coalesce(raw)
     repeated = len({segment.group for segment in segments}) < len(segments)
     if len(segments) < _MIN_SEGMENTS or not repeated:
-        _LOGGER.info("Pas de structure répétitive exploitable dans %s", path.name)
         return None
     return segments

@@ -11,10 +11,6 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
-    # Découverte de la structure répétitive (couplet, refrain…). Voir
-    # `server/structure.py` : un shim de compatibilité est nécessaire car msaf
-    # 0.1.80 fait `from scipy import inf`, retiré depuis scipy 1.12.
-    "msaf>=0.1.80",
 ]
 
 [dependency-groups]
@@ -38,12 +34,6 @@ ignore = ["B008"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-# msaf (dernière version, 2023) s'appuie sur des API scipy/jsonschema dépréciées :
-# ces avertissements ne concernent pas notre code.
-filterwarnings = [
-    "ignore::DeprecationWarning:msaf.*",
-    "ignore::DeprecationWarning:jsonschema.*",
-]
 
 [tool.uv]
 package = false
