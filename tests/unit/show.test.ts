@@ -531,3 +531,56 @@ describe("changements justifies par la musique", () => {
     expect(new Set(plan.scenes.map((scene) => scene.reason)).size).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("répétition des passages (couplet / refrain)", () => {
+  /** A-B-A-B : deux couplets (A) et deux refrains (B) bien identifiés. */
+  const morceau = (refrainEnergy = 0.9) =>
+    analysis({
+      duration: 120,
+      sections: [
+        { start: 0, end: 20, label: "calme", energy: 0.2, group: "A", kind: "couplet", occurrence: 1 },
+        { start: 20, end: 40, label: "intense", energy: refrainEnergy, group: "B", kind: "refrain", occurrence: 1 },
+        { start: 40, end: 60, label: "calme", energy: 0.25, group: "A", kind: "couplet", occurrence: 2 },
+        { start: 60, end: 80, label: "intense", energy: refrainEnergy, group: "B", kind: "refrain", occurrence: 2 },
+      ],
+    });
+
+  const scenesIn = (plan: ShowPlan, start: number, end: number) =>
+    plan.scenes.filter((scene) => scene.start >= start && scene.start < end);
+
+  test("deux passages du même groupe partagent famille et teinte", () => {
+    const plan = buildShowPlan(morceau(), false);
+    const couplets = [...scenesIn(plan, 0, 20), ...scenesIn(plan, 40, 60)];
+    const refrains = [...scenesIn(plan, 20, 40), ...scenesIn(plan, 60, 80)];
+    expect(couplets.length).toBeGreaterThan(1);
+    expect(refrains.length).toBeGreaterThan(1);
+    // Un couplet doit se reconnaître d'une occurrence à l'autre…
+    expect(new Set(couplets.map((scene) => scene.family)).size).toBe(1);
+    expect(new Set(couplets.map((scene) => scene.palette.hue)).size).toBe(1);
+    // … et un refrain aussi.
+    expect(new Set(refrains.map((scene) => scene.family)).size).toBe(1);
+    expect(new Set(refrains.map((scene) => scene.palette.hue)).size).toBe(1);
+    // Deux groupes différents ne se ressemblent pas pour autant.
+    expect(refrains[0]!.palette.hue).not.toBe(couplets[0]!.palette.hue);
+  });
+
+  test("le refrain s'allume : humeur explosive et complémentaire", () => {
+    const plan = buildShowPlan(morceau(), false);
+    const refrains = [...scenesIn(plan, 20, 40), ...scenesIn(plan, 60, 80)];
+    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    for (const scene of refrains) {
+      expect(scene.mood).toBe("explosif");
+      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+    }
+  });
+
+  test("un refrain peu énergique est tout de même poussé (hors mode réduit)", () => {
+    const timide = morceau(0.4);
+    const normal = scenesIn(buildShowPlan(timide, false), 20, 40);
+    expect(normal.length).toBeGreaterThan(0);
+    for (const scene of normal) expect(scene.mood).toBe("explosif");
+    // En mode réduit, on ne force pas : l'énergie mesurée reprend la main.
+    const reduit = scenesIn(buildShowPlan(timide, true), 20, 40);
+    for (const scene of reduit) expect(scene.mood).not.toBe("explosif");
+  });
+});
