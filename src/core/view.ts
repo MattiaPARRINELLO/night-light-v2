@@ -1,7 +1,28 @@
-import type { Analysis, Build, Section } from "../types";
-import { clamp01, lowerBoundNumbers, sampleAt } from "./series";
+import type { Analysis, Build, Point, Section } from "../types";
+import { clamp01, lowerBound, lowerBoundNumbers, sampleAt } from "./series";
 
 const BEAT_TAU = 0.11;
+
+/**
+ * Aire cumulée sous une courbe `[temps, valeur]`, point par point.
+ *
+ * Sert à intégrer une vitesse qui dépend de l'énergie : la phase d'une onde est
+ * l'intégrale de sa vitesse, jamais `temps × vitesse`. Cette seconde forme fait
+ * sauter la phase d'autant plus que le morceau avance — la moindre variation
+ * d'énergie emballe alors l'effet. Les courbes sont linéaires entre deux points,
+ * donc chaque segment se mesure exactement, comme un trapèze.
+ */
+function cumulativeArea(points: Point[]): number[] {
+  const area: number[] = points.map(() => 0);
+  for (let index = 1; index < points.length; index += 1) {
+    const before = points[index - 1];
+    const current = points[index];
+    if (before === undefined || current === undefined) continue;
+    const span = current[0] - before[0];
+    area[index] = (area[index - 1] ?? 0) + (span > 0 ? (before[1] + current[1]) * 0.5 * span : 0);
+  }
+  return area;
+}
 
 /**
  * Vue de lecture d'une analyse : accès O(log n) à l'état musical à un instant
@@ -22,6 +43,8 @@ export class TrackView {
   /** Montées triées par fin, pour ne balayer que la fenêtre utile. */
   private readonly buildsByEnd: Build[];
   private readonly buildEnds: number[];
+  /** Aire cumulée sous la courbe d'énergie, pour l'intégrer en O(log n). */
+  private readonly energyArea: number[];
 
   constructor(analysis: Analysis) {
     this.analysis = analysis;
@@ -35,10 +58,34 @@ export class TrackView {
     this.buildStarts = this.buildsByStart.map((build) => build.start);
     this.buildsByEnd = [...analysis.builds].sort((left, right) => left.end - right.end);
     this.buildEnds = this.buildsByEnd.map((build) => build.end);
+    this.energyArea = cumulativeArea(analysis.energy);
   }
 
   energyAt(t: number): number {
     return sampleAt(this.analysis.energy, t);
+  }
+
+  /**
+   * Intégrale de l'énergie de 0 à `t`, en valeur·seconde.
+   *
+   * Permet de faire dépendre une vitesse de l'énergie sans que la phase
+   * résultante s'emballe : la vitesse instantanée vaut alors exactement
+   * `énergie(t)`, quelle que soit la position dans le morceau.
+   */
+  energyIntegralAt(t: number): number {
+    const points = this.analysis.energy;
+    if (points.length === 0 || t <= 0) return 0;
+    const index = lowerBound(points, t);
+    if (index < 0) return 0;
+    const base = this.energyArea[index] ?? 0;
+    const current = points[index];
+    const next = points[index + 1];
+    if (current === undefined || next === undefined || next[0] <= current[0] || t <= current[0]) {
+      return base;
+    }
+    const ratio = (t - current[0]) / (next[0] - current[0]);
+    const value = current[1] + (next[1] - current[1]) * ratio;
+    return base + (current[1] + value) * 0.5 * (t - current[0]);
   }
 
   bassAt(t: number): number {

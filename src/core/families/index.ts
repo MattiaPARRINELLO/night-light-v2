@@ -14,6 +14,7 @@ export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBea
 export { contrastHue, lampHue, sceneChord } from "./harmony";
 export { beatSwing, colorFlip, elementEnvelope } from "./tempo";
 export { rowPositions } from "./geometry";
+export { lyreWavePhase } from "./figures";
 export { drawCoreGlow, drawWash } from "./projectors";
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
