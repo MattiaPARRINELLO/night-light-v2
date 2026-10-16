@@ -17,7 +17,7 @@ import {
 import { renderFrame } from "../core/render";
 import { buildShowPlan } from "../core/show";
 import { TrackView } from "../core/view";
-import { setStatus } from "./ui";
+import { setStatus, showScreen } from "./ui";
 import type { Analysis } from "../types";
 
 declare module "./app" {
@@ -169,6 +169,11 @@ export function installSync(Target: { prototype: App }): void {
     if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
     this.syncedTimer = window.setInterval(() => void this.resyncSynced(analysis.duration), 2500);
     this.startSyncedLoop();
+    // Un show calé occupe l'écran de spectacle : sans ce basculement, l'écran
+    // de dépôt restait « actif » et le dashboard annonçait « Écran affiché :
+    // Dépôt » pendant tout le show.
+    showScreen("show");
+    this.resize();
     setStatus(`Show synchronisé lancé : ${this.pendingTitle}.`);
     this.debug("sync", "show synchronisé démarré", {
       titre: this.pendingTitle,

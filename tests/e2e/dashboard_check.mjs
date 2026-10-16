@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8818;
 const API = `http://127.0.0.1:${API_PORT}`;
 const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
@@ -224,6 +224,15 @@ try {
     failures.push(`1er morceau non calé (${un.mode} / ${un.attendu})`);
   }
   if (un.position < 4) failures.push(`1er morceau : position inattendue (${un.position} s)`);
+  // Le show calé occupe l'écran de spectacle : le dashboard doit le voir, sinon
+  // il reste figé sur « Écran affiché : Dépôt » et l'étape Dépôt surlignée.
+  const ecran = await dash.evaluate(() => ({
+    ecran: (document.getElementById("prog-screen")?.textContent ?? "").trim(),
+    stage: document.getElementById("stage-show")?.className ?? "",
+  }));
+  console.log(`écran du dashboard : ${ecran.ecran} · ${ecran.stage}`);
+  if (ecran.ecran !== "Show") failures.push(`le dashboard reste sur l'écran « ${ecran.ecran} » au lieu de Show`);
+  if (!ecran.stage.includes("is-active")) failures.push("l'étape Show n'est pas active dans la chaîne du dashboard");
   const pixelsUn = await pixels(show);
 
   // ---- deuxième morceau, pendant que le premier show tourne
