@@ -56,6 +56,10 @@
               <span id="now-section">—</span>
               <span id="now-energy">—</span>
               <span id="now-build">—</span>
+              <span class="beat-pulse" id="beat-pulse" title="Pulsation au tempo">●</span>
+            </div>
+            <div class="track-progress" aria-label="Progression du morceau">
+              <span class="track-progress-fill" id="track-progress-fill"></span>
             </div>
           </div>
           <div class="track-stats" id="track-stats"></div>
@@ -73,6 +77,7 @@
         </div>
         <p class="panel-note" id="track-note">Courbe d'énergie, courbes de bandes, sections colorées, temps, onsets, montées, curseur du show.</p>
         <div id="track-sections" class="section-list" aria-label="Sections détectées"></div>
+        <div id="upcoming" class="upcoming" aria-label="Prochains événements"></div>
       </section>
 
       <div class="dash-grid">
@@ -93,6 +98,14 @@
             <div><dt>RMS lissé</dt><dd id="val-rms-smooth">—</dd></div>
             <div><dt>Énergie lissée</dt><dd id="val-energy-smooth">—</dd></div>
           </dl>
+          <div class="meters" aria-label="VU-mètres">
+            <div class="meter"><span>RMS</span><i><b id="meter-rms"></b></i></div>
+            <div class="meter"><span>Énergie</span><i><b id="meter-energy"></b></i></div>
+            <div class="meter"><span>Basses</span><i><b id="meter-bass"></b></i></div>
+            <div class="meter"><span>Médiums</span><i><b id="meter-mid"></b></i></div>
+            <div class="meter"><span>Aigus</span><i><b id="meter-high"></b></i></div>
+            <div class="meter"><span>Transitoire</span><i><b id="meter-transient"></b></i></div>
+          </div>
           <canvas id="rms-canvas" width="640" height="150" aria-label="Historique audio multi-courbes"></canvas>
           <p class="panel-note">Spectre instantané + RMS, énergie, bandes sur 60 s</p>
           <div class="spark-grid">

@@ -401,6 +401,7 @@ class Dashboard {
   private analysis: Analysis | null = null;
   private analysisTitle = "";
   private analysisArtist = "";
+  private sectionsSource: Analysis | null = null;
 
   constructor() {
     this.link.onMessage((message) => {
@@ -545,6 +546,20 @@ class Dashboard {
     el<HTMLElement>("val-rms-smooth").textContent = state.smooth.rms.toFixed(3);
     el<HTMLElement>("val-energy-smooth").textContent = state.smooth.energy.toFixed(3);
 
+    const meter = (id: string, value: number): void => {
+      const node = document.getElementById(id);
+      if (node === null) return;
+      const clipped = Math.min(1, Math.max(0, value));
+      node.style.width = `${(clipped * 100).toFixed(0)}%`;
+      node.parentElement?.classList.toggle("is-hot", clipped > 0.82);
+    };
+    meter("meter-rms", state.audio.rms);
+    meter("meter-energy", state.audio.energy);
+    meter("meter-bass", state.audio.bass);
+    meter("meter-mid", state.audio.mid);
+    meter("meter-high", state.audio.high);
+    meter("meter-transient", state.audio.transient);
+
     el<HTMLElement>("capture-state").textContent = state.capture.state || (state.capture.open ? "ouverte" : "fermée");
     el<HTMLElement>("capture-source").textContent = state.capture.source || "—";
     el<HTMLElement>("capture-messages").textContent = String(state.capture.messages);
@@ -642,19 +657,32 @@ class Dashboard {
           ].join("")
         : "";
 
-    // liste des sections
+    // position dans le morceau
+    const trackPositionSec = Math.max(0, state.sync.showMs / 1000);
+
+    // liste des sections (reconstruite seulement quand l'analyse change)
     const sectionHost = el<HTMLElement>("track-sections");
+    if (this.analysis !== this.sectionsSource) {
+      this.sectionsSource = this.analysis;
+      sectionHost.innerHTML =
+        this.analysis === null
+          ? ""
+          : this.analysis.sections
+              .map((section) => {
+                const kind = section.kind ?? section.label;
+                const group = section.group ? ` · groupe ${section.group}` : "";
+                const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
+                return `<div class="section-chip"><span class="chip-kind">${kind}${occurrence}</span><span class="chip-range">${fmtTime(section.start)} → ${fmtTime(section.end)} · énergie ${section.energy.toFixed(2)}${group}</span></div>`;
+              })
+              .join("");
+    }
     if (this.analysis !== null) {
-      sectionHost.innerHTML = this.analysis.sections
-        .map((section) => {
-          const kind = section.kind ?? section.label;
-          const group = section.group ? ` · groupe ${section.group}` : "";
-          const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
-          return `<div class="section-chip"><span class="chip-kind">${kind}${occurrence}</span><span class="chip-range">${fmtTime(section.start)} → ${fmtTime(section.end)} · énergie ${section.energy.toFixed(2)}${group}</span></div>`;
-        })
-        .join("");
-    } else {
-      sectionHost.innerHTML = "";
+      const currentIndex = this.analysis.sections.findIndex(
+        (entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end,
+      );
+      Array.from(sectionHost.children).forEach((child, index) => {
+        child.classList.toggle("is-current", index === currentIndex);
+      });
     }
 
     drawTrack(el<HTMLCanvasElement>("track-canvas"), this.analysis, state);
@@ -662,24 +690,49 @@ class Dashboard {
     // lecture en cours dans le morceau
     if (this.analysis !== null) {
       const duration = Math.max(this.analysis.duration, 0.001);
-      const positionSec = Math.max(0, state.sync.showMs / 1000);
-      const percent = Math.min(100, (positionSec / duration) * 100);
-      const section = this.analysis.sections.find((entry) => positionSec >= entry.start && positionSec < entry.end) ?? null;
-      const energyNow = sampleCurve(this.analysis.energy, positionSec);
-      const nextBuild = this.analysis.builds.find((entry) => entry.end >= positionSec) ?? null;
-      el<HTMLElement>("now-time").textContent = `Position ${fmtTime(positionSec)} / ${fmtTime(this.analysis.duration)}`;
+      const percent = Math.min(100, (trackPositionSec / duration) * 100);
+      const section = this.analysis.sections.find((entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end) ?? null;
+      const energyNow = sampleCurve(this.analysis.energy, trackPositionSec);
+      const nextBuild = this.analysis.builds.find((entry) => entry.end >= trackPositionSec) ?? null;
+      el<HTMLElement>("now-time").textContent = `Position ${fmtTime(trackPositionSec)} / ${fmtTime(this.analysis.duration)}`;
       el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} % du morceau`;
       el<HTMLElement>("now-section").textContent = section ? `Section ${section.kind ?? section.label} (${(section.energy * 100).toFixed(0)} %)` : "Section inconnue";
       el<HTMLElement>("now-energy").textContent = `Énergie actuelle ${energyNow.toFixed(3)}`;
       el<HTMLElement>("now-build").textContent = nextBuild
-        ? `Prochaine montée dans ${fmtTime(Math.max(0, nextBuild.start - positionSec))} (force ${(nextBuild.strength * 100).toFixed(0)} %)`
+        ? `Prochaine montée dans ${fmtTime(Math.max(0, nextBuild.start - trackPositionSec))} (force ${(nextBuild.strength * 100).toFixed(0)} %)`
         : "Aucune montée restante";
+      el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
+
+      const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
+      const pulse = 1 - ((trackPositionSec % beatPeriod) / beatPeriod);
+      const beat = el<HTMLElement>("beat-pulse");
+      beat.style.opacity = String(0.35 + pulse * 0.65);
+      beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
+
+      // prochains événements
+      const events: string[] = [];
+      for (const build of this.analysis.builds.filter((entry) => entry.end >= trackPositionSec).slice(0, 3)) {
+        events.push(
+          `<span class="upcoming-item is-build">Montée dans ${fmtTime(Math.max(0, build.start - trackPositionSec))} → impact dans ${fmtTime(Math.max(0, build.end - trackPositionSec))} · force ${(build.strength * 100).toFixed(0)} %</span>`,
+        );
+      }
+      for (const future of this.analysis.sections.filter((entry) => entry.start > trackPositionSec).slice(0, 3)) {
+        events.push(
+          `<span class="upcoming-item">${future.kind ?? future.label} dans ${fmtTime(future.start - trackPositionSec)} · énergie ${(future.energy * 100).toFixed(0)} %</span>`,
+        );
+      }
+      el<HTMLElement>("upcoming").innerHTML = events.length > 0 ? events.join("") : `<span class="upcoming-item is-muted">Fin du morceau proche</span>`;
     } else {
       el<HTMLElement>("now-time").textContent = "Position —";
       el<HTMLElement>("now-percent").textContent = "—";
       el<HTMLElement>("now-section").textContent = "Aucune analyse";
       el<HTMLElement>("now-energy").textContent = "—";
       el<HTMLElement>("now-build").textContent = "—";
+      el<HTMLElement>("track-progress-fill").style.width = "0%";
+      el<HTMLElement>("upcoming").innerHTML = "";
+      const beat = el<HTMLElement>("beat-pulse");
+      beat.style.opacity = "0.3";
+      beat.style.transform = "scale(0.8)";
     }
 
     // état du programme
