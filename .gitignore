@@ -12,5 +12,10 @@ __pycache__/
 *.shot/
 node_modules/
 
+# Sorties de msaf écrites dans le répertoire courant (voir server/structure.py) :
+# en pratique on les redirige vers un dossier temporaire, ceci est un filet.
+.features_msaf_tmp.json
+estimations/
+
 # Le projet utilise bun (bun.lock) : le lock npm n'est qu'un artefact.
 package-lock.json

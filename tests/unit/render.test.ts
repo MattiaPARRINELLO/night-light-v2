@@ -116,7 +116,7 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
   const beats: number[] = [];
   for (let t = 0; t <= 60; t += 0.5) beats.push(Number(t.toFixed(3)));
   return {
-    schema: 1,
+    schema: 2,
     duration: 60,
     tempo: 120,
     beatCount: beats.length,

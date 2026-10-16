@@ -77,7 +77,7 @@ describe("series", () => {
 describe("analyse factice", () => {
   function fakeAnalysis(overrides: Partial<Analysis> = {}): Analysis {
     return {
-      schema: 1,
+      schema: 2,
       duration: 30,
       tempo: 120,
       beatCount: 0,

@@ -147,6 +147,46 @@ def write_rich_track(path: Path, duration: float = 60.0) -> None:
     sf.write(path, mix.astype(np.float32), SR, subtype="PCM_16")
 
 
+def write_structured_track(path: Path, duration_per_block: float = 12.0) -> None:
+    """Piste A-B-A-B (intro-A-refrain-A-refrain-outro) pour la structure.
+
+    Chaque bloc porte une couleur harmonique (fondamentale) et un gain distincts :
+    les deux blocs »A« et les deux »B« sont donc identiques deux à deux, et la
+    détection de structure doit les regrouper. Le refrain »B« est le plus fort,
+    comme dans un vrai morceau.
+    """
+    sr = SR
+    beat = 0.46875  # 128 BPM
+    rng = np.random.default_rng(17)
+    # (fondamentale, gain) par bloc ; A=verse, B=refrain, I/O=intro/outro.
+    blocks = [
+        ("I", 110.0, 0.25),
+        ("A", 220.0, 0.5),
+        ("B", 165.0, 0.9),
+        ("A", 220.0, 0.5),
+        ("B", 165.0, 0.9),
+        ("O", 110.0, 0.25),
+    ]
+
+    parts: list[np.ndarray] = []
+    for kind, root, gain in blocks:
+        t = np.arange(int(sr * duration_per_block)) / sr
+        kick = np.sin(2 * np.pi * 55 * t) * np.exp(-(((t % beat) / 0.12) ** 2)) * 0.8
+        hat = 0.15 * rng.standard_normal(len(t)) * np.exp(-(((t % (beat / 2)) / 0.03) ** 2))
+        chord = np.zeros_like(t)
+        for ratio in (1.0, 1.26, 1.5):
+            chord += np.sin(2 * np.pi * root * ratio * t) * 0.12
+        rate = 0.5 if kind == "B" else 0.25
+        melody = np.sin(2 * np.pi * root * 2 * t) * 0.15 * (1 + np.sin(2 * np.pi * rate * t))
+        parts.append((kick + hat + chord + melody) * gain)
+
+    mix = np.concatenate(parts)
+    peak = float(np.max(np.abs(mix)))
+    if peak > 0:
+        mix = mix / peak * 0.9
+    sf.write(path, mix.astype(np.float32), sr, subtype="PCM_16")
+
+
 if __name__ == "__main__":
     import sys
 

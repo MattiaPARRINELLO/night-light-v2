@@ -13,7 +13,7 @@ synchronisé sur la musique.
 
 ```
 morceau (glisser-déposer)
-   → serveur Python : décodage, bandes, tempo, temps forts, sections, montées
+   → serveur Python : décodage, bandes, tempo, temps forts, sections, montées, structure (couplet/refrain)
    → interface (Canvas 2D) : faisceaux, tunnel, particules, vagues, grille, anneaux
         pilotés par la position réelle de lecture (audio.currentTime)
 ```

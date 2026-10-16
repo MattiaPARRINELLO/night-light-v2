@@ -1,4 +1,4 @@
-import type { Analysis } from "../types";
+import type { Analysis, Section } from "../types";
 import { clamp01, hash01, hashString } from "./series";
 
 export type FamilyId =
@@ -429,7 +429,11 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
 
   const scenes: Scene[] = [];
   let previousHue = -999;
-  let paletteTurn = 0;
+  // Mémoire par groupe de structure : deux sections du même matériau musical
+  // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
+  // famille et leur teinte à la première apparition et on les réutilise.
+  const groupFamilies = new Map<string, FamilyId>();
+  const groupHues = new Map<string, number>();
 
   for (let index = 0; index < events.length - 1; index += 1) {
     const event = events[index];
@@ -442,12 +446,30 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     if (end <= start) continue;
 
     const caractere = caractereAt(analysis, start, end);
-    const label = sectionLabelAt(analysis, start);
-    // Un impact de montée impose son humeur : c'est l'événement le plus fort du
-    // morceau, il ne peut pas se retrouver en ambiance calme.
-    const mood = event.reason === "build" ? "explosif" : moodFor(caractere, label);
+    const section = sectionAt(analysis, start);
+    const label = section?.label ?? "intense";
+    const group = section?.group !== undefined && section.group !== "" ? section.group : "";
+    const grouped = group !== "";
+    // Un refrain réclame de l'énergie : c'est là qu'on veut que la salle
+    // s'allume. On lui impose l'humeur explosive, comme un impact de montée.
+    const refrain = section?.kind === "refrain";
+    const mood =
+      event.reason === "build" || (refrain && !reduced) ? "explosif" : moodFor(caractere, label);
     const turn = scenes.length;
-    const family = familyFor(caractere, reduced, turn + hash01(seed + turn) * 0.9);
+    // Identité stable d'un groupe : sert de graine partout où il faut retrouver
+    // la même famille ou la même teinte d'une occurrence à l'autre.
+    const groupSeed = grouped ? hashString(`${seed}|${group}`) : 0;
+
+    let family: FamilyId;
+    const cachedFamily = grouped ? groupFamilies.get(group) : undefined;
+    if (cachedFamily !== undefined) {
+      family = cachedFamily;
+    } else {
+      family = grouped
+        ? familyFor(caractere, reduced, groupSeed + hash01(groupSeed) * 0.9)
+        : familyFor(caractere, reduced, turn + hash01(seed + turn) * 0.9);
+      if (grouped) groupFamilies.set(group, family);
+    }
 
     const calm = CALM_FAMILIES.includes(family);
     const pool = calm ? ALL_FAMILIES : CALM_FAMILIES;
@@ -461,25 +483,33 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     let principale = family;
     if (principale === fond) {
       const memeClasse = CALM_FAMILIES.filter((candidate) => candidate !== fond);
-      principale = memeClasse[Math.floor(hash01(seed * 17 + turn) * memeClasse.length)] ?? "waves";
+      const pickSeed = grouped ? hashString(`${seed}|${group}|fond`) : seed * 17 + turn;
+      principale = memeClasse[Math.floor(hash01(pickSeed) * memeClasse.length)] ?? "waves";
     }
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
-    const fort = mood === "explosif" || (mood === "pulse" && caractere.energy > 0.6);
+    const fort = refrain || mood === "explosif" || (mood === "pulse" && caractere.energy > 0.6);
     const ancre = fort ? track.accent : track.hue;
-    const derive = (hash01(seed + turn * 977) - 0.5) * track.spread;
-    paletteTurn += 1;
+    const derive = grouped
+      ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
+      : (hash01(seed + turn * 977) - 0.5) * track.spread;
     let hue = (ancre + derive + 360) % 360;
-    const delta = ((hue - previousHue + 540) % 360) - 180;
-    if (Math.abs(delta) < MIN_HUE_STEP) {
-      hue = (hue + (delta >= 0 ? MIN_HUE_STEP : -MIN_HUE_STEP) + 360) % 360;
-    }
-    // ...mais il ne doit jamais faire sortir de l'identité du morceau : on
-    // ramène la teinte dans la fenêtre autour de son ancre si besoin.
-    const ecartAncre = ((hue - ancre + 540) % 360) - 180;
-    if (Math.abs(ecartAncre) > track.spread) {
-      hue = (ancre + (ecartAncre > 0 ? track.spread : -track.spread) + 360) % 360;
+    const cachedHue = grouped ? groupHues.get(group) : undefined;
+    if (cachedHue !== undefined) {
+      hue = cachedHue;
+    } else {
+      const delta = ((hue - previousHue + 540) % 360) - 180;
+      if (Math.abs(delta) < MIN_HUE_STEP) {
+        hue = (hue + (delta >= 0 ? MIN_HUE_STEP : -MIN_HUE_STEP) + 360) % 360;
+      }
+      // ...mais il ne doit jamais faire sortir de l'identité du morceau : on
+      // ramène la teinte dans la fenêtre autour de son ancre si besoin.
+      const ecartAncre = ((hue - ancre + 540) % 360) - 180;
+      if (Math.abs(ecartAncre) > track.spread) {
+        hue = (ancre + (ecartAncre > 0 ? track.spread : -track.spread) + 360) % 360;
+      }
+      if (grouped) groupHues.set(group, hue);
     }
     previousHue = hue;
 
@@ -537,11 +567,18 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
   return { duration, seed, scenes, barStarts: barStarts(analysis), track, backdrop: fond };
 }
 
-function sectionLabelAt(analysis: Analysis, t: number): string {
+/** Section musicale contenant l'instant `t`, ou `null`.
+ *
+ * Intervalles semi-ouverts `[start, end)` : à la frontière exacte entre deux
+ * sections, la scène qui démarre appartient à la suivante — sans quoi le
+ * premier plan d'un refrain serait étiqueté comme le couplet qui le précède.
+ */
+function sectionAt(analysis: Analysis, t: number): Section | null {
   for (const section of analysis.sections) {
-    if (t >= section.start && t <= section.end) return section.label;
+    if (t >= section.start && t < section.end) return section;
   }
-  return "intense";
+  const last = analysis.sections[analysis.sections.length - 1];
+  return last !== undefined && t >= last.end ? last : null;
 }
 
 /** Scène active à l'instant `t` (la dernière commencée avant `t`). */
