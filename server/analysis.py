@@ -16,8 +16,7 @@ import librosa
 import numpy as np
 
 from .config import Settings
-from .structure import StructureSegment, estimate_structure
-from .structure import warmup as warmup_structure
+from .structure import StructureSegment, estimate_structure, section_count
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -242,17 +241,10 @@ def detect_rhythm(
 # ---------------------------------------------------------------- sections
 
 
-def _section_count(duration: float) -> int:
-    """Nombre de groupes visés : environ une section toutes les 30 secondes,
-    avec un minimum pour les morceaux courts."""
-    target = round(duration / 30.0) + 2 + (1 if duration < 60 else 0)
-    return int(max(3, min(14, target)))
-
-
 def _structure_bounds(
     structure: list[StructureSegment], duration: float
 ) -> list[tuple[float, float, str]]:
-    """Transforme les blocs msaf en bornes de sections qui couvrent [0, durée]."""
+    """Transforme les blocs de structure en bornes de sections qui couvrent [0, durée]."""
     bounds: list[tuple[float, float, str]] = []
     for segment in structure:
         start = max(0.0, min(segment.start, duration))
@@ -261,7 +253,7 @@ def _structure_bounds(
             bounds.append((start, end, segment.group))
     if not bounds:
         return []
-    # msaf démarre à 0 et finit à la durée en général ; on garantit la couverture
+    # La structure démarre à 0 et finit à la durée ; on garantit la couverture
     # pour qu'aucun instant du morceau ne reste sans section.
     if bounds[0][0] > 0.3:
         bounds.insert(0, (0.0, bounds[0][0], bounds[0][2]))
@@ -337,7 +329,7 @@ def detect_sections(
 ) -> list[dict]:
     """Découpe le morceau en sections.
 
-    Si `structure` est fourni (blocs répétés détectés par msaf), il fixe les
+    Si `structure` est fourni (blocs répétés détectés localement), il fixe les
     frontières et le groupe de chaque section — on économise alors le calcul
     spectral du découpage de repli. Sinon on retombe sur le regroupement
     agglomératif, sans groupe.
@@ -353,7 +345,7 @@ def detect_sections(
         features = np.vstack([mfcc, chroma])
         features = librosa.util.normalize(features, axis=1)
 
-        count = _section_count(duration)
+        count = section_count(duration)
         report(phase, 0.6, f"Regroupement des {count} sections")
         clusters = librosa.segment.agglomerative(features, count)
         edges = sorted(
@@ -533,9 +525,10 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
             hop_length=HOP,
         )
         librosa.feature.rms(y=noise, hop_length=HOP)
+        # Regroupement agglomératif de la structure (nouveau chemin chaud).
+        librosa.segment.agglomerative(np.abs(np.random.default_rng(1).standard_normal((20, 40))), 3)
     except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
         pass
-    warmup_structure()
 
 
 # ------------------------------------------------------------------ analyse
@@ -553,12 +546,12 @@ def analyze_file(
             report(message, float(min(max(value, 0.0), 1.0)))
 
     phases = [
-        Phase("Décodage audio", 0.07),
-        Phase("Enveloppes spectrales", 0.20),
-        Phase("Analyse du rythme", 0.15),
-        Phase("Structure musicale", 0.18),
+        Phase("Décodage audio", 0.10),
+        Phase("Enveloppes spectrales", 0.24),
+        Phase("Analyse du rythme", 0.22),
+        Phase("Structure musicale", 0.06),
         Phase("Découpage en sections", 0.14),
-        Phase("Montées et impacts", 0.14),
+        Phase("Montées et impacts", 0.12),
         Phase("Assemblage des données", 0.12),
     ]
     totals = np.cumsum([phase.weight for phase in phases])
@@ -608,10 +601,10 @@ def analyze_file(
 
     tempo, beats, onsets = detect_rhythm(y, sample_rate, progress, phases[2])
 
-    # Structure répétitive (couplet/refrain…) : msaf ne rapporte pas sa progression
-    # interne, on encadre donc l'appel par deux points d'avancement.
+    # Structure répétitive (couplet/refrain…) : calcul local sur le spectre et
+    # les temps forts déjà obtenus, aucun rechargement ni HPSS redondant.
     progress(phases[3], 0.05, "recherche des passages répétés")
-    structure = estimate_structure(path, duration)
+    structure = estimate_structure(spectrum, beats, sample_rate, duration)
     progress(
         phases[3],
         1.0,

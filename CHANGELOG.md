@@ -8,11 +8,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
-- Détection de la **structure répétitive** du morceau (msaf) : chaque section
-  reçoit un groupe et un rôle (intro, couplet, refrain, pont, outro). Les
-  passages d'un même groupe se répètent à l'identique dans le show (même famille
-  visuelle et même teinte), et le refrain force l'énergie et la complémentaire.
-  Le HUD affiche ce rôle.
+- Détection de la **structure répétitive** du morceau : chaque section reçoit un
+  groupe et un rôle (intro, couplet, refrain, pont, outro). Les passages d'un même
+  groupe se répètent à l'identique dans le show (même famille visuelle et même
+  teinte), et le refrain force l'énergie et la complémentaire. Le HUD affiche ce
+  rôle.
 
 ### Modifié
 
@@ -20,7 +20,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   courant est téléchargé et analysé en premier ; les morceaux sautés sont
   téléchargés ensuite pour rester en cache, mais sans être affichés.
 - Le schéma d'analyse passe en **version 2** (sections enrichies) ; la détection
-  de structure ajoute une phase d'analyse (dépendance `msaf`).
+  de structure ajoute une phase d'analyse.
+- La structure couplet/refrain est calculée **en local avec librosa**, sur le
+  spectre et les temps forts déjà obtenus (chroma + MFCC par temps fort). La
+  dépendance `msaf` est retirée, avec ses sous-dépendances (matplotlib, pandas…) :
+  l'analyse complète retombe de ~30 s à ~4 s sur un morceau de 2 min.
 
 ### Corrigé
 
