@@ -280,9 +280,6 @@ export function variationStrength(scene: Scene, t: number): number {
   return clamp01(wave * wave);
 }
 
-/** Opacité de la couche de fond permanente. */
-const BACKDROP_ALPHA = 0.3;
-
 /* --------------------------------------------------------------- transition */
 
 /**
@@ -496,17 +493,7 @@ export function renderFrame(input: RenderInput): void {
   drawFamily(ctx, base, view, scene.family);
   drawCoreGlow(ctx, permanent);
 
-  // Couche de fond permanente : même pendant les phrases « calmes », l'écran
-  // montre deux mondes superposés au lieu d'un seul.
-  if (scene.backdrop !== scene.family) {
-    const backdropState: FrameState = {
-      ...permanent,
-      palette: { ...palette, hue: (palette.hue + 130) % 360 },
-      alpha: BACKDROP_ALPHA,
-      intensity: base.intensity * 0.6,
-    };
-    drawFamily(ctx, backdropState, view, scene.backdrop);
-  }
+  // (Plus de couche de fond permanente : seul le halo et la poussière subsistent.)
 
   // Variation au milieu de la phrase : une autre famille surgit brièvement,
   // avec sa propre teinte. C'est ce qui empêche le spectacle de tourner en boucle.
