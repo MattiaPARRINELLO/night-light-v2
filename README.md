@@ -39,8 +39,9 @@ bun run dev            # API + interface via Portless → https://nightlight.loc
 Sans Portless : `bun run api` (API) et `bunx vite` (interface) séparément, puis ouvrir
 l'adresse affichée par Vite.
 
-Pour ne lancer que l'API (par exemple derrière un proxy existant), `./run-night-light.sh`
-démarre `uvicorn` sur `HOST`/`PORT` (127.0.0.1:8000 par défaut).
+Pour ne lancer que l'API (par exemple derrière un proxy existant), `bun run api` démarre
+`uvicorn` sur `127.0.0.1:8787`. Les autres réglages (`DEEZER_ARL`, limites, chemins…) se
+lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé par lui.
 
 ## Utiliser
 
