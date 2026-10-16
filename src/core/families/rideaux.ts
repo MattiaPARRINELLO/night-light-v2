@@ -142,12 +142,14 @@ function dessineFaisceau(
 const CAMERA_Z = 3.4;
 /** Demi-largeur du cadre au niveau de la scène, en unités. */
 const DEMI_LARGEUR = 2.1;
-/** Demi-hauteur des deux rangées (plafond et plancher), en unités. */
-const DEMI_HAUTEUR = 0.86;
-/** Étendue horizontale d'une rangée : elle déborde du cadre des deux côtés. */
-const LARGEUR_RANGEE = 5.6;
+/** Marge des rangées par rapport au bord de l'écran, en fraction de la hauteur. */
+const RANGEE_MARGE = 0.025;
+/** Largeur d'une rangée, en fraction de la largeur d'écran : elle déborde des deux bords. */
+const RANGEE_LARGEUR = 1.18;
 /** Profondeur de l'arc d'une rangée : ses extrémités reculent dans la salle. */
-const ARC_PROFONDEUR = 1.15;
+const ARC_PROFONDEUR = 0.9;
+/** Enfoncement des extrémités vers le centre, en fraction de la hauteur. */
+const ARC_DIP = 0.05;
 /** Profondeur du bout des faisceaux : petit = tout près de la caméra. */
 const PROFONDEUR_FIN = 0.95;
 /** Ouverture ajoutée à cette profondeur : ouvert, le faisceau vient moins près. */
@@ -157,12 +159,13 @@ const PROFONDEUR_FIN_OUVERTE = 0.55;
  * Double rideau : deux rangées symétriques de quinze projecteurs, l'une au
  * plafond, l'autre au plancher, qui se font face puis s'ouvrent vers nous.
  *
- * C'est la seule famille qui travaille en profondeur. Fermés, les deux rideaux
- * croisent leurs faisceaux : chaque lampe du plafond descend jusqu'au bord
- * opposé, celle du plancher monte jusqu'en haut — un mur de lumière tissé qui
- * ferme toute la salle. Quand la musique monte, les deux rideaux s'écartent :
- * chaque faisceau balaie du bord opposé vers le sien, jusqu'à sortir du cadre,
- * et le couloir central s'ouvre sur le fond.
+ * C'est la seule famille qui travaille en profondeur. Les deux rangées longent
+ * le bord haut et le bord bas de l'écran, comme un portique de salle. Fermés,
+ * les deux rideaux croisent leurs faisceaux : chaque lampe du plafond descend
+ * jusqu'au bord opposé, celle du plancher monte jusqu'en haut — un mur de
+ * lumière tissé qui ferme toute la salle. Quand la musique monte, les deux
+ * rideaux s'écartent : chaque faisceau balaie du bord opposé vers le sien,
+ * jusqu'à sortir du cadre, et le couloir central s'ouvre sur le fond.
  *
  * Le bout de chaque faisceau est posé **tout près de la caméra** : il arrive
  * donc sur nous en s'écrasant et en s'élargissant, ce qu'aucun trapèze 2D ne
@@ -206,22 +209,27 @@ const rideaux: FamilyDraw = (ctx, f, view) => {
       const allumage = elementEnvelope(f, view, indice * 2 + 3, cycle, 0.8);
       if (allumage <= 0.01) continue;
       const ratio = parRangee === 1 ? 0.5 : i / (parRangee - 1);
-      // Arc de la rangée : les extrémités reculent, donc le rideau bombe vers
-      // le fond au lieu d'être une barre plate.
+      // Arc de la rangée : les extrémités reculent, donc leur faisceau est plus
+      // petit et plus voilé, et la rangée bombe légèrement vers le fond.
       const arc = ARC_PROFONDEUR * Math.pow(Math.abs(ratio - 0.5) * 2, 1.7);
       // Perspective aérienne : plus une lampe recule, plus la fumée voile son
       // faisceau. La profondeur ne tient pas qu'à la taille — la brume fait le
       // plus gros du travail, et c'est ce que l'œil lit en premier.
-      const voile = 1 / (1 + arc * 0.4);
-      const x0 = (ratio - 0.5) * LARGEUR_RANGEE;
-      const y0 = sens * DEMI_HAUTEUR;
+      const voile = 1 / (1 + arc * 0.45);
+      // Les têtes sont posées en écran, collées au bord haut ou bas, puis
+      // ramenées dans la salle à la profondeur de l'arc : la rangée longe le
+      // bord au lieu de flotter dans le cadre, comme un portique de salle.
+      const xEcran = cam.cx + (ratio - 0.5) * w * RANGEE_LARGEUR;
+      const yEcran = sens > 0
+        ? h * (RANGEE_MARGE + ARC_DIP * arc)
+        : h * (1 - RANGEE_MARGE - ARC_DIP * arc);
       // Bout du faisceau, posé en écran puis ramené dans la salle. Fermé, il
       // plonge vers le bord opposé ; ouvert, il s'écarte vers les côtés et
       // remonte vers le centre — les deux rideaux s'ouvrent en s'écartant.
       const xe = cam.cx + (ratio - 0.5) * w * (0.9 + 1.6 * ouverture);
       const ye = cam.cy + sens * h * (0.45 - 0.35 * ouverture);
       faisceaux.push({
-        origine: { x: x0, y: y0, z: arc },
+        origine: cibleEcran(cam, xEcran, yEcran, CAMERA_Z + arc),
         cible: cibleEcran(cam, xe, ye, profondeurFin + arc * 0.25),
         demiLargeur: masse,
         demiLargeurFin: masse * 1.4,
