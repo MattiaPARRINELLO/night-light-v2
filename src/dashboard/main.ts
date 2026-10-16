@@ -1,10 +1,8 @@
 /**
  * Tableau de bord de Night Light.
  *
- * L'écran de projection n'a aucune interface : tout se règle ici. La page
- * parle à l'écran de show par `BroadcastChannel` (protocole dans
- * `src/shared/control.ts`) et appelle directement l'API pour ce qu'elle sait
- * faire elle-même : récupérer un morceau, lancer une analyse.
+ * Écran de contrôle complet : audio en direct, synchronisation, morceau en cours
+ * (analyse complète), état du programme, rendu visuel et réglages.
  */
 
 import {
@@ -22,17 +20,19 @@ import {
   type DashboardCommand,
   type ShowState,
 } from "../shared/control";
+import type { Analysis, Point } from "../types";
 
-/** Durée d'historique affichée sur les courbes, en millisecondes. */
 const HISTORY_MS = 60_000;
-/** Pas d'échantillonnage des courbes. */
 const SAMPLE_MS = 250;
-/** Au-delà, on considère l'écran de show injoignable. */
 const LINK_TIMEOUT_MS = 3000;
 
 interface Sample {
   at: number;
   rms: number;
+  energy: number;
+  bass: number;
+  mid: number;
+  high: number;
   showMs: number;
   playerMs: number;
   driftMs: number;
@@ -54,7 +54,15 @@ function signed(value: number): string {
   return `${value > 0 ? "+" : ""}${Math.round(value)} ms`;
 }
 
-/** Dessine une courbe dans un canvas, avec une échelle fixe et lisible. */
+function fmtTime(value: number): string {
+  const minutes = Math.floor(value / 60);
+  const secondsPart = value % 60;
+  return `${minutes}:${secondsPart.toFixed(1).padStart(4, "0")}`;
+}
+
+
+
+/** Courbe simple. */
 function drawSeries(
   canvas: HTMLCanvasElement,
   samples: Sample[],
@@ -97,7 +105,7 @@ function drawSeries(
   ctx.stroke();
 }
 
-/** Spectre en barres : basses, médiums, aigus sur trois blocs de largeur. */
+/** Spectre en barres. */
 function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
@@ -124,9 +132,241 @@ function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState): void {
     ctx.fillText(label, x + barWidth * 0.14, h - 4);
   }
 
-  // Energie globale : trait horizontal, pour situer les trois bandes.
   ctx.fillStyle = `rgba(255,255,255,${0.12 + state.audio.energy * 0.35})`;
   ctx.fillRect(0, h - 2 - state.audio.energy * (h - 20), w, 1.5);
+}
+
+/** Historique multi-courbes. */
+function drawHistory(canvas: HTMLCanvasElement, samples: Sample[]): void {
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // grilles
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  for (let i = 1; i < 4; i++) {
+    const y = (h * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  if (samples.length < 2) return;
+  const first = samples[0]!;
+  const last = samples[samples.length - 1]!;
+  const timeSpan = Math.max(last.at - first.at, 1);
+
+  const draw = (pick: (sample: Sample) => number, color: string, width: number): void => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    samples.forEach((sample, index) => {
+      const x = ((sample.at - first.at) / timeSpan) * w;
+      const value = Math.min(1, Math.max(0, pick(sample)));
+      const y = h - value * (h - 4) - 2;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+
+  draw((sample) => sample.bass, "rgba(120, 210, 255, 0.55)", 1.2);
+  draw((sample) => sample.mid, "rgba(180, 150, 255, 0.55)", 1.2);
+  draw((sample) => sample.high, "rgba(255, 170, 120, 0.55)", 1.2);
+  draw((sample) => sample.energy, "rgba(255, 230, 140, 0.85)", 2);
+  draw((sample) => sample.rms, "#7fd7ff", 2);
+}
+
+/** Analyse musicale complète. */
+function drawTrack(
+  canvas: HTMLCanvasElement,
+  analysis: Analysis | null,
+  state: ShowState,
+): void {
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // fond
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0, "rgba(15, 22, 40, 0.6)");
+  gradient.addColorStop(1, "rgba(8, 12, 22, 0.6)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  if (analysis === null) {
+    ctx.fillStyle = "rgba(200, 210, 235, 0.5)";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("Aucune analyse chargée — dépose un morceau ou lance une recherche.", 20, h / 2);
+    return;
+  }
+
+  const duration = Math.max(analysis.duration, 0.001);
+  const left = 40;
+  const right = w - 24;
+  const top = 24;
+  const bottom = h - 42;
+  const usable = right - left;
+  const px = (secondsValue: number): number => left + (secondsValue / duration) * usable;
+
+  // sections colorées
+  const sectionColor: Record<string, string> = {
+    calme: "rgba(90, 140, 220, 0.22)",
+    montee: "rgba(255, 180, 90, 0.24)",
+    intense: "rgba(255, 100, 140, 0.28)",
+    descente: "rgba(150, 200, 160, 0.22)",
+    silence: "rgba(255, 255, 255, 0.06)",
+  };
+  for (const section of analysis.sections) {
+    const x1 = px(section.start);
+    const x2 = px(section.end);
+    ctx.fillStyle = sectionColor[section.label] ?? "rgba(120,180,255,0.15)";
+    ctx.fillRect(x1, top, Math.max(1, x2 - x1), bottom - top);
+    // séparateur
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeRect(x1, top, Math.max(1, x2 - x1), bottom - top);
+    // label
+    ctx.fillStyle = "rgba(230,235,255,0.7)";
+    ctx.font = "10px system-ui, sans-serif";
+    const kind = section.kind ?? section.label;
+    ctx.save();
+    ctx.translate(x1 + 4, top + 12);
+    ctx.fillText(kind, 0, 0);
+    ctx.restore();
+  }
+
+  // courbe d'énergie
+  if (analysis.energy.length > 1) {
+    ctx.strokeStyle = "#ffd98a";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    analysis.energy.forEach(([t, value], index) => {
+      const x = px(t);
+      const y = bottom - value * (bottom - top);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // bandes basses/médiums/aigus en traits légers
+  const drawBand = (data: Point[], color: string): void => {
+    if (data.length < 2) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    data.forEach(([t, value], index) => {
+      const x = px(t);
+      const y = bottom - value * (bottom - top);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+  drawBand(analysis.bass, "rgba(120,210,255,0.55)");
+  drawBand(analysis.mid, "rgba(180,150,255,0.5)");
+  drawBand(analysis.high, "rgba(255,170,120,0.5)");
+
+  // beats
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  for (const beat of analysis.beats) {
+    const x = px(beat);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  }
+
+  // onsets
+  ctx.fillStyle = "rgba(120,210,255,0.45)";
+  for (const onset of analysis.onsets) {
+    const x = px(onset);
+    ctx.beginPath();
+    ctx.arc(x, bottom + 4, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // builds : flèches
+  for (const build of analysis.builds) {
+    const x1 = px(build.start);
+    const x2 = px(build.end);
+    const y = top - 8;
+    ctx.strokeStyle = `rgba(255,140,180,${0.3 + build.strength * 0.6})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y);
+    ctx.lineTo(x2, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y);
+    ctx.lineTo(x2 - 5, y - 4);
+    ctx.lineTo(x2 - 5, y + 4);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(255,140,180,${0.3 + build.strength * 0.6})`;
+    ctx.fill();
+  }
+
+  // axe temps
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, bottom + 10);
+  ctx.lineTo(right, bottom + 10);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(200,210,235,0.5)";
+  ctx.font = "10px system-ui, sans-serif";
+  for (let i = 0; i <= 4; i++) {
+    const t = (duration * i) / 4;
+    const x = px(t);
+    ctx.fillText(fmtTime(t), x - 14, bottom + 24);
+  }
+
+  // curseur position show
+  if (state.analysis !== null) {
+    const positionSec = state.sync.showMs / 1000;
+    if (positionSec >= 0 && positionSec <= duration) {
+      const x = px(positionSec);
+      ctx.strokeStyle = "#8ff0c4";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, top - 14);
+      ctx.lineTo(x, bottom + 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#8ff0c4";
+      ctx.fillText("show", x + 4, top - 14);
+    }
+  }
+}
+
+/** Courbe render activité. */
+function drawRender(canvas: HTMLCanvasElement, samples: Sample[]): void {
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  if (samples.length < 2) return;
+  const first = samples[0]!;
+  const last = samples[samples.length - 1]!;
+  const span = Math.max(last.at - first.at, 1);
+  ctx.strokeStyle = "rgba(160, 130, 255, 0.75)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  samples.forEach((sample, index) => {
+    const x = ((sample.at - first.at) / span) * w;
+    const y = h - sample.rms * h;
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
 }
 
 class Dashboard {
@@ -136,6 +376,9 @@ class Dashboard {
   private samples: Sample[] = [];
   private lastSampleAt = 0;
   private controller: AbortController | null = null;
+  private analysis: Analysis | null = null;
+  private analysisTitle = "";
+  private analysisArtist = "";
 
   constructor() {
     this.link.onMessage((message) => {
@@ -144,7 +387,6 @@ class Dashboard {
       this.render();
       this.sample();
     });
-    // On se présente tout de suite : l'écran de show sait qu'il est piloté.
     this.send({ type: "hello" });
     window.setInterval(() => this.send({ type: "hello" }), 2000);
     window.setInterval(() => this.checkLink(), 1000);
@@ -164,8 +406,11 @@ class Dashboard {
       el<HTMLElement>("limits-note").textContent =
         `Limites : ${Math.round(health.limits.maxFileBytes / 1048576)} Mo par fichier, ` +
         `${health.limits.maxDurationSec} s par morceau.`;
+      el<HTMLElement>("prog-limits").textContent =
+        `${Math.round(health.limits.maxFileBytes / 1048576)} Mo · ${health.limits.maxDurationSec} s`;
     } catch {
       el<HTMLElement>("limits-note").textContent = "Limites inconnues (serveur injoignable).";
+      el<HTMLElement>("prog-limits").textContent = "serveur injoignable";
     }
   }
 
@@ -175,7 +420,7 @@ class Dashboard {
     pill.textContent = alive ? "Show connecté" : "Show hors ligne";
     pill.classList.toggle("pill-on", alive);
     pill.classList.toggle("pill-off", !alive);
-    el<HTMLButtonElement>("btn-force-show").disabled = this.state.analysis === null;
+    el<HTMLButtonElement>("btn-force-show").disabled = this.state.analysis === null && this.analysis === null;
   }
 
   private sample(): void {
@@ -185,6 +430,10 @@ class Dashboard {
     this.samples.push({
       at: now,
       rms: this.state.audio.rms,
+      energy: this.state.audio.energy,
+      bass: this.state.audio.bass,
+      mid: this.state.audio.mid,
+      high: this.state.audio.high,
       showMs: this.state.sync.showMs,
       playerMs: this.state.sync.playerMs,
       driftMs: this.state.sync.driftMs,
@@ -192,19 +441,15 @@ class Dashboard {
     this.samples = this.samples.filter((sample) => now - sample.at <= HISTORY_MS);
   }
 
-  /** Met à jour l'interface. Appelé à chaque état reçu (~5/s). */
   private render(): void {
     const state = this.state;
     const sync = state.sync;
 
     el<HTMLElement>("kpi-mode").textContent = MODE_LABELS[state.mode];
     el<HTMLElement>("kpi-screen").textContent = `écran : ${SCREEN_LABELS[state.screen]}`;
-    el<HTMLElement>("kpi-capture").textContent = state.capture.open
-      ? state.capture.state
-      : "fermée";
-    el<HTMLElement>("kpi-capture-note").textContent = state.capture.source === ""
-      ? `${state.capture.messages} messages`
-      : state.capture.source;
+    el<HTMLElement>("kpi-capture").textContent = state.capture.open ? state.capture.state : "fermée";
+    el<HTMLElement>("kpi-capture-note").textContent =
+      state.capture.source === "" ? `${state.capture.messages} messages` : state.capture.source;
 
     el<HTMLElement>("kpi-position").textContent = seconds(sync.showMs);
     el<HTMLElement>("kpi-position-note").textContent =
@@ -218,33 +463,56 @@ class Dashboard {
     el<HTMLElement>("kpi-drift-note").textContent =
       state.mode === "live" ? "rien à caler en Live" : `tolérance 150 ms · latence ${sync.latencyMs} ms`;
 
+    // KPI morceau
+    if (this.analysis !== null) {
+      el<HTMLElement>("kpi-tempo").textContent = this.analysis.tempo.toFixed(1);
+      el<HTMLElement>("kpi-duration").textContent = fmtTime(this.analysis.duration);
+      el<HTMLElement>("kpi-sections").textContent = String(this.analysis.sections.length);
+      el<HTMLElement>("kpi-builds").textContent = String(this.analysis.builds.length);
+    } else if (state.analysis !== null) {
+      el<HTMLElement>("kpi-tempo").textContent = state.analysis.tempo.toFixed(1);
+      el<HTMLElement>("kpi-duration").textContent = fmtTime(state.analysis.durationSec);
+      el<HTMLElement>("kpi-sections").textContent = String(state.analysis.sections);
+      el<HTMLElement>("kpi-builds").textContent = String(state.analysis.builds);
+    } else {
+      el<HTMLElement>("kpi-tempo").textContent = "—";
+      el<HTMLElement>("kpi-duration").textContent = "—";
+      el<HTMLElement>("kpi-sections").textContent = "—";
+      el<HTMLElement>("kpi-builds").textContent = "—";
+    }
+
+    // audio
     el<HTMLElement>("audio-rate").textContent = state.capture.open
       ? `${state.capture.rate.toFixed(1)} msg/s`
       : "capture fermée";
-    if (!state.capture.open) {
-      // Sans ça, un panneau figé sur les dernières valeurs ressemble à une panne.
-      el<HTMLElement>("audio-rate").classList.add("is-off");
-    } else {
-      el<HTMLElement>("audio-rate").classList.remove("is-off");
-    }
+    if (!state.capture.open) el<HTMLElement>("audio-rate").classList.add("is-off");
+    else el<HTMLElement>("audio-rate").classList.remove("is-off");
+
     el<HTMLElement>("val-rms").textContent = state.audio.rms.toFixed(3);
     el<HTMLElement>("val-energy").textContent = state.audio.energy.toFixed(3);
     el<HTMLElement>("val-bass").textContent = state.audio.bass.toFixed(2);
     el<HTMLElement>("val-mid").textContent = state.audio.mid.toFixed(2);
     el<HTMLElement>("val-high").textContent = state.audio.high.toFixed(2);
     el<HTMLElement>("val-transient").textContent = state.audio.transient.toFixed(3);
+    el<HTMLElement>("val-rms-smooth").textContent = state.smooth.rms.toFixed(3);
+    el<HTMLElement>("val-energy-smooth").textContent = state.smooth.energy.toFixed(3);
 
+    // synchronisation
     el<HTMLElement>("sync-source").textContent = sync.source === "" ? "aucune source" : sync.source;
     el<HTMLElement>("sync-player").textContent = seconds(sync.playerMs);
     el<HTMLElement>("sync-show").textContent = seconds(sync.showMs);
     el<HTMLElement>("sync-drift").textContent = signed(sync.driftMs);
+    el<HTMLElement>("sync-latency").textContent = `${sync.latencyMs} ms`;
+    el<HTMLElement>("sync-attempts").textContent = String(sync.attempts);
+    el<HTMLElement>("sync-correlation").textContent =
+      sync.correlation === null ? "—" : sync.correlation.toFixed(3);
     el<HTMLElement>("sync-expected").textContent = sync.expectedTitle || "—";
     el<HTMLElement>("sync-read").textContent = sync.playerTitle || "—";
     el<HTMLElement>("sync-match").textContent = sync.match || "—";
 
+    // réglages
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
-    // Le champ reflète l'état réel du show, sauf pendant que l'utilisateur tape.
     const latency = el<HTMLInputElement>("latency");
     if (document.activeElement !== latency) latency.value = String(sync.latencyMs);
     const intensityInput = el<HTMLInputElement>("intensity");
@@ -256,24 +524,97 @@ class Dashboard {
     if (document.activeElement !== reduced) reduced.checked = state.settings.reduced;
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
 
+    // canvases
     drawSpectrum(el<HTMLCanvasElement>("audio-canvas"), state);
-    drawSeries(el<HTMLCanvasElement>("rms-canvas"), this.samples, (sample) => sample.rms, "#7fd7ff", { max: 1 });
+    drawHistory(el<HTMLCanvasElement>("rms-canvas"), this.samples);
     drawSeries(el<HTMLCanvasElement>("drift-canvas"), this.samples, (sample) => sample.driftMs, "#ffb86b", {
       min: -1500,
       max: 1500,
       zero: true,
     });
 
-    const mode = el<HTMLElement>("mode-pill");
-    mode.textContent = MODE_LABELS[state.mode];
-    mode.classList.toggle("pill-mode", state.mode !== "live");
+    // morceau en cours
+    const trackTitle = el<HTMLElement>("track-title");
+    const trackArtist = el<HTMLElement>("track-artist");
+    const trackStatus = el<HTMLElement>("track-status");
+    if (this.analysis !== null) {
+      trackTitle.textContent = this.analysisTitle || "Morceau analysé";
+      trackArtist.textContent =
+        this.analysisArtist === "" ? `${this.analysis.beats.length} temps · ${this.analysis.onsets.length} attaques` : this.analysisArtist;
+      trackStatus.textContent = "analyse locale complète";
+    } else if (state.analysis !== null) {
+      trackTitle.textContent = state.analysis.title || "Morceau chargé";
+      trackArtist.textContent = `${state.analysis.beats} temps · ${state.analysis.builds} montées · ${state.analysis.sections} sections`;
+      trackStatus.textContent = state.screen === "analysis" ? "analyse en cours" : (MODE_LABELS[state.mode]);
+    } else {
+      trackTitle.textContent = "Aucun morceau chargé";
+      trackArtist.textContent = "Dépose un fichier ou recherche par titre";
+      trackStatus.textContent = "en attente";
+    }
 
+    el<HTMLElement>("track-stats").innerHTML = this.analysis
+      ? [
+          `<span>Durée ${fmtTime(this.analysis.duration)}</span>`,
+          `<span>Tempo ${this.analysis.tempo.toFixed(1)} BPM</span>`,
+          `<span>Temps ${this.analysis.beats.length}</span>`,
+          `<span>Attaques ${this.analysis.onsets.length}</span>`,
+          `<span>Sections ${this.analysis.sections.length}</span>`,
+          `<span>Montées ${this.analysis.builds.length}</span>`,
+          `<span>Période ${this.analysis.beatPeriod.toFixed(3)} s</span>`,
+        ].join("")
+      : state.analysis
+        ? [
+            `<span>Durée ${fmtTime(state.analysis.durationSec)}</span>`,
+            `<span>Tempo ${state.analysis.tempo.toFixed(1)} BPM</span>`,
+            `<span>Temps ${state.analysis.beats}</span>`,
+            `<span>Sections ${state.analysis.sections}</span>`,
+            `<span>Montées ${state.analysis.builds}</span>`,
+          ].join("")
+        : "";
+
+    // liste des sections
+    const sectionHost = el<HTMLElement>("track-sections");
+    if (this.analysis !== null) {
+      sectionHost.innerHTML = this.analysis.sections
+        .map((section) => {
+          const kind = section.kind ?? section.label;
+          const group = section.group ? ` · groupe ${section.group}` : "";
+          const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
+          return `<div class="section-chip"><span class="chip-kind">${kind}${occurrence}</span><span class="chip-range">${fmtTime(section.start)} → ${fmtTime(section.end)} · énergie ${section.energy.toFixed(2)}${group}</span></div>`;
+        })
+        .join("");
+    } else {
+      sectionHost.innerHTML = "";
+    }
+
+    drawTrack(el<HTMLCanvasElement>("track-canvas"), this.analysis, state);
+
+    // état du programme
+    el<HTMLElement>("prog-screen").textContent = SCREEN_LABELS[state.screen];
+    el<HTMLElement>("prog-mode").textContent = MODE_LABELS[state.mode];
+    el<HTMLElement>("prog-controlled").textContent = state.controlled ? "oui (kiosque)" : "non";
+    el<HTMLElement>("prog-capture").textContent = state.capture.open
+      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} msg/s`
+      : "fermée";
+    el<HTMLElement>("prog-error").textContent = state.error ? `${state.error.title} — ${state.error.message}` : "aucune";
+    el<HTMLElement>("prog-notice").textContent = state.notice ? state.notice.text : "—";
+    el<HTMLElement>("prog-debug").textContent = state.debugOverlay ? "overlay actif" : "inactif";
+    if (!this.limits.has("health")) el<HTMLElement>("prog-limits").textContent = "—";
+
+    // rendu visuel
+    el<HTMLElement>("render-live-fps").textContent = state.render.liveFps.toFixed(1);
+    el<HTMLElement>("render-show-fps").textContent = state.render.showFps.toFixed(1);
+    el<HTMLElement>("render-live-q").textContent = state.render.liveQuality.toFixed(2);
+    el<HTMLElement>("render-show-q").textContent = state.render.quality.toFixed(2);
+    el<HTMLElement>("render-live-frame").textContent = String(state.render.liveFrame);
+    el<HTMLElement>("render-show-frame").textContent = String(state.render.frame);
+    drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
+
+    // journal
     const log = el<HTMLElement>("log");
     log.textContent = state.log.length === 0 ? "Rien à signaler." : state.log.join("\n");
     el<HTMLElement>("log-count").textContent = `${state.log.length} lignes`;
 
-    // Un repli s'annonce en bas, sans prendre l'écran : c'est une information,
-    // pas une erreur.
     const notice = el<HTMLElement>("notice");
     if (state.notice === null) {
       notice.hidden = true;
@@ -283,13 +624,14 @@ class Dashboard {
       notice.textContent = state.notice.text;
     }
 
-    // Les contrôles reflètent l'état réel du show, même réglé au clavier.
     el<HTMLButtonElement>("btn-capture").textContent = state.capture.open
       ? "Couper la capture"
       : "Écouter le son du PC";
-  }
 
-  /* ------------------------------------------------------------- contrôles */
+    const mode = el<HTMLElement>("mode-pill");
+    mode.textContent = MODE_LABELS[state.mode];
+    mode.classList.toggle("pill-mode", state.mode !== "live");
+  }
 
   private bindControls(): void {
     const intensity = el<HTMLInputElement>("intensity");
@@ -298,13 +640,17 @@ class Dashboard {
     const noflash = el<HTMLInputElement>("chk-noflash");
     const latency = el<HTMLInputElement>("latency");
 
-    intensity.addEventListener("input", () => {
-      el<HTMLElement>("intensity-value").textContent = `${intensity.value} %`;
-      this.send({ type: "set-settings", patch: { intensity: Number(intensity.value) / 100 } });
+    intensity.addEventListener("change", () => {
+      const value = Number(intensity.value);
+      if (Number.isFinite(value)) {
+        this.send({ type: "set-settings", patch: { intensity: value / 100 } });
+      }
     });
-    flashes.addEventListener("input", () => {
-      el<HTMLElement>("flashes-value").textContent = `${flashes.value} %`;
-      this.send({ type: "set-settings", patch: { flashes: Number(flashes.value) / 100 } });
+    flashes.addEventListener("change", () => {
+      const value = Number(flashes.value);
+      if (Number.isFinite(value)) {
+        this.send({ type: "set-settings", patch: { flashes: value / 100 } });
+      }
     });
     reduced.addEventListener("change", () => {
       this.send({ type: "set-settings", patch: { reduced: reduced.checked } });
@@ -312,7 +658,6 @@ class Dashboard {
     noflash.addEventListener("change", () => {
       this.send({ type: "set-settings", patch: { noflash: noflash.checked } });
     });
-
     latency.addEventListener("change", () => {
       const value = Number(latency.value);
       if (Number.isFinite(value)) {
@@ -350,8 +695,6 @@ class Dashboard {
     this.bindSource();
   }
 
-  /** Dépôt de fichier et recherche par titre : le dashboard analyse, puis
-   *  transmet l'analyse à l'écran de show qui se charge du calage. */
   private bindSource(): void {
     const zone = el<HTMLElement>("dropzone");
     const input = el<HTMLInputElement>("file-input");
@@ -413,6 +756,9 @@ class Dashboard {
         onPhase: ({ progress, phase, detail }) =>
           this.setProgress(phase, 0.25 + progress * 0.75, detail),
       });
+      this.analysis = analysis;
+      this.analysisTitle = title;
+      this.analysisArtist = "";
       this.send({ type: "analysis-ready", jobId, title, artist: "", analysis });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
@@ -435,6 +781,9 @@ class Dashboard {
         signal: controller.signal,
         onPhase: ({ progress, phase, detail }) => this.setProgress(phase, progress, detail),
       });
+      this.analysis = analysis;
+      this.analysisTitle = title;
+      this.analysisArtist = artist;
       this.send({ type: "analysis-ready", jobId, title, artist, analysis });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
