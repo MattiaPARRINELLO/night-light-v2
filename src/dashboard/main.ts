@@ -33,9 +33,15 @@ interface Sample {
   bass: number;
   mid: number;
   high: number;
+  transient: number;
   showMs: number;
   playerMs: number;
   driftMs: number;
+  correlation: number | null;
+  liveFps: number;
+  showFps: number;
+  liveQuality: number;
+  showQuality: number;
 }
 
 function el<T extends HTMLElement>(id: string): T {
@@ -58,6 +64,22 @@ function fmtTime(value: number): string {
   const minutes = Math.floor(value / 60);
   const secondsPart = value % 60;
   return `${minutes}:${secondsPart.toFixed(1).padStart(4, "0")}`;
+}
+
+function sampleCurve(curve: Point[], timeValue: number): number {
+  if (curve.length === 0) return 0;
+  if (timeValue <= curve[0]![0]) return curve[0]![1];
+  const last = curve[curve.length - 1]!;
+  if (timeValue >= last[0]) return last[1];
+  for (let index = 0; index < curve.length - 1; index++) {
+    const point = curve[index]!;
+    const next = curve[index + 1]!;
+    if (timeValue >= point[0] && timeValue <= next[0]) {
+      const factor = (timeValue - point[0]) / Math.max(next[0] - point[0], 1e-6);
+      return point[1] + (next[1] - point[1]) * factor;
+    }
+  }
+  return 0;
 }
 
 
@@ -434,9 +456,15 @@ class Dashboard {
       bass: this.state.audio.bass,
       mid: this.state.audio.mid,
       high: this.state.audio.high,
+      transient: this.state.audio.transient,
       showMs: this.state.sync.showMs,
       playerMs: this.state.sync.playerMs,
       driftMs: this.state.sync.driftMs,
+      correlation: this.state.sync.correlation,
+      liveFps: this.state.render.liveFps,
+      showFps: this.state.render.showFps,
+      liveQuality: this.state.render.liveQuality,
+      showQuality: this.state.render.quality,
     });
     this.samples = this.samples.filter((sample) => now - sample.at <= HISTORY_MS);
   }
@@ -447,6 +475,20 @@ class Dashboard {
 
     el<HTMLElement>("kpi-mode").textContent = MODE_LABELS[state.mode];
     el<HTMLElement>("kpi-screen").textContent = `écran : ${SCREEN_LABELS[state.screen]}`;
+    el<HTMLElement>("screen-pill").textContent = SCREEN_LABELS[state.screen];
+
+    const stages = ["drop", "analysis", "show", "live"];
+    for (const stage of stages) {
+      const node = document.getElementById(`stage-${stage}`);
+      if (node === null) continue;
+      node.classList.remove("is-active", "is-done");
+      let active = false;
+      if (stage === "drop") active = state.screen === "drop";
+      else if (stage === "analysis") active = state.screen === "analysis";
+      else if (stage === "show") active = state.screen === "show" && state.mode !== "live" && state.mode !== "paused";
+      else if (stage === "live") active = state.mode === "live" || state.mode === "paused";
+      node.classList.toggle("is-active", active);
+    }
     el<HTMLElement>("kpi-capture").textContent = state.capture.open ? state.capture.state : "fermée";
     el<HTMLElement>("kpi-capture-note").textContent =
       state.capture.source === "" ? `${state.capture.messages} messages` : state.capture.source;
@@ -467,18 +509,24 @@ class Dashboard {
     if (this.analysis !== null) {
       el<HTMLElement>("kpi-tempo").textContent = this.analysis.tempo.toFixed(1);
       el<HTMLElement>("kpi-duration").textContent = fmtTime(this.analysis.duration);
-      el<HTMLElement>("kpi-sections").textContent = String(this.analysis.sections.length);
-      el<HTMLElement>("kpi-builds").textContent = String(this.analysis.builds.length);
+      el<HTMLElement>("kpi-time-sections").textContent = `${this.analysis.beats.length} · ${this.analysis.sections.length}`;
+      el<HTMLElement>("kpi-time-sections-note").textContent = `${fmtTime(this.analysis.duration)} · période ${this.analysis.beatPeriod.toFixed(3)} s`;
+      el<HTMLElement>("kpi-build-onset").textContent = `${this.analysis.builds.length} · ${this.analysis.onsets.length}`;
+      el<HTMLElement>("kpi-build-onset-note").textContent = `${this.analysis.energy.length} points d'énergie`;
     } else if (state.analysis !== null) {
       el<HTMLElement>("kpi-tempo").textContent = state.analysis.tempo.toFixed(1);
       el<HTMLElement>("kpi-duration").textContent = fmtTime(state.analysis.durationSec);
-      el<HTMLElement>("kpi-sections").textContent = String(state.analysis.sections);
-      el<HTMLElement>("kpi-builds").textContent = String(state.analysis.builds);
+      el<HTMLElement>("kpi-time-sections").textContent = `${state.analysis.beats} · ${state.analysis.sections}`;
+      el<HTMLElement>("kpi-time-sections-note").textContent = `${fmtTime(state.analysis.durationSec)}`;
+      el<HTMLElement>("kpi-build-onset").textContent = `${state.analysis.builds} · —`;
+      el<HTMLElement>("kpi-build-onset-note").textContent = "analyse résumée côté show";
     } else {
       el<HTMLElement>("kpi-tempo").textContent = "—";
       el<HTMLElement>("kpi-duration").textContent = "—";
-      el<HTMLElement>("kpi-sections").textContent = "—";
-      el<HTMLElement>("kpi-builds").textContent = "—";
+      el<HTMLElement>("kpi-time-sections").textContent = "—";
+      el<HTMLElement>("kpi-time-sections-note").textContent = "aucune analyse";
+      el<HTMLElement>("kpi-build-onset").textContent = "—";
+      el<HTMLElement>("kpi-build-onset-note").textContent = "—";
     }
 
     // audio
@@ -496,6 +544,15 @@ class Dashboard {
     el<HTMLElement>("val-transient").textContent = state.audio.transient.toFixed(3);
     el<HTMLElement>("val-rms-smooth").textContent = state.smooth.rms.toFixed(3);
     el<HTMLElement>("val-energy-smooth").textContent = state.smooth.energy.toFixed(3);
+
+    el<HTMLElement>("capture-state").textContent = state.capture.state || (state.capture.open ? "ouverte" : "fermée");
+    el<HTMLElement>("capture-source").textContent = state.capture.source || "—";
+    el<HTMLElement>("capture-messages").textContent = String(state.capture.messages);
+    el<HTMLElement>("capture-last").textContent =
+      state.capture.lastAt > 0 ? new Date(state.capture.lastAt).toLocaleTimeString("fr-FR") : "—";
+    el<HTMLElement>("prog-capture").textContent = state.capture.open
+      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} msg/s`
+      : "fermée";
 
     // synchronisation
     el<HTMLElement>("sync-source").textContent = sync.source === "" ? "aucune source" : sync.source;
@@ -532,6 +589,19 @@ class Dashboard {
       max: 1500,
       zero: true,
     });
+
+    drawSeries(el<HTMLCanvasElement>("spark-rms"), this.samples, (sample) => sample.rms, "#7fd7ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-energy"), this.samples, (sample) => sample.energy, "#ffd98a", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-bass"), this.samples, (sample) => sample.bass, "#78d2ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-mid"), this.samples, (sample) => sample.mid, "#b496ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-high"), this.samples, (sample) => sample.high, "#ffaa78", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-transient"), this.samples, (sample) => sample.transient, "#ff8ca0", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-drift"), this.samples, (sample) => Math.abs(sample.driftMs) / 1500, "#ffb86b", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-corr"), this.samples, (sample) => sample.correlation ?? 0.5, "#8ff0c4", { max: 1 });
+
+    drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
+    drawSeries(el<HTMLCanvasElement>("render-spark"), this.samples, (sample) => sample.showQuality, "#a082ff", { max: 1 });
+
 
     // morceau en cours
     const trackTitle = el<HTMLElement>("track-title");
@@ -588,6 +658,29 @@ class Dashboard {
     }
 
     drawTrack(el<HTMLCanvasElement>("track-canvas"), this.analysis, state);
+
+    // lecture en cours dans le morceau
+    if (this.analysis !== null) {
+      const duration = Math.max(this.analysis.duration, 0.001);
+      const positionSec = Math.max(0, state.sync.showMs / 1000);
+      const percent = Math.min(100, (positionSec / duration) * 100);
+      const section = this.analysis.sections.find((entry) => positionSec >= entry.start && positionSec < entry.end) ?? null;
+      const energyNow = sampleCurve(this.analysis.energy, positionSec);
+      const nextBuild = this.analysis.builds.find((entry) => entry.end >= positionSec) ?? null;
+      el<HTMLElement>("now-time").textContent = `Position ${fmtTime(positionSec)} / ${fmtTime(this.analysis.duration)}`;
+      el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} % du morceau`;
+      el<HTMLElement>("now-section").textContent = section ? `Section ${section.kind ?? section.label} (${(section.energy * 100).toFixed(0)} %)` : "Section inconnue";
+      el<HTMLElement>("now-energy").textContent = `Énergie actuelle ${energyNow.toFixed(3)}`;
+      el<HTMLElement>("now-build").textContent = nextBuild
+        ? `Prochaine montée dans ${fmtTime(Math.max(0, nextBuild.start - positionSec))} (force ${(nextBuild.strength * 100).toFixed(0)} %)`
+        : "Aucune montée restante";
+    } else {
+      el<HTMLElement>("now-time").textContent = "Position —";
+      el<HTMLElement>("now-percent").textContent = "—";
+      el<HTMLElement>("now-section").textContent = "Aucune analyse";
+      el<HTMLElement>("now-energy").textContent = "—";
+      el<HTMLElement>("now-build").textContent = "—";
+    }
 
     // état du programme
     el<HTMLElement>("prog-screen").textContent = SCREEN_LABELS[state.screen];
