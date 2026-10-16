@@ -47,24 +47,28 @@
           <span class="panel-tag" id="track-status">—</span>
         </header>
         <div class="track-head">
-          <div>
+          <div class="track-ident">
             <p class="track-title" id="track-title">Aucun morceau chargé</p>
             <p class="track-sub" id="track-artist">Dépose un fichier ou recherche par titre</p>
             <div class="track-now">
-              <span id="now-time">—</span>
-              <span id="now-percent">—</span>
-              <span id="now-section">—</span>
-              <span id="now-energy">—</span>
-              <span id="now-build">—</span>
+              <span class="track-clock" id="now-time">—</span>
+              <span class="track-percent" id="now-percent">—</span>
               <span class="beat-pulse" id="beat-pulse" title="Pulsation au tempo">●</span>
             </div>
             <div class="track-progress" aria-label="Progression du morceau">
               <span class="track-progress-fill" id="track-progress-fill"></span>
             </div>
           </div>
-          <div class="track-stats" id="track-stats"></div>
+          <div class="track-readout" id="track-stats"></div>
         </div>
-        <canvas id="track-canvas" width="1120" height="300" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées"></canvas>
+
+        <div class="nowline">
+          <div class="now-card"><span>Section en cours</span><b id="now-section">—</b></div>
+          <div class="now-card"><span>Énergie instantanée</span><b id="now-energy">—</b></div>
+          <div class="now-card"><span>Prochaine montée</span><b id="now-build">—</b></div>
+        </div>
+
+        <canvas id="track-canvas" width="1120" height="340" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées"></canvas>
         <div class="legend" aria-label="Légende des sections">
           <span><i class="swatch swatch-calme"></i>calme</span>
           <span><i class="swatch swatch-montee"></i>montée</span>
@@ -75,8 +79,8 @@
           <span><i class="spike-swatch"></i>temps forts</span>
           <span><i class="arrow-swatch"></i>montées</span>
         </div>
-        <p class="panel-note" id="track-note">Courbe d'énergie, courbes de bandes, sections colorées, temps, onsets, montées, curseur du show.</p>
-        <div id="track-sections" class="section-list" aria-label="Sections détectées"></div>
+        <p class="panel-note" id="track-note">Bande de structure en haut, puis énergie, bandes, temps forts, montées et curseur du show.</p>
+        <div id="track-sections" class="section-table" aria-label="Sections détectées"></div>
         <div id="upcoming" class="upcoming" aria-label="Prochains événements"></div>
       </section>
 

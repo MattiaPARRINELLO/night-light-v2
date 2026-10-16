@@ -202,86 +202,120 @@ function drawHistory(canvas: HTMLCanvasElement, samples: Sample[]): void {
   draw((sample) => sample.rms, "#7fd7ff", 2);
 }
 
-/** Analyse musicale complète. */
-function drawTrack(
-  canvas: HTMLCanvasElement,
-  analysis: Analysis | null,
-  state: ShowState,
-): void {
+/** Analyse musicale complète : bande de structure + plan musical. */
+function drawTrack(canvas: HTMLCanvasElement, analysis: Analysis | null, state: ShowState): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // fond
-  const gradient = ctx.createLinearGradient(0, 0, 0, h);
-  gradient.addColorStop(0, "rgba(15, 22, 40, 0.6)");
-  gradient.addColorStop(1, "rgba(8, 12, 22, 0.6)");
-  ctx.fillStyle = gradient;
+  const background = ctx.createLinearGradient(0, 0, 0, h);
+  background.addColorStop(0, "rgba(17, 25, 45, 0.85)");
+  background.addColorStop(1, "rgba(8, 12, 22, 0.9)");
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, w, h);
 
   if (analysis === null) {
-    ctx.fillStyle = "rgba(200, 210, 235, 0.72)";
-    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(200, 210, 235, 0.75)";
+    ctx.font = "600 16px system-ui, sans-serif";
     const message =
       state.analysis === null
         ? "Aucune analyse chargée — dépose un morceau ou lance une recherche."
         : "Analyse complète en cours de réception depuis l'écran de show…";
-    ctx.fillText(message, 20, h / 2);
+    ctx.fillText(message, 24, h / 2);
     return;
   }
 
   const duration = Math.max(analysis.duration, 0.001);
-  const left = 40;
-  const right = w - 24;
-  const top = 24;
-  const bottom = h - 42;
+  const left = 58;
+  const right = w - 30;
   const usable = right - left;
-  const px = (secondsValue: number): number => left + (secondsValue / duration) * usable;
+  const px = (seconds: number): number => left + (seconds / duration) * usable;
 
-  // grille horizontale + repères
-  ctx.font = "10px ui-monospace, monospace";
+  const bandTop = 18;
+  const bandHeight = 38;
+  const laneY = bandTop + bandHeight + 16;
+  const curveTop = bandTop + bandHeight + 30;
+  const curveBottom = h - 62;
+
+  const palette: Record<string, { fill: string; line: string }> = {
+    calme: { fill: "rgba(90, 140, 220, 0.30)", line: "rgba(120, 170, 240, 0.95)" },
+    montee: { fill: "rgba(255, 180, 90, 0.30)", line: "rgba(255, 190, 110, 0.95)" },
+    intense: { fill: "rgba(255, 100, 140, 0.32)", line: "rgba(255, 120, 160, 0.95)" },
+    descente: { fill: "rgba(150, 200, 160, 0.28)", line: "rgba(160, 220, 180, 0.9)" },
+    silence: { fill: "rgba(255, 255, 255, 0.10)", line: "rgba(255, 255, 255, 0.4)" },
+  };
+
+  // ---- bande de structure, lisible en un coup d'œil
+  ctx.font = "600 12px system-ui, sans-serif";
+  for (const section of analysis.sections) {
+    const x1 = px(section.start);
+    const x2 = px(section.end);
+    const width = Math.max(2, x2 - x1);
+    const color = palette[section.label] ?? palette.silence!;
+    ctx.fillStyle = color.fill;
+    ctx.fillRect(x1, bandTop, width, bandHeight);
+    ctx.fillStyle = color.line;
+    ctx.fillRect(x1, bandTop, width, 3);
+
+    const label = section.kind ?? section.label;
+    if (width > ctx.measureText(label).width + 12) {
+      ctx.fillStyle = "rgba(240, 245, 255, 0.92)";
+      ctx.fillText(label, x1 + 6, bandTop + bandHeight - 12);
+    }
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, bandTop, usable, bandHeight);
+
+  // ---- montées (flèches) dans leur propre couloir
+  for (const build of analysis.builds) {
+    const x1 = px(build.start);
+    const x2 = px(build.end);
+    const alpha = 0.35 + build.strength * 0.6;
+    ctx.strokeStyle = `rgba(255, 120, 165, ${alpha})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, laneY);
+    ctx.lineTo(x2, laneY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, laneY);
+    ctx.lineTo(x2 - 7, laneY - 5);
+    ctx.lineTo(x2 - 7, laneY + 5);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(255, 120, 165, ${alpha})`;
+    ctx.fill();
+  }
+
+  // ---- grille + repères
+  ctx.font = "11px ui-monospace, monospace";
   for (const level of [0, 0.25, 0.5, 0.75, 1]) {
-    const y = bottom - level * (bottom - top);
-    ctx.strokeStyle = level === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)";
+    const y = curveBottom - level * (curveBottom - curveTop);
+    ctx.strokeStyle = level === 0 ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.07)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(left, y);
     ctx.lineTo(right, y);
     ctx.stroke();
-    ctx.fillStyle = "rgba(160, 178, 210, 0.55)";
-    ctx.fillText(level.toFixed(2), 6, y + 3);
+    ctx.fillStyle = "rgba(170, 188, 220, 0.7)";
+    ctx.fillText(level.toFixed(2), 14, y + 4);
   }
 
-  // sections colorées
-  const sectionColor: Record<string, string> = {
-    calme: "rgba(90, 140, 220, 0.22)",
-    montee: "rgba(255, 180, 90, 0.24)",
-    intense: "rgba(255, 100, 140, 0.28)",
-    descente: "rgba(150, 200, 160, 0.22)",
-    silence: "rgba(255, 255, 255, 0.06)",
-  };
-  for (const section of analysis.sections) {
-    const x1 = px(section.start);
-    const x2 = px(section.end);
-    ctx.fillStyle = sectionColor[section.label] ?? "rgba(120,180,255,0.15)";
-    ctx.fillRect(x1, top, Math.max(1, x2 - x1), bottom - top);
-    // séparateur
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
-    ctx.strokeRect(x1, top, Math.max(1, x2 - x1), bottom - top);
-    // label
-    ctx.fillStyle = "rgba(230,235,255,0.7)";
-    ctx.font = "10px system-ui, sans-serif";
-    const kind = section.kind ?? section.label;
-    ctx.save();
-    ctx.translate(x1 + 4, top + 12);
-    ctx.fillText(kind, 0, 0);
-    ctx.restore();
+  // ---- temps forts
+  const beatStep = Math.max(1, Math.ceil(analysis.beats.length / 700));
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.lineWidth = 1;
+  for (let index = 0; index < analysis.beats.length; index += beatStep) {
+    const x = px(analysis.beats[index]!);
+    ctx.beginPath();
+    ctx.moveTo(x, curveTop);
+    ctx.lineTo(x, curveBottom);
+    ctx.stroke();
   }
 
-  // Courbes : on décime à la largeur utile pour rester fluide même sur une
-  // analyse longue (des dizaines de milliers de points).
+  // ---- courbes (décimées à la largeur utile)
   const plotCurve = (data: Point[], color: string, width: number): void => {
     if (data.length < 2) return;
     const step = Math.max(1, Math.ceil(data.length / Math.max(2, usable)));
@@ -292,7 +326,7 @@ function drawTrack(
     for (let index = 0; index < data.length; index += step) {
       const [t, value] = data[index]!;
       const x = px(t);
-      const y = bottom - value * (bottom - top);
+      const y = curveBottom - value * (curveBottom - curveTop);
       if (!started) {
         ctx.moveTo(x, y);
         started = true;
@@ -301,92 +335,91 @@ function drawTrack(
       }
     }
     const [lastT, lastValue] = data[data.length - 1]!;
-    ctx.lineTo(px(lastT), bottom - lastValue * (bottom - top));
+    ctx.lineTo(px(lastT), curveBottom - lastValue * (curveBottom - curveTop));
     ctx.stroke();
   };
 
-  plotCurve(analysis.bass, "rgba(120,210,255,0.7)", 1.4);
-  plotCurve(analysis.mid, "rgba(180,150,255,0.62)", 1.4);
-  plotCurve(analysis.high, "rgba(255,170,120,0.62)", 1.4);
-  ctx.save();
-  ctx.shadowColor = "rgba(255,217,138,0.75)";
-  ctx.shadowBlur = 12;
-  plotCurve(analysis.energy, "#ffd98a", 3);
-  ctx.restore();
-
-  // beats (décimés si nécessaire)
-  const beatStep = Math.max(1, Math.ceil(analysis.beats.length / 900));
-  ctx.strokeStyle = "rgba(255,255,255,0.18)";
-  ctx.lineWidth = 1;
-  for (let index = 0; index < analysis.beats.length; index += beatStep) {
-    const x = px(analysis.beats[index]!);
+  // aire sous la courbe d'énergie, pour la rendre immédiatement lisible
+  if (analysis.energy.length > 1) {
+    const area = ctx.createLinearGradient(0, curveTop, 0, curveBottom);
+    area.addColorStop(0, "rgba(255, 217, 138, 0.30)");
+    area.addColorStop(1, "rgba(255, 217, 138, 0.02)");
+    ctx.fillStyle = area;
     ctx.beginPath();
-    ctx.moveTo(x, top);
-    ctx.lineTo(x, bottom);
-    ctx.stroke();
+    ctx.moveTo(px(analysis.energy[0]![0]), curveBottom);
+    const step = Math.max(1, Math.ceil(analysis.energy.length / Math.max(2, usable)));
+    for (let index = 0; index < analysis.energy.length; index += step) {
+      const [t, value] = analysis.energy[index]!;
+      ctx.lineTo(px(t), curveBottom - value * (curveBottom - curveTop));
+    }
+    ctx.lineTo(px(duration), curveBottom);
+    ctx.closePath();
+    ctx.fill();
   }
 
-  // onsets (décimés si nécessaire)
+  plotCurve(analysis.bass, "rgba(120, 210, 255, 0.75)", 1.6);
+  plotCurve(analysis.mid, "rgba(180, 150, 255, 0.68)", 1.6);
+  plotCurve(analysis.high, "rgba(255, 170, 120, 0.68)", 1.6);
+  ctx.save();
+  ctx.shadowColor = "rgba(255, 217, 138, 0.85)";
+  ctx.shadowBlur = 14;
+  plotCurve(analysis.energy, "#ffe08a", 3.2);
+  ctx.restore();
+
+  // ---- onsets (petits repères sous les courbes)
   const onsetStep = Math.max(1, Math.ceil(analysis.onsets.length / 900));
-  ctx.fillStyle = "rgba(120,210,255,0.45)";
+  ctx.fillStyle = "rgba(150, 220, 255, 0.7)";
   for (let index = 0; index < analysis.onsets.length; index += onsetStep) {
     const x = px(analysis.onsets[index]!);
     ctx.beginPath();
-    ctx.arc(x, bottom + 4, 2, 0, Math.PI * 2);
+    ctx.arc(x, curveBottom + 7, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // builds : flèches
-  for (const build of analysis.builds) {
-    const x1 = px(build.start);
-    const x2 = px(build.end);
-    const y = top - 8;
-    ctx.strokeStyle = `rgba(255,140,180,${0.3 + build.strength * 0.6})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x1, y);
-    ctx.lineTo(x2, y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, y);
-    ctx.lineTo(x2 - 5, y - 4);
-    ctx.lineTo(x2 - 5, y + 4);
-    ctx.closePath();
-    ctx.fillStyle = `rgba(255,140,180,${0.3 + build.strength * 0.6})`;
-    ctx.fill();
-  }
-
-  // axe temps
-  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  // ---- règle temporelle
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(left, bottom + 10);
-  ctx.lineTo(right, bottom + 10);
+  ctx.moveTo(left, curveBottom + 16);
+  ctx.lineTo(right, curveBottom + 16);
   ctx.stroke();
-  ctx.fillStyle = "rgba(200,210,235,0.5)";
-  ctx.font = "10px system-ui, sans-serif";
-  for (let i = 0; i <= 4; i++) {
-    const t = (duration * i) / 4;
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.fillStyle = "rgba(200, 214, 240, 0.75)";
+  const ticks = 8;
+  for (let index = 0; index <= ticks; index++) {
+    const t = (duration * index) / ticks;
     const x = px(t);
-    ctx.fillText(fmtTime(t), x - 14, bottom + 24);
+    ctx.beginPath();
+    ctx.moveTo(x, curveBottom + 16);
+    ctx.lineTo(x, curveBottom + 21);
+    ctx.stroke();
+    if (index % 2 === 0) {
+      const label = fmtTime(t);
+      ctx.fillText(label, x - ctx.measureText(label).width / 2, curveBottom + 36);
+    }
   }
 
-  // curseur position show
-  if (state.analysis !== null) {
-    const positionSec = state.sync.showMs / 1000;
-    if (positionSec >= 0 && positionSec <= duration) {
-      const x = px(positionSec);
-      ctx.strokeStyle = "#8ff0c4";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(x, top - 14);
-      ctx.lineTo(x, bottom + 6);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#8ff0c4";
-      ctx.fillText("show", x + 4, top - 14);
-    }
+  // ---- curseur du show
+  const positionSec = Math.max(0, state.sync.showMs / 1000);
+  if (positionSec >= 0 && positionSec <= duration) {
+    const x = px(positionSec);
+    ctx.strokeStyle = "rgba(143, 240, 196, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x, bandTop - 6);
+    ctx.lineTo(x, curveBottom + 18);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(143, 240, 196, 0.28)";
+    ctx.fillRect(left, bandTop, Math.max(0, x - left), bandHeight);
+    const tag = `${fmtTime(positionSec)}  show`;
+    ctx.font = "600 11px system-ui, sans-serif";
+    const tagWidth = ctx.measureText(tag).width + 14;
+    const tagX = Math.min(Math.max(x - tagWidth / 2, left), right - tagWidth);
+    ctx.fillStyle = "rgba(143, 240, 196, 0.95)";
+    ctx.fillRect(tagX, bandTop - 24, tagWidth, 18);
+    ctx.fillStyle = "#04070c";
+    ctx.fillText(tag, tagX + 7, bandTop - 11);
   }
 }
 
@@ -696,50 +729,69 @@ class Dashboard {
       trackStatus.textContent = "en attente";
     }
 
-    el<HTMLElement>("track-stats").innerHTML = this.analysis
-      ? [
-          `<span>Durée ${fmtTime(this.analysis.duration)}</span>`,
-          `<span>Tempo ${this.analysis.tempo.toFixed(1)} BPM</span>`,
-          `<span>Temps ${this.analysis.beats.length}</span>`,
-          `<span>Attaques ${this.analysis.onsets.length}</span>`,
-          `<span>Sections ${this.analysis.sections.length}</span>`,
-          `<span>Montées ${this.analysis.builds.length}</span>`,
-          `<span>Période ${this.analysis.beatPeriod.toFixed(3)} s</span>`,
-        ].join("")
-      : state.analysis
-        ? [
-            `<span>Durée ${fmtTime(state.analysis.durationSec)}</span>`,
-            `<span>Tempo ${state.analysis.tempo.toFixed(1)} BPM</span>`,
-            `<span>Temps ${state.analysis.beats}</span>`,
-            `<span>Sections ${state.analysis.sections}</span>`,
-            `<span>Montées ${state.analysis.builds}</span>`,
-          ].join("")
-        : "";
+    // métriques du morceau, en tuiles lisibles
+    const metric = (label: string, value: string, unit = ""): string =>
+      `<div class="metric"><span>${label}</span><b>${value}${unit === "" ? "" : `<i>${unit}</i>`}</b></div>`;
+    const statsHost = el<HTMLElement>("track-stats");
+    if (this.analysis !== null) {
+      statsHost.innerHTML = [
+        metric("Durée", fmtTime(this.analysis.duration)),
+        metric("Tempo", this.analysis.tempo.toFixed(1), "BPM"),
+        metric("Temps forts", String(this.analysis.beats.length)),
+        metric("Attaques", String(this.analysis.onsets.length)),
+        metric("Sections", String(this.analysis.sections.length)),
+        metric("Montées", String(this.analysis.builds.length)),
+      ].join("");
+    } else if (state.analysis !== null) {
+      statsHost.innerHTML = [
+        metric("Durée", fmtTime(state.analysis.durationSec)),
+        metric("Tempo", state.analysis.tempo.toFixed(1), "BPM"),
+        metric("Temps forts", String(state.analysis.beats)),
+        metric("Sections", String(state.analysis.sections)),
+        metric("Montées", String(state.analysis.builds)),
+      ].join("");
+    } else {
+      statsHost.innerHTML = "";
+    }
 
     // position dans le morceau
     const trackPositionSec = Math.max(0, state.sync.showMs / 1000);
 
-    // liste des sections (reconstruite seulement quand l'analyse change)
+    // tableau des sections (reconstruit seulement quand l'analyse change)
     const sectionHost = el<HTMLElement>("track-sections");
     if (this.analysis !== this.sectionsSource) {
       this.sectionsSource = this.analysis;
-      sectionHost.innerHTML =
-        this.analysis === null
-          ? ""
-          : this.analysis.sections
-              .map((section) => {
-                const kind = section.kind ?? section.label;
-                const group = section.group ? ` · groupe ${section.group}` : "";
-                const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
-                return `<div class="section-chip"><span class="chip-kind">${kind}${occurrence}</span><span class="chip-range">${fmtTime(section.start)} → ${fmtTime(section.end)} · énergie ${section.energy.toFixed(2)}${group}</span></div>`;
-              })
-              .join("");
+      if (this.analysis === null) {
+        sectionHost.innerHTML = "";
+      } else {
+        const head =
+          `<div class="section-row is-head"><span>Rôle</span><span>Plage</span><span>Durée</span><span>Énergie moyenne</span><span>Groupe</span></div>`;
+        const rows = this.analysis.sections
+          .map((section) => {
+            const kind = section.kind ?? section.label;
+            const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
+            const length = Math.max(0, section.end - section.start);
+            const energy = Math.min(1, Math.max(0, section.energy));
+            const group = section.group ? `groupe ${section.group}` : "—";
+            return (
+              `<div class="section-row">` +
+              `<span class="sec-kind">${kind}${occurrence}</span>` +
+              `<span class="sec-range">${fmtTime(section.start)} → ${fmtTime(section.end)}</span>` +
+              `<span class="sec-len">${length.toFixed(1)} s</span>` +
+              `<span class="energy-cell" title="énergie moyenne ${energy.toFixed(2)}"><i style="width:${(energy * 100).toFixed(0)}%"></i><b>${energy.toFixed(2)}</b></span>` +
+              `<span class="sec-group">${group}</span>` +
+              `</div>`
+            );
+          })
+          .join("");
+        sectionHost.innerHTML = head + rows;
+      }
     }
     if (this.analysis !== null) {
       const currentIndex = this.analysis.sections.findIndex(
         (entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end,
       );
-      Array.from(sectionHost.children).forEach((child, index) => {
+      Array.from(sectionHost.querySelectorAll(".section-row:not(.is-head)")).forEach((child, index) => {
         child.classList.toggle("is-current", index === currentIndex);
       });
     }
@@ -753,13 +805,14 @@ class Dashboard {
       const section = this.analysis.sections.find((entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end) ?? null;
       const energyNow = sampleCurve(this.analysis.energy, trackPositionSec);
       const nextBuild = this.analysis.builds.find((entry) => entry.end >= trackPositionSec) ?? null;
-      el<HTMLElement>("now-time").textContent = `Position ${fmtTime(trackPositionSec)} / ${fmtTime(this.analysis.duration)}`;
-      el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} % du morceau`;
-      el<HTMLElement>("now-section").textContent = section ? `Section ${section.kind ?? section.label} (${(section.energy * 100).toFixed(0)} %)` : "Section inconnue";
-      el<HTMLElement>("now-energy").textContent = `Énergie actuelle ${energyNow.toFixed(3)}`;
+      const kindLabel = section ? `${section.kind ?? section.label}${section.occurrence ? ` n°${section.occurrence}` : ""}` : "—";
+      el<HTMLElement>("now-time").textContent = `${fmtTime(trackPositionSec)} / ${fmtTime(this.analysis.duration)}`;
+      el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} %`;
+      el<HTMLElement>("now-section").textContent = kindLabel;
+      el<HTMLElement>("now-energy").textContent = `${energyNow.toFixed(2)} / 1`;
       el<HTMLElement>("now-build").textContent = nextBuild
-        ? `Prochaine montée dans ${fmtTime(Math.max(0, nextBuild.start - trackPositionSec))} (force ${(nextBuild.strength * 100).toFixed(0)} %)`
-        : "Aucune montée restante";
+        ? `dans ${fmtTime(Math.max(0, nextBuild.start - trackPositionSec))} · force ${(nextBuild.strength * 100).toFixed(0)} %`
+        : "aucune montée restante";
       el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
 
       const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
