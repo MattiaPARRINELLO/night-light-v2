@@ -347,6 +347,7 @@ src/
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
+    nowPlaying.ts       détection du morceau joué par un lecteur externe (pur)
     liveAudio.ts        caractéristiques audio live (normalisation, lissage)
     playback.ts         position du lecteur, dérive, corrélation (purs)
     debug.ts            journal de debug partagé (console + overlay)
