@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  clamp,
   clamp01,
   formatTime,
   hash01,
@@ -51,6 +52,8 @@ describe("series", () => {
     expect(clamp01(-2)).toBe(0);
     expect(clamp01(0.4)).toBe(0.4);
     expect(clamp01(7)).toBe(1);
+    expect(clamp(Number.NaN, 2, 5)).toBe(2);
+    expect(clamp(Number.POSITIVE_INFINITY, 0, 1)).toBe(0);
     expect(mix(0, 10, 0.25)).toBe(2.5);
     expect(smoothstep(0, 1, 0.5)).toBeCloseTo(0.5, 6);
     expect(smoothstep(2, 1, 0)).toBe(0);

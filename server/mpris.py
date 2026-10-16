@@ -36,13 +36,16 @@ _STOP = threading.Event()
 
 
 def _run(args: list[str], timeout: float = 3.0) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        args,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        return subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired, FileNotFoundError) as error:
+        return subprocess.CompletedProcess(args, returncode=124, stdout="", stderr=str(error))
 
 
 def _playerctl_available() -> bool:

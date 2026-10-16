@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +68,9 @@ MATCH_THRESHOLDS = MatchThresholds(allow_missing_duration=True)
 
 class DeezerProviderError(Exception):
     """Erreur spécifique au fournisseur Deezer."""
+
+
+_CONFIG_LOCK = threading.Lock()
 
 
 class DeezerProvider:
@@ -200,32 +204,33 @@ class DeezerProvider:
         est posé dans une copie privée de sa configuration, elle-même dérivée
         de la configuration par défaut de la version installée.
         """
-        if self._config_path is not None and self._config_path.is_file():
-            return self._config_path
-        self.work_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.work_dir, 0o700)
-        template = self.work_dir / f"streamrip-base-{_streamrip_version(self._binary())}.toml"
-        if not template.is_file():
-            _run_command(
-                [
-                    self._binary(),
-                    "--config-path",
-                    str(template),
-                    "config",
-                    "reset",
-                    "-y",
-                ],
-                timeout=self.search_timeout_sec,
-                operation="initialisation de streamrip",
-            )
-        text = template.read_text(encoding="utf-8")
-        text = _set_option(text, "deezer", "arl", _toml_string(self.arl))
-        for section, key, value in _CONFIG_OPTIONS:
-            text = _set_option(text, section, key, value)
-        config = self.work_dir / "streamrip.toml"
-        _write_private(config, text)
-        self._config_path = config
-        return config
+        with _CONFIG_LOCK:
+            if self._config_path is not None and self._config_path.is_file():
+                return self._config_path
+            self.work_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.work_dir, 0o700)
+            template = self.work_dir / f"streamrip-base-{_streamrip_version(self._binary())}.toml"
+            if not template.is_file():
+                _run_command(
+                    [
+                        self._binary(),
+                        "--config-path",
+                        str(template),
+                        "config",
+                        "reset",
+                        "-y",
+                    ],
+                    timeout=self.search_timeout_sec,
+                    operation="initialisation de streamrip",
+                )
+            text = template.read_text(encoding="utf-8")
+            text = _set_option(text, "deezer", "arl", _toml_string(self.arl))
+            for section, key, value in _CONFIG_OPTIONS:
+                text = _set_option(text, section, key, value)
+            config = self.work_dir / "streamrip.toml"
+            _write_private(config, text)
+            self._config_path = config
+            return config
 
 
 def _run_command(
@@ -366,7 +371,8 @@ def _downloaded_file(destination: Path, before: set[Path]) -> Path:
     if not files:
         raise DeezerProviderError("aucun fichier audio téléchargé")
     fresh = [path for path in files if path not in before]
-    return max(fresh or files, key=lambda path: path.stat().st_mtime)
+    candidates = fresh or files
+    return max(candidates, key=lambda path: (path.stat().st_mtime, str(path)))
 
 
 def _validate_downloaded_audio(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,8 +46,14 @@ def _int_env(name: str, default: int) -> int:
     if raw is None or raw.strip() == "":
         return default
     try:
-        return int(float(raw))
-    except ValueError:
+        value = float(raw)
+    except (ValueError, TypeError):
+        return default
+    if not math.isfinite(value):
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError, OverflowError):
         return default
 
 
@@ -55,9 +62,12 @@ def _float_env(name: str, default: float) -> float:
     if raw is None or raw.strip() == "":
         return default
     try:
-        return float(raw)
-    except ValueError:
+        value = float(raw)
+    except (ValueError, TypeError):
         return default
+    if not math.isfinite(value):
+        return default
+    return value
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
