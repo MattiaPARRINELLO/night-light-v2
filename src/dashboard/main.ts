@@ -20,11 +20,15 @@ import {
   type DashboardCommand,
   type ShowState,
 } from "../shared/control";
-import type { Analysis, Point } from "../types";
+import type { Analysis } from "../types";
+import { fmtTime, sampleCurve } from "./format";
+import { TrackChart } from "./trackChart";
 
 const HISTORY_MS = 60_000;
 const SAMPLE_MS = 250;
 const LINK_TIMEOUT_MS = 3000;
+/** Au-delà, la capture est ouverte mais n'envoie plus rien. */
+const CAPTURE_STALE_MS = 2000;
 
 interface Sample {
   at: number;
@@ -50,39 +54,42 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T;
 }
 
-function seconds(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const total = Math.floor(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
 function signed(value: number): string {
   return `${value > 0 ? "+" : ""}${Math.round(value)} ms`;
 }
 
-function fmtTime(value: number): string {
-  const minutes = Math.floor(value / 60);
-  const secondsPart = value % 60;
-  return `${minutes}:${secondsPart.toFixed(1).padStart(4, "0")}`;
+/** Écrit le texte seulement s'il change : inutile de repeindre 60 fois par seconde. */
+function setText(node: HTMLElement, value: string): void {
+  if (node.textContent !== value) node.textContent = value;
 }
 
-function sampleCurve(curve: Point[], timeValue: number): number {
-  if (curve.length === 0) return 0;
-  if (timeValue <= curve[0]![0]) return curve[0]![1];
-  const last = curve[curve.length - 1]!;
-  if (timeValue >= last[0]) return last[1];
-  for (let index = 0; index < curve.length - 1; index++) {
-    const point = curve[index]!;
-    const next = curve[index + 1]!;
-    if (timeValue >= point[0] && timeValue <= next[0]) {
-      const factor = (timeValue - point[0]) / Math.max(next[0] - point[0], 1e-6);
-      return point[1] + (next[1] - point[1]) * factor;
-    }
-  }
-  return 0;
+/**
+ * Phrase de synthèse d'un panneau : une ligne, colorée selon qu'elle annonce une
+ * bonne nouvelle, un doute ou un problème.
+ */
+function setVerdict(node: HTMLElement, text: string, tone: "good" | "warn" | "bad" | ""): void {
+  setText(node, text);
+  node.classList.toggle("is-good", tone === "good");
+  node.classList.toggle("is-warn", tone === "warn");
+  node.classList.toggle("is-bad", tone === "bad");
 }
 
+/** Section jouée à cet instant, sous forme lisible : « refrain n°2 ». */
+function sectionAt(analysis: Analysis, seconds: number): string {
+  const section = analysis.sections.find((entry) => seconds >= entry.start && seconds < entry.end);
+  if (section === undefined) return "hors section";
+  const kind = section.kind ?? section.label;
+  return section.occurrence ? `${kind} n°${section.occurrence}` : kind;
+}
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** « 1 montée », « 3 montées » : un compteur qui se lit sans accroc. */
+function pluriel(count: number, singulier: string, pluriels: string): string {
+  return `${count} ${count > 1 ? pluriels : singulier}`;
+}
 
 /** Courbe simple. */
 function drawSeries(
@@ -127,8 +134,8 @@ function drawSeries(
   ctx.stroke();
 }
 
-/** Spectre en barres. */
-function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState): void {
+/** Spectre en barres. Sans signal, des barres à zéro : plutôt qu'un faux niveau. */
+function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState, idle: boolean): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
   const w = canvas.width;
@@ -136,17 +143,17 @@ function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState): void {
   ctx.clearRect(0, 0, w, h);
 
   const bands: Array<[string, number]> = [
-    ["basses", state.audio.bass],
-    ["médiums", state.audio.mid],
-    ["aigus", state.audio.high],
+    ["basses", idle ? 0 : state.audio.bass],
+    ["médiums", idle ? 0 : state.audio.mid],
+    ["aigus", idle ? 0 : state.audio.high],
   ];
   const barWidth = w / bands.length;
   for (const [index, [label, value]] of bands.entries()) {
     const x = index * barWidth;
-    const height = h * Math.min(1, Math.max(0.04, value));
+    const height = h * Math.min(1, Math.max(idle ? 0 : 0.04, value));
     const gradient = ctx.createLinearGradient(0, h - height, 0, h);
-    gradient.addColorStop(0, `hsla(${190 + index * 55}, 85%, 66%, 0.95)`);
-    gradient.addColorStop(1, `hsla(${190 + index * 55}, 85%, 45%, 0.55)`);
+    gradient.addColorStop(0, `hsla(${190 + index * 55}, 85%, 66%, ${idle ? 0.3 : 0.95})`);
+    gradient.addColorStop(1, `hsla(${190 + index * 55}, 85%, 45%, ${idle ? 0.18 : 0.55})`);
     ctx.fillStyle = gradient;
     ctx.fillRect(x + barWidth * 0.14, h - height, barWidth * 0.72, height);
     ctx.fillStyle = "rgba(220,232,248,0.55)";
@@ -154,12 +161,20 @@ function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState): void {
     ctx.fillText(label, x + barWidth * 0.14, h - 4);
   }
 
+  if (idle) {
+    ctx.fillStyle = "rgba(220, 232, 248, 0.75)";
+    ctx.font = "600 13px system-ui, sans-serif";
+    const text = state.capture.open ? "aucun son capté" : "capture fermée";
+    ctx.fillText(text, 16, 24);
+    return;
+  }
+
   ctx.fillStyle = `rgba(255,255,255,${0.12 + state.audio.energy * 0.35})`;
   ctx.fillRect(0, h - 2 - state.audio.energy * (h - 20), w, 1.5);
 }
 
-/** Historique multi-courbes. */
-function drawHistory(canvas: HTMLCanvasElement, samples: Sample[]): void {
+/** Historique multi-courbes. `idle` aplatit les bandes : voir `drawSpectrum`. */
+function drawHistory(canvas: HTMLCanvasElement, samples: Sample[], idle: boolean): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
   const w = canvas.width;
@@ -195,251 +210,43 @@ function drawHistory(canvas: HTMLCanvasElement, samples: Sample[]): void {
     ctx.stroke();
   };
 
-  draw((sample) => sample.bass, "rgba(120, 210, 255, 0.55)", 1.2);
-  draw((sample) => sample.mid, "rgba(180, 150, 255, 0.55)", 1.2);
-  draw((sample) => sample.high, "rgba(255, 170, 120, 0.55)", 1.2);
+  const flat = (value: number): number => (idle ? 0 : value);
+  draw((sample) => flat(sample.bass), "rgba(120, 210, 255, 0.55)", 1.2);
+  draw((sample) => flat(sample.mid), "rgba(180, 150, 255, 0.55)", 1.2);
+  draw((sample) => flat(sample.high), "rgba(255, 170, 120, 0.55)", 1.2);
   draw((sample) => sample.energy, "rgba(255, 230, 140, 0.85)", 2);
   draw((sample) => sample.rms, "#7fd7ff", 2);
 }
 
-/** Analyse musicale complète : bande de structure + plan musical. */
-function drawTrack(canvas: HTMLCanvasElement, analysis: Analysis | null, state: ShowState): void {
-  const ctx = canvas.getContext("2d");
-  if (ctx === null) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  const background = ctx.createLinearGradient(0, 0, 0, h);
-  background.addColorStop(0, "rgba(17, 25, 45, 0.85)");
-  background.addColorStop(1, "rgba(8, 12, 22, 0.9)");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, w, h);
-
-  if (analysis === null) {
-    ctx.fillStyle = "rgba(200, 210, 235, 0.75)";
-    ctx.font = "600 16px system-ui, sans-serif";
-    const message =
-      state.analysis === null
-        ? "Aucune analyse chargée — dépose un morceau ou lance une recherche."
-        : "Analyse complète en cours de réception depuis l'écran de show…";
-    ctx.fillText(message, 24, h / 2);
-    return;
-  }
-
-  const duration = Math.max(analysis.duration, 0.001);
-  const left = 58;
-  const right = w - 30;
-  const usable = right - left;
-  const px = (seconds: number): number => left + (seconds / duration) * usable;
-
-  const bandTop = 18;
-  const bandHeight = 38;
-  const laneY = bandTop + bandHeight + 16;
-  const curveTop = bandTop + bandHeight + 30;
-  const curveBottom = h - 62;
-
-  const palette: Record<string, { fill: string; line: string }> = {
-    calme: { fill: "rgba(90, 140, 220, 0.30)", line: "rgba(120, 170, 240, 0.95)" },
-    montee: { fill: "rgba(255, 180, 90, 0.30)", line: "rgba(255, 190, 110, 0.95)" },
-    intense: { fill: "rgba(255, 100, 140, 0.32)", line: "rgba(255, 120, 160, 0.95)" },
-    descente: { fill: "rgba(150, 200, 160, 0.28)", line: "rgba(160, 220, 180, 0.9)" },
-    silence: { fill: "rgba(255, 255, 255, 0.10)", line: "rgba(255, 255, 255, 0.4)" },
-  };
-
-  // ---- bande de structure, lisible en un coup d'œil
-  ctx.font = "600 12px system-ui, sans-serif";
-  for (const section of analysis.sections) {
-    const x1 = px(section.start);
-    const x2 = px(section.end);
-    const width = Math.max(2, x2 - x1);
-    const color = palette[section.label] ?? palette.silence!;
-    ctx.fillStyle = color.fill;
-    ctx.fillRect(x1, bandTop, width, bandHeight);
-    ctx.fillStyle = color.line;
-    ctx.fillRect(x1, bandTop, width, 3);
-
-    const label = section.kind ?? section.label;
-    if (width > ctx.measureText(label).width + 12) {
-      ctx.fillStyle = "rgba(240, 245, 255, 0.92)";
-      ctx.fillText(label, x1 + 6, bandTop + bandHeight - 12);
-    }
-  }
-  ctx.strokeStyle = "rgba(255,255,255,0.10)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left, bandTop, usable, bandHeight);
-
-  // ---- montées (flèches) dans leur propre couloir
-  for (const build of analysis.builds) {
-    const x1 = px(build.start);
-    const x2 = px(build.end);
-    const alpha = 0.35 + build.strength * 0.6;
-    ctx.strokeStyle = `rgba(255, 120, 165, ${alpha})`;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, laneY);
-    ctx.lineTo(x2, laneY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, laneY);
-    ctx.lineTo(x2 - 7, laneY - 5);
-    ctx.lineTo(x2 - 7, laneY + 5);
-    ctx.closePath();
-    ctx.fillStyle = `rgba(255, 120, 165, ${alpha})`;
-    ctx.fill();
-  }
-
-  // ---- grille + repères
-  ctx.font = "11px ui-monospace, monospace";
-  for (const level of [0, 0.25, 0.5, 0.75, 1]) {
-    const y = curveBottom - level * (curveBottom - curveTop);
-    ctx.strokeStyle = level === 0 ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.07)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(left, y);
-    ctx.lineTo(right, y);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(170, 188, 220, 0.7)";
-    ctx.fillText(level.toFixed(2), 14, y + 4);
-  }
-
-  // ---- temps forts
-  const beatStep = Math.max(1, Math.ceil(analysis.beats.length / 700));
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
-  ctx.lineWidth = 1;
-  for (let index = 0; index < analysis.beats.length; index += beatStep) {
-    const x = px(analysis.beats[index]!);
-    ctx.beginPath();
-    ctx.moveTo(x, curveTop);
-    ctx.lineTo(x, curveBottom);
-    ctx.stroke();
-  }
-
-  // ---- courbes (décimées à la largeur utile)
-  const plotCurve = (data: Point[], color: string, width: number): void => {
-    if (data.length < 2) return;
-    const step = Math.max(1, Math.ceil(data.length / Math.max(2, usable)));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    let started = false;
-    for (let index = 0; index < data.length; index += step) {
-      const [t, value] = data[index]!;
-      const x = px(t);
-      const y = curveBottom - value * (curveBottom - curveTop);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    const [lastT, lastValue] = data[data.length - 1]!;
-    ctx.lineTo(px(lastT), curveBottom - lastValue * (curveBottom - curveTop));
-    ctx.stroke();
-  };
-
-  // aire sous la courbe d'énergie, pour la rendre immédiatement lisible
-  if (analysis.energy.length > 1) {
-    const area = ctx.createLinearGradient(0, curveTop, 0, curveBottom);
-    area.addColorStop(0, "rgba(255, 217, 138, 0.30)");
-    area.addColorStop(1, "rgba(255, 217, 138, 0.02)");
-    ctx.fillStyle = area;
-    ctx.beginPath();
-    ctx.moveTo(px(analysis.energy[0]![0]), curveBottom);
-    const step = Math.max(1, Math.ceil(analysis.energy.length / Math.max(2, usable)));
-    for (let index = 0; index < analysis.energy.length; index += step) {
-      const [t, value] = analysis.energy[index]!;
-      ctx.lineTo(px(t), curveBottom - value * (curveBottom - curveTop));
-    }
-    ctx.lineTo(px(duration), curveBottom);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  plotCurve(analysis.bass, "rgba(120, 210, 255, 0.75)", 1.6);
-  plotCurve(analysis.mid, "rgba(180, 150, 255, 0.68)", 1.6);
-  plotCurve(analysis.high, "rgba(255, 170, 120, 0.68)", 1.6);
-  ctx.save();
-  ctx.shadowColor = "rgba(255, 217, 138, 0.85)";
-  ctx.shadowBlur = 14;
-  plotCurve(analysis.energy, "#ffe08a", 3.2);
-  ctx.restore();
-
-  // ---- onsets (petits repères sous les courbes)
-  const onsetStep = Math.max(1, Math.ceil(analysis.onsets.length / 900));
-  ctx.fillStyle = "rgba(150, 220, 255, 0.7)";
-  for (let index = 0; index < analysis.onsets.length; index += onsetStep) {
-    const x = px(analysis.onsets[index]!);
-    ctx.beginPath();
-    ctx.arc(x, curveBottom + 7, 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ---- règle temporelle
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(left, curveBottom + 16);
-  ctx.lineTo(right, curveBottom + 16);
-  ctx.stroke();
-  ctx.font = "11px ui-monospace, monospace";
-  ctx.fillStyle = "rgba(200, 214, 240, 0.75)";
-  const ticks = 8;
-  for (let index = 0; index <= ticks; index++) {
-    const t = (duration * index) / ticks;
-    const x = px(t);
-    ctx.beginPath();
-    ctx.moveTo(x, curveBottom + 16);
-    ctx.lineTo(x, curveBottom + 21);
-    ctx.stroke();
-    if (index % 2 === 0) {
-      const label = fmtTime(t);
-      ctx.fillText(label, x - ctx.measureText(label).width / 2, curveBottom + 36);
-    }
-  }
-
-  // ---- curseur du show
-  const positionSec = Math.max(0, state.sync.showMs / 1000);
-  if (positionSec >= 0 && positionSec <= duration) {
-    const x = px(positionSec);
-    ctx.strokeStyle = "rgba(143, 240, 196, 0.9)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(x, bandTop - 6);
-    ctx.lineTo(x, curveBottom + 18);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(143, 240, 196, 0.28)";
-    ctx.fillRect(left, bandTop, Math.max(0, x - left), bandHeight);
-    const tag = `${fmtTime(positionSec)}  show`;
-    ctx.font = "600 11px system-ui, sans-serif";
-    const tagWidth = ctx.measureText(tag).width + 14;
-    const tagX = Math.min(Math.max(x - tagWidth / 2, left), right - tagWidth);
-    ctx.fillStyle = "rgba(143, 240, 196, 0.95)";
-    ctx.fillRect(tagX, bandTop - 24, tagWidth, 18);
-    ctx.fillStyle = "#04070c";
-    ctx.fillText(tag, tagX + 7, bandTop - 11);
-  }
-}
-
-/** Courbe render activité. */
+/** Images par seconde du show, mises à l'échelle sur 60 : la vraie activité du rendu. */
 function drawRender(canvas: HTMLCanvasElement, samples: Sample[]): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
+
+  // Repère des 40 images/s, en dessous desquelles le spectacle peut saccader.
+  const floor = h - (40 / 60) * h;
+  ctx.strokeStyle = "rgba(255, 217, 138, 0.28)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, floor);
+  ctx.lineTo(w, floor);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
   if (samples.length < 2) return;
   const first = samples[0]!;
   const last = samples[samples.length - 1]!;
   const span = Math.max(last.at - first.at, 1);
-  ctx.strokeStyle = "rgba(160, 130, 255, 0.75)";
+  ctx.strokeStyle = "rgba(160, 130, 255, 0.85)";
   ctx.lineWidth = 1.6;
   ctx.beginPath();
   samples.forEach((sample, index) => {
     const x = ((sample.at - first.at) / span) * w;
-    const y = h - sample.rms * h;
+    const y = h - Math.min(1, Math.max(0, sample.showFps / 60)) * h;
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
@@ -458,8 +265,18 @@ class Dashboard {
   private analysisArtist = "";
   private sectionsSource: Analysis | null = null;
   private lastAnalysisRequestAt = 0;
+  private readonly chart: TrackChart;
 
   constructor() {
+    // Le tracé a sa propre boucle d'animation : la position lissée qu'il produit
+    // sert aussi à faire vivre l'horloge et la barre de progression.
+    this.chart = new TrackChart(
+      el<HTMLCanvasElement>("track-canvas"),
+      el<HTMLElement>("track-plot"),
+      el<HTMLElement>("track-tooltip"),
+      el<HTMLButtonElement>("track-zoom"),
+      (seconds) => this.updateLivePosition(seconds),
+    );
     this.link.onMessage((message) => {
       if (message.analysisPayload !== undefined) {
         const payload = message.analysisPayload;
@@ -530,11 +347,35 @@ class Dashboard {
   }
 
   private checkLink(): void {
-    const alive = this.state.at > 0 && Date.now() - this.state.at < LINK_TIMEOUT_MS;
-    const pill = el<HTMLElement>("link-pill");
-    pill.textContent = alive ? "Show connecté" : "Show hors ligne";
-    pill.classList.toggle("pill-on", alive);
-    pill.classList.toggle("pill-off", !alive);
+    const seen = this.state.at > 0;
+    const age = seen ? Date.now() - this.state.at : null;
+    const alive = seen && age !== null && age < LINK_TIMEOUT_MS;
+
+    setText(el<HTMLElement>("link-pill"), alive ? "Show connecté" : "Show hors ligne");
+    setText(
+      el<HTMLElement>("sb-link-note"),
+      !seen
+        ? "aucun signe reçu"
+        : alive
+          ? "à jour"
+          : `dernier signe il y a ${Math.round((age ?? 0) / 1000)} s`,
+    );
+    const link = el<HTMLElement>("sb-link");
+    link.classList.toggle("is-on", alive);
+    link.classList.toggle("is-off", !alive);
+
+    // Une liaison perdue ne doit pas se lire comme un dashboard en panne : on dit
+    // explicitement que tout ce qui est affiché est figé, et depuis quand.
+    const stale = el<HTMLElement>("alert-stale");
+    stale.hidden = !(seen && !alive);
+    if (!stale.hidden) {
+      setText(
+        el<HTMLElement>("stale-text"),
+        `L'écran de show ne répond plus depuis ${Math.round((age ?? 0) / 1000)} s : tout ce qui suit est la dernière valeur reçue.`,
+      );
+    }
+    this.refreshAlerts();
+
     el<HTMLButtonElement>("btn-force-show").disabled = this.state.analysis === null && this.analysis === null;
   }
 
@@ -566,9 +407,56 @@ class Dashboard {
     const state = this.state;
     const sync = state.sync;
 
-    el<HTMLElement>("kpi-mode").textContent = MODE_LABELS[state.mode];
-    el<HTMLElement>("kpi-screen").textContent = `écran : ${SCREEN_LABELS[state.screen]}`;
-    el<HTMLElement>("screen-pill").textContent = SCREEN_LABELS[state.screen];
+    // ---- bande d'état : cinq faits ; le reste de la page ne fait que détailler
+    setText(el<HTMLElement>("kpi-mode"), MODE_LABELS[state.mode]);
+    setText(el<HTMLElement>("kpi-screen"), `écran : ${SCREEN_LABELS[state.screen]}`);
+    el<HTMLElement>("sb-mode").classList.toggle("is-mode-active", state.mode !== "live");
+
+    const trackPositionSec = Math.max(0, sync.showMs / 1000);
+    const positionSec = this.analysis !== null ? this.analysis.duration : state.analysis?.durationSec ?? null;
+    const shownPosition = positionSec === null ? trackPositionSec : Math.min(trackPositionSec, positionSec);
+    setText(
+      el<HTMLElement>("sb-position-value"),
+      positionSec === null ? `${fmtTime(shownPosition)} / —` : `${fmtTime(shownPosition)} / ${fmtTime(positionSec)}`,
+    );
+    const place =
+      this.analysis === null
+        ? state.analysis === null
+          ? "aucun morceau analysé"
+          : state.analysis.title
+        : sectionAt(this.analysis, shownPosition);
+    setText(
+      el<HTMLElement>("sb-position-note"),
+      positionSec === null ? place : `${((shownPosition / positionSec) * 100).toFixed(1)} % · ${place}`,
+    );
+
+    const live = state.mode === "live";
+    const driftAbs = Math.abs(sync.driftMs);
+    setText(el<HTMLElement>("sb-drift-value"), live ? "—" : signed(sync.driftMs));
+    setText(
+      el<HTMLElement>("sb-drift-note"),
+      live ? "rien à caler en Live" : `tolérance 150 ms · latence ${sync.latencyMs} ms`,
+    );
+    const sbDrift = el<HTMLElement>("sb-drift");
+    sbDrift.classList.toggle("is-good", !live && driftAbs <= 150);
+    sbDrift.classList.toggle("is-warn", !live && driftAbs > 150 && driftAbs < 1500);
+    sbDrift.classList.toggle("is-bad", !live && driftAbs >= 1500);
+
+    const captureStale =
+      state.capture.open && state.capture.lastAt > 0 && Date.now() - state.capture.lastAt > CAPTURE_STALE_MS;
+    const silence = state.capture.open && !captureStale && state.audio.rms < 0.004;
+    /** Rien n'arrive du PC : les jauges et le spectre doivent le montrer. */
+    const idle = !state.capture.open || silence;
+    setText(el<HTMLElement>("sb-capture-value"), state.capture.open ? "active" : "fermée");
+    setText(
+      el<HTMLElement>("sb-capture-note"),
+      state.capture.open
+        ? silence
+          ? "silence : rien n'arrive du PC"
+          : `${state.capture.rate.toFixed(1)} messages/s`
+        : "le show n'écoute pas le son du PC",
+    );
+    el<HTMLElement>("sb-capture").classList.toggle("is-good", state.capture.open && !captureStale && !silence);
 
     const stages = ["drop", "analysis", "show", "live"];
     for (const stage of stages) {
@@ -582,52 +470,31 @@ class Dashboard {
       else if (stage === "live") active = state.mode === "live" || state.mode === "paused";
       node.classList.toggle("is-active", active);
     }
-    el<HTMLElement>("kpi-capture").textContent = state.capture.open ? state.capture.state : "fermée";
-    el<HTMLElement>("kpi-capture-note").textContent =
-      state.capture.source === "" ? `${state.capture.messages} messages` : state.capture.source;
-
-    el<HTMLElement>("kpi-position").textContent = seconds(sync.showMs);
-    el<HTMLElement>("kpi-position-note").textContent =
-      state.analysis === null ? "aucun morceau" : `${state.analysis.title}`;
-
-    const drift = el<HTMLElement>("kpi-drift");
-    drift.textContent = state.mode === "live" ? "—" : signed(sync.driftMs);
-    drift.classList.toggle("is-good", Math.abs(sync.driftMs) <= 150);
-    drift.classList.toggle("is-warn", Math.abs(sync.driftMs) > 150 && Math.abs(sync.driftMs) < 1500);
-    drift.classList.toggle("is-bad", Math.abs(sync.driftMs) >= 1500);
-    el<HTMLElement>("kpi-drift-note").textContent =
-      state.mode === "live" ? "rien à caler en Live" : `tolérance 150 ms · latence ${sync.latencyMs} ms`;
-
-    // KPI morceau
-    if (this.analysis !== null) {
-      el<HTMLElement>("kpi-tempo").textContent = this.analysis.tempo.toFixed(1);
-      el<HTMLElement>("kpi-duration").textContent = fmtTime(this.analysis.duration);
-      el<HTMLElement>("kpi-time-sections").textContent = `${this.analysis.beats.length} · ${this.analysis.sections.length}`;
-      el<HTMLElement>("kpi-time-sections-note").textContent = `${fmtTime(this.analysis.duration)} · période ${this.analysis.beatPeriod.toFixed(3)} s`;
-      el<HTMLElement>("kpi-build-onset").textContent = `${this.analysis.builds.length} · ${this.analysis.onsets.length}`;
-      el<HTMLElement>("kpi-build-onset-note").textContent = `${this.analysis.energy.length} points d'énergie`;
-    } else if (state.analysis !== null) {
-      el<HTMLElement>("kpi-tempo").textContent = state.analysis.tempo.toFixed(1);
-      el<HTMLElement>("kpi-duration").textContent = fmtTime(state.analysis.durationSec);
-      el<HTMLElement>("kpi-time-sections").textContent = `${state.analysis.beats} · ${state.analysis.sections}`;
-      el<HTMLElement>("kpi-time-sections-note").textContent = `${fmtTime(state.analysis.durationSec)}`;
-      el<HTMLElement>("kpi-build-onset").textContent = `${state.analysis.builds} · —`;
-      el<HTMLElement>("kpi-build-onset-note").textContent = "analyse résumée côté show";
-    } else {
-      el<HTMLElement>("kpi-tempo").textContent = "—";
-      el<HTMLElement>("kpi-duration").textContent = "—";
-      el<HTMLElement>("kpi-time-sections").textContent = "—";
-      el<HTMLElement>("kpi-time-sections-note").textContent = "aucune analyse";
-      el<HTMLElement>("kpi-build-onset").textContent = "—";
-      el<HTMLElement>("kpi-build-onset-note").textContent = "—";
-    }
 
     // audio
-    el<HTMLElement>("audio-rate").textContent = state.capture.open
-      ? `${state.capture.rate.toFixed(1)} msg/s`
-      : "capture fermée";
-    if (!state.capture.open) el<HTMLElement>("audio-rate").classList.add("is-off");
-    else el<HTMLElement>("audio-rate").classList.remove("is-off");
+    setText(el<HTMLElement>("audio-rate"), state.capture.open ? `${state.capture.rate.toFixed(1)} messages/s` : "capture fermée");
+    el<HTMLElement>("audio-rate").classList.toggle("is-off", !state.capture.open);
+    if (!state.capture.open) {
+      setVerdict(
+        el<HTMLElement>("audio-verdict"),
+        "Capture fermée : le show n'écoute pas le son du PC. Rouvre-la pour que les lumières suivent la musique.",
+        "",
+      );
+    } else if (captureStale) {
+      setVerdict(
+        el<HTMLElement>("audio-verdict"),
+        `Capture ouverte, mais plus rien n'arrive depuis ${Math.round((Date.now() - state.capture.lastAt) / 1000)} s.`,
+        "warn",
+      );
+    } else if (silence) {
+      setVerdict(el<HTMLElement>("audio-verdict"), "Capture ouverte, mais silence : rien n'arrive du PC.", "warn");
+    } else {
+      setVerdict(
+        el<HTMLElement>("audio-verdict"),
+        `Le son du PC arrive, ${state.capture.rate.toFixed(1)} messages par seconde.`,
+        "good",
+      );
+    }
 
     el<HTMLElement>("val-rms").textContent = state.audio.rms.toFixed(3);
     el<HTMLElement>("val-energy").textContent = state.audio.energy.toFixed(3);
@@ -647,9 +514,9 @@ class Dashboard {
     };
     meter("meter-rms", state.audio.rms);
     meter("meter-energy", state.audio.energy);
-    meter("meter-bass", state.audio.bass);
-    meter("meter-mid", state.audio.mid);
-    meter("meter-high", state.audio.high);
+    meter("meter-bass", idle ? 0 : state.audio.bass);
+    meter("meter-mid", idle ? 0 : state.audio.mid);
+    meter("meter-high", idle ? 0 : state.audio.high);
     meter("meter-transient", state.audio.transient);
 
     el<HTMLElement>("capture-state").textContent = state.capture.state || (state.capture.open ? "ouverte" : "fermée");
@@ -658,21 +525,44 @@ class Dashboard {
     el<HTMLElement>("capture-last").textContent =
       state.capture.lastAt > 0 ? new Date(state.capture.lastAt).toLocaleTimeString("fr-FR") : "—";
     el<HTMLElement>("prog-capture").textContent = state.capture.open
-      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} msg/s`
+      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} messages/s`
       : "fermée";
 
     // synchronisation
     el<HTMLElement>("sync-source").textContent = sync.source === "" ? "aucune source" : sync.source;
-    el<HTMLElement>("sync-player").textContent = seconds(sync.playerMs);
-    el<HTMLElement>("sync-show").textContent = seconds(sync.showMs);
-    el<HTMLElement>("sync-drift").textContent = signed(sync.driftMs);
+    el<HTMLElement>("sync-player").textContent = fmtTime(sync.playerMs / 1000);
+    el<HTMLElement>("sync-show").textContent = fmtTime(sync.showMs / 1000);
+    const syncDrift = el<HTMLElement>("sync-drift");
+    syncDrift.textContent = signed(sync.driftMs);
+    syncDrift.classList.toggle("is-good", driftAbs <= 150);
+    syncDrift.classList.toggle("is-warn", driftAbs > 150 && driftAbs < 1500);
+    syncDrift.classList.toggle("is-bad", driftAbs >= 1500);
     el<HTMLElement>("sync-latency").textContent = `${sync.latencyMs} ms`;
     el<HTMLElement>("sync-attempts").textContent = String(sync.attempts);
     el<HTMLElement>("sync-correlation").textContent =
       sync.correlation === null ? "—" : sync.correlation.toFixed(3);
     el<HTMLElement>("sync-expected").textContent = sync.expectedTitle || "—";
     el<HTMLElement>("sync-read").textContent = sync.playerTitle || "—";
-    el<HTMLElement>("sync-match").textContent = sync.match || "—";
+
+    // Le verdict du show est déjà une phrase (« synchronisé (≤ 150 ms) ») : on la
+    // remonte en tête du panneau plutôt que de la noyer en bas d'une liste.
+    if (live) {
+      setVerdict(el<HTMLElement>("sync-verdict"), "Rien à synchroniser : le show suit le son en direct.", "");
+    } else if (state.mode === "show-local") {
+      setVerdict(
+        el<HTMLElement>("sync-verdict"),
+        "Show local : le morceau analysé tourne, mais aucun lecteur n'est suivi.",
+        "warn",
+      );
+    } else if (state.mode === "lost") {
+      setVerdict(el<HTMLElement>("sync-verdict"), "Synchronisation perdue : le show ne retrouve plus le lecteur.", "bad");
+    } else {
+      setVerdict(
+        el<HTMLElement>("sync-verdict"),
+        sync.match === "" ? "En attente d'un signal du lecteur…" : capitalize(sync.match),
+        driftAbs <= 150 ? "good" : driftAbs < 1500 ? "warn" : "bad",
+      );
+    }
 
     // réglages
     const reduced = el<HTMLInputElement>("chk-reduced");
@@ -689,20 +579,23 @@ class Dashboard {
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
 
     // canvases
-    drawSpectrum(el<HTMLCanvasElement>("audio-canvas"), state);
-    drawHistory(el<HTMLCanvasElement>("rms-canvas"), this.samples);
+    // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
+    // ⅓ affiché à côté de « silence » se lirait comme un son réel.
+    const level = (fn: (sample: Sample) => number) => (sample: Sample): number => (idle ? 0 : fn(sample));
+    drawSpectrum(el<HTMLCanvasElement>("audio-canvas"), state, idle);
+    drawHistory(el<HTMLCanvasElement>("rms-canvas"), this.samples, idle);
     drawSeries(el<HTMLCanvasElement>("drift-canvas"), this.samples, (sample) => sample.driftMs, "#ffb86b", {
       min: -1500,
       max: 1500,
       zero: true,
     });
 
-    drawSeries(el<HTMLCanvasElement>("spark-rms"), this.samples, (sample) => sample.rms, "#7fd7ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-energy"), this.samples, (sample) => sample.energy, "#ffd98a", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-bass"), this.samples, (sample) => sample.bass, "#78d2ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-mid"), this.samples, (sample) => sample.mid, "#b496ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-high"), this.samples, (sample) => sample.high, "#ffaa78", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-transient"), this.samples, (sample) => sample.transient, "#ff8ca0", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-rms"), this.samples, level((sample) => sample.rms), "#7fd7ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-energy"), this.samples, level((sample) => sample.energy), "#ffd98a", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-bass"), this.samples, level((sample) => sample.bass), "#78d2ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-mid"), this.samples, level((sample) => sample.mid), "#b496ff", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-high"), this.samples, level((sample) => sample.high), "#ffaa78", { max: 1 });
+    drawSeries(el<HTMLCanvasElement>("spark-transient"), this.samples, level((sample) => sample.transient), "#ff8ca0", { max: 1 });
     drawSeries(el<HTMLCanvasElement>("spark-drift"), this.samples, (sample) => Math.abs(sample.driftMs) / 1500, "#ffb86b", { max: 1 });
     drawSeries(el<HTMLCanvasElement>("spark-corr"), this.samples, (sample) => sample.correlation ?? 0.5, "#8ff0c4", { max: 1 });
 
@@ -710,52 +603,45 @@ class Dashboard {
     drawSeries(el<HTMLCanvasElement>("render-spark"), this.samples, (sample) => sample.showQuality, "#a082ff", { max: 1 });
 
 
-    // morceau en cours
+    // morceau en cours : titre, artiste, puis la fiche technique en une ligne
     const trackTitle = el<HTMLElement>("track-title");
     const trackArtist = el<HTMLElement>("track-artist");
     const trackStatus = el<HTMLElement>("track-status");
+    const trackFacts = el<HTMLElement>("track-facts");
+    const sectionCount = el<HTMLElement>("section-count");
     if (this.analysis !== null) {
       trackTitle.textContent = this.analysisTitle || "Morceau analysé";
-      trackArtist.textContent =
-        this.analysisArtist === "" ? `${this.analysis.beats.length} temps · ${this.analysis.onsets.length} attaques` : this.analysisArtist;
+      trackArtist.textContent = this.analysisArtist === "" ? "analyse locale complète" : this.analysisArtist;
       trackStatus.textContent = "analyse locale complète";
+      trackFacts.textContent = [
+        fmtTime(this.analysis.duration),
+        `${this.analysis.tempo.toFixed(1)} BPM`,
+        `période ${this.analysis.beatPeriod.toFixed(3)} s`,
+        pluriel(this.analysis.sections.length, "section", "sections"),
+        pluriel(this.analysis.beats.length, "temps fort", "temps forts"),
+        pluriel(this.analysis.onsets.length, "attaque", "attaques"),
+        pluriel(this.analysis.builds.length, "montée", "montées"),
+      ].join(" · ");
+      sectionCount.textContent = pluriel(this.analysis.sections.length, "section", "sections");
     } else if (state.analysis !== null) {
       trackTitle.textContent = state.analysis.title || "Morceau chargé";
-      trackArtist.textContent = `${state.analysis.beats} temps · ${state.analysis.builds} montées · ${state.analysis.sections} sections`;
-      trackStatus.textContent = state.screen === "analysis" ? "analyse en cours" : (MODE_LABELS[state.mode]);
+      trackArtist.textContent = "analyse résumée : les courbes arrivent du show";
+      trackStatus.textContent = state.screen === "analysis" ? "analyse en cours" : MODE_LABELS[state.mode];
+      trackFacts.textContent = [
+        fmtTime(state.analysis.durationSec),
+        `${state.analysis.tempo.toFixed(1)} BPM`,
+        pluriel(state.analysis.sections, "section", "sections"),
+        pluriel(state.analysis.beats, "temps fort", "temps forts"),
+        pluriel(state.analysis.builds, "montée", "montées"),
+      ].join(" · ");
+      sectionCount.textContent = pluriel(state.analysis.sections, "section", "sections");
     } else {
       trackTitle.textContent = "Aucun morceau chargé";
-      trackArtist.textContent = "Dépose un fichier ou recherche par titre";
+      trackArtist.textContent = "Dépose un fichier ou cherche par titre, dans « Lancer un morceau »";
       trackStatus.textContent = "en attente";
+      trackFacts.textContent = "—";
+      sectionCount.textContent = "—";
     }
-
-    // métriques du morceau, en tuiles lisibles
-    const metric = (label: string, value: string, unit = ""): string =>
-      `<div class="metric"><span>${label}</span><b>${value}${unit === "" ? "" : `<i>${unit}</i>`}</b></div>`;
-    const statsHost = el<HTMLElement>("track-stats");
-    if (this.analysis !== null) {
-      statsHost.innerHTML = [
-        metric("Durée", fmtTime(this.analysis.duration)),
-        metric("Tempo", this.analysis.tempo.toFixed(1), "BPM"),
-        metric("Temps forts", String(this.analysis.beats.length)),
-        metric("Attaques", String(this.analysis.onsets.length)),
-        metric("Sections", String(this.analysis.sections.length)),
-        metric("Montées", String(this.analysis.builds.length)),
-      ].join("");
-    } else if (state.analysis !== null) {
-      statsHost.innerHTML = [
-        metric("Durée", fmtTime(state.analysis.durationSec)),
-        metric("Tempo", state.analysis.tempo.toFixed(1), "BPM"),
-        metric("Temps forts", String(state.analysis.beats)),
-        metric("Sections", String(state.analysis.sections)),
-        metric("Montées", String(state.analysis.builds)),
-      ].join("");
-    } else {
-      statsHost.innerHTML = "";
-    }
-
-    // position dans le morceau
-    const trackPositionSec = Math.max(0, state.sync.showMs / 1000);
 
     // tableau des sections (reconstruit seulement quand l'analyse change)
     const sectionHost = el<HTMLElement>("track-sections");
@@ -766,7 +652,8 @@ class Dashboard {
       } else {
         const head =
           `<div class="section-row is-head"><span>Rôle</span><span>Plage</span><span>Durée</span><span>Énergie moyenne</span><span>Groupe</span></div>`;
-        const rows = this.analysis.sections
+        const analysis = this.analysis;
+        const rows = analysis.sections
           .map((section) => {
             const kind = section.kind ?? section.label;
             const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
@@ -785,6 +672,22 @@ class Dashboard {
           })
           .join("");
         sectionHost.innerHTML = head + rows;
+        // Le tableau et le tracé parlent du même morceau : survoler une ligne
+        // montre où se joue le passage, cliquer le cadre.
+        const rowNodes = Array.from(sectionHost.querySelectorAll<HTMLElement>(".section-row:not(.is-head)"));
+        rowNodes.forEach((row, index) => {
+          const section = analysis.sections[index];
+          if (section === undefined) return;
+          const range = { start: section.start, end: section.end };
+          row.addEventListener("pointerenter", () => this.chart.setHighlight(range));
+          row.addEventListener("pointerleave", () => this.chart.setHighlight(null));
+          row.addEventListener("click", () => {
+            this.chart.focusRange(range.start, range.end);
+            // Le tracé est au-dessus du tableau : on le ramène à l'écran pour
+            // que le cadrage se voie.
+            el<HTMLElement>("track-plot").scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        });
       }
     }
     if (this.analysis !== null) {
@@ -796,31 +699,18 @@ class Dashboard {
       });
     }
 
-    drawTrack(el<HTMLCanvasElement>("track-canvas"), this.analysis, state);
+    this.chart.setFrame({
+      analysis: this.analysis,
+      showMs: state.sync.showMs,
+      at: state.at,
+      playing: state.mode !== "paused" && state.mode !== "lost" && state.analysis !== null,
+      driftMs: state.sync.driftMs,
+    });
 
-    // lecture en cours dans le morceau
+    // lecture en cours dans le morceau : tout de suite une valeur juste, puis
+    // la boucle du tracé prend le relais image par image pendant la lecture.
+    this.updateLivePosition(trackPositionSec);
     if (this.analysis !== null) {
-      const duration = Math.max(this.analysis.duration, 0.001);
-      const percent = Math.min(100, (trackPositionSec / duration) * 100);
-      const section = this.analysis.sections.find((entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end) ?? null;
-      const energyNow = sampleCurve(this.analysis.energy, trackPositionSec);
-      const nextBuild = this.analysis.builds.find((entry) => entry.end >= trackPositionSec) ?? null;
-      const kindLabel = section ? `${section.kind ?? section.label}${section.occurrence ? ` n°${section.occurrence}` : ""}` : "—";
-      el<HTMLElement>("now-time").textContent = `${fmtTime(trackPositionSec)} / ${fmtTime(this.analysis.duration)}`;
-      el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} %`;
-      el<HTMLElement>("now-section").textContent = kindLabel;
-      el<HTMLElement>("now-energy").textContent = `${energyNow.toFixed(2)} / 1`;
-      el<HTMLElement>("now-build").textContent = nextBuild
-        ? `dans ${fmtTime(Math.max(0, nextBuild.start - trackPositionSec))} · force ${(nextBuild.strength * 100).toFixed(0)} %`
-        : "aucune montée restante";
-      el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
-
-      const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
-      const pulse = 1 - ((trackPositionSec % beatPeriod) / beatPeriod);
-      const beat = el<HTMLElement>("beat-pulse");
-      beat.style.opacity = String(0.35 + pulse * 0.65);
-      beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
-
       // prochains événements
       const events: string[] = [];
       for (const build of this.analysis.builds.filter((entry) => entry.end >= trackPositionSec).slice(0, 3)) {
@@ -835,29 +725,25 @@ class Dashboard {
       }
       el<HTMLElement>("upcoming").innerHTML = events.length > 0 ? events.join("") : `<span class="upcoming-item is-muted">Fin du morceau proche</span>`;
     } else {
-      el<HTMLElement>("now-time").textContent = "Position —";
-      el<HTMLElement>("now-percent").textContent = "—";
-      el<HTMLElement>("now-section").textContent = "Aucune analyse";
-      el<HTMLElement>("now-energy").textContent = "—";
-      el<HTMLElement>("now-build").textContent = "—";
-      el<HTMLElement>("track-progress-fill").style.width = "0%";
       el<HTMLElement>("upcoming").innerHTML = "";
-      const beat = el<HTMLElement>("beat-pulse");
-      beat.style.opacity = "0.3";
-      beat.style.transform = "scale(0.8)";
     }
 
     // état du programme
     el<HTMLElement>("prog-screen").textContent = SCREEN_LABELS[state.screen];
     el<HTMLElement>("prog-mode").textContent = MODE_LABELS[state.mode];
-    el<HTMLElement>("prog-controlled").textContent = state.controlled ? "oui (kiosque)" : "non";
+    el<HTMLElement>("prog-controlled").textContent = state.controlled ? "oui, l'écran de show obéit ici" : "non";
     el<HTMLElement>("prog-capture").textContent = state.capture.open
-      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} msg/s`
+      ? `${state.capture.state} · ${state.capture.rate.toFixed(1)} messages/s`
       : "fermée";
-    el<HTMLElement>("prog-error").textContent = state.error ? `${state.error.title} — ${state.error.message}` : "aucune";
-    el<HTMLElement>("prog-notice").textContent = state.notice ? state.notice.text : "—";
-    el<HTMLElement>("prog-debug").textContent = state.debugOverlay ? "overlay actif" : "inactif";
+    el<HTMLElement>("prog-debug").textContent = state.debugOverlay ? "actif" : "inactif";
     if (!this.limits.has("health")) el<HTMLElement>("prog-limits").textContent = "—";
+
+    // Ce qui demande une action : erreur, repli discret, liaison perdue.
+    setText(el<HTMLElement>("prog-error"), state.error ? `${state.error.title} : ${state.error.message}` : "—");
+    el<HTMLElement>("alert-error").hidden = state.error === null;
+    setText(el<HTMLElement>("notice-text"), state.notice === null ? "—" : state.notice.text);
+    el<HTMLElement>("alert-notice").hidden = state.notice === null;
+    this.refreshAlerts();
 
     // rendu visuel
     el<HTMLElement>("render-live-fps").textContent = state.render.liveFps.toFixed(1);
@@ -866,32 +752,101 @@ class Dashboard {
     el<HTMLElement>("render-show-q").textContent = state.render.quality.toFixed(2);
     el<HTMLElement>("render-live-frame").textContent = String(state.render.liveFrame);
     el<HTMLElement>("render-show-frame").textContent = String(state.render.frame);
+    const showFps = state.render.showFps;
+    const renderVerdict = el<HTMLElement>("render-verdict");
+    setVerdict(
+      renderVerdict,
+      showFps >= 40 ? "fluide" : showFps >= 24 ? "un peu juste" : "saccadé",
+      showFps >= 40 ? "good" : showFps >= 24 ? "warn" : "bad",
+    );
     drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
 
     // journal
     const log = el<HTMLElement>("log");
     log.textContent = state.log.length === 0 ? "Rien à signaler." : state.log.join("\n");
-    el<HTMLElement>("log-count").textContent = `${state.log.length} lignes`;
-
-    const notice = el<HTMLElement>("notice");
-    if (state.notice === null) {
-      notice.hidden = true;
-      notice.textContent = "";
-    } else {
-      notice.hidden = false;
-      notice.textContent = state.notice.text;
-    }
+    el<HTMLElement>("log-count").textContent = state.log.length === 0 ? "vide" : `${state.log.length} lignes`;
 
     el<HTMLButtonElement>("btn-capture").textContent = state.capture.open
       ? "Couper la capture"
       : "Écouter le son du PC";
+  }
 
-    const mode = el<HTMLElement>("mode-pill");
-    mode.textContent = MODE_LABELS[state.mode];
-    mode.classList.toggle("pill-mode", state.mode !== "live");
+  /** La zone d'alertes ne s'affiche que s'il y a quelque chose à dire. */
+  private refreshAlerts(): void {
+    const alerts = el<HTMLElement>("alerts");
+    const any = Array.from(alerts.children).some((child) => !(child as HTMLElement).hidden);
+    alerts.hidden = !any;
+  }
+
+  /**
+   * Position lue dans le morceau : horloge, pourcentage, section, énergie et
+   * pulsation. Appelée depuis `render()` et, pendant la lecture, à chaque image
+   * du tracé — c'est ce qui fait couler l'horloge au lieu de la faire sauter.
+   */
+  private updateLivePosition(seconds: number): void {
+    if (this.analysis === null) {
+      setText(el<HTMLElement>("now-time"), "Position —");
+      setText(el<HTMLElement>("now-percent"), "—");
+      setText(el<HTMLElement>("now-section"), "Aucune analyse");
+      setText(el<HTMLElement>("now-energy"), "—");
+      setText(el<HTMLElement>("now-build"), "—");
+      el<HTMLElement>("now-build").classList.remove("is-good", "is-idle");
+      el<HTMLElement>("track-progress-fill").style.width = "0%";
+      const beat = el<HTMLElement>("beat-pulse");
+      beat.style.opacity = "0.3";
+      beat.style.transform = "scale(0.8)";
+      return;
+    }
+
+    const duration = Math.max(this.analysis.duration, 0.001);
+    // Une position au-delà de la fin (le lecteur a dépassé le morceau) ne doit
+    // pas afficher 290 % : on borne à ce qui existe.
+    const position = Math.min(Math.max(0, seconds), duration);
+    const percent = Math.min(100, (position / duration) * 100);
+    const section = this.analysis.sections.find((entry) => position >= entry.start && position < entry.end) ?? null;
+    const energyNow = sampleCurve(this.analysis.energy, position);
+    const nextBuild = this.analysis.builds.find((entry) => entry.end >= position) ?? null;
+    const kindLabel = section
+      ? `${section.kind ?? section.label}${section.occurrence ? ` n°${section.occurrence}` : ""}`
+      : "—";
+    setText(el<HTMLElement>("now-time"), `${fmtTime(position)} / ${fmtTime(duration)}`);
+    setText(el<HTMLElement>("now-percent"), `${percent.toFixed(1)} %`);
+    setText(el<HTMLElement>("now-section"), kindLabel);
+    setText(el<HTMLElement>("now-energy"), `${energyNow.toFixed(2)} / 1`);
+    setText(
+      el<HTMLElement>("now-build"),
+      nextBuild
+        ? `dans ${fmtTime(Math.max(0, nextBuild.start - position))} · force ${(nextBuild.strength * 100).toFixed(0)} %`
+        : "aucune montée restante",
+    );
+    // Vert seulement s'il reste vraiment une montée à venir.
+    const build = el<HTMLElement>("now-build");
+    build.classList.toggle("is-good", nextBuild !== null);
+    build.classList.toggle("is-idle", nextBuild === null);
+    el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
+
+    const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
+    const pulse = 1 - ((position % beatPeriod) / beatPeriod);
+    const beat = el<HTMLElement>("beat-pulse");
+    beat.style.opacity = String(0.35 + pulse * 0.65);
+    beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
   }
 
   private bindControls(): void {
+    // La bande d'état sert de sommaire : cliquer un fait mène au panneau qui le
+    // détaille, et le fait clignoter une fois pour qu'on voie où on a atterri.
+    for (const node of Array.from(document.querySelectorAll<HTMLButtonElement>(".sb[data-jump]"))) {
+      node.addEventListener("click", () => {
+        const target = document.getElementById(node.dataset.jump ?? "");
+        if (target === null) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.classList.remove("sb-flash");
+        void target.offsetWidth;
+        target.classList.add("sb-flash");
+        window.setTimeout(() => target.classList.remove("sb-flash"), 1300);
+      });
+    }
+
     const intensity = el<HTMLInputElement>("intensity");
     const flashes = el<HTMLInputElement>("flashes");
     const reduced = el<HTMLInputElement>("chk-reduced");
@@ -949,6 +904,7 @@ class Dashboard {
     el<HTMLButtonElement>("btn-cancel").addEventListener("click", () => {
       this.send({ type: "cancel-analysis" });
     });
+    el<HTMLButtonElement>("track-zoom").addEventListener("click", () => this.chart.resetZoom());
 
     this.bindSource();
   }
