@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#05060a" />
-    <meta name="description" content="Tableau de bord de Night Light : état du show, capture audio, synchronisation et réglages." />
+    <meta name="description" content="Tableau de bord de Night Light : état du show, capture audio, synchronisation, morceau en cours et réglages." />
     <title>Night Light — Contrôle</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A1%3C/text%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/src/styles/base.css" />
@@ -18,7 +18,7 @@
           <span class="brand-mark" aria-hidden="true"></span>
           <div>
             <h1>Night Light</h1>
-            <p class="dash-sub">Contrôle du spectacle</p>
+            <p class="dash-sub">Contrôle du spectacle · tableau de bord complet</p>
           </div>
         </div>
         <div class="dash-status" id="status">
@@ -49,6 +49,26 @@
           <p class="card-value" id="kpi-drift">—</p>
           <p class="card-note" id="kpi-drift-note">—</p>
         </article>
+        <article class="card">
+          <p class="card-label">Tempo</p>
+          <p class="card-value" id="kpi-tempo">—</p>
+          <p class="card-note" id="kpi-tempo-note">BPM</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Durée</p>
+          <p class="card-value" id="kpi-duration">—</p>
+          <p class="card-note" id="kpi-duration-note">morceau</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Sections</p>
+          <p class="card-value" id="kpi-sections">—</p>
+          <p class="card-note" id="kpi-sections-note">structuration</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Montées</p>
+          <p class="card-value" id="kpi-builds">—</p>
+          <p class="card-note" id="kpi-builds-note">builds détectés</p>
+        </article>
       </section>
 
       <div class="dash-grid">
@@ -66,9 +86,11 @@
             <div><dt>Médiums</dt><dd id="val-mid">—</dd></div>
             <div><dt>Aigus</dt><dd id="val-high">—</dd></div>
             <div><dt>Transitoire</dt><dd id="val-transient">—</dd></div>
+            <div><dt>RMS lissé</dt><dd id="val-rms-smooth">—</dd></div>
+            <div><dt>Énergie lissée</dt><dd id="val-energy-smooth">—</dd></div>
           </dl>
-          <canvas id="rms-canvas" width="640" height="120" aria-label="Niveau sonore sur la dernière minute"></canvas>
-          <p class="panel-note">Niveau sur les 60 dernières secondes</p>
+          <canvas id="rms-canvas" width="640" height="140" aria-label="Niveaux audio sur la dernière minute"></canvas>
+          <p class="panel-note">RMS, énergie et bandes sur les 60 dernières secondes</p>
         </section>
 
         <!-- Synchronisation -->
@@ -78,33 +100,66 @@
             <span class="panel-tag" id="sync-source">—</span>
           </header>
           <div class="sync-rows">
-            <div class="sync-row">
-              <span class="sync-label">Lecteur</span>
-              <span class="sync-value" id="sync-player">—</span>
-            </div>
-            <div class="sync-row">
-              <span class="sync-label">Show</span>
-              <span class="sync-value" id="sync-show">—</span>
-            </div>
-            <div class="sync-row">
-              <span class="sync-label">Écart</span>
-              <span class="sync-value" id="sync-drift">—</span>
-            </div>
-            <div class="sync-row">
-              <span class="sync-label">Morceau attendu</span>
-              <span class="sync-value" id="sync-expected">—</span>
-            </div>
-            <div class="sync-row">
-              <span class="sync-label">Morceau lu</span>
-              <span class="sync-value" id="sync-read">—</span>
-            </div>
-            <div class="sync-row">
-              <span class="sync-label">Verdict</span>
-              <span class="sync-value" id="sync-match">—</span>
-            </div>
+            <div class="sync-row"><span class="sync-label">Lecteur</span><span class="sync-value" id="sync-player">—</span></div>
+            <div class="sync-row"><span class="sync-label">Show</span><span class="sync-value" id="sync-show">—</span></div>
+            <div class="sync-row"><span class="sync-label">Écart</span><span class="sync-value" id="sync-drift">—</span></div>
+            <div class="sync-row"><span class="sync-label">Latence</span><span class="sync-value" id="sync-latency">—</span></div>
+            <div class="sync-row"><span class="sync-label">Tentatives</span><span class="sync-value" id="sync-attempts">—</span></div>
+            <div class="sync-row"><span class="sync-label">Corrélation</span><span class="sync-value" id="sync-correlation">—</span></div>
+            <div class="sync-row"><span class="sync-label">Morceau attendu</span><span class="sync-value" id="sync-expected">—</span></div>
+            <div class="sync-row"><span class="sync-label">Morceau lu</span><span class="sync-value" id="sync-read">—</span></div>
+            <div class="sync-row"><span class="sync-label">Verdict</span><span class="sync-value" id="sync-match">—</span></div>
           </div>
           <canvas id="drift-canvas" width="640" height="120" aria-label="Écart de synchronisation sur la dernière minute"></canvas>
           <p class="panel-note">Écart sur les 60 dernières secondes — la bande grise est la tolérance de 150 ms</p>
+        </section>
+
+        <!-- Morceau en cours -->
+        <section class="panel panel-wide" aria-label="Morceau en cours">
+          <header class="panel-head">
+            <h2>Morceau en cours et analyse</h2>
+            <span class="panel-tag" id="track-status">—</span>
+          </header>
+          <div class="track-head">
+            <div>
+              <p class="track-title" id="track-title">Aucun morceau chargé</p>
+              <p class="track-sub" id="track-artist">—</p>
+            </div>
+            <div class="track-stats" id="track-stats"></div>
+          </div>
+          <canvas id="track-canvas" width="960" height="260" aria-label="Analyse du morceau : énergie, sections, temps et montées"></canvas>
+          <p class="panel-note" id="track-note">Courbe d'énergie, sections colorées, marqueurs de temps forts, attaques et montées.</p>
+          <div id="track-sections" class="section-list" aria-label="Sections détectées"></div>
+        </section>
+
+        <!-- État du programme -->
+        <section class="panel" aria-label="État du programme">
+          <header class="panel-head"><h2>État du programme</h2></header>
+          <dl class="readout">
+            <div><dt>Écran</dt><dd id="prog-screen">—</dd></div>
+            <div><dt>Mode</dt><dd id="prog-mode">—</dd></div>
+            <div><dt>Piloté</dt><dd id="prog-controlled">—</dd></div>
+            <div><dt>Capture</dt><dd id="prog-capture">—</dd></div>
+            <div><dt>Erreur</dt><dd id="prog-error">—</dd></div>
+            <div><dt>Info</dt><dd id="prog-notice">—</dd></div>
+            <div><dt>Debug</dt><dd id="prog-debug">—</dd></div>
+            <div><dt>Limite fichier</dt><dd id="prog-limits">—</dd></div>
+          </dl>
+        </section>
+
+        <!-- Rendu visuel -->
+        <section class="panel" aria-label="Rendu visuel">
+          <header class="panel-head"><h2>Rendu visuel</h2></header>
+          <dl class="readout">
+            <div><dt>FPS live capture</dt><dd id="render-live-fps">—</dd></div>
+            <div><dt>FPS show</dt><dd id="render-show-fps">—</dd></div>
+            <div><dt>Qualité live</dt><dd id="render-live-q">—</dd></div>
+            <div><dt>Qualité show</dt><dd id="render-show-q">—</dd></div>
+            <div><dt>Frame live</dt><dd id="render-live-frame">—</dd></div>
+            <div><dt>Frame show</dt><dd id="render-show-frame">—</dd></div>
+          </dl>
+          <canvas id="render-canvas" width="640" height="120" aria-label="Activité du rendu"></canvas>
+          <p class="panel-note">Échantillonnage de la charge visuelle</p>
         </section>
 
         <!-- Source du morceau -->
@@ -199,7 +254,6 @@
         </section>
       </div>
 
-      <!-- Avis discret : un repli n'est pas une erreur -->
       <p id="notice" class="dash-notice" hidden></p>
     </div>
 
