@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS } from "../../src/types";
 
 function analysis(overrides: Partial<Analysis> = {}): Analysis {
   return {
-    schema: 1,
+    schema: 2,
     duration: 120,
     tempo: 128,
     beatCount: 200,

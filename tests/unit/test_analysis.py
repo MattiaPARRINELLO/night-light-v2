@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 
-from server.analysis import AnalysisError, analyze_file, detect_builds
+from server.analysis import AnalysisError, analyze_file, assign_roles, detect_builds
 from server.config import load_settings
 from tests.support.make_fixture import write_synthetic_track
 
@@ -62,10 +62,33 @@ def test_sections_couvrent_le_morceau(tmp_path: Path) -> None:
     assert len(result.sections) >= 2
     assert result.sections[0]["start"] == 0.0
     assert result.sections[-1]["end"] >= result.duration - 0.5
+    kinds = {"intro", "couplet", "refrain", "pont", "outro", "section"}
     for section in result.sections:
         assert section["end"] > section["start"]
         assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
         assert 0.0 <= section["energy"] <= 1.0
+        assert isinstance(section["group"], str)
+        assert section["kind"] in kinds
+        assert isinstance(section["occurrence"], int)
+
+
+def test_assign_roles_deduit_refrain_et_couplet() -> None:
+    # Intro basse, couplet (A), refrain (B, plus fort et répété), couplet, refrain,
+    # pont unique, puis outro : la structure canonique d'un morceau de soirée.
+    sections = [
+        {"start": 0, "end": 10, "energy": 0.15, "group": "X"},
+        {"start": 10, "end": 25, "energy": 0.45, "group": "A"},
+        {"start": 25, "end": 40, "energy": 0.9, "group": "B"},
+        {"start": 40, "end": 55, "energy": 0.5, "group": "A"},
+        {"start": 55, "end": 70, "energy": 0.92, "group": "B"},
+        {"start": 70, "end": 85, "energy": 0.6, "group": "C"},
+        {"start": 85, "end": 95, "energy": 0.15, "group": "Y"},
+    ]
+    assign_roles(sections, duration=95.0)
+    kinds = [section["kind"] for section in sections]
+    assert kinds == ["intro", "couplet", "refrain", "couplet", "refrain", "pont", "outro"]
+    # Le refrain revient : la seconde occurrence est numérotée.
+    assert [section["occurrence"] for section in sections] == [1, 1, 1, 2, 2, 1, 1]
 
 
 def test_montee_detectee(tmp_path: Path) -> None:

@@ -55,7 +55,7 @@ describe("protocole de contrôle", () => {
         title: "Titre",
         artist: "Artiste",
         analysis: {
-          schema: 1,
+          schema: 2,
           duration: 12,
           tempo: 120,
           beatCount: 24,

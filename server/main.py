@@ -268,7 +268,7 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
     """Convertit le résultat en charge utile conforme au schéma du front."""
     beat_period = round(60.0 / result.tempo, 6) if result.tempo > 0 else 0.5
     return {
-        "schema": 1,
+        "schema": 2,
         "duration": result.duration,
         "tempo": result.tempo,
         "beatCount": len(result.beats),

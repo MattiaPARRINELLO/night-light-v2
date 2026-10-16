@@ -1,7 +1,20 @@
 /** Schéma de l'analyse produite par le serveur (`POST /api/analyze`). */
-export const ANALYSIS_SCHEMA = 1 as const;
+export const ANALYSIS_SCHEMA = 2 as const;
 
 export type SectionLabel = "calme" | "montee" | "intense" | "descente" | "silence";
+
+/**
+ * Rôle d'une section dans la structure du morceau, déduit de la répétition de
+ * son matériau musical (voir `server/structure.py`). `section` couvre ce qui
+ * n'entre dans aucune case : un passage unique et ni intro, ni pont.
+ */
+export type SectionKind =
+  | "intro"
+  | "couplet"
+  | "refrain"
+  | "pont"
+  | "outro"
+  | "section";
 
 /** Point d'une courbe : `[secondes, valeur 0..1]`. */
 export type Point = [number, number];
@@ -12,6 +25,15 @@ export interface Section {
   label: SectionLabel;
   /** Énergie moyenne normalisée de la section, 0..1. */
   energy: number;
+  /**
+   * Groupe de matériau musical (« A », « B »…) : deux sections de même groupe
+   * jouent le même passage. Vide si la structure n'a pas pu être établie.
+   */
+  group?: string;
+  /** Rôle de la section dans le morceau. */
+  kind?: SectionKind;
+  /** Rang de cette occurrence dans son groupe (1 = première). 0 si sans groupe. */
+  occurrence?: number;
 }
 
 export interface Build {

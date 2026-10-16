@@ -38,6 +38,12 @@ ignore = ["B008"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# msaf (dernière version, 2023) s'appuie sur des API scipy/jsonschema dépréciées :
+# ces avertissements ne concernent pas notre code.
+filterwarnings = [
+    "ignore::DeprecationWarning:msaf.*",
+    "ignore::DeprecationWarning:jsonschema.*",
+]
 
 [tool.uv]
 package = false

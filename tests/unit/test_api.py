@@ -71,7 +71,7 @@ def test_cycle_complet(client: TestClient, tmp_path: Path) -> None:
     job = wait_for_job(client, job_id)
     assert job["status"] == "done", job.get("error")
     analysis = job["result"]["analysis"]
-    assert analysis["schema"] == 1
+    assert analysis["schema"] == 2
     assert analysis["duration"] > 9.0
     assert analysis["tempo"] > 60
     assert analysis["beatCount"] > 5

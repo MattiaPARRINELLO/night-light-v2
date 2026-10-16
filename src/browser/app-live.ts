@@ -191,7 +191,7 @@ export function installLive(Target: { prototype: App }): void {
   Target.prototype.ensureLiveView = async function (this: App): Promise<void> {
     if (this.liveView !== null && this.livePlan !== null) return;
     const analysis: Analysis = {
-      schema: 1,
+      schema: 2,
       duration: 1_000_000,
       tempo: 120,
       beatCount: 0,

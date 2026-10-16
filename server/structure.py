@@ -21,6 +21,8 @@ import logging
 import shutil
 import tempfile
 import threading
+import warnings
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +45,9 @@ LABELS_ID = "cnmf"
 # Longueur minimale d'un bloc : en dessous, msaf a découpé du souffle et la
 # « section » n'a pas de sens musical. On la fusionne avec sa voisine.
 MIN_SEGMENT_SEC = 2.5
+# En dessous de cette durée, msaf refuse de segmenter (« Audio file too short »)
+# et ne rend que les bornes début/fin : on s'épargne l'appel.
+MIN_STRUCTURE_SEC = 30.0
 # Nombre minimal de blocs pour parler de structure (au moins trois passages…).
 _MIN_SEGMENTS = 3
 
@@ -62,9 +67,24 @@ def _load_msaf():
     """Importe msaf en réinjectant les attributs scipy retirés depuis 1.12."""
     if not hasattr(scipy, "inf"):
         scipy.inf = np.inf  # type: ignore[attr-defined]
-    import msaf  # noqa: PLC0415 - l'import doit suivre le correctif ci-dessus
+    # msaf importe `scipy.misc` (retiré) et fait jaser jsonschema : bruit inutile
+    # dans les journaux du serveur, l'import reste fonctionnel.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        import msaf  # noqa: PLC0415 - l'import doit suivre le correctif ci-dessus
 
     return msaf
+
+
+def warmup() -> None:
+    """Charge msaf au démarrage du serveur.
+
+    L'import (et le shim scipy) prend quelques secondes : le payer au lancement
+    évite de bloquer la première analyse, dont la barre de progression resterait
+    sinon figée pendant l'import.
+    """
+    with suppress(Exception):
+        _load_msaf()
 
 
 def _process(path: Path, boundaries_id: str, labels_id: str):
@@ -120,15 +140,18 @@ def _coalesce(segments: list[StructureSegment]) -> list[StructureSegment]:
 
 def estimate_structure(
     path: Path,
+    duration: float | None = None,
     boundaries_id: str = BOUNDARIES_ID,
     labels_id: str = LABELS_ID,
 ) -> list[StructureSegment] | None:
     """Estime les blocs répétés d'un fichier audio, ou `None` si indécidable.
 
-    `None` est un résultat normal : msaf absent ou en échec, morceau trop court,
+    `None` est un résultat normal : morceau trop court, msaf absent ou en échec,
     découpage dégénéré, ou aucun bloc qui se répète — dans ce cas la structure
     n'apprendrait rien et l'analyse garde son découpage de repli.
     """
+    if duration is not None and duration < MIN_STRUCTURE_SEC:
+        return None
     try:
         boundaries, labels = _process(path, boundaries_id, labels_id)
     except Exception as error:  # noqa: BLE001 - la structure est un bonus, jamais fatal

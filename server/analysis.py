@@ -16,6 +16,8 @@ import librosa
 import numpy as np
 
 from .config import Settings
+from .structure import StructureSegment, estimate_structure
+from .structure import warmup as warmup_structure
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -247,6 +249,81 @@ def _section_count(duration: float) -> int:
     return int(max(3, min(14, target)))
 
 
+def _structure_bounds(
+    structure: list[StructureSegment], duration: float
+) -> list[tuple[float, float, str]]:
+    """Transforme les blocs msaf en bornes de sections qui couvrent [0, durée]."""
+    bounds: list[tuple[float, float, str]] = []
+    for segment in structure:
+        start = max(0.0, min(segment.start, duration))
+        end = max(0.0, min(segment.end, duration))
+        if end - start > 0.3:
+            bounds.append((start, end, segment.group))
+    if not bounds:
+        return []
+    # msaf démarre à 0 et finit à la durée en général ; on garantit la couverture
+    # pour qu'aucun instant du morceau ne reste sans section.
+    if bounds[0][0] > 0.3:
+        bounds.insert(0, (0.0, bounds[0][0], bounds[0][2]))
+    if duration - bounds[-1][1] > 0.3:
+        bounds.append((bounds[-1][1], duration, bounds[-1][2]))
+    else:
+        bounds[-1] = (bounds[-1][0], duration, bounds[-1][2])
+    return bounds
+
+
+def assign_roles(sections: list[dict], duration: float) -> None:
+    """Déduit le rôle (couplet, refrain, pont…) et l'occurrence de chaque section.
+
+    Le **refrain** est le groupe répété à la plus forte énergie : dans un morceau
+    de soirée, ce qui revient en montant, c'est lui. Les autres groupes répétés
+    sont des **couplets**. Une section unique de la seconde moitié est un
+    **pont**. Les extrémités sous l'énergie médiane sont l'introduction et
+    l'outro — sans quoi un morceau qui démarre sur son refrain se verrait
+    affubler d'une fausse intro.
+    """
+    members: dict[str, list[int]] = {}
+    counters: dict[str, int] = {}
+    for index, section in enumerate(sections):
+        group = str(section.get("group") or "")
+        if group:
+            members.setdefault(group, []).append(index)
+            counters[group] = counters.get(group, 0) + 1
+            section["occurrence"] = counters[group]
+        else:
+            section["occurrence"] = 0
+
+    def mean_energy(indexes: list[int]) -> float:
+        values = [float(sections[index].get("energy") or 0.0) for index in indexes]
+        return sum(values) / len(values) if values else 0.0
+
+    repeated = {group: indexes for group, indexes in members.items() if len(indexes) >= 2}
+    refrain = max(repeated, key=lambda group: mean_energy(repeated[group])) if repeated else ""
+
+    for section in sections:
+        group = str(section.get("group") or "")
+        if group == refrain:
+            section["kind"] = "refrain"
+        elif group in repeated:
+            section["kind"] = "couplet"
+        else:
+            section["kind"] = "section"
+
+    if not sections:
+        return
+    energies = sorted(float(section.get("energy") or 0.0) for section in sections)
+    median = energies[len(energies) // 2]
+    first = sections[0]
+    if first.get("kind") != "refrain" and float(first.get("energy") or 0.0) <= median:
+        first["kind"] = "intro"
+    last = sections[-1]
+    if last.get("kind") != "refrain" and float(last.get("energy") or 0.0) <= median:
+        last["kind"] = "outro"
+    for section in sections[1:-1]:
+        if section.get("kind") == "section" and float(section["start"]) >= duration * 0.5:
+            section["kind"] = "pont"
+
+
 def detect_sections(
     spectrum: np.ndarray,
     y: np.ndarray,
@@ -256,34 +333,45 @@ def detect_sections(
     energy_times: np.ndarray,
     report: ProgressFn,
     phase: Phase,
+    structure: list[StructureSegment] | None = None,
 ) -> list[dict]:
-    report(phase, 0.2, "Caractéristiques spectrales")
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
-    mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
-    chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=HOP)
-    features = np.vstack([mfcc, chroma])
-    features = librosa.util.normalize(features, axis=1)
+    """Découpe le morceau en sections.
 
-    count = _section_count(duration)
-    report(phase, 0.6, f"Regroupement des {count} sections")
-    bounds = librosa.segment.agglomerative(features, count)
-    edges = sorted(
-        {
-            round(float(librosa.frames_to_time(int(b), sr=sr, hop_length=HOP)), 3)
-            for b in np.asarray(bounds, dtype=int)
-        }
-        | {0.0, round(float(duration), 3)}
-    )
-    edges = [
-        edge for index, edge in enumerate(edges) if index == 0 or edge - edges[index - 1] > 0.75
-    ]
-    if edges[-1] < duration:
-        edges.append(round(float(duration), 3))
+    Si `structure` est fourni (blocs répétés détectés par msaf), il fixe les
+    frontières et le groupe de chaque section — on économise alors le calcul
+    spectral du découpage de repli. Sinon on retombe sur le regroupement
+    agglomératif, sans groupe.
+    """
+    if structure:
+        bounds: list[tuple[float, float, str]] = _structure_bounds(structure, duration)
+        report(phase, 0.5, f"{len(bounds)} passages repérés")
+    else:
+        report(phase, 0.2, "Caractéristiques spectrales")
+        mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
+        mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
+        chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=HOP)
+        features = np.vstack([mfcc, chroma])
+        features = librosa.util.normalize(features, axis=1)
+
+        count = _section_count(duration)
+        report(phase, 0.6, f"Regroupement des {count} sections")
+        clusters = librosa.segment.agglomerative(features, count)
+        edges = sorted(
+            {
+                round(float(librosa.frames_to_time(int(b), sr=sr, hop_length=HOP)), 3)
+                for b in np.asarray(clusters, dtype=int)
+            }
+            | {0.0, round(float(duration), 3)}
+        )
+        edges = [
+            edge for index, edge in enumerate(edges) if index == 0 or edge - edges[index - 1] > 0.75
+        ]
+        if edges[-1] < duration:
+            edges.append(round(float(duration), 3))
+        bounds = [(edges[i], edges[i + 1], "") for i in range(len(edges) - 1)]
 
     sections: list[dict] = []
-    for index in range(len(edges) - 1):
-        start = edges[index]
-        end = edges[index + 1]
+    for start, end, group in bounds:
         if end - start <= 0.3:
             continue
         window = (energy_times >= start) & (energy_times < end)
@@ -311,6 +399,9 @@ def detect_sections(
                 "end": round(float(end), 3),
                 "label": label,
                 "energy": round(float(np.clip(mean_energy, 0.0, 1.0)), 3),
+                "group": group,
+                "kind": "section",
+                "occurrence": 0,
             }
         )
 
@@ -321,8 +412,12 @@ def detect_sections(
                 "end": round(float(duration), 3),
                 "label": "intense",
                 "energy": 0.5,
+                "group": "",
+                "kind": "section",
+                "occurrence": 0,
             }
         ]
+    assign_roles(sections, duration)
     report(phase, 1.0, f"{len(sections)} sections détectées")
     return sections
 
@@ -440,6 +535,7 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
         librosa.feature.rms(y=noise, hop_length=HOP)
     except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
         pass
+    warmup_structure()
 
 
 # ------------------------------------------------------------------ analyse
@@ -457,11 +553,12 @@ def analyze_file(
             report(message, float(min(max(value, 0.0), 1.0)))
 
     phases = [
-        Phase("Décodage audio", 0.08),
-        Phase("Enveloppes spectrales", 0.24),
-        Phase("Analyse du rythme", 0.18),
-        Phase("Découpage en sections", 0.22),
-        Phase("Montées et impacts", 0.16),
+        Phase("Décodage audio", 0.07),
+        Phase("Enveloppes spectrales", 0.20),
+        Phase("Analyse du rythme", 0.15),
+        Phase("Structure musicale", 0.18),
+        Phase("Découpage en sections", 0.14),
+        Phase("Montées et impacts", 0.14),
         Phase("Assemblage des données", 0.12),
     ]
     totals = np.cumsum([phase.weight for phase in phases])
@@ -511,6 +608,16 @@ def analyze_file(
 
     tempo, beats, onsets = detect_rhythm(y, sample_rate, progress, phases[2])
 
+    # Structure répétitive (couplet/refrain…) : msaf ne rapporte pas sa progression
+    # interne, on encadre donc l'appel par deux points d'avancement.
+    progress(phases[3], 0.05, "recherche des passages répétés")
+    structure = estimate_structure(path, duration)
+    progress(
+        phases[3],
+        1.0,
+        f"{len(structure)} passages répétés" if structure else "structure non concluante",
+    )
+
     sections = detect_sections(
         spectrum,
         y,
@@ -519,13 +626,14 @@ def analyze_file(
         energy,
         frame_times,
         progress,
-        phases[3],
+        phases[4],
+        structure,
     )
-    progress(phases[4], 0.5, "détection des montées")
+    progress(phases[5], 0.5, "détection des montées")
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
     builds = detect_builds(energy_points, duration, onsets)
-    progress(phases[4], 1.0, f"{len(builds)} montées repérées")
-    progress(phases[5], 1.0, "données du spectacle prêtes")
+    progress(phases[5], 1.0, f"{len(builds)} montées repérées")
+    progress(phases[6], 1.0, "données du spectacle prêtes")
 
     return AnalysisResult(
         duration=round(duration, 3),
