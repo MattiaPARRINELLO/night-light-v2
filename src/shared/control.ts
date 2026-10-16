@@ -117,6 +117,8 @@ export type DashboardCommand =
   | { type: "force-show" }
   | { type: "cancel-analysis" }
   | { type: "debug-overlay"; on: boolean }
+  /** Le dashboard réclame l'analyse complète du morceau en cours. */
+  | { type: "request-analysis" }
   | {
       /** Analyse terminée côté dashboard : le show prend le relais et se cale. */
       type: "analysis-ready";
@@ -127,11 +129,20 @@ export type DashboardCommand =
       analysis: Analysis;
     };
 
+/** Analyse complète envoyée du show vers le dashboard, à la demande. */
+export interface AnalysisPayload {
+  title: string;
+  artist: string;
+  analysis: Analysis;
+}
+
 export interface ControlMessage {
   version: number;
   at: number;
   state?: ShowState;
   command?: DashboardCommand;
+  /** Réponse ponctuelle à `request-analysis` (le résumé `analysis` de `ShowState` ne contient pas les courbes). */
+  analysisPayload?: AnalysisPayload;
 }
 
 function supported(message: ControlMessage): boolean {
@@ -166,6 +177,11 @@ export class ControlLink {
   /** Publie l'état complet (côté show). */
   publishState(state: ShowState): void {
     this.channel.postMessage({ version: CONTROL_VERSION, at: Date.now(), state } satisfies ControlMessage);
+  }
+
+  /** Renvoie une seule fois l'analyse complète au dashboard (côté show). */
+  publishAnalysis(payload: AnalysisPayload): void {
+    this.channel.postMessage({ version: CONTROL_VERSION, at: Date.now(), analysisPayload: payload } satisfies ControlMessage);
   }
 
   /** Envoie une commande (côté dashboard). */

@@ -8,6 +8,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- Tableau de bord complet : analyse du morceau en cours (courbes d'énergie et de
+  bandes, sections, temps forts, montées, curseur du show), VU-mètres, progression,
+  pulsation au tempo, section active, prochains événements, états capture et rendu.
+  Le dashboard réclame l'**analyse complète** à l'écran de show (une seule fois,
+  via le canal de contrôle) car l'état publié en continu n'en porte qu'un résumé.
 - Détection de la **structure répétitive** du morceau : chaque section reçoit un
   groupe et un rôle (intro, couplet, refrain, pont, outro). Les passages d'un même
   groupe se répètent à l'identique dans le show (même famille visuelle et même

@@ -49,6 +49,7 @@ describe("protocole de contrôle", () => {
       { type: "force-show" },
       { type: "cancel-analysis" },
       { type: "debug-overlay", on: true },
+      { type: "request-analysis" },
       {
         type: "analysis-ready",
         jobId: "abc",

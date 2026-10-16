@@ -222,9 +222,13 @@ function drawTrack(
   ctx.fillRect(0, 0, w, h);
 
   if (analysis === null) {
-    ctx.fillStyle = "rgba(200, 210, 235, 0.5)";
-    ctx.font = "14px system-ui, sans-serif";
-    ctx.fillText("Aucune analyse chargée — dépose un morceau ou lance une recherche.", 20, h / 2);
+    ctx.fillStyle = "rgba(200, 210, 235, 0.72)";
+    ctx.font = "15px system-ui, sans-serif";
+    const message =
+      state.analysis === null
+        ? "Aucune analyse chargée — dépose un morceau ou lance une recherche."
+        : "Analyse complète en cours de réception depuis l'écran de show…";
+    ctx.fillText(message, 20, h / 2);
     return;
   }
 
@@ -235,6 +239,20 @@ function drawTrack(
   const bottom = h - 42;
   const usable = right - left;
   const px = (secondsValue: number): number => left + (secondsValue / duration) * usable;
+
+  // grille horizontale + repères
+  ctx.font = "10px ui-monospace, monospace";
+  for (const level of [0, 0.25, 0.5, 0.75, 1]) {
+    const y = bottom - level * (bottom - top);
+    ctx.strokeStyle = level === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(160, 178, 210, 0.55)";
+    ctx.fillText(level.toFixed(2), 6, y + 3);
+  }
 
   // sections colorées
   const sectionColor: Record<string, string> = {
@@ -262,53 +280,57 @@ function drawTrack(
     ctx.restore();
   }
 
-  // courbe d'énergie
-  if (analysis.energy.length > 1) {
-    ctx.strokeStyle = "#ffd98a";
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    analysis.energy.forEach(([t, value], index) => {
-      const x = px(t);
-      const y = bottom - value * (bottom - top);
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-  }
-
-  // bandes basses/médiums/aigus en traits légers
-  const drawBand = (data: Point[], color: string): void => {
+  // Courbes : on décime à la largeur utile pour rester fluide même sur une
+  // analyse longue (des dizaines de milliers de points).
+  const plotCurve = (data: Point[], color: string, width: number): void => {
     if (data.length < 2) return;
+    const step = Math.max(1, Math.ceil(data.length / Math.max(2, usable)));
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = width;
     ctx.beginPath();
-    data.forEach(([t, value], index) => {
+    let started = false;
+    for (let index = 0; index < data.length; index += step) {
+      const [t, value] = data[index]!;
       const x = px(t);
       const y = bottom - value * (bottom - top);
-      if (index === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    const [lastT, lastValue] = data[data.length - 1]!;
+    ctx.lineTo(px(lastT), bottom - lastValue * (bottom - top));
     ctx.stroke();
   };
-  drawBand(analysis.bass, "rgba(120,210,255,0.55)");
-  drawBand(analysis.mid, "rgba(180,150,255,0.5)");
-  drawBand(analysis.high, "rgba(255,170,120,0.5)");
 
-  // beats
+  plotCurve(analysis.bass, "rgba(120,210,255,0.7)", 1.4);
+  plotCurve(analysis.mid, "rgba(180,150,255,0.62)", 1.4);
+  plotCurve(analysis.high, "rgba(255,170,120,0.62)", 1.4);
+  ctx.save();
+  ctx.shadowColor = "rgba(255,217,138,0.75)";
+  ctx.shadowBlur = 12;
+  plotCurve(analysis.energy, "#ffd98a", 3);
+  ctx.restore();
+
+  // beats (décimés si nécessaire)
+  const beatStep = Math.max(1, Math.ceil(analysis.beats.length / 900));
   ctx.strokeStyle = "rgba(255,255,255,0.18)";
   ctx.lineWidth = 1;
-  for (const beat of analysis.beats) {
-    const x = px(beat);
+  for (let index = 0; index < analysis.beats.length; index += beatStep) {
+    const x = px(analysis.beats[index]!);
     ctx.beginPath();
     ctx.moveTo(x, top);
     ctx.lineTo(x, bottom);
     ctx.stroke();
   }
 
-  // onsets
+  // onsets (décimés si nécessaire)
+  const onsetStep = Math.max(1, Math.ceil(analysis.onsets.length / 900));
   ctx.fillStyle = "rgba(120,210,255,0.45)";
-  for (const onset of analysis.onsets) {
-    const x = px(onset);
+  for (let index = 0; index < analysis.onsets.length; index += onsetStep) {
+    const x = px(analysis.onsets[index]!);
     ctx.beginPath();
     ctx.arc(x, bottom + 4, 2, 0, Math.PI * 2);
     ctx.fill();
@@ -402,11 +424,25 @@ class Dashboard {
   private analysisTitle = "";
   private analysisArtist = "";
   private sectionsSource: Analysis | null = null;
+  private lastAnalysisRequestAt = 0;
 
   constructor() {
     this.link.onMessage((message) => {
+      if (message.analysisPayload !== undefined) {
+        const payload = message.analysisPayload;
+        this.analysis = payload.analysis;
+        this.analysisTitle = payload.title;
+        this.analysisArtist = payload.artist;
+        this.sectionsSource = null;
+        this.render();
+        return;
+      }
       if (message.state === undefined) return;
       this.state = message.state;
+      // Le résumé ne contient pas les courbes : on réclame l'analyse complète
+      // dès qu'un morceau est actif et qu'on ne l'a pas encore localement (par
+      // exemple après un rechargement du dashboard).
+      this.requestAnalysisIfNeeded();
       this.render();
       this.sample();
     });
@@ -435,6 +471,29 @@ class Dashboard {
       el<HTMLElement>("limits-note").textContent = "Limites inconnues (serveur injoignable).";
       el<HTMLElement>("prog-limits").textContent = "serveur injoignable";
     }
+  }
+
+  /** Réclame au show l'analyse complète si on ne l'a pas ou qu'elle a changé. */
+  private requestAnalysisIfNeeded(): void {
+    const remote = this.state.analysis;
+    if (remote === null) return;
+    // Un morceau différent de celui qu'on a localement (chargé depuis le show,
+    // par MPRIS, ou après un rechargement) : on jette le graphe périmé.
+    if (this.analysis !== null) {
+      const localKey = `${this.analysisTitle}|${this.analysis.duration.toFixed(2)}`;
+      const remoteKey = `${remote.title}|${remote.durationSec.toFixed(2)}`;
+      if (localKey !== remoteKey) {
+        this.analysis = null;
+        this.analysisTitle = "";
+        this.analysisArtist = "";
+        this.sectionsSource = null;
+      }
+    }
+    if (this.analysis !== null) return;
+    const now = Date.now();
+    if (now - this.lastAnalysisRequestAt < 3000) return;
+    this.lastAnalysisRequestAt = now;
+    this.send({ type: "request-analysis" });
   }
 
   private checkLink(): void {
