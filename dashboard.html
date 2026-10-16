@@ -40,6 +40,41 @@
         <article class="card"><p class="card-label">Montées / attaques</p><p class="card-value" id="kpi-build-onset">—</p><p class="card-note" id="kpi-build-onset-note">—</p></article>
       </section>
 
+      <!-- Morceau en cours -->
+      <section class="panel panel-wide" aria-label="Morceau en cours">
+        <header class="panel-head">
+          <h2>Morceau en cours et analyse musicale</h2>
+          <span class="panel-tag" id="track-status">—</span>
+        </header>
+        <div class="track-head">
+          <div>
+            <p class="track-title" id="track-title">Aucun morceau chargé</p>
+            <p class="track-sub" id="track-artist">Dépose un fichier ou recherche par titre</p>
+            <div class="track-now">
+              <span id="now-time">—</span>
+              <span id="now-percent">—</span>
+              <span id="now-section">—</span>
+              <span id="now-energy">—</span>
+              <span id="now-build">—</span>
+            </div>
+          </div>
+          <div class="track-stats" id="track-stats"></div>
+        </div>
+        <canvas id="track-canvas" width="1120" height="300" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées"></canvas>
+        <div class="legend" aria-label="Légende des sections">
+          <span><i class="swatch swatch-calme"></i>calme</span>
+          <span><i class="swatch swatch-montee"></i>montée</span>
+          <span><i class="swatch swatch-intense"></i>intense</span>
+          <span><i class="swatch swatch-descente"></i>descente</span>
+          <span><i class="swatch swatch-silence"></i>silence</span>
+          <span><i class="line-swatch"></i>énergie</span>
+          <span><i class="spike-swatch"></i>temps forts</span>
+          <span><i class="arrow-swatch"></i>montées</span>
+        </div>
+        <p class="panel-note" id="track-note">Courbe d'énergie, courbes de bandes, sections colorées, temps, onsets, montées, curseur du show.</p>
+        <div id="track-sections" class="section-list" aria-label="Sections détectées"></div>
+      </section>
+
       <div class="dash-grid">
         <!-- Audio en direct -->
         <section class="panel" aria-label="Audio en direct">
@@ -93,41 +128,6 @@
             <div class="spark-card"><span>Corrélation</span><canvas id="spark-corr" width="240" height="64"></canvas></div>
           </div>
           <p class="panel-note">Tolérance 150 ms · la bande grise est la zone acceptable</p>
-        </section>
-
-        <!-- Morceau en cours -->
-        <section class="panel panel-wide" aria-label="Morceau en cours">
-          <header class="panel-head">
-            <h2>Morceau en cours et analyse musicale</h2>
-            <span class="panel-tag" id="track-status">—</span>
-          </header>
-          <div class="track-head">
-            <div>
-              <p class="track-title" id="track-title">Aucun morceau chargé</p>
-              <p class="track-sub" id="track-artist">Dépose un fichier ou recherche par titre</p>
-              <div class="track-now">
-                <span id="now-time">—</span>
-                <span id="now-percent">—</span>
-                <span id="now-section">—</span>
-                <span id="now-energy">—</span>
-                <span id="now-build">—</span>
-              </div>
-            </div>
-            <div class="track-stats" id="track-stats"></div>
-          </div>
-          <canvas id="track-canvas" width="1120" height="300" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées"></canvas>
-          <div class="legend" aria-label="Légende des sections">
-            <span><i class="swatch swatch-calme"></i>calme</span>
-            <span><i class="swatch swatch-montee"></i>montée</span>
-            <span><i class="swatch swatch-intense"></i>intense</span>
-            <span><i class="swatch swatch-descente"></i>descente</span>
-            <span><i class="swatch swatch-silence"></i>silence</span>
-            <span><i class="line-swatch"></i>énergie</span>
-            <span><i class="spike-swatch"></i>temps forts</span>
-            <span><i class="arrow-swatch"></i>montées</span>
-          </div>
-          <p class="panel-note" id="track-note">Courbe d'énergie, courbes de bandes, sections colorées, temps, onsets, montées, curseur du show.</p>
-          <div id="track-sections" class="section-list" aria-label="Sections détectées"></div>
         </section>
 
         <!-- Capture et programme -->
@@ -230,15 +230,16 @@
           <p class="panel-note">Écran de show sans interface : tout se règle ici. Raccourcis : <b>D</b> overlay, <b>S</b> show local, <b>Échap</b> annuler, <b>F</b> plein écran.</p>
         </section>
 
-        <!-- Journal -->
-        <section class="panel panel-wide" aria-label="Journal">
-          <header class="panel-head">
-            <h2>Journal et événements</h2>
-            <span class="panel-tag" id="log-count">—</span>
-          </header>
-          <pre id="log" class="dash-log">En attente de l'écran de show…</pre>
-        </section>
-      </div>
+</div>
+
+      <!-- Journal -->
+      <section class="panel panel-wide" aria-label="Journal">
+        <header class="panel-head">
+          <h2>Journal et événements</h2>
+          <span class="panel-tag" id="log-count">—</span>
+        </header>
+        <pre id="log" class="dash-log">En attente de l'écran de show…</pre>
+      </section>
 
       <p id="notice" class="dash-notice" hidden></p>
     </div>

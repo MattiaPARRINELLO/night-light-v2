@@ -152,12 +152,14 @@ body.dashboard {
 .card-value.is-bad { color: var(--bad); }
 
 /* ---------- grid */
+/* Mosaïque en colonnes : chaque panneau s'empile dans la colonne la plus
+   courte, ce qui supprime les trous d'une grille classique. */
 .dash-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 16px;
-  align-items: start;
+  column-count: 3;
+  column-gap: 16px;
 }
+@media (max-width: 1180px) { .dash-grid { column-count: 2; } }
+@media (max-width: 760px) { .dash-grid { column-count: 1; } }
 .panel {
   padding: 18px;
   border: 1px solid var(--line);
@@ -171,7 +173,12 @@ body.dashboard {
   backdrop-filter: blur(10px);
   transition: border-color .2s var(--ease);
   animation: rise .45s var(--ease) both;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin: 0 0 16px;
+  width: 100%;
 }
+.dash-grid > .panel:last-child { margin-bottom: 0; }
 .panel:hover { border-color: var(--line-strong); }
 .panel-wide { grid-column: 1 / -1; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
