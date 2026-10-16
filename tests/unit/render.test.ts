@@ -20,6 +20,7 @@ import {
   curvedBeam,
   drawFamily,
   elementEnvelope,
+  type FrameState,
   GRAND_BALAYAGE_BEATS,
   hazeFineRadiusPixels,
   hazeRadiusPixels,
@@ -506,7 +507,7 @@ describe("plancher visuel de l'energie", () => {
 });
 
 /** Dessine une seule famille, pour vérifier sa géométrie. */
-function renderFamily(famille: FamilyId): string[] {
+function renderFamily(famille: FamilyId, over: Partial<FrameState> = {}): string[] {
   const { ctx, operations } = fakeContext();
   const data = analysis();
   const view = new TrackView(data);
@@ -537,6 +538,7 @@ function renderFamily(famille: FamilyId): string[] {
       quality: 1,
       seed: plan.seed,
       frame: 720,
+      ...over,
     },
     view,
     famille,
@@ -601,6 +603,46 @@ describe("les effets remplissent la scene", () => {
       });
       expect(deborde).toBe(true);
     }
+  });
+});
+
+describe("double rideau en profondeur", () => {
+  /** Faisceaux dessinés, sous forme de dégradés `[x0, y0, x1, y1]`. */
+  const faisceaux = (operations: string[]): number[][] =>
+    operations
+      .filter((operation) => operation.startsWith("linear:"))
+      .map((operation) => operation.slice("linear:".length).split(",").map(Number));
+
+  const moyenne = (valeurs: number[]): number =>
+    valeurs.reduce((total, valeur) => total + valeur, 0) / Math.max(valeurs.length, 1);
+
+  test("les quinze lampes du plafond et les quinze du plancher dessinent", () => {
+    // Deux rangées symétriques : des faisceaux dont le pied est dans la moitié
+    // haute de l'écran, et d'autres dans la moitié basse. Sans le double rideau,
+    // toute la lumière viendrait d'un seul côté.
+    const debuts = faisceaux(renderFamily("rideaux")).map((g) => g[1] ?? 0);
+    expect(debuts.length).toBeGreaterThanOrEqual(10);
+    expect(debuts.some((y) => y < 720 * 0.35)).toBe(true);
+    expect(debuts.some((y) => y > 720 * 0.65)).toBe(true);
+  });
+
+  test("le rideau s'ouvre quand l'énergie monte", () => {
+    // Fermé, chaque faisceau plonge vers le bord opposé ; ouvert, il se relève et
+    // s'écarte vers les côtés. Le bout s'éloigne donc du centre quand l'énergie
+    // baisse, et s'en rapproche quand elle monte.
+    const hauteurBout = (operations: string[]) =>
+      moyenne(faisceaux(operations).map((g) => Math.abs((g[3] ?? 360) - 360)));
+    const ferme = hauteurBout(renderFamily("rideaux", { energy: 0.1 }));
+    const ouvert = hauteurBout(renderFamily("rideaux", { energy: 1 }));
+    expect(ferme).toBeGreaterThan(ouvert);
+  });
+
+  test("le rendu ne produit ni NaN ni image différente au même temps", () => {
+    // La projection divise par une profondeur : un point derrière la caméra
+    // ferait fuiter un NaN dans une couleur, ou retournerait un faisceau.
+    const premier = renderFamily("rideaux").join("|");
+    expect(premier.includes("NaN")).toBe(false);
+    expect(premier).toBe(renderFamily("rideaux").join("|"));
   });
 });
 

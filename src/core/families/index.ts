@@ -3,6 +3,7 @@ import type { TrackView } from "../view";
 import { AMBIENT_FAMILIES } from "./ambient";
 import { FIGURE_FAMILIES } from "./figures";
 import { PROJECTOR_FAMILIES } from "./projectors";
+import { RIDEAU_FAMILIES } from "./rideaux";
 import { SHAPE_FAMILIES } from "./shapes";
 import type { FamilyDraw, FrameState } from "./types";
 
@@ -18,6 +19,7 @@ export { drawCoreGlow, drawWash } from "./projectors";
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...AMBIENT_FAMILIES,
   ...PROJECTOR_FAMILIES,
+  ...RIDEAU_FAMILIES,
   ...SHAPE_FAMILIES,
   ...FIGURE_FAMILIES,
 };

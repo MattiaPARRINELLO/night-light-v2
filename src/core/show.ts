@@ -26,7 +26,8 @@ export type FamilyId =
   | "vortex"
   | "lyre"
   | "mandala"
-  | "treillis";
+  | "treillis"
+  | "rideaux";
 
 export interface Scene {
   index: number;
@@ -134,6 +135,7 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   lyre: "lyres",
   mandala: "rosace",
   treillis: "treillis",
+  rideaux: "double rideau",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -169,6 +171,7 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "lyre",
   "mandala",
   "treillis",
+  "rideaux",
 ];
 const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -192,6 +195,7 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "lyre",
   "mandala",
   "treillis",
+  "rideaux",
 ];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
