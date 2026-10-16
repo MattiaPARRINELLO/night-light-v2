@@ -27,6 +27,7 @@ import {
   type HazeLayer,
   type HazeTarget,
   lampHue,
+  lyreWavePhase,
   PETIT_ELEMENT_BEATS,
   rowPositions,
   sceneChord,
@@ -602,6 +603,59 @@ describe("les effets remplissent la scene", () => {
         return coordonnees.some((valeur) => valeur < -20 || valeur > 1300);
       });
       expect(deborde).toBe(true);
+    }
+  });
+});
+
+describe("vague des lyres", () => {
+  test("reste lente en fin de morceau, meme quand l'energie bouge", () => {
+    // Morceau long, énergie en dents de scie : avec une phase en `f.t ×
+    // vitesse(énergie)`, le saut grandissait avec `t`, donc la rangée partait à
+    // une vitesse de fou dès que le morceau avançait. L'intégrale de la vitesse
+    // garde la vague lente du début à la fin.
+    const energy: [number, number][] = [];
+    for (let t = 0; t <= 360; t += 0.25) {
+      energy.push([t, Math.sin(t * 1.3) > 0 ? 0.9 : 0.3]);
+    }
+    const data = analysis({ duration: 360, energy, beats: [] });
+    const view = new TrackView(data);
+    const plan = buildShowPlan(data, false);
+    const scene = plan.scenes[0]!;
+
+    const at = (t: number): FrameState => ({
+      t,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      scene,
+      palette: scene.palette,
+      energy: visibleEnergy(view.energyAt(t)),
+      bass: view.bassAt(t),
+      mid: view.midAt(t),
+      high: view.highAt(t),
+      beat: 0,
+      beatPhase: 0,
+      beatIndex: 0,
+      build: 0,
+      buildStrength: 0,
+      surge: 0,
+      intensity: 0.8,
+      alpha: 1,
+      reduced: false,
+      quality: 1,
+      seed: plan.seed,
+      frame: 0,
+    });
+
+    const vitesse = (t: number): number => {
+      const dt = 0.02;
+      return Math.abs(lyreWavePhase(at(t + dt), view, 0) - lyreWavePhase(at(t), view, 0)) / dt;
+    };
+
+    // Moins d'un tiers de tour par seconde, quelle que soit la position dans le
+    // morceau : la lenteur ne doit jamais se perdre.
+    for (const t of [1, 30, 120, 240, 359]) {
+      expect(vitesse(t)).toBeLessThan((Math.PI * 2) / 3);
     }
   });
 });

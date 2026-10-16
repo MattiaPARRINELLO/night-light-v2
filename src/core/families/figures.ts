@@ -1,9 +1,10 @@
 import { hash01 } from "../series";
+import type { TrackView } from "../view";
 import { curvedBeam, softBeam } from "./beams";
 import { rowPositions } from "./geometry";
 import { contrastHue, lampHue } from "./harmony";
 import { beatSwing, elementEnvelope } from "./tempo";
-import type { FamilyDraw } from "./types";
+import type { FamilyDraw, FrameState } from "./types";
 import { GRAND_BALAYAGE_BEATS } from "./types";
 import { count, paint } from "./util";
 
@@ -123,8 +124,34 @@ const vortex: FamilyDraw = (ctx, f, view) => {
  * décalée de la précédente — et c'est aussi une figure très géométrique : les
  * faisceaux restent parallèles entre eux, inclinés du même angle qui se déplace.
  * Les têtes s'inclinent plus largement sur les basses, et la vitesse de la vague
- * suit l'énergie.
+ * suit l'énergie, mais doucement : c'est la lenteur de la rangée qui fait sa
+ * beauté.
  */
+
+/** Tours par seconde de la vague des lyres, au repos (0) et par unité d'énergie. */
+const LYRE_VITESSE = { base: 0.16, gain: 0.12 } as const;
+const LYRE_VITESSE_REDUITE = { base: 0.1, gain: 0.07 } as const;
+
+/**
+ * Avance de la vague des lyres, en radians, pour la tête `index` à l'instant
+ * courant.
+ *
+ * La phase est **l'intégrale** de la vitesse, pas le produit du temps par une
+ * vitesse qui bouge. L'ancienne écriture `f.t × vitesse(énergie)` faisait sauter
+ * la phase d'autant plus que le morceau avançait : passé une minute, la moindre
+ * variation d'énergie envoyait la rangée à une vitesse de fou. Intégrée, la
+ * vitesse instantanée reste exactement celle qu'on veut — un passage fort
+ * accélère la vague, mais toujours lentement.
+ *
+ * Exportée pour vérifier cette propriété dans les tests.
+ */
+export function lyreWavePhase(f: FrameState, view: TrackView, index: number): number {
+  const vitesse = f.reduced ? LYRE_VITESSE_REDUITE : LYRE_VITESSE;
+  const cadence = beatSwing(f, view, f.reduced ? 0.2 : 0.45, GRAND_BALAYAGE_BEATS) * 2;
+  const avance = f.t * vitesse.base + view.energyIntegralAt(f.t) * vitesse.gain;
+  return avance * Math.PI * 2 - index * 0.95 + cadence;
+}
+
 const lyre: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const tetes = count(7, f.quality, f.reduced);
@@ -134,10 +161,7 @@ const lyre: FamilyDraw = (ctx, f, view) => {
   const alpha = (0.11 + 0.3 * f.energy + 0.2 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  // La vague : c'est le décalage de phase d'une lyre à l'autre qui la dessine.
-  const vitesse = f.reduced ? 0.22 : 0.42 + f.energy * 0.36;
   const amplitude = (f.reduced ? 0.32 : 0.6) * (0.75 + 0.5 * f.bass) + f.beat * 0.06;
-  const cadence = beatSwing(f, view, f.reduced ? 0.2 : 0.45, GRAND_BALAYAGE_BEATS) * 2;
 
   // Le portique : une ligne de lumière au sol, plus dense vers le centre.
   const sol = ctx.createLinearGradient(0, 0, w, 0);
@@ -151,7 +175,7 @@ const lyre: FamilyDraw = (ctx, f, view) => {
 
   for (let i = 0; i < positions.length; i += 1) {
     const x = positions[i] ?? 0;
-    const phase = f.t * vitesse * Math.PI * 2 - i * 0.95 + cadence;
+    const phase = lyreWavePhase(f, view, i);
     const angle = -Math.PI / 2 + Math.sin(phase) * amplitude;
     // Chaque lyre porte sa teinte, prise dans l'accord de la scène : la rangée
     // est multicolore, comme un vrai portique réglé tête par tête.
