@@ -55,7 +55,10 @@ export function sampleAt(points: Point[], t: number): number {
 }
 
 export function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value;
+  if (!Number.isFinite(value)) return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
 }
 
 export function clamp01(value: number): number {

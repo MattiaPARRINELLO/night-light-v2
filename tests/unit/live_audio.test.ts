@@ -25,6 +25,16 @@ describe("live audio normalization", () => {
     expect(result.state).toBe("active");
   });
 
+  it("accepte updated_at en snake_case", () => {
+    const result = normalizeLiveLevels({ updated_at: 42 });
+    expect(result.updatedAt).toBe(42);
+  });
+
+  it("accepte updatedAt en camelCase", () => {
+    const result = normalizeLiveLevels({ updatedAt: 7 });
+    expect(result.updatedAt).toBe(7);
+  });
+
   it("uses fallback rms for energy", () => {
     const result = normalizeLiveLevels({ rms: 0.3 });
     expect(result.energy).toBe(0.3);

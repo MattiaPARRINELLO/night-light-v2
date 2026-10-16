@@ -38,7 +38,8 @@ export function normalizeLiveLevels(raw: Record<string, unknown>): LiveAudioFeat
   const high = clampLiveLevel(raw.high ?? 1 / 3);
   const transient = clampLiveLevel(raw.transient);
   const state = typeof raw.state === "string" && raw.state !== "" ? raw.state : "inactive";
-  const updatedAt = typeof raw.updatedAt === "number" && Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now();
+  const rawUpdatedAt = raw.updatedAt ?? raw.updated_at;
+  const updatedAt = typeof rawUpdatedAt === "number" && Number.isFinite(rawUpdatedAt) ? rawUpdatedAt : Date.now();
   // Équilibre les bandes pour éviter un spectre entièrement vide.
   const sum = bass + mid + high;
   const normalizedBands = sum > 0 ? { bass: bass / sum, mid: mid / sum, high: high / sum } : { bass: 1 / 3, mid: 1 / 3, high: 1 / 3 };

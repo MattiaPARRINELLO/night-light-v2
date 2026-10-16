@@ -52,18 +52,20 @@ class SystemAudioCapture:
         self._available = False
         self._silent_since: float | None = None
 
-    def available(self) -> bool:
+    def _available_locked(self) -> bool:
         if self._available_checked:
             return self._available
         self._available_checked = True
-        self._available = (
-            shutil.which("parec") is not None and shutil.which("pactl") is not None
-        )
+        self._available = shutil.which("parec") is not None and shutil.which("pactl") is not None
         self._level.available = self._available
         if not self._available:
             self._level.state = "error"
             self._level.error = "parec/pactl indisponible"
         return self._available
+
+    def available(self) -> bool:
+        with self._lock:
+            return self._available_locked()
 
     def _default_monitor(self) -> str:
         # Priorité au sink par défaut : c'est généralement celui que l'utilisateur entend.
@@ -131,7 +133,7 @@ class SystemAudioCapture:
             self._start_locked()
 
     def _start_locked(self) -> None:
-        if not self.available():
+        if not self._available_locked():
             self._level = AudioLevel(
                 active=False,
                 available=False,
@@ -233,9 +235,7 @@ class SystemAudioCapture:
                         else 0.0
                     )
                     energy_high = (
-                        float(np.mean(spectrum[freqs >= 2000]))
-                        if np.any(freqs >= 2000)
-                        else 0.0
+                        float(np.mean(spectrum[freqs >= 2000])) if np.any(freqs >= 2000) else 0.0
                     )
                     total = energy_low + energy_mid + energy_high
                     if total > 0:
