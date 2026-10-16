@@ -281,7 +281,79 @@ canvas {
   border: 1px solid var(--line);
   background: rgba(15, 22, 40, 0.65);
 }
-.track-canvas { min-height: 200px; }
+/* Le cadre du tracé porte la hauteur : le canvas se cale dessus. */
+/* Le tracé occupe un cadre de hauteur stable : le canvas se dimensionne en
+   pixels réels (devicePixelRatio) et le reste se pose par-dessus. */
+.track-plot {
+  position: relative;
+  aspect-ratio: 1120 / 340;
+  min-height: 220px;
+  max-height: 460px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(4, 7, 16, 0.8);
+  overflow: hidden;
+}
+.track-plot canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: crosshair;
+  touch-action: none;
+}
+.track-plot canvas:focus-visible { outline: 2px solid rgba(127, 215, 255, 0.6); outline-offset: -2px; }
+.track-plot canvas.is-panning { cursor: grabbing; }
+.track-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 215, 255, 0.28);
+  background: rgba(6, 10, 20, 0.94);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  z-index: 3;
+}
+.track-tooltip .tt-time {
+  display: block;
+  margin-bottom: 5px;
+  font: 600 12.5px ui-monospace, SFMono-Regular, monospace;
+  color: #cdf3ff;
+}
+.track-tooltip .tt-grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 14px;
+}
+.track-tooltip .tt-label { color: var(--text-mute); }
+.track-tooltip .tt-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.track-zoom {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(143, 240, 196, 0.35);
+  background: rgba(8, 20, 16, 0.85);
+  color: #8ff0c4;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, monospace;
+  cursor: pointer;
+}
+.track-zoom:hover { border-color: rgba(143, 240, 196, 0.7); }
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -678,6 +750,11 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
   border-bottom: 1px solid rgba(130, 180, 255, 0.08);
 }
 .section-row:last-child { border-bottom: 0; }
+.section-row:not(.is-head) { cursor: pointer; }
+.section-row:not(.is-head):hover {
+  background: rgba(127, 215, 255, 0.10);
+  box-shadow: inset 3px 0 0 rgba(127, 215, 255, 0.7);
+}
 .section-row.is-head {
   font-size: 10.5px;
   text-transform: uppercase;

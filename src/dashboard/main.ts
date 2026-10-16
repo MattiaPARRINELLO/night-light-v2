@@ -20,7 +20,9 @@ import {
   type DashboardCommand,
   type ShowState,
 } from "../shared/control";
-import type { Analysis, Point } from "../types";
+import type { Analysis } from "../types";
+import { fmtTime, sampleCurve } from "./format";
+import { TrackChart } from "./trackChart";
 
 const HISTORY_MS = 60_000;
 const SAMPLE_MS = 250;
@@ -60,29 +62,10 @@ function signed(value: number): string {
   return `${value > 0 ? "+" : ""}${Math.round(value)} ms`;
 }
 
-function fmtTime(value: number): string {
-  const minutes = Math.floor(value / 60);
-  const secondsPart = value % 60;
-  return `${minutes}:${secondsPart.toFixed(1).padStart(4, "0")}`;
+/** Écrit le texte seulement s'il change : inutile de repeindre 60 fois par seconde. */
+function setText(node: HTMLElement, value: string): void {
+  if (node.textContent !== value) node.textContent = value;
 }
-
-function sampleCurve(curve: Point[], timeValue: number): number {
-  if (curve.length === 0) return 0;
-  if (timeValue <= curve[0]![0]) return curve[0]![1];
-  const last = curve[curve.length - 1]!;
-  if (timeValue >= last[0]) return last[1];
-  for (let index = 0; index < curve.length - 1; index++) {
-    const point = curve[index]!;
-    const next = curve[index + 1]!;
-    if (timeValue >= point[0] && timeValue <= next[0]) {
-      const factor = (timeValue - point[0]) / Math.max(next[0] - point[0], 1e-6);
-      return point[1] + (next[1] - point[1]) * factor;
-    }
-  }
-  return 0;
-}
-
-
 
 /** Courbe simple. */
 function drawSeries(
@@ -202,227 +185,6 @@ function drawHistory(canvas: HTMLCanvasElement, samples: Sample[]): void {
   draw((sample) => sample.rms, "#7fd7ff", 2);
 }
 
-/** Analyse musicale complète : bande de structure + plan musical. */
-function drawTrack(canvas: HTMLCanvasElement, analysis: Analysis | null, state: ShowState): void {
-  const ctx = canvas.getContext("2d");
-  if (ctx === null) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  const background = ctx.createLinearGradient(0, 0, 0, h);
-  background.addColorStop(0, "rgba(17, 25, 45, 0.85)");
-  background.addColorStop(1, "rgba(8, 12, 22, 0.9)");
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, w, h);
-
-  if (analysis === null) {
-    ctx.fillStyle = "rgba(200, 210, 235, 0.75)";
-    ctx.font = "600 16px system-ui, sans-serif";
-    const message =
-      state.analysis === null
-        ? "Aucune analyse chargée — dépose un morceau ou lance une recherche."
-        : "Analyse complète en cours de réception depuis l'écran de show…";
-    ctx.fillText(message, 24, h / 2);
-    return;
-  }
-
-  const duration = Math.max(analysis.duration, 0.001);
-  const left = 58;
-  const right = w - 30;
-  const usable = right - left;
-  const px = (seconds: number): number => left + (seconds / duration) * usable;
-
-  const bandTop = 18;
-  const bandHeight = 38;
-  const laneY = bandTop + bandHeight + 16;
-  const curveTop = bandTop + bandHeight + 30;
-  const curveBottom = h - 62;
-
-  const palette: Record<string, { fill: string; line: string }> = {
-    calme: { fill: "rgba(90, 140, 220, 0.30)", line: "rgba(120, 170, 240, 0.95)" },
-    montee: { fill: "rgba(255, 180, 90, 0.30)", line: "rgba(255, 190, 110, 0.95)" },
-    intense: { fill: "rgba(255, 100, 140, 0.32)", line: "rgba(255, 120, 160, 0.95)" },
-    descente: { fill: "rgba(150, 200, 160, 0.28)", line: "rgba(160, 220, 180, 0.9)" },
-    silence: { fill: "rgba(255, 255, 255, 0.10)", line: "rgba(255, 255, 255, 0.4)" },
-  };
-
-  // ---- bande de structure, lisible en un coup d'œil
-  ctx.font = "600 12px system-ui, sans-serif";
-  for (const section of analysis.sections) {
-    const x1 = px(section.start);
-    const x2 = px(section.end);
-    const width = Math.max(2, x2 - x1);
-    const color = palette[section.label] ?? palette.silence!;
-    ctx.fillStyle = color.fill;
-    ctx.fillRect(x1, bandTop, width, bandHeight);
-    ctx.fillStyle = color.line;
-    ctx.fillRect(x1, bandTop, width, 3);
-
-    const label = section.kind ?? section.label;
-    if (width > ctx.measureText(label).width + 12) {
-      ctx.fillStyle = "rgba(240, 245, 255, 0.92)";
-      ctx.fillText(label, x1 + 6, bandTop + bandHeight - 12);
-    }
-  }
-  ctx.strokeStyle = "rgba(255,255,255,0.10)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left, bandTop, usable, bandHeight);
-
-  // ---- montées (flèches) dans leur propre couloir
-  for (const build of analysis.builds) {
-    const x1 = px(build.start);
-    const x2 = px(build.end);
-    const alpha = 0.35 + build.strength * 0.6;
-    ctx.strokeStyle = `rgba(255, 120, 165, ${alpha})`;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, laneY);
-    ctx.lineTo(x2, laneY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, laneY);
-    ctx.lineTo(x2 - 7, laneY - 5);
-    ctx.lineTo(x2 - 7, laneY + 5);
-    ctx.closePath();
-    ctx.fillStyle = `rgba(255, 120, 165, ${alpha})`;
-    ctx.fill();
-  }
-
-  // ---- grille + repères
-  ctx.font = "11px ui-monospace, monospace";
-  for (const level of [0, 0.25, 0.5, 0.75, 1]) {
-    const y = curveBottom - level * (curveBottom - curveTop);
-    ctx.strokeStyle = level === 0 ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.07)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(left, y);
-    ctx.lineTo(right, y);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(170, 188, 220, 0.7)";
-    ctx.fillText(level.toFixed(2), 14, y + 4);
-  }
-
-  // ---- temps forts
-  const beatStep = Math.max(1, Math.ceil(analysis.beats.length / 700));
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
-  ctx.lineWidth = 1;
-  for (let index = 0; index < analysis.beats.length; index += beatStep) {
-    const x = px(analysis.beats[index]!);
-    ctx.beginPath();
-    ctx.moveTo(x, curveTop);
-    ctx.lineTo(x, curveBottom);
-    ctx.stroke();
-  }
-
-  // ---- courbes (décimées à la largeur utile)
-  const plotCurve = (data: Point[], color: string, width: number): void => {
-    if (data.length < 2) return;
-    const step = Math.max(1, Math.ceil(data.length / Math.max(2, usable)));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    let started = false;
-    for (let index = 0; index < data.length; index += step) {
-      const [t, value] = data[index]!;
-      const x = px(t);
-      const y = curveBottom - value * (curveBottom - curveTop);
-      if (!started) {
-        ctx.moveTo(x, y);
-        started = true;
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    const [lastT, lastValue] = data[data.length - 1]!;
-    ctx.lineTo(px(lastT), curveBottom - lastValue * (curveBottom - curveTop));
-    ctx.stroke();
-  };
-
-  // aire sous la courbe d'énergie, pour la rendre immédiatement lisible
-  if (analysis.energy.length > 1) {
-    const area = ctx.createLinearGradient(0, curveTop, 0, curveBottom);
-    area.addColorStop(0, "rgba(255, 217, 138, 0.30)");
-    area.addColorStop(1, "rgba(255, 217, 138, 0.02)");
-    ctx.fillStyle = area;
-    ctx.beginPath();
-    ctx.moveTo(px(analysis.energy[0]![0]), curveBottom);
-    const step = Math.max(1, Math.ceil(analysis.energy.length / Math.max(2, usable)));
-    for (let index = 0; index < analysis.energy.length; index += step) {
-      const [t, value] = analysis.energy[index]!;
-      ctx.lineTo(px(t), curveBottom - value * (curveBottom - curveTop));
-    }
-    ctx.lineTo(px(duration), curveBottom);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  plotCurve(analysis.bass, "rgba(120, 210, 255, 0.75)", 1.6);
-  plotCurve(analysis.mid, "rgba(180, 150, 255, 0.68)", 1.6);
-  plotCurve(analysis.high, "rgba(255, 170, 120, 0.68)", 1.6);
-  ctx.save();
-  ctx.shadowColor = "rgba(255, 217, 138, 0.85)";
-  ctx.shadowBlur = 14;
-  plotCurve(analysis.energy, "#ffe08a", 3.2);
-  ctx.restore();
-
-  // ---- onsets (petits repères sous les courbes)
-  const onsetStep = Math.max(1, Math.ceil(analysis.onsets.length / 900));
-  ctx.fillStyle = "rgba(150, 220, 255, 0.7)";
-  for (let index = 0; index < analysis.onsets.length; index += onsetStep) {
-    const x = px(analysis.onsets[index]!);
-    ctx.beginPath();
-    ctx.arc(x, curveBottom + 7, 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ---- règle temporelle
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(left, curveBottom + 16);
-  ctx.lineTo(right, curveBottom + 16);
-  ctx.stroke();
-  ctx.font = "11px ui-monospace, monospace";
-  ctx.fillStyle = "rgba(200, 214, 240, 0.75)";
-  const ticks = 8;
-  for (let index = 0; index <= ticks; index++) {
-    const t = (duration * index) / ticks;
-    const x = px(t);
-    ctx.beginPath();
-    ctx.moveTo(x, curveBottom + 16);
-    ctx.lineTo(x, curveBottom + 21);
-    ctx.stroke();
-    if (index % 2 === 0) {
-      const label = fmtTime(t);
-      ctx.fillText(label, x - ctx.measureText(label).width / 2, curveBottom + 36);
-    }
-  }
-
-  // ---- curseur du show
-  const positionSec = Math.max(0, state.sync.showMs / 1000);
-  if (positionSec >= 0 && positionSec <= duration) {
-    const x = px(positionSec);
-    ctx.strokeStyle = "rgba(143, 240, 196, 0.9)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(x, bandTop - 6);
-    ctx.lineTo(x, curveBottom + 18);
-    ctx.stroke();
-    ctx.fillStyle = "rgba(143, 240, 196, 0.28)";
-    ctx.fillRect(left, bandTop, Math.max(0, x - left), bandHeight);
-    const tag = `${fmtTime(positionSec)}  show`;
-    ctx.font = "600 11px system-ui, sans-serif";
-    const tagWidth = ctx.measureText(tag).width + 14;
-    const tagX = Math.min(Math.max(x - tagWidth / 2, left), right - tagWidth);
-    ctx.fillStyle = "rgba(143, 240, 196, 0.95)";
-    ctx.fillRect(tagX, bandTop - 24, tagWidth, 18);
-    ctx.fillStyle = "#04070c";
-    ctx.fillText(tag, tagX + 7, bandTop - 11);
-  }
-}
-
 /** Courbe render activité. */
 function drawRender(canvas: HTMLCanvasElement, samples: Sample[]): void {
   const ctx = canvas.getContext("2d");
@@ -458,8 +220,18 @@ class Dashboard {
   private analysisArtist = "";
   private sectionsSource: Analysis | null = null;
   private lastAnalysisRequestAt = 0;
+  private readonly chart: TrackChart;
 
   constructor() {
+    // Le tracé a sa propre boucle d'animation : la position lissée qu'il produit
+    // sert aussi à faire vivre l'horloge et la barre de progression.
+    this.chart = new TrackChart(
+      el<HTMLCanvasElement>("track-canvas"),
+      el<HTMLElement>("track-plot"),
+      el<HTMLElement>("track-tooltip"),
+      el<HTMLButtonElement>("track-zoom"),
+      (seconds) => this.updateLivePosition(seconds),
+    );
     this.link.onMessage((message) => {
       if (message.analysisPayload !== undefined) {
         const payload = message.analysisPayload;
@@ -766,7 +538,8 @@ class Dashboard {
       } else {
         const head =
           `<div class="section-row is-head"><span>Rôle</span><span>Plage</span><span>Durée</span><span>Énergie moyenne</span><span>Groupe</span></div>`;
-        const rows = this.analysis.sections
+        const analysis = this.analysis;
+        const rows = analysis.sections
           .map((section) => {
             const kind = section.kind ?? section.label;
             const occurrence = section.occurrence ? ` (n°${section.occurrence})` : "";
@@ -785,6 +558,22 @@ class Dashboard {
           })
           .join("");
         sectionHost.innerHTML = head + rows;
+        // Le tableau et le tracé parlent du même morceau : survoler une ligne
+        // montre où se joue le passage, cliquer le cadre.
+        const rowNodes = Array.from(sectionHost.querySelectorAll<HTMLElement>(".section-row:not(.is-head)"));
+        rowNodes.forEach((row, index) => {
+          const section = analysis.sections[index];
+          if (section === undefined) return;
+          const range = { start: section.start, end: section.end };
+          row.addEventListener("pointerenter", () => this.chart.setHighlight(range));
+          row.addEventListener("pointerleave", () => this.chart.setHighlight(null));
+          row.addEventListener("click", () => {
+            this.chart.focusRange(range.start, range.end);
+            // Le tracé est au-dessus du tableau : on le ramène à l'écran pour
+            // que le cadrage se voie.
+            el<HTMLElement>("track-plot").scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        });
       }
     }
     if (this.analysis !== null) {
@@ -796,31 +585,18 @@ class Dashboard {
       });
     }
 
-    drawTrack(el<HTMLCanvasElement>("track-canvas"), this.analysis, state);
+    this.chart.setFrame({
+      analysis: this.analysis,
+      showMs: state.sync.showMs,
+      at: state.at,
+      playing: state.mode !== "paused" && state.mode !== "lost" && state.analysis !== null,
+      driftMs: state.sync.driftMs,
+    });
 
-    // lecture en cours dans le morceau
+    // lecture en cours dans le morceau : tout de suite une valeur juste, puis
+    // la boucle du tracé prend le relais image par image pendant la lecture.
+    this.updateLivePosition(trackPositionSec);
     if (this.analysis !== null) {
-      const duration = Math.max(this.analysis.duration, 0.001);
-      const percent = Math.min(100, (trackPositionSec / duration) * 100);
-      const section = this.analysis.sections.find((entry) => trackPositionSec >= entry.start && trackPositionSec < entry.end) ?? null;
-      const energyNow = sampleCurve(this.analysis.energy, trackPositionSec);
-      const nextBuild = this.analysis.builds.find((entry) => entry.end >= trackPositionSec) ?? null;
-      const kindLabel = section ? `${section.kind ?? section.label}${section.occurrence ? ` n°${section.occurrence}` : ""}` : "—";
-      el<HTMLElement>("now-time").textContent = `${fmtTime(trackPositionSec)} / ${fmtTime(this.analysis.duration)}`;
-      el<HTMLElement>("now-percent").textContent = `${percent.toFixed(1)} %`;
-      el<HTMLElement>("now-section").textContent = kindLabel;
-      el<HTMLElement>("now-energy").textContent = `${energyNow.toFixed(2)} / 1`;
-      el<HTMLElement>("now-build").textContent = nextBuild
-        ? `dans ${fmtTime(Math.max(0, nextBuild.start - trackPositionSec))} · force ${(nextBuild.strength * 100).toFixed(0)} %`
-        : "aucune montée restante";
-      el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
-
-      const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
-      const pulse = 1 - ((trackPositionSec % beatPeriod) / beatPeriod);
-      const beat = el<HTMLElement>("beat-pulse");
-      beat.style.opacity = String(0.35 + pulse * 0.65);
-      beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
-
       // prochains événements
       const events: string[] = [];
       for (const build of this.analysis.builds.filter((entry) => entry.end >= trackPositionSec).slice(0, 3)) {
@@ -835,16 +611,7 @@ class Dashboard {
       }
       el<HTMLElement>("upcoming").innerHTML = events.length > 0 ? events.join("") : `<span class="upcoming-item is-muted">Fin du morceau proche</span>`;
     } else {
-      el<HTMLElement>("now-time").textContent = "Position —";
-      el<HTMLElement>("now-percent").textContent = "—";
-      el<HTMLElement>("now-section").textContent = "Aucune analyse";
-      el<HTMLElement>("now-energy").textContent = "—";
-      el<HTMLElement>("now-build").textContent = "—";
-      el<HTMLElement>("track-progress-fill").style.width = "0%";
       el<HTMLElement>("upcoming").innerHTML = "";
-      const beat = el<HTMLElement>("beat-pulse");
-      beat.style.opacity = "0.3";
-      beat.style.transform = "scale(0.8)";
     }
 
     // état du programme
@@ -889,6 +656,53 @@ class Dashboard {
     const mode = el<HTMLElement>("mode-pill");
     mode.textContent = MODE_LABELS[state.mode];
     mode.classList.toggle("pill-mode", state.mode !== "live");
+  }
+
+  /**
+   * Position lue dans le morceau : horloge, pourcentage, section, énergie et
+   * pulsation. Appelée depuis `render()` et, pendant la lecture, à chaque image
+   * du tracé — c'est ce qui fait couler l'horloge au lieu de la faire sauter.
+   */
+  private updateLivePosition(seconds: number): void {
+    const position = Math.max(0, seconds);
+    if (this.analysis === null) {
+      setText(el<HTMLElement>("now-time"), "Position —");
+      setText(el<HTMLElement>("now-percent"), "—");
+      setText(el<HTMLElement>("now-section"), "Aucune analyse");
+      setText(el<HTMLElement>("now-energy"), "—");
+      setText(el<HTMLElement>("now-build"), "—");
+      el<HTMLElement>("track-progress-fill").style.width = "0%";
+      const beat = el<HTMLElement>("beat-pulse");
+      beat.style.opacity = "0.3";
+      beat.style.transform = "scale(0.8)";
+      return;
+    }
+
+    const duration = Math.max(this.analysis.duration, 0.001);
+    const percent = Math.min(100, (position / duration) * 100);
+    const section = this.analysis.sections.find((entry) => position >= entry.start && position < entry.end) ?? null;
+    const energyNow = sampleCurve(this.analysis.energy, position);
+    const nextBuild = this.analysis.builds.find((entry) => entry.end >= position) ?? null;
+    const kindLabel = section
+      ? `${section.kind ?? section.label}${section.occurrence ? ` n°${section.occurrence}` : ""}`
+      : "—";
+    setText(el<HTMLElement>("now-time"), `${fmtTime(position)} / ${fmtTime(this.analysis.duration)}`);
+    setText(el<HTMLElement>("now-percent"), `${percent.toFixed(1)} %`);
+    setText(el<HTMLElement>("now-section"), kindLabel);
+    setText(el<HTMLElement>("now-energy"), `${energyNow.toFixed(2)} / 1`);
+    setText(
+      el<HTMLElement>("now-build"),
+      nextBuild
+        ? `dans ${fmtTime(Math.max(0, nextBuild.start - position))} · force ${(nextBuild.strength * 100).toFixed(0)} %`
+        : "aucune montée restante",
+    );
+    el<HTMLElement>("track-progress-fill").style.width = `${percent}%`;
+
+    const beatPeriod = this.analysis.beatPeriod > 0.05 ? this.analysis.beatPeriod : 0.5;
+    const pulse = 1 - ((position % beatPeriod) / beatPeriod);
+    const beat = el<HTMLElement>("beat-pulse");
+    beat.style.opacity = String(0.35 + pulse * 0.65);
+    beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
   }
 
   private bindControls(): void {
@@ -949,6 +763,7 @@ class Dashboard {
     el<HTMLButtonElement>("btn-cancel").addEventListener("click", () => {
       this.send({ type: "cancel-analysis" });
     });
+    el<HTMLButtonElement>("track-zoom").addEventListener("click", () => this.chart.resetZoom());
 
     this.bindSource();
   }

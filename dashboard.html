@@ -68,7 +68,11 @@
           <div class="now-card"><span>Prochaine montée</span><b id="now-build">—</b></div>
         </div>
 
-        <canvas id="track-canvas" width="1120" height="340" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées"></canvas>
+        <div class="track-plot" id="track-plot">
+          <canvas id="track-canvas" width="1120" height="340" tabindex="0" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer."></canvas>
+          <div id="track-tooltip" class="track-tooltip" hidden></div>
+          <button id="track-zoom" class="track-zoom" type="button" hidden></button>
+        </div>
         <div class="legend" aria-label="Légende des sections">
           <span><i class="swatch swatch-calme"></i>calme</span>
           <span><i class="swatch swatch-montee"></i>montée</span>
@@ -79,7 +83,7 @@
           <span><i class="spike-swatch"></i>temps forts</span>
           <span><i class="arrow-swatch"></i>montées</span>
         </div>
-        <p class="panel-note" id="track-note">Bande de structure en haut, puis énergie, bandes, temps forts, montées et curseur du show.</p>
+        <p class="panel-note" id="track-note">Bande de structure en haut, puis énergie, bandes, temps forts, montées et curseur du show. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer, double-clic pour tout revoir.</p>
         <div id="track-sections" class="section-table" aria-label="Sections détectées"></div>
         <div id="upcoming" class="upcoming" aria-label="Prochains événements"></div>
       </section>
