@@ -6,11 +6,21 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- Détection de la **structure répétitive** du morceau (msaf) : chaque section
+  reçoit un groupe et un rôle (intro, couplet, refrain, pont, outro). Les
+  passages d'un même groupe se répètent à l'identique dans le show (même famille
+  visuelle et même teinte), et le refrain force l'énergie et la complémentaire.
+  Le HUD affiche ce rôle.
+
 ### Modifié
 
 - Résolution des morceaux suivie comme une **pile** et non une file : le morceau
   courant est téléchargé et analysé en premier ; les morceaux sautés sont
   téléchargés ensuite pour rester en cache, mais sans être affichés.
+- Le schéma d'analyse passe en **version 2** (sections enrichies) ; la détection
+  de structure ajoute une phase d'analyse (dépendance `msaf`).
 
 ## [2.0.0]
 
