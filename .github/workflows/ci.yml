@@ -69,4 +69,4 @@ jobs:
         run: bun run build
 
       - name: Vérification navigateur
-        run: bun tests/browser_check.mjs
+        run: bun tests/e2e/browser_check.mjs

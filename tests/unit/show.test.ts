@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../src/core/show";
-import { hslToRgb, shiftHue, shorthand } from "../src/core/color";
-import { flashAlpha } from "../src/core/render";
-import type { FrameState } from "../src/core/render";
-import type { Analysis } from "../src/types";
-import { DEFAULT_SETTINGS } from "../src/types";
+import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
+import { flashAlpha } from "../../src/core/render";
+import type { FrameState } from "../../src/core/render";
+import type { Analysis } from "../../src/types";
+import { DEFAULT_SETTINGS } from "../../src/types";
 
 function analysis(overrides: Partial<Analysis> = {}): Analysis {
   return {

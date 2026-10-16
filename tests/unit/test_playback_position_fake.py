@@ -7,7 +7,7 @@ import time
 import pytest
 
 from server.playback_position import get_playback_state, match_playback
-from tests.fake_player import FakePlayer
+from tests.support.fake_player import FakePlayer
 
 
 @pytest.fixture

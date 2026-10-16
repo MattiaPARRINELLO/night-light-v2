@@ -2,7 +2,7 @@
 /**
  * Régression : deux morceaux à la suite depuis le dashboard.
  *
- *   bun tests/dashboard_check.mjs
+ *   bun tests/e2e/dashboard_check.mjs
  *
  * Le premier show fonctionnait, le deuxième restait bloqué sur l'ancien : la
  * garde `syncedMode` de `tryAutoSynced` valait encore `true` et faisait sortir
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8818;
 const API = `http://127.0.0.1:${API_PORT}`;
-const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
+const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
 
 const { loadChromium } = await import("./playwright.mjs");
 const chromium = await loadChromium();
@@ -31,7 +31,7 @@ const workspace = mkdtempSync(join(tmpdir(), "night-light-deux-"));
 
 function prepare(name) {
   const track = join(workspace, `${name}.wav`);
-  const built = spawnSync("uv", ["run", "python", "tests/make_fixture.py", track, String(DUREE)], {
+  const built = spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, String(DUREE)], {
     cwd: root,
     encoding: "utf8",
   });

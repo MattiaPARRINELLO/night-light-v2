@@ -10,8 +10,8 @@ import {
   sceneHue,
   transitionAlpha,
   visibleEnergy,
-} from "../src/core/render";
-import { buildShowPlan, FAMILY_LABELS, type FamilyId } from "../src/core/show";
+} from "../../src/core/render";
+import { buildShowPlan, FAMILY_LABELS, type FamilyId } from "../../src/core/show";
 import {
   beamLayers,
   beatSwing,
@@ -30,11 +30,11 @@ import {
   rowPositions,
   sceneChord,
   softBeam,
-} from "../src/core/families";
-import { QUALITY_STEPS, hash01, quantizeQuality } from "../src/core/series";
-import { TrackView } from "../src/core/view";
-import { DEFAULT_SETTINGS } from "../src/types";
-import type { Analysis } from "../src/types";
+} from "../../src/core/families";
+import { QUALITY_STEPS, hash01, quantizeQuality } from "../../src/core/series";
+import { TrackView } from "../../src/core/view";
+import { DEFAULT_SETTINGS } from "../../src/types";
+import type { Analysis } from "../../src/types";
 
 /**
  * Faux contexte 2D : enregistre chaque opération pour vérifier que le rendu est

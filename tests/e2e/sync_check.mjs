@@ -2,9 +2,9 @@
 /**
  * Vérification de la synchronisation Show ↔ lecteur externe, sans lecteur réel.
  *
- *   bun tests/sync_check.mjs
+ *   bun tests/e2e/sync_check.mjs
  *
- * Un faux `playerctl` (tests/fake_playerctl.py) joue un morceau de 12 s dont on
+ * Un faux `playerctl` (tests/support/fake_playerctl.py) joue un morceau de 12 s dont on
  * pilote la position et le titre. On dépose un fichier du même nom, puis on
  * vérifie que le show démarre à la bonne position, qu'il suit un saut de
  * lecture, et qu'un changement de morceau ramène en Live.
@@ -23,7 +23,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8797;
 const API = `http://127.0.0.1:${API_PORT}`;
 const TITLE = "Neon Skyline";
-const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
+const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
 
 const { loadChromium } = await import("./playwright.mjs");
 const chromium = await loadChromium();
@@ -76,7 +76,7 @@ const overlayMode = (text) =>
 
 const workspace = mkdtempSync(join(tmpdir(), "night-light-sync-"));
 const track = join(workspace, `${TITLE}.wav`);
-const fixture = spawnSync("uv", ["run", "python", "tests/make_fixture.py", track, "12.0"], {
+const fixture = spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, "12.0"], {
   cwd: root,
   encoding: "utf8",
 });

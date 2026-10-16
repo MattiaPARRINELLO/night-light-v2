@@ -7,7 +7,7 @@ import {
   syncCorrection,
   syncRamp,
   syncRampDuration,
-} from "../src/core/playback";
+} from "../../src/core/playback";
 
 describe("playback helpers", () => {
   it("normalizes versions", () => {

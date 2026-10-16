@@ -308,8 +308,8 @@ au dépôt, absence d'erreur console.
 
 ### Tester la synchronisation sans lecteur réel
 
-`bun run check:sync` fabrique un faux `playerctl` (`tests/fake_playerctl.py`, piloté par
-`tests/fake_player.py`) qui joue un morceau de 12 s dont on choisit la position et le titre.
+`bun run check:sync` fabrique un faux `playerctl` (`tests/support/fake_playerctl.py`, piloté par
+`tests/support/fake_player.py`) qui joue un morceau de 12 s dont on choisit la position et le titre.
 Le serveur est lancé avec ce faux binaire en tête de `PATH`, puis le test dépose le fichier
 correspondant et vérifie, via l'overlay de debug :
 
@@ -363,8 +363,8 @@ server/
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
   retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation
-tests/                  tests front, tests serveur, vérification navigateur
-                        (dont fake_playerctl.py : faux lecteur pour la synchro)
+tests/                  tests front & serveur (unit/), vérification navigateur (e2e/),
+                        faux lecteur et fixtures (support/)
 scripts/                démarrage dev et lancement des tests
 src/dashboard/          tableau de bord (page + styles)
 ```

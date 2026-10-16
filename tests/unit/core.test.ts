@@ -9,9 +9,9 @@ import {
   mix,
   sampleAt,
   smoothstep,
-} from "../src/core/series";
-import { TrackView } from "../src/core/view";
-import type { Analysis, Point } from "../src/types";
+} from "../../src/core/series";
+import { TrackView } from "../../src/core/view";
+import type { Analysis, Point } from "../../src/types";
 
 function points(entries: Array<[number, number]>): Point[] {
   return entries;

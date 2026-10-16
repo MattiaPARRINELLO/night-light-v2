@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8836;
 const API = `http://127.0.0.1:${API_PORT}`;
-const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
+const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
 const { loadChromium } = await import("./playwright.mjs");
 const chromium = await loadChromium();
 
@@ -19,7 +19,7 @@ const workspace = mkdtempSync(join(tmpdir(), "night-light-fondu-"));
 // Piste « riche » : le troisième quart (30-45 s) est intense et homogène, donc
 // aucune baisse de luminosité n'y est musicalement justifiée.
 const track = join(workspace, "Riche.wav");
-spawnSync("uv", ["run", "python", "tests/make_fixture.py", track, "rich"], { cwd: root, encoding: "utf8" });
+spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, "rich"], { cwd: root, encoding: "utf8" });
 
 const binDir = join(workspace, "bin");
 mkdirSync(binDir, { recursive: true });

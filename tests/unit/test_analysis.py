@@ -5,13 +5,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 
 from server.analysis import AnalysisError, analyze_file, detect_builds
 from server.config import load_settings
-from tests.make_fixture import write_synthetic_track
+from tests.support.make_fixture import write_synthetic_track
 
 
 def make_analysis(tmp_path: Path, duration: float = 20.0, bpm: float = 128.0):

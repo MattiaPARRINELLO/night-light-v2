@@ -3,7 +3,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from server import main
 from server.retrieve.models import Candidate, TrackQuery
 from server.retrieve.resolver import RetrievalResult, RetrievalTimings
-from tests.make_fixture import write_synthetic_track
+from tests.support.make_fixture import write_synthetic_track
 
 
 @pytest.fixture()
