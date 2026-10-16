@@ -18,7 +18,7 @@ from server.retrieve.deezer import (
     _toml_string,
 )
 from server.retrieve.models import Candidate, TrackQuery
-from tests.make_fixture import write_synthetic_track
+from tests.support.make_fixture import write_synthetic_track
 
 
 def _streamrip_installed() -> bool:

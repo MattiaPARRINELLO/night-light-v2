@@ -8,6 +8,7 @@ dist-shot/
 .venv/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
 *.shot/
 node_modules/
 

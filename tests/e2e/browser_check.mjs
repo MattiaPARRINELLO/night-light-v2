@@ -26,7 +26,7 @@ const failures = [];
 
 function buildTrack(workspace) {
   const file = join(workspace, "piste-test.wav");
-  const result = spawnSync("uv", ["run", "python", "tests/make_fixture.py", file, "12.0"], {
+  const result = spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", file, "12.0"], {
     cwd: root,
     encoding: "utf8",
   });

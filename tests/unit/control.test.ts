@@ -6,7 +6,7 @@ import {
   emptyShowState,
   type ControlMessage,
   type DashboardCommand,
-} from "../src/shared/control";
+} from "../../src/shared/control";
 
 describe("protocole de contrôle", () => {
   it("un état vide est cohérent et prêt à publier", () => {

@@ -6,7 +6,7 @@ import {
   normalizeLiveLevels,
   smoothFeature,
   smoothLiveFeatures,
-} from "../src/core/liveAudio";
+} from "../../src/core/liveAudio";
 
 describe("live audio normalization", () => {
   it("clamps extreme values", () => {

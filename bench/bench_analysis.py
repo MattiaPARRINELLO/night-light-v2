@@ -1,6 +1,6 @@
 """Chronomètre et inspection d'une analyse, hors API.
 
-uv run python tests/bench_analysis.py /tmp/piste.wav
+uv run python bench/bench_analysis.py /tmp/piste.wav
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { debugLog, dbgLog, dbgThrottled } from "../src/core/debug";
+import { debugLog, dbgLog, dbgThrottled } from "../../src/core/debug";
 
 describe("journal de debug", () => {
   it("garde les lignes les plus récentes en premier", () => {

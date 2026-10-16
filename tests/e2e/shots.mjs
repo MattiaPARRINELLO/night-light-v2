@@ -19,7 +19,7 @@ const chromium = await loadChromium();
 
 const workspace = mkdtempSync(join(tmpdir(), "night-light-shot-"));
 const track = join(workspace, "piste.wav");
-spawnSync("uv", ["run", "python", "tests/make_fixture.py", track, rich ? "rich" : "12.0"], {
+spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, rich ? "rich" : "12.0"], {
   cwd: root,
   encoding: "utf8",
 });

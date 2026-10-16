@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const API_PORT = 8834;
 const API = `http://127.0.0.1:${API_PORT}`;
-const FAKE_SOURCE = join(root, "tests", "fake_playerctl.py");
+const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
 const { loadChromium } = await import("./playwright.mjs");
 const chromium = await loadChromium();
 
@@ -19,7 +19,7 @@ const failures = [];
 const workspace = mkdtempSync(join(tmpdir(), "night-light-repli-"));
 // Le fichier analysé et le morceau joué ne portent pas du tout le même titre.
 const track = join(workspace, "Autre Morceau.wav");
-spawnSync("uv", ["run", "python", "tests/make_fixture.py", track, "60.0"], { cwd: root, encoding: "utf8" });
+spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, "60.0"], { cwd: root, encoding: "utf8" });
 
 const binDir = join(workspace, "bin");
 mkdirSync(binDir, { recursive: true });
