@@ -24,6 +24,15 @@ const SECTION_LABELS: Record<string, string> = {
   descente: "Descente",
   silence: "Silence",
 };
+/** Rôle structurel d'une section, quand il est plus parlant que l'énergie. */
+const SECTION_KIND_LABELS: Record<string, string> = {
+  intro: "Intro",
+  couplet: "Couplet",
+  refrain: "Refrain",
+  pont: "Pont",
+  outro: "Outro",
+  section: "Passage",
+};
 
 /** Prépare une nappe de fumée à partir de ses deux surfaces de travail. */
 function preparerNappe(canvases: readonly [HTMLCanvasElement, HTMLCanvasElement]): HazeLayer | undefined {
@@ -229,7 +238,13 @@ export function installLoop(Target: { prototype: App }): void {
     el<HTMLElement>("time-current").textContent = formatTime(t);
     const section = view.sectionAt(t);
     const scene = sceneAt(this.plan ?? buildShowPlan(view.analysis, this.effectiveReduced()), t);
-    const label = SECTION_LABELS[section.label] ?? section.label;
+    // Le rôle structurel (Couplet, Refrain…) est plus parlant que l'énergie
+    // quand il est connu ; sinon on retombe sur l'étiquette d'énergie.
+    const kind = section.kind !== undefined && section.kind !== "section" ? section.kind : undefined;
+    const label =
+      kind !== undefined
+        ? SECTION_KIND_LABELS[kind] ?? kind
+        : SECTION_LABELS[section.label] ?? section.label;
     // La teinte affichée est celle réellement dessinée (même fonction, mêmes
     // entrées) : avant, le HUD recalculait sa propre dérive et annonçait une
     // couleur qui n'était pas à l'écran.
