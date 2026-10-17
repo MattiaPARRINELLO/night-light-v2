@@ -169,6 +169,7 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | --- | --- |
 | **pendules** | une rangée de têtes sur un portique, la vague traverse la rangée au lieu de tout basculer d'un bloc |
 | **couronne** | des têtes posées sur un arc, leurs rayons s'élancent vers le haut comme une tiare, la lumière en fait le tour |
+| **faisceaux** | deux éventails jumeaux partant chacun d'un point visible — l'un au plancher, l'autre au plafond ; les deux côtés s'allument ensemble ou l'un sans l'autre |
 | **pluie de lumière** | des colonnes tombent du plafond, chacune avec son cycle et sa longueur |
 | **portique** | une porte de lumière qui s'ouvre sur les moments forts et se referme sur les passages calmes |
 | **étoile** | un projecteur rotatif : peu de branches, un foyer qui dérive, chaque branche pulsant à son tour |

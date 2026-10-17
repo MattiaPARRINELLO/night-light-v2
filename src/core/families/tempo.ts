@@ -12,6 +12,10 @@ import type { FrameState } from "./types";
  * des sauts : c'est ce qui évite l'élément qui « apparaît en pleine scène ».
  *
  * `duty` est la part du cycle pendant laquelle l'élément reste allumé.
+ *
+ * `phaseOffset` décale le cycle d'une fraction fixe, en plus du tirage par
+ * `index`. Deux éléments d'un même ensemble peuvent ainsi se relayer franchement
+ * (`0.5` les met exactement à l'opposé) au lieu de dépendre du seul hasard.
  */
 export function elementEnvelope(
   f: FrameState,
@@ -19,15 +23,16 @@ export function elementEnvelope(
   index: number,
   cycleBeats = 16,
   duty = 0.6,
+  phaseOffset = 0,
 ): number {
   const cycle = Math.max(1, cycleBeats);
   let phase: number;
   if (view.beats.length === 0) {
     // Sans grille rythmique (mode direct), le cycle se compte en secondes : la
     // lumière doit vivre quand même.
-    phase = (f.t / (cycle * 0.45) + hash01(index * 97 + f.seed)) % 1;
+    phase = (f.t / (cycle * 0.45) + hash01(index * 97 + f.seed) + phaseOffset) % 1;
   } else {
-    phase = ((f.beatIndex + clamp01(f.beatPhase)) / cycle + hash01(index * 97 + f.seed)) % 1;
+    phase = ((f.beatIndex + clamp01(f.beatPhase)) / cycle + hash01(index * 97 + f.seed) + phaseOffset) % 1;
   }
   phase = ((phase % 1) + 1) % 1;
 

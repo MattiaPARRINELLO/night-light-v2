@@ -19,6 +19,12 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   teinte), et le refrain force l'énergie et la complémentaire. Le HUD affiche ce
   rôle.
 
+### Ajouté
+
+- **Éventail du plafond** : l'éventail de faisceaux peut désormais partir du haut
+  de l'écran, en miroir de celui du bas. Les deux s'allument ensemble ou l'un
+  sans l'autre, au fil du morceau.
+
 ### Modifié
 
 - Résolution des morceaux suivie comme une **pile** et non une file : le morceau
@@ -41,6 +47,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   durée est transmise à la résolution.
 - Une résolution automatique qui échoue (morceau absent du catalogue, Deezer non
   configuré) ne remplace plus le show en cours par l'écran d'erreur.
+- **Éventail de faisceaux** : la source était posée 2 % sous le bord bas de
+  l'écran, donc on ne la voyait jamais s'allumer, et ses rayons les plus ouverts
+  partaient vers le bas, hors cadre — parfois il n'en restait qu'un. La source
+  est ramenée dans le cadre et l'ouverture est bornée pour que tous les rayons
+  entrent.
 
 ## [2.0.0]
 
