@@ -63,10 +63,17 @@ class StructureSegment:
 
 
 def section_count(duration: float) -> int:
-    """Nombre de sections visées : environ une section toutes les 30 secondes,
-    avec un minimum pour les morceaux courts."""
-    target = round(duration / 30.0) + 2 + (1 if duration < 60 else 0)
-    return int(max(3, min(14, target)))
+    """Nombre de sections visées : environ une section toutes les 12 secondes,
+    avec un minimum pour les morceaux courts.
+
+    La maille large d'autrefois (une section par 30 s) fondait couplet et
+    refrain en un seul bloc : sur un morceau où les deux partagent la même
+    boucle, le « refrain » avalait alors le couplet qui le précède et démarrait
+    bien trop tôt. On vise donc la longueur d'un passage (8 à 16 mesures selon
+    le tempo) plutôt qu'une durée ronde.
+    """
+    target = round(duration / 12.0) + 2 + (1 if duration < 60 else 0)
+    return int(max(3, min(16, target)))
 
 
 def _letters(labels: list[object]) -> list[str]:

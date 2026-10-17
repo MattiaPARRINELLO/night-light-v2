@@ -91,6 +91,30 @@ def test_assign_roles_deduit_refrain_et_couplet() -> None:
     assert [section["occurrence"] for section in sections] == [1, 1, 1, 2, 2, 1, 1]
 
 
+def test_assign_roles_ne_demarre_pas_le_refrain_sur_l_ouverture() -> None:
+    """Régression « LIFE LIFE » : couplet et refrain sur la même boucle.
+
+    Le matériau du refrain (D) apparaît dès 6 s, chanté comme un couplet, puis
+    revient en refrain. Comme le premier passage tombe dans le tout premier
+    cinquième du morceau, il reste un couplet : le refrain ne démarre qu'à son
+    retour (40 s). Sans cette règle, l'analyse annonçait un refrain dès 6 s.
+    """
+    sections = [
+        {"start": 0, "end": 6, "energy": 0.08, "group": "I"},
+        {"start": 6, "end": 22, "energy": 0.9, "group": "D"},
+        {"start": 22, "end": 40, "energy": 0.35, "group": "Q"},
+        {"start": 40, "end": 58, "energy": 0.92, "group": "D"},
+        {"start": 58, "end": 76, "energy": 0.5, "group": "Q"},
+        {"start": 76, "end": 94, "energy": 0.88, "group": "D"},
+        {"start": 94, "end": 100, "energy": 0.1, "group": "O"},
+    ]
+    assign_roles(sections, duration=100.0)
+    kinds = [section["kind"] for section in sections]
+    assert kinds == ["intro", "couplet", "couplet", "refrain", "couplet", "refrain", "outro"]
+    # Le matériau D ouvre en couplet puis se numérote par rôle : refrain n°1, n°2.
+    assert [section["occurrence"] for section in sections] == [1, 1, 1, 1, 2, 2, 1]
+
+
 def test_montee_detectee(tmp_path: Path) -> None:
     track = tmp_path / "montee.wav"
     write_synthetic_track(track, duration=60.0, bpm=126.0)
