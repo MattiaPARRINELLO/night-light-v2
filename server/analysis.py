@@ -24,6 +24,10 @@ NFFT = 2048
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
+# Fraction du morceau en deçà de laquelle un refrain ne peut pas démarrer : un
+# refrain s'installe après une introduction et un premier couplet, jamais dans
+# le tout premier cinquième. Voir `assign_roles`.
+_OPENING_REFRAIN_GUARD = 0.2
 
 
 class AnalysisError(Exception):
@@ -275,15 +279,10 @@ def assign_roles(sections: list[dict], duration: float) -> None:
     affubler d'une fausse intro.
     """
     members: dict[str, list[int]] = {}
-    counters: dict[str, int] = {}
     for index, section in enumerate(sections):
         group = str(section.get("group") or "")
         if group:
             members.setdefault(group, []).append(index)
-            counters[group] = counters.get(group, 0) + 1
-            section["occurrence"] = counters[group]
-        else:
-            section["occurrence"] = 0
 
     def mean_energy(indexes: list[int]) -> float:
         values = [float(sections[index].get("energy") or 0.0) for index in indexes]
@@ -292,9 +291,24 @@ def assign_roles(sections: list[dict], duration: float) -> None:
     repeated = {group: indexes for group, indexes in members.items() if len(indexes) >= 2}
     refrain = max(repeated, key=lambda group: mean_energy(repeated[group])) if repeated else ""
 
-    for section in sections:
+    # Le refrain doit **revenir** et ne peut pas *ouvrir* le morceau. Sur une
+    # production où couplet et refrain partagent la même boucle (même accords,
+    # même beat — c'est le cas de beaucoup de rap/trap), le tout premier passage
+    # fort n'est encore qu'un couplet chanté ; le nommer « refrain » ferait
+    # démarrer celui-ci bien trop tôt, en pleine première partie. On réserve donc
+    # le rôle au retour du matériau quand sa première apparition tombe dans le
+    # tout premier cinquième du morceau.
+    opening = repeated.get(refrain, [])
+    demote = (
+        bool(opening)
+        and len(opening) >= 2
+        and float(sections[opening[0]].get("start") or 0.0) < duration * _OPENING_REFRAIN_GUARD
+    )
+
+    for index, section in enumerate(sections):
         group = str(section.get("group") or "")
-        if group == refrain:
+        opening_refrain = demote and group == refrain and index == opening[0]
+        if group == refrain and not opening_refrain:
             section["kind"] = "refrain"
         elif group in repeated:
             section["kind"] = "couplet"
@@ -314,6 +328,19 @@ def assign_roles(sections: list[dict], duration: float) -> None:
     for section in sections[1:-1]:
         if section.get("kind") == "section" and float(section["start"]) >= duration * 0.5:
             section["kind"] = "pont"
+
+    # Numérotation par « matériau + rôle » : deux sections de même groupe sont
+    # les occurrences du même passage, deux passages distincts sont numérotés
+    # séparément — même quand l'un ouvre en couplet et revient en refrain.
+    counters: dict[tuple[str, str], int] = {}
+    for section in sections:
+        group = str(section.get("group") or "")
+        if not group:
+            section["occurrence"] = 0
+            continue
+        key = (group, str(section.get("kind") or ""))
+        counters[key] = counters.get(key, 0) + 1
+        section["occurrence"] = counters[key]
 
 
 def detect_sections(
