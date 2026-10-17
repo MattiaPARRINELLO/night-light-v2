@@ -605,6 +605,65 @@ describe("les effets remplissent la scene", () => {
       expect(deborde).toBe(true);
     }
   });
+
+  /** Origines `[x, y]` des faisceaux d'une famille (début des dégradés linéaires). */
+  const origines = (operations: string[]): Array<[number, number]> =>
+    operations
+      .filter((operation) => operation.startsWith("linear:"))
+      .map((operation) => operation.slice("linear:".length).split(",").map(Number))
+      .filter((coords) => coords.length >= 2 && coords[0] !== undefined && coords[1] !== undefined)
+      .map((coords) => [coords[0]!, coords[1]!] as [number, number]);
+
+  test("l'éventail part d'une source visible, en bas comme en haut", () => {
+    // Le défaut constaté : la source était posée à h×1,02, donc 2 % sous l'écran
+    // — on ne la voyait jamais s'allumer, et les rayons des bords partaient déjà
+    // hors cadre. La source doit maintenant tomber dans le cadre, près du bord.
+    const bas: Array<[number, number]> = [];
+    const haut: Array<[number, number]> = [];
+    for (let beatIndex = 0; beatIndex < 32; beatIndex += 1) {
+      for (const [x, y] of origines(renderFamily("beams", { beatIndex, beatPhase: 0, t: beatIndex * 0.5 }))) {
+        (y > 360 ? bas : haut).push([x, y]);
+      }
+    }
+    expect(bas.length).toBeGreaterThan(0);
+    expect(haut.length).toBeGreaterThan(0);
+    for (const [, y] of [...bas, ...haut]) {
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(720);
+    }
+    expect(Math.min(...bas.map(([, y]) => y))).toBeGreaterThan(720 * 0.9);
+    expect(Math.max(...haut.map(([, y]) => y))).toBeLessThan(720 * 0.1);
+  });
+
+  test("aucun faisceau de l'éventail ne repart vers son propre bord", () => {
+    // Un rayon qui vise vers le bas depuis le plancher quitte le cadre aussitôt :
+    // c'est ce qui ne laissait voir qu'un faisceau. L'ouverture et le balayage
+    // sont donc bornés pour que tous les rayons entrent dans le cadre.
+    for (let beatIndex = 0; beatIndex < 32; beatIndex += 1) {
+      const operations = renderFamily("beams", { beatIndex, beatPhase: 0, t: beatIndex * 0.5 });
+      for (const operation of operations) {
+        if (!operation.startsWith("linear:")) continue;
+        const [, y0, , y1] = operation.slice("linear:".length).split(",").map(Number);
+        if (y0 === undefined || y1 === undefined) continue;
+        if (y0 > 360) expect(y1).toBeLessThanOrEqual(720);
+        else expect(y1).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  test("les deux éventails s'allument ensemble ou séparément", () => {
+    let ensemble = 0;
+    let seul = 0;
+    for (let beatIndex = 0; beatIndex < 64; beatIndex += 1) {
+      const rays = origines(renderFamily("beams", { beatIndex, beatPhase: 0, t: beatIndex * 0.5 }));
+      const bas = rays.filter(([, y]) => y > 360).length;
+      const haut = rays.length - bas;
+      if (bas > 0 && haut > 0) ensemble += 1;
+      else if (bas > 0 || haut > 0) seul += 1;
+    }
+    expect(ensemble).toBeGreaterThan(0);
+    expect(seul).toBeGreaterThan(0);
+  });
 });
 
 describe("vague des lyres", () => {

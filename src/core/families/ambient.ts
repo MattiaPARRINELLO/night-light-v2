@@ -2,57 +2,97 @@ import { clamp01, hash01, mix } from "../series";
 import { shiftHue } from "../color";
 import { softBeam } from "./beams";
 import { contrastHue, lampHue } from "./harmony";
-import { beatSwing } from "./tempo";
+import { beatSwing, elementEnvelope } from "./tempo";
 import type { FamilyDraw } from "./types";
 import { GRAND_BALAYAGE_BEATS } from "./types";
 import { count, paint } from "./util";
 
+/**
+ * Demi-ouverture de l'éventail, en radians : l'écart maximal d'un rayon à la
+ * verticale. On la garde sous l'angle droit moins le balayage maximal, sinon les
+ * rayons des bords passent sous l'horizon et sortent par le bord proche — c'est
+ * exactement ce qui faisait qu'on n'en voyait parfois qu'un.
+ */
+const EVENTAIL_DEMI_OUVERTURE = Math.PI * 0.33;
+/** Amplitude du balayage de l'éventail, en radians (calé sur le tempo). */
+const EVENTAIL_BALAYAGE = 0.3;
+
 const beams: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const originX = w * 0.5;
-  const originY = h * 1.02;
-  const spread = (Math.PI * 0.78) / (f.reduced ? 1.15 : 1);
   const rays = count(f.energy > 0.55 ? 20 : 13, f.quality, f.reduced);
+  if (rays < 1) return;
+  const spread = EVENTAIL_DEMI_OUVERTURE / (f.reduced ? 1.15 : 1);
   // Un pas tous les deux temps forts : l'éventail se réoriente sur la musique,
   // la dérive continue n'étant plus qu'un très léger fond.
-  const sweep = beatSwing(f, view, f.reduced ? 0.4 : 0.62, GRAND_BALAYAGE_BEATS) + f.t * (f.reduced ? 0.02 : 0.04);
+  const sweep =
+    beatSwing(f, view, f.reduced ? 0.24 : EVENTAIL_BALAYAGE, GRAND_BALAYAGE_BEATS) +
+    f.t * (f.reduced ? 0.02 : 0.04);
   const widthBase = Math.min(w, h) * 0.055 * (0.45 + f.bass * 0.9);
   const length = Math.hypot(w, h) * 0.95;
+  const baseAlpha = (0.05 + 0.32 * f.energy + 0.2 * f.beat * f.bass) * f.alpha;
+  if (baseAlpha <= 0.002) return;
+  // Cycle d'allumage des deux éventails : assez long pour qu'ils se relaient
+  // sans clignoter, et décalés pour qu'ils s'allument tantôt ensemble, tantôt
+  // l'un sans l'autre — jamais d'un coup.
+  const cycle = f.reduced ? 16 : f.energy > 0.55 ? 8 : 14;
 
   ctx.lineJoin = "round";
-  for (let i = 0; i < rays; i += 1) {
-    const ratio = rays === 1 ? 0.5 : i / (rays - 1);
-    const wobble = Math.sin(f.t * (0.7 + hash01(i * 31 + f.seed) * 0.9) + i * 1.7) * 0.05;
-    const angle = -Math.PI / 2 + (ratio - 0.5) * spread + sweep + wobble;
-    const hue = lampHue(f, i);
-    const light = f.palette.lightness * (0.55 + 0.45 * f.bass);
-    const alpha = (0.05 + 0.32 * f.energy + 0.2 * f.beat * f.bass) * f.alpha;
-    if (alpha <= 0.002) continue;
-    const width = widthBase * (0.5 + hash01(i * 57 + f.seed) * 0.9) * (0.7 + f.bass * 0.7);
-    softBeam(ctx, {
-      x: originX,
-      y: originY,
-      angle,
-      length,
-      width: width * 1.15,
-      hue,
-      saturation: f.palette.saturation,
-      lightness: light,
-      alpha,
-      quality: f.quality,
-      reduced: f.reduced,
-      fumee: f.haze,
-    });
-  }
 
-  // Halo au point de fuite, piloté par les basses.
-  const haloRadius = Math.min(w, h) * (0.16 + f.bass * 0.4 + f.beat * 0.08);
-  const haloHue = contrastHue(f);
-  const halo = ctx.createRadialGradient(originX, originY, 0, originX, originY, Math.max(haloRadius, 1));
-  halo.addColorStop(0, paint(haloHue, 0.9, 0.72, (0.16 + 0.34 * f.bass) * f.alpha));
-  halo.addColorStop(1, paint(haloHue, 0.9, 0.6, 0));
-  ctx.fillStyle = halo;
-  ctx.fillRect(0, originY - haloRadius, w, haloRadius * 1.2);
+  // Deux éventails jumeaux, l'un au plancher (rayons vers le haut), l'autre au
+  // plafond (vers le bas). Chacun a son allumage indépendant : la salle peut
+  // s'éclairer par le bas, par le haut, ou des deux côtés à la fois.
+  for (const sens of [-1, 1] as const) {
+    // Les deux jumeaux se relaient : le plafond est décalé d'un demi-cycle, donc
+    // quand l'un s'éteint l'autre s'allume — ils se croisent, se répondent, et
+    // s'allument ensemble entre les deux.
+    const allumage = elementEnvelope(f, view, 0, cycle, 0.85, sens < 0 ? 0 : 0.5);
+    if (allumage <= 0.01) continue;
+    const alpha = baseAlpha * allumage;
+    // Le point source est posé *dans* le cadre, tout près de son bord : on le
+    // voit s'allumer, et l'éventail converge dessus au lieu de naître hors écran.
+    const originY = sens < 0 ? h * 0.985 : h * 0.015;
+    const base = sens < 0 ? -Math.PI / 2 : Math.PI / 2;
+    // Jumeaux en miroir : ce que l'un penche d'un côté, l'autre le penche de
+    // l'autre — les deux éventails s'ouvrent et se referment ensemble.
+    const teinteDecalage = sens < 0 ? 0 : rays;
+
+    for (let i = 0; i < rays; i += 1) {
+      const ratio = rays === 1 ? 0.5 : i / (rays - 1);
+      const wobble = Math.sin(f.t * (0.7 + hash01(i * 31 + f.seed) * 0.9) + i * 1.7) * 0.025;
+      const angle = base + (ratio - 0.5) * spread - sens * sweep + wobble;
+      const hue = lampHue(f, i + teinteDecalage);
+      const light = f.palette.lightness * (0.55 + 0.45 * f.bass);
+      const width = widthBase * (0.5 + hash01(i * 57 + f.seed) * 0.9) * (0.7 + f.bass * 0.7);
+      softBeam(ctx, {
+        x: originX,
+        y: originY,
+        angle,
+        length,
+        width: width * 1.15,
+        hue,
+        saturation: f.palette.saturation,
+        lightness: light,
+        alpha,
+        quality: f.quality,
+        reduced: f.reduced,
+        fumee: f.haze,
+      });
+    }
+
+    // La source elle-même : un halo au point de départ, piloté par les basses.
+    // C'est lui qu'on regarde s'allumer ; sans lui, l'éventail sortirait du vide.
+    const haloRadius = Math.min(w, h) * (0.16 + f.bass * 0.4 + f.beat * 0.08);
+    const haloHue = contrastHue(f);
+    const halo = ctx.createRadialGradient(originX, originY, 0, originX, originY, Math.max(haloRadius, 1));
+    halo.addColorStop(0, paint(haloHue, 0.9, 0.72, (0.16 + 0.34 * f.bass) * f.alpha * allumage));
+    halo.addColorStop(1, paint(haloHue, 0.9, 0.6, 0));
+    ctx.fillStyle = halo;
+    // Le carré du dégradé est borné au cadre : le halo n'a rien à faire au-delà.
+    const haut = Math.max(0, originY - haloRadius);
+    const bas = Math.min(h, originY + haloRadius);
+    ctx.fillRect(0, haut, w, Math.max(bas - haut, 1));
+  }
 };
 
 const tunnel: FamilyDraw = (ctx, f) => {
