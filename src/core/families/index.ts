@@ -1,6 +1,7 @@
 import type { FamilyId } from "../show";
 import type { TrackView } from "../view";
 import { AMBIENT_FAMILIES } from "./ambient";
+import { CONCERT_FAMILIES } from "./concert-rig";
 import { FIGURE_FAMILIES } from "./figures";
 import { PROJECTOR_FAMILIES } from "./projectors";
 import { RIDEAU_FAMILIES } from "./rideaux";
@@ -16,6 +17,25 @@ export { beatSwing, colorFlip, elementEnvelope } from "./tempo";
 export { rowPositions } from "./geometry";
 export { lyreWavePhase } from "./figures";
 export { drawCoreGlow, drawWash } from "./projectors";
+export {
+  angleBatten,
+  couleurBlinder,
+  decroissanceFilament,
+  dessinerBlinders,
+  dessinerFoule,
+  dessinerStructure,
+  intensiteBlinder,
+  NOMBRE_BATTENS,
+  NOMBRE_BLINDERS,
+  NOMBRE_LYRES,
+  orientationLyre,
+  positionBatten,
+  positionBlinder,
+  positionLyre,
+  TAU_FILAMENT,
+  tempsTempsFort,
+} from "./concert-rig";
+export type { CouleurFilament, OrientationLyre, PointScene } from "./concert-rig";
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...AMBIENT_FAMILIES,
@@ -23,6 +43,7 @@ const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...RIDEAU_FAMILIES,
   ...SHAPE_FAMILIES,
   ...FIGURE_FAMILIES,
+  ...CONCERT_FAMILIES,
 };
 
 export function drawFamily(

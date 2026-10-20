@@ -167,6 +167,7 @@ describe("flashs", () => {
         fadeIn: 1,
         fadeOut: 1,
         mood: "pulse",
+        role: "couplet",
         reason: "ouverture",
       },
       palette: { name: "test", hue: 200, accent: 20, spread: 40, saturation: 0.8, lightness: 0.6 },

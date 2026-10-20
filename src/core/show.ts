@@ -27,7 +27,32 @@ export type FamilyId =
   | "lyre"
   | "mandala"
   | "treillis"
-  | "rideaux";
+  | "rideaux"
+  // Scénographie de concert : trois familles ajoutées ensemble, pour que le
+  // pont, les lyres suspendues et les barres LED restent cohérents dans le
+  // plan de spectacle. Toute nouvelle famille doit aussi figurer dans
+  // FAMILY_LABELS et dans l'un des réservoirs ci-dessous.
+  | "lyres-suspendues"
+  | "barres-led"
+  | "pont-concert";
+
+/**
+ * Rôle d'une scène dans la dramaturgie du concert.
+ *
+ * Il ne remplace pas l'humeur : il dit ce que fait la lumière. Une scène
+ * `refrain` ouvre les lyres en ballyhoo, un `drop` les fait converger, une
+ * `montee` déploie l'éventail et les barres LED en vague.
+ */
+export type SceneRole = "intro" | "couplet" | "refrain" | "montee" | "drop" | "finale";
+
+export const SCENE_ROLE_LABELS: Record<SceneRole, string> = {
+  intro: "introduction",
+  couplet: "couplet",
+  refrain: "refrain",
+  montee: "montée",
+  drop: "impact",
+  finale: "finale",
+};
 
 export interface Scene {
   index: number;
@@ -47,6 +72,8 @@ export interface Scene {
   fadeOut: number;
   /** Caractère de la scène qui pilote les réactions aux impacts. */
   mood: Mood;
+  /** Rôle dramaturgique : pilote les cinématiques de concert. */
+  role: SceneRole;
   /** Ce qui, dans le morceau, a déclenché ce changement d'ambiance. */
   reason: SceneReason;
 }
@@ -136,6 +163,9 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   mandala: "rosace",
   treillis: "treillis",
   rideaux: "double rideau",
+  "lyres-suspendues": "lyres suspendues",
+  "barres-led": "barres LED",
+  "pont-concert": "pont concert",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -172,6 +202,9 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "mandala",
   "treillis",
   "rideaux",
+  "lyres-suspendues",
+  "barres-led",
+  "pont-concert",
 ];
 const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -196,6 +229,9 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "mandala",
   "treillis",
   "rideaux",
+  "lyres-suspendues",
+  "barres-led",
+  "pont-concert",
 ];
 
 const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
@@ -276,8 +312,20 @@ export function barStarts(analysis: Analysis): number[] {
   return out.length > 0 ? out : beats.filter((_, index) => index % CYCLE_BEATS === 0);
 }
 
-/** Famille déduite du caractère musical, sans tirage au sort. */
-function familyFor(caractere: Caractere, reduced: boolean, turn: number): FamilyId {
+/**
+ * Famille déduite du caractère musical, sans tirage au sort.
+ *
+ * Le rôle de la scène choisit la famille de concert : ballyhoo des lyres en
+ * refrain, vague des barres en montée. Les autres rôles gardent les réservoirs
+ * historiques, où les trois familles concert restent disponibles. La couleur,
+ * elle, vient toujours du morceau : aucun tirage au sort.
+ */
+function familyFor(
+  caractere: Caractere,
+  reduced: boolean,
+  turn: number,
+  role: SceneRole,
+): FamilyId {
   const { energy, density, brightness } = caractere;
   // Le rang est un entier : sans arrondi, un `list[1.4]` vaut undefined et la
   // famille retomberait toujours sur la première.
@@ -289,6 +337,11 @@ function familyFor(caractere: Caractere, reduced: boolean, turn: number): Family
     if (density < 0.6) return pick(CALM_FAMILIES);
     return pick(["beams", "waves", "rings", "particles"] as FamilyId[]);
   }
+  // Orchestration par rôle : un refrain alterne lyres et barres LED, une
+  // montée déploie franchement la vague des barres. Les autres rôles gardent
+  // les réservoirs historiques, où les familles concert restent disponibles.
+  if (role === "refrain") return index % 2 === 0 ? "lyres-suspendues" : "barres-led";
+  if (role === "montee") return "barres-led";
   if (energy < 0.22) return pick(CALM_FAMILIES);
   if (brightness > 0.62) {
     return pick(["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"] as FamilyId[]);
@@ -296,6 +349,27 @@ function familyFor(caractere: Caractere, reduced: boolean, turn: number): Family
   if (density > 2.2) return pick(RHYTHMIC_FAMILIES);
   if (energy > 0.6) return pick(ENERGETIC_FAMILIES);
   return pick(ALL_FAMILIES);
+}
+
+/**
+ * Rôle dramaturgique d'une scène.
+ *
+ * La fin d'une montée est toujours un `drop`, même si elle tombe au milieu d'un
+ * refrain : c'est l'impact qui commande la lumière à cet instant. Les sections
+ * identifiées par le serveur (intro, couplet, refrain, outro) gardent ensuite
+ * leur rôle du début à la fin.
+ */
+function roleFor(section: Section | null, reason: SceneReason, index: number): SceneRole {
+  if (reason === "build") return "drop";
+  if (section?.kind === "intro") return "intro";
+  if (section?.kind === "refrain") return "refrain";
+  if (section?.kind === "couplet") return "couplet";
+  if (section?.kind === "outro") return "finale";
+  if (section?.kind === "pont") return "montee";
+  if (reason === "ouverture" || index === 0) return "intro";
+  if (section?.label === "montee") return "montee";
+  if (section?.label === "descente" || section?.label === "silence") return "finale";
+  return "couplet";
 }
 
 /**
@@ -461,18 +535,26 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     const mood =
       event.reason === "build" || (refrain && !reduced) ? "explosif" : moodFor(caractere, label);
     const turn = scenes.length;
+    const role = roleFor(section, event.reason, turn);
     // Identité stable d'un groupe : sert de graine partout où il faut retrouver
     // la même famille ou la même teinte d'une occurrence à l'autre.
     const groupSeed = grouped ? hashString(`${seed}|${group}`) : 0;
 
+    // Un impact déploie le plateau complet, quelle que soit la famille du
+    // groupe : c'est le moment où la scène doit se lire comme un vrai concert.
+    // On ne mémorise pas cette famille dans le groupe, sinon tout le refrain
+    // resterait un pont concert.
+    const forceConcert = !reduced && role === "drop";
     let family: FamilyId;
     const cachedFamily = grouped ? groupFamilies.get(group) : undefined;
-    if (cachedFamily !== undefined) {
+    if (forceConcert) {
+      family = "pont-concert";
+    } else if (cachedFamily !== undefined) {
       family = cachedFamily;
     } else {
       family = grouped
-        ? familyFor(caractere, reduced, groupSeed + hash01(groupSeed) * 0.9)
-        : familyFor(caractere, reduced, turn + hash01(seed + turn) * 0.9);
+        ? familyFor(caractere, reduced, groupSeed + hash01(groupSeed) * 0.9, role)
+        : familyFor(caractere, reduced, turn + hash01(seed + turn) * 0.9, role);
       if (grouped) groupFamilies.set(group, family);
     }
 
@@ -537,6 +619,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
       fadeIn: index === 0 ? 0.7 : event.weight >= 1 ? 1.2 : 0.7,
       fadeOut: 0.9,
       mood,
+      role,
       reason: event.reason,
     });
   }
@@ -561,13 +644,19 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
       fadeIn: 0.7,
       fadeOut: 0.9,
       mood: "pulse",
+      role: "intro",
       reason: "ouverture",
     });
   }
 
-  // La dernière scène se termine toujours avec le morceau.
+  // La dernière scène se termine toujours avec le morceau et prend le rôle de
+  // finale — sauf si le morceau se termine sur un impact, qui doit rester un
+  // drop jusqu'à la dernière image.
   const last = scenes[scenes.length - 1];
-  if (last !== undefined) last.end = round3(duration);
+  if (last !== undefined) {
+    last.end = round3(duration);
+    if (scenes.length > 1 && last.role !== "drop") last.role = "finale";
+  }
 
   return { duration, seed, scenes, barStarts: barStarts(analysis), track, backdrop: fond };
 }

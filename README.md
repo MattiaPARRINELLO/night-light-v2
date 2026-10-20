@@ -157,11 +157,12 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Vingt-cinq familles visuelles tournantes. Les projecteurs se déclinent en figures de
+Vingt-huit familles visuelles tournantes. Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
-vortex, lyres. Les autres jouent sur la matière et la géométrie : tunnel, particules,
-vagues, grille, anneaux, volets, barres, spirale, rosace, treillis.
+vortex, lyres, lyres suspendues, barres LED, pont concert. Les autres jouent sur la
+matière et la géométrie : tunnel, particules, vagues, grille, anneaux, volets, barres,
+spirale, rosace, treillis.
 
 Quelques figures méritent un mot, parce qu'elles ont une intention :
 
@@ -176,8 +177,23 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **vortex** | un éventail vrillé dont la vrille se resserre avec l'énergie |
 | **formes projetées** | des gobos (cercle, anneau, losange, triangle) répartis dans tout le cadre ; quand elles sont nombreuses, une ou deux basculent sur la couleur opposée au lieu de se déplacer |
 | **lyres** | une rangée de têtes fines au sol, la vague traverse la rangée par décalage de phase — chacune s'incline tour à tour |
+| **lyres suspendues** | huit têtes accrochées au pont technique, ballyhoo en refrain, éventail en montée et convergence au sol sur un impact |
+| **barres LED** | seize lames très serrées sur leur traverse : onde d'inclinaison progressive en couplet, rideau parallèle en refrain et en drop |
+| **pont concert** | le plateau complet, lyres et barres ensemble, déployé sur les impacts |
 | **rosace** | huit pétales en V répartis au tour, un hexagone et un triangle qui tournent en sens contraires |
 | **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
+
+### La scène
+
+Le spectacle se joue désormais sur un plateau : un pont en treillis à 12-16 % de la
+hauteur, une seconde traverse pour les barres LED, deux totems latéraux, quatre blocs de
+blinders tungstène et une foule stylisée dans les derniers 10 % de la toile. La structure
+est permanente ; seuls les faisceaux changent de figure.
+
+Les blinders ne s'éteignent pas d'un coup : leur filament suit `exp(-Δt / 0,22 s)`, puis
+passe du blanc chaud à l'ambre et au rouge avant de tomber au noir. Au-dessus de 0,6
+d'intensité, un flare anamorphique étire le halo horizontalement. La foule, elle, reste
+une silhouette tant que les blinders ou les lyres ne piquent pas vers le sol.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -346,7 +362,8 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families.ts         les vingt-cinq familles d'effets
+    families/           les vingt-huit familles d'effets
+      concert-rig.ts    structure, lyres, barres LED, blinders et foule
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
