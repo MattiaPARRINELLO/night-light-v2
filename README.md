@@ -13,7 +13,7 @@ synchronisé sur la musique.
 
 ```
 morceau (glisser-déposer)
-   → serveur Python : décodage, bandes, tempo, temps forts, sections, montées, structure (couplet/refrain)
+   → serveur Python : décodage, bandes, tempo, temps forts, énergie, montées
    → interface (Canvas 2D) : faisceaux, tunnel, particules, vagues, grille, anneaux
         pilotés par la position réelle de lecture (audio.currentTime)
 ```
@@ -131,8 +131,7 @@ Réellement calculé par librosa sur les échantillons décodés (22 050 Hz, STF
 | attaques | `onset_detect`, corrigé du retard de groupe de la STFT |
 | basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée ; `midLow` (150–600 Hz) et `midHigh` (600–2500 Hz) subdivisent le médium |
 | énergie globale | RMS + bandes, normalisation logarithmique (reste lisible dans les passages modérés) |
-| sections | regroupement agglomératif de MFCC + chroma, puis étiquetage calme/montée/intense/descente/silence ; si aucun matériau ne revient, courbe de nouveauté sur l'auto-similarité MFCC et rôles exposition/développement/climax/résolution |
-| structure (couplet/refrain) | chroma + MFCC agrégés par temps fort, regroupement agglomératif, puis rapprochement des sections au matériau proche (groupe A, B…) |
+| section | une seule section, de 0 à la fin, étiquetée calme/montée/intense/descente/silence d'après l'énergie ; plus de découpage couplet/refrain |
 | montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée ; un cut de 150–450 ms avant l'impact est enjambé pour caler le drop sur le premier onset qui suit le silence |
 
 Toutes les courbes sont envoyées en points `[secondes, 0..1]` à 20 Hz — compacts et
@@ -146,9 +145,9 @@ directement échantillonnables depuis le navigateur.
   percussion marquée (ambient), elle peut désigner la moitié ou le double du tempo ressenti.
   Le spectacle s'appuie donc aussi sur les courbes d'énergie et de bandes, pas seulement sur
   les temps forts.
-- **Sections et structure** : un regroupement automatique, pas une annotation musicale. Les
-  groupes « couplet / refrain » sont déduits de la similarité du matériau (harmonie + timbre)
-  entre sections : c'est une lecture plausible et stable, pas une vérité d'annotation.
+- **Sections** : le découpage automatique couplet/refrain a été retiré — trop coûteux et
+  trop souvent faux (refrains enchaînés) à cause du temps d'analyse limité. Le morceau est
+  décrit par une seule section ; le spectacle suit l'énergie, les montées et les temps forts.
 - La lecture dans le navigateur dépend des codecs du navigateur : si un morceau analysé
   n'est pas lisible, l'application le dit et propose un format plus sûr (WAV, MP3).
 - **Récupération Deezer** : la recherche de streamrip ne renvoie pas la durée d'un
@@ -386,8 +385,7 @@ src/
 server/
   config.py             réglages lus dans l'environnement
   sniff.py              détection du format réel par octets
-  analysis.py           moteur librosa (décodage, courbes, rythme, sections, montées)
-  structure.py          groupes couplet/refrain (chroma + MFCC par temps fort)
+  analysis.py           moteur librosa (décodage, courbes, rythme, section, montées)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
   retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation

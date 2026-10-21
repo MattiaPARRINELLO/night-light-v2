@@ -15,15 +15,11 @@ from server.analysis import (
     AnalysisError,
     analyze_file,
     analyze_with_timeout,
-    assign_roles,
     detect_builds,
     estimate_meter,
 )
 from server.config import load_settings
-from tests.support.make_fixture import (
-    write_continuous_track,
-    write_synthetic_track,
-)
+from tests.support.make_fixture import write_synthetic_track
 
 
 def make_analysis(tmp_path: Path, duration: float = 20.0, bpm: float = 128.0):
@@ -69,62 +65,18 @@ def test_les_bandes_different_des_moments(tmp_path: Path) -> None:
     assert energy[int(len(energy) * 0.75)] > energy[int(len(energy) * 0.2)]
 
 
-def test_sections_couvrent_le_morceau(tmp_path: Path) -> None:
+def test_section_unique_couvre_le_morceau(tmp_path: Path) -> None:
+    """Plus de découpage couplet/refrain : une seule section, de 0 à la fin."""
     result = make_analysis(tmp_path, duration=40.0, bpm=126.0)
-    assert len(result.sections) >= 2
-    assert result.sections[0]["start"] == 0.0
-    assert result.sections[-1]["end"] >= result.duration - 0.5
-    kinds = {"intro", "couplet", "refrain", "pont", "outro", "section"}
-    for section in result.sections:
-        assert section["end"] > section["start"]
-        assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
-        assert 0.0 <= section["energy"] <= 1.0
-        assert isinstance(section["group"], str)
-        assert section["kind"] in kinds
-        assert isinstance(section["occurrence"], int)
-
-
-def test_assign_roles_deduit_refrain_et_couplet() -> None:
-    # Intro basse, couplet (A), refrain (B, plus fort et répété), couplet, refrain,
-    # pont unique, puis outro : la structure canonique d'un morceau de soirée.
-    sections = [
-        {"start": 0, "end": 10, "energy": 0.15, "group": "X"},
-        {"start": 10, "end": 25, "energy": 0.45, "group": "A"},
-        {"start": 25, "end": 40, "energy": 0.9, "group": "B"},
-        {"start": 40, "end": 55, "energy": 0.5, "group": "A"},
-        {"start": 55, "end": 70, "energy": 0.92, "group": "B"},
-        {"start": 70, "end": 85, "energy": 0.6, "group": "C"},
-        {"start": 85, "end": 95, "energy": 0.15, "group": "Y"},
-    ]
-    assign_roles(sections, duration=95.0)
-    kinds = [section["kind"] for section in sections]
-    assert kinds == ["intro", "couplet", "refrain", "couplet", "refrain", "pont", "outro"]
-    # Le refrain revient : la seconde occurrence est numérotée.
-    assert [section["occurrence"] for section in sections] == [1, 1, 1, 2, 2, 1, 1]
-
-
-def test_assign_roles_ne_demarre_pas_le_refrain_sur_l_ouverture() -> None:
-    """Régression « LIFE LIFE » : couplet et refrain sur la même boucle.
-
-    Le matériau du refrain (D) apparaît dès 6 s, chanté comme un couplet, puis
-    revient en refrain. Comme le premier passage tombe dans le tout premier
-    cinquième du morceau, il reste un couplet : le refrain ne démarre qu'à son
-    retour (40 s). Sans cette règle, l'analyse annonçait un refrain dès 6 s.
-    """
-    sections = [
-        {"start": 0, "end": 6, "energy": 0.08, "group": "I"},
-        {"start": 6, "end": 22, "energy": 0.9, "group": "D"},
-        {"start": 22, "end": 40, "energy": 0.35, "group": "Q"},
-        {"start": 40, "end": 58, "energy": 0.92, "group": "D"},
-        {"start": 58, "end": 76, "energy": 0.5, "group": "Q"},
-        {"start": 76, "end": 94, "energy": 0.88, "group": "D"},
-        {"start": 94, "end": 100, "energy": 0.1, "group": "O"},
-    ]
-    assign_roles(sections, duration=100.0)
-    kinds = [section["kind"] for section in sections]
-    assert kinds == ["intro", "couplet", "couplet", "refrain", "couplet", "refrain", "outro"]
-    # Le matériau D ouvre en couplet puis se numérote par rôle : refrain n°1, n°2.
-    assert [section["occurrence"] for section in sections] == [1, 1, 1, 1, 2, 2, 1]
+    assert len(result.sections) == 1
+    section = result.sections[0]
+    assert section["start"] == 0.0
+    assert section["end"] >= result.duration - 0.5
+    assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
+    assert 0.0 <= section["energy"] <= 1.0
+    assert section["group"] == ""
+    assert section["kind"] == "section"
+    assert section["occurrence"] == 0
 
 
 def test_montee_detectee(tmp_path: Path) -> None:
@@ -201,24 +153,6 @@ def test_metrique_ambigue_reste_en_4_4() -> None:
 def test_meter_expose_et_dans_le_domaine(tmp_path: Path) -> None:
     result = make_analysis(tmp_path, duration=20.0, bpm=128.0)
     assert result.meter in (3, 4)
-
-
-# ------------------------------------------------- morceaux continus (novelty)
-
-
-def test_morceau_continu_recoit_des_roles_de_progression(tmp_path: Path) -> None:
-    """Aucun passage ne revient : pas de faux couplet/refrain, mais des rôles."""
-    track = tmp_path / "continu.wav"
-    write_continuous_track(track, duration=60.0)
-    result = analyze_file(track, load_settings(), report=lambda message, progress: None)
-
-    kinds = {section["kind"] for section in result.sections}
-    assert kinds <= {"exposition", "developpement", "climax", "resolution"}
-    assert "climax" in kinds
-    assert result.sections[0]["start"] == 0.0
-    assert result.sections[-1]["end"] >= result.duration - 0.5
-    # Aucun groupe n'est affirmé quand aucune répétition n'est démontrée.
-    assert all(section["group"] == "" for section in result.sections)
 
 
 # --------------------------------------------------------- déterminisme/schéma

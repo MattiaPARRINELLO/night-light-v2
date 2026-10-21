@@ -540,7 +540,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     if (end <= start) continue;
 
     const caractere = caractereAt(analysis, start, end);
-    const section = sectionAt(analysis, start);
+    // Une section unique couvre tout le morceau : son étiquette globale ne doit
+    // pas figer le rôle de chaque scène. On s'en remet alors au caractère de
+    // l'intervalle (énergie, brillance) et aux événements détectés.
+    const section = analysis.sections.length > 1 ? sectionAt(analysis, start) : null;
     const label = section?.label ?? "intense";
     const group = section?.group !== undefined && section.group !== "" ? section.group : "";
     const grouped = group !== "";
