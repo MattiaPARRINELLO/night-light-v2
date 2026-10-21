@@ -50,6 +50,17 @@ _FALLBACK_STEP_SEC = 2.0
 # groupe répété et `assign_roles` ne peut plus dégager de couplet.
 _GROUP_THRESHOLD = 0.5
 
+# --- Morceaux continus (jazz, ambient, métal prog) : aucun motif ne revient.
+# On découpe alors sur les ruptures de régime spectral, pas sur une hypothétique
+# répétition. Le contexte du noyau en damier est exprimé en secondes, pour que
+# la courbe de nouveauté garde la même échelle quel que soit le tempo.
+_NOVELTY_CONTEXT_SEC = 4.0
+# Pic minimal, en fraction du pic le plus fort de la courbe.
+_NOVELTY_PEAK_RATIO = 0.28
+# Deux ruptures plus proches que ça seraient deux morceaux de phrase, pas deux
+# sections : on garde la plus marquée.
+_NOVELTY_MIN_SPACING_SEC = 8.0
+
 
 @dataclass(frozen=True)
 class StructureSegment:
@@ -247,5 +258,97 @@ def estimate_structure(
     segments = _coalesce(raw)
     repeated = len({segment.group for segment in segments}) < len(segments)
     if len(segments) < _MIN_SEGMENTS or not repeated:
+        return None
+    return segments
+
+
+def _novelty_curve(columns: np.ndarray, context: int) -> np.ndarray:
+    """Courbe de nouveauté par noyau en damier sur l'auto-similarité.
+
+    `columns` est la matrice descripteur × passages (chroma + MFCC). Deux blocs
+    de contexte qui se ressemblent à l'intérieur mais diffèrent entre eux
+    produisent un pic : c'est exactement une frontière de section.
+    """
+    if columns.shape[1] < 2 * context + 2:
+        return np.zeros(columns.shape[1])
+    centered = columns - columns.mean(axis=1, keepdims=True)
+    centered = centered / (centered.std(axis=1, keepdims=True) + 1e-9)
+    unit = centered / (np.linalg.norm(centered, axis=0, keepdims=True) + 1e-9)
+    similarity = unit.T @ unit
+
+    novelty = np.zeros(columns.shape[1])
+    for index in range(context, columns.shape[1] - context):
+        left = slice(index - context, index)
+        right = slice(index, index + context)
+        within = 0.5 * (similarity[left, left].mean() + similarity[right, right].mean())
+        across = 0.5 * (similarity[left, right].mean() + similarity[right, left].mean())
+        novelty[index] = max(0.0, float(within - across))
+    return novelty
+
+
+def estimate_novelty_segments(
+    spectrum: np.ndarray,
+    beats: list[float],
+    sr: int,
+    duration: float,
+    hop_length: int = HOP_LENGTH,
+) -> list[StructureSegment] | None:
+    """Découpe un morceau **continu** par sauts de régime spectral.
+
+    Quand aucun matériau ne revient (jazz, ambient, métal progressif), la
+    répétition ne peut pas fonder le découpage : on segmente sur la courbe de
+    nouveauté tirée de l'auto-similarité des MFCC/chroma. Les blocs renvoyés
+    n'ont pas de groupe (aucune répétition n'est affirmée) ; c'est
+    `analysis.assign_progression_roles` qui leur donne un rôle contextuel.
+    """
+    if duration < MIN_STRUCTURE_SEC or spectrum.size == 0:
+        return None
+
+    features = _frame_features(spectrum, sr, hop_length)
+    n_frames = features.shape[1]
+    edges = _beat_edges(beats, duration, n_frames, sr, hop_length)
+    sync = _sync(features, edges)
+    columns = sync.shape[1]
+    if columns < 8:
+        return None
+
+    column_sec = duration / columns
+    context = int(round(_NOVELTY_CONTEXT_SEC / max(column_sec, 1e-6)))
+    context = max(2, min(context, columns // 3))
+    novelty = _novelty_curve(sync, context)
+    best = float(novelty.max())
+    if best <= 1e-6:
+        return None
+
+    scores = novelty / best
+    min_spacing = max(context, int(round(_NOVELTY_MIN_SPACING_SEC / max(column_sec, 1e-6))))
+    candidates = [
+        index
+        for index in range(context, columns - context)
+        if scores[index] >= _NOVELTY_PEAK_RATIO
+        and scores[index] == float(np.max(scores[index - context // 2 : index + context // 2 + 1]))
+    ]
+    # Tri déterministe : les pics les plus marqués d'abord, puis l'ordre temporel.
+    candidates.sort(key=lambda index: (-float(scores[index]), index))
+    selected: list[int] = []
+    for index in candidates:
+        if all(abs(index - other) >= min_spacing for other in selected):
+            selected.append(index)
+    if len(selected) < 2:
+        return None
+
+    bounds = [0, *sorted(selected), columns]
+    column_times = librosa.frames_to_time(edges[:-1], sr=sr, hop_length=hop_length)
+    times = np.append(column_times, duration)
+    raw = [
+        StructureSegment(
+            start=round(float(times[bounds[index]]), 3),
+            end=round(float(times[bounds[index + 1]]), 3),
+            group="",
+        )
+        for index in range(len(bounds) - 1)
+    ]
+    segments = _coalesce(raw)
+    if len(segments) < _MIN_SEGMENTS:
         return None
     return segments

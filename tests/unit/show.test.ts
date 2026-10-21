@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -418,6 +418,17 @@ describe("changements justifies par la musique", () => {
       const justifiee = [...justifications].some((time) => Math.abs(time - scene.start) < 0.6);
       expect(justifiee).toBe(true);
     }
+  });
+
+  test("la grille suit la métrique détectée (pas de biais 4/4)", () => {
+    const beats = Array.from({ length: 48 }, (_, index) => index * 0.5);
+    const binaire = analysis({ meter: 4, beats });
+    const ternaire = analysis({ meter: 3, beats });
+    const sansMetrique = analysis({ beats });
+    expect(barStarts(binaire)).toEqual(beats.filter((_, index) => index % 16 === 0));
+    expect(barStarts(ternaire)).toEqual(beats.filter((_, index) => index % 12 === 0));
+    // Un serveur antérieur (pas de `meter`) garde le cycle 4/4 historique.
+    expect(barStarts(sansMetrique)).toEqual(barStarts(binaire));
   });
 
   test("les frontières de section forcent un changement complet", () => {

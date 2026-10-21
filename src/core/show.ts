@@ -222,10 +222,24 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
 const MIN_HUE_STEP = 34;
-/** Nombre de temps forts par cycle « vers ». */
-const CYCLE_BEATS = 16;
+/**
+ * Mesures par cycle « vers ». La métrique détectée décide du nombre de temps
+ * par mesure : sans elle, un 3/4 se décalait d'un temps à chaque cycle et les
+ * scènes tombaient à contre-temps.
+ */
+const BARS_PER_CYCLE = 4;
 /** Longueur minimale d'une scène, en secondes. */
 const MIN_SCENE_SPAN = 5;
+
+/** Métrique validée : 3 ou 4, avec 4 comme hypothèse par défaut. */
+export function meterOf(analysis: Analysis): 3 | 4 {
+  return analysis.meter === 3 ? 3 : 4;
+}
+
+/** Nombre de temps par cycle « vers » (quatre mesures de la métrique). */
+export function cycleBeats(analysis: Analysis): number {
+  return meterOf(analysis) * BARS_PER_CYCLE;
+}
 
 export interface Caractere {
   energy: number;
@@ -253,14 +267,15 @@ export function caractereAt(analysis: Analysis, start: number, end: number): Car
 }
 
 /**
- * Barres de mesure : temps forts tous les `CYCLE_BEATS`, et temps forts seuls
+ * Barres de mesure : temps forts tous les `cycleBeats`, et temps forts seuls
  * en dernier recours. C'est la grille rythmique sur laquelle le spectacle
  * pourra accrocher ses changements.
  */
 export function barStarts(analysis: Analysis): number[] {
   const beats = analysis.beats;
   const beatPeriod = analysis.beatPeriod > 0 ? analysis.beatPeriod : 0.5;
-  const step = beatPeriod * CYCLE_BEATS;
+  const cycle = cycleBeats(analysis);
+  const step = beatPeriod * cycle;
   if (beats.length === 0 || step <= 0) {
     // Aucun temps fort détecté : on retombe sur une grille régulière pour que le
     // spectacle ait quand même des repères.
@@ -269,11 +284,11 @@ export function barStarts(analysis: Analysis): number[] {
     return regular;
   }
   const out: number[] = [];
-  for (let index = 0; index < beats.length; index += CYCLE_BEATS) {
+  for (let index = 0; index < beats.length; index += cycle) {
     const beat = beats[index];
     if (beat !== undefined) out.push(beat);
   }
-  return out.length > 0 ? out : beats.filter((_, index) => index % CYCLE_BEATS === 0);
+  return out.length > 0 ? out : beats.filter((_, index) => index % cycle === 0);
 }
 
 /** Famille déduite du caractère musical, sans tirage au sort. */

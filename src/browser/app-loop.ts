@@ -31,6 +31,10 @@ const SECTION_KIND_LABELS: Record<string, string> = {
   refrain: "Refrain",
   pont: "Pont",
   outro: "Outro",
+  exposition: "Exposition",
+  developpement: "Développement",
+  climax: "Climax",
+  resolution: "Résolution",
   section: "Passage",
 };
 

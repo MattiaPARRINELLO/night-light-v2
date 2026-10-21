@@ -127,12 +127,13 @@ Réellement calculé par librosa sur les échantillons décodés (22 050 Hz, STF
 | donnée | méthode |
 | --- | --- |
 | tempo, temps forts | `onset_strength` + `beat_track` (recherche de phase) |
+| métrique | autocorrélation de l'accentuation des temps forts : 3 ou 4 temps, repli à 4 si le signal n'est pas concluant |
 | attaques | `onset_detect`, corrigé du retard de groupe de la STFT |
-| basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée |
+| basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée ; `midLow` (150–600 Hz) et `midHigh` (600–2500 Hz) subdivisent le médium |
 | énergie globale | RMS + bandes, normalisation logarithmique (reste lisible dans les passages modérés) |
-| sections | regroupement agglomératif de MFCC + chroma, puis étiquetage calme/montée/intense/descente/silence |
+| sections | regroupement agglomératif de MFCC + chroma, puis étiquetage calme/montée/intense/descente/silence ; si aucun matériau ne revient, courbe de nouveauté sur l'auto-similarité MFCC et rôles exposition/développement/climax/résolution |
 | structure (couplet/refrain) | chroma + MFCC agrégés par temps fort, regroupement agglomératif, puis rapprochement des sections au matériau proche (groupe A, B…) |
-| montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée |
+| montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée ; un cut de 150–450 ms avant l'impact est enjambé pour caler le drop sur le premier onset qui suit le silence |
 
 Toutes les courbes sont envoyées en points `[secondes, 0..1]` à 20 Hz — compacts et
 directement échantillonnables depuis le navigateur.
@@ -383,7 +384,7 @@ src/dashboard/          tableau de bord (page + styles)
 | `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés (survit au redémarrage) |
 | `MAX_FILE_MB` | `40` | taille d'envoi maximale |
 | `MAX_DURATION_SEC` | `900` | durée de morceau maximale |
-| `ANALYZE_TIMEOUT_SEC` | `240` | délai d'analyse |
+| `ANALYZE_TIMEOUT_SEC` | `240` | limite dure d'une analyse (le process est interrompu et l'erreur `timeout` renvoyée) |
 | `SESSION_TTL_SEC` | `1800` | durée de vie d'une session inactive |
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |

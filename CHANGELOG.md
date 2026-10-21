@@ -18,6 +18,17 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   groupe se répètent à l'identique dans le show (même famille visuelle et même
   teinte), et le refrain force l'énergie et la complémentaire. Le HUD affiche ce
   rôle.
+- **Métrique dominante** (`meter`) : une estimation par autocorrélation de
+  l'accentuation distingue le ternaire (3/4) du binaire (4/4), avec repli à 4 en
+  cas de confiance faible. La grille du show suit cette métrique au lieu de
+  supposer 4/4.
+- **Subdivision du médium** : courbes `midLow` (150–600 Hz) et `midHigh`
+  (600–2500 Hz) en plus de `mid`, pour séparer le corps du bas-médium de la
+  présence des caisses claires.
+- **Morceaux continus** : quand aucun matériau ne revient (jazz, ambient, métal
+  progressif), le découpage passe par une courbe de nouveauté sur
+  l'auto-similarité MFCC et les sections reçoivent des rôles de progression
+  (exposition, développement, climax, résolution).
 
 ### Ajouté
 
@@ -27,6 +38,9 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Modifié
 
+- **`ANALYZE_TIMEOUT_SEC` est désormais appliqué** : l'analyse tourne dans un
+  process dédié et une limite dure tue le worker, avec une erreur `timeout`
+  explicite au lieu d'un blocage silencieux.
 - Résolution des morceaux suivie comme une **pile** et non une file : le morceau
   courant est téléchargé et analysé en premier ; les morceaux sautés sont
   téléchargés ensuite pour rester en cache, mais sans être affichés.
@@ -39,6 +53,9 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **Drop après un cut** : la fin d'une montée peut désormais enjamber un silence
+  franc de 150 à 450 ms et se caler sur le premier onset énergique qui suit le
+  creux, au lieu de rester sur le dernier bruit du riser.
 - **Détection du morceau joué** : un lecteur qui n'expose pas l'artiste
   (fichiers locaux, lecteurs partiels) était ignoré, l'indicateur « Lecteur
   détecté » restait caché et la résolution automatique ne partait jamais.
