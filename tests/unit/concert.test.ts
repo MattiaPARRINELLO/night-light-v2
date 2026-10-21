@@ -215,6 +215,43 @@ describe("cinématiques des lyres et des barres", () => {
     expect(Math.abs(gauche - Math.PI / 2)).toBeCloseTo(Math.abs(droite - Math.PI / 2), 6);
   });
 
+  test("les mouvements restent continus d'une image à l'autre", () => {
+    const view = new TrackView(analysis());
+    const pas = 1 / 60;
+    for (const role of ["intro", "couplet", "refrain", "montee", "finale", "drop"] as SceneRole[]) {
+      const base = frame(role, role === "drop" ? 0 : 10);
+      let precedent = orientationLyre(base, view, 0);
+      let angleMax = 0;
+      let intensiteMax = 0;
+      for (let t = (role === "drop" ? 0 : 10) + pas; t < (role === "drop" ? 2 : 20); t += pas) {
+        const courant = orientationLyre(
+          { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          0,
+        );
+        angleMax = Math.max(angleMax, Math.abs(courant.angle - precedent.angle));
+        intensiteMax = Math.max(intensiteMax, Math.abs(courant.intensite - precedent.intensite));
+        precedent = courant;
+      }
+      // Aucun saut d'angle ni clignotement : à 60 images/s, une lyre bouge
+      // lentement et garde une intensité stable.
+      expect(angleMax).toBeLessThan(0.02);
+      expect(intensiteMax).toBeLessThan(0.02);
+    }
+  });
+
+  test("le prisme s'ouvre progressivement avec l'énergie", () => {
+    const view = new TrackView(analysis());
+    const base = frame("refrain", 12);
+    let precedent = orientationLyre({ ...base, energy: 0.45 }, view, 0).prisme;
+    for (let energy = 0.47; energy <= 1; energy += 0.02) {
+      const courant = orientationLyre({ ...base, energy }, view, 0).prisme;
+      expect(courant).toBeGreaterThanOrEqual(precedent - 1e-9);
+      expect(Math.abs(courant - precedent)).toBeLessThan(0.06);
+      precedent = courant;
+    }
+  });
+
   test("la vague des barres LED court le long de la rampe", () => {
     const view = new TrackView(analysis());
     const f = frame("couplet", 12);

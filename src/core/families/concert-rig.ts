@@ -4,6 +4,7 @@ import type { SceneRole } from "../show";
 import type { TrackView } from "../view";
 import { softBeam } from "./beams";
 import { contrastHue, lampHue } from "./harmony";
+import { beatSwing } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
 import { paint } from "./util";
 
@@ -144,14 +145,20 @@ export function tempsTempsFort(f: FrameState, view: TrackView): number {
 /**
  * Cinématique pan/tilt d'une lyre.
  *
- * Quatre gestes de console se succèdent selon le rôle de la scène :
- * - `drop` : convergence instantanée vers le centre du sol, prisme ouvert ;
- * - `refrain` : ballyhoo, les têtes balaient en opposition de phase ;
- * - `montee` : éventail symétrique qui s'ouvre avec la montée ;
- * - `couplet`/`intro` : respiration lente, presque immobile.
+ * Les gestes de console se succèdent selon le rôle de la scène :
+ * - `drop` : convergence vers le centre du sol, progressive sur ~0,9 s ;
+ * - `refrain` : ballyhoo lent, les têtes balaient sur huit temps forts ;
+ * - `montee` : éventail symétrique qui s'ouvre lentement ;
+ * - `couplet`/`intro` : dérive presque immobile.
  *
- * Tout est analytique : `tempsTempsFort` est une fonction pure de la vue et de
- * l'image courante.
+ * Le mouvement ne suit plus un sinus rapide : `beatSwing` vise une position,
+ * la rejoint sur les 70 % du bloc puis la tient. Les changements de direction
+ * sont donc espacés de plusieurs secondes, comme sur une vraie console, au lieu
+ * de repartir à chaque temps fort. L'intensité ne clignote pas sur le beat :
+ * seules une respiration lente et une présence propre à chaque tête la font
+ * varier.
+ *
+ * Tout reste analytique, sans état d'une image sur l'autre.
  */
 export function orientationLyre(
   f: FrameState,
@@ -161,9 +168,11 @@ export function orientationLyre(
 ): OrientationLyre {
   const i = borner(index, NOMBRE_LYRES);
   const phase = (i / (NOMBRE_LYRES - 1)) * Math.PI * 2;
-  const temps = tempsTempsFort(f, view);
   const centre = (NOMBRE_LYRES - 1) / 2;
   const base = Math.PI / 2;
+  // Décalage en temps forts, pas en radians : deux têtes voisines n'arrivent
+  // jamais exactement ensemble sur leur cible.
+  const decalage = (i / (NOMBRE_LYRES - 1)) * 2.2;
   let angle = base;
   let ouverture = 0.024;
   let prisme = 0;
@@ -171,58 +180,66 @@ export function orientationLyre(
 
   switch (role) {
     case "drop": {
-      // Convergence : toutes les têtes visent le même point au sol. Le léger
-      // balancement latéral évite une verticale parfaite, qui ferait « plan de
-      // coupe » plutôt que « cue de console ».
-      const cibleX = f.width * (0.5 + 0.045 * Math.sin(f.t * 0.55));
+      // Convergence : toutes les têtes visent le même point au sol, mais la
+      // tête ne saute pas. Elle part de la verticale et rejoint la cible en
+      // 0,9 s : c'est le temps d'un vrai mouvement de lyre, pas une coupure.
+      const cibleX = f.width * (0.5 + 0.035 * Math.sin(f.t * 0.35));
       const cibleY = f.height * 1.02;
       const { x, y } = positionLyre(i, f.width, f.height);
-      angle = Math.atan2(cibleY - y, cibleX - x);
+      const angleCible = Math.atan2(cibleY - y, cibleX - x);
+      const local = clamp01((f.t - f.scene.start) / 0.9);
+      const convergence = smoothstep(0, 1, local);
+      angle = base + (angleCible - base) * convergence;
       ouverture = 0.017;
-      prisme = f.reduced ? 0 : 1;
-      intensite = 1;
-      break;
-    }
-    case "refrain": {
-      // Ballyhoo : pan et tilt à deux vitesses différentes, déphasés tête par
-      // tête. C'est le mouvement de balayage le plus reconnaissable d'un show.
-      const pan = Math.sin(temps * Math.PI + phase) * 0.6;
-      const tilt = Math.sin(2 * temps * Math.PI + phase) * 0.35;
-      angle = base + pan * 0.75 + tilt * 0.55;
-      ouverture = 0.021;
-      prisme = f.energy > 0.62 ? 1 : 0.3;
+      prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy);
       intensite = 0.95;
       break;
     }
+    case "refrain": {
+      // Ballyhoo lent : la cible change tous les huit temps forts, et la tête
+      // met toute une phrase à la rejoindre. C'est la lenteur qui rend le
+      // balayage crédible.
+      const pan = beatSwing(f, view, 0.52, 8, decalage);
+      const tilt = beatSwing(f, view, 0.26, 6, decalage * 1.3 + 0.9);
+      angle = base + pan * 0.9 + tilt * 0.5;
+      ouverture = 0.021;
+      // Le prisme s'ouvre progressivement avec l'énergie : jamais un
+      // interrupteur qui fait apparaître trois lames d'un coup.
+      prisme = f.reduced ? 0 : smoothstep(0.5, 0.85, f.energy) * 0.7;
+      intensite = 0.9;
+      break;
+    }
     case "montee": {
-      // Éventail symétrique : l'écart entre les têtes s'ouvre sur la pulsation.
-      const pan = (i - centre) * 0.12 * (1 + 0.5 * Math.sin(temps * Math.PI));
-      angle = base + pan;
+      // Éventail symétrique, ouvert sur une période très lente : les têtes
+      // s'écartent et se resserrent sans à-coup.
+      const ouvertureEventail = 0.11 * (0.7 + 0.3 * Math.sin(f.t * 0.22));
+      angle = base + (i - centre) * ouvertureEventail;
       ouverture = 0.023;
-      intensite = 0.72 + 0.28 * clamp01(f.build);
+      intensite = 0.8 + 0.12 * clamp01(f.build);
       break;
     }
     case "intro":
-      angle = base + Math.sin(temps * 0.45 * Math.PI + phase) * 0.1;
+      angle = base + beatSwing(f, view, 0.12, 24, decalage);
       ouverture = 0.026;
-      intensite = 0.42;
+      intensite = 0.5;
       break;
     case "finale":
-      angle = base + Math.sin(temps * 0.6 * Math.PI + phase) * 0.18;
+      angle = base + beatSwing(f, view, 0.18, 16, decalage) * 0.8;
       ouverture = 0.022;
       intensite = 0.65;
       break;
     case "couplet":
     default:
-      angle = base + Math.sin(temps * 0.5 * Math.PI + phase) * 0.2 + (i - centre) * 0.012;
+      angle = base + beatSwing(f, view, 0.2, 12, decalage) * 0.8 + (i - centre) * 0.008;
       ouverture = 0.024;
-      intensite = 0.55;
+      intensite = 0.6;
       break;
   }
 
-  // La salle respire avec la musique : même une tête immobile s'allume un peu
-  // plus fort sur un temps fort, sans jamais devenir un stroboscope.
-  const respiration = 0.65 + 0.35 * f.energy + 0.12 * f.beat;
+  // Aucun terme de beat ici : une lyre ne s'éteint pas sur chaque kick. La
+  // respiration est lente, et chaque tête a sa propre présence, décalée.
+  const presence = 0.82 + 0.18 * Math.sin(f.t * 0.19 + phase * 1.7);
+  const respiration = (0.72 + 0.28 * f.energy) * presence;
   return {
     angle,
     ouverture,
@@ -247,12 +264,17 @@ export function angleBatten(
 ): number {
   const j = borner(index, NOMBRE_BATTENS);
   const base = Math.PI / 2;
-  if (role === "drop" || role === "refrain") return base;
-
   const tempo = view.tempo > 0 ? view.tempo / 60 : 2;
   const frequence = Math.max(0.35, tempo * 0.5) * (role === "montee" ? 1.25 : 1);
   const amplitude = (role === "montee" ? 0.42 : 0.22) * (0.65 + 0.55 * f.energy);
-  return base + amplitude * Math.sin(f.t * Math.PI * 2 * frequence - j * 0.4);
+  const vague = base + amplitude * Math.sin(f.t * Math.PI * 2 * frequence - j * 0.4);
+
+  // Le passage de la vague au rideau se fait en douceur sur 1,2 s : les lames
+  // se redressent progressivement au lieu de basculer d'un coup à la frontière.
+  const cibleRideau = role === "drop" || role === "refrain" ? 1 : 0;
+  const local = clamp01((f.t - f.scene.start) / 1.2);
+  const rideau = smoothstep(0, 1, local) * cibleRideau;
+  return vague + (base - vague) * rideau;
 }
 
 /** Décroissance pure du filament : 1 à l'impact, 0 bien après. */
@@ -616,7 +638,9 @@ export function dessinerBlinders(
  */
 const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
-  const alpha = (0.07 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
+  // Pas de terme de beat : les huit têtes ne clignotent pas ensemble sur le
+  // kick. Leur intensité est déjà modulée, tête par tête, lentement.
+  const alpha = (0.08 + 0.3 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
   for (let index = 0; index < NOMBRE_LYRES; index += 1) {
@@ -644,17 +668,24 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
       tailHue: shiftHue(teinte, 16),
     };
 
-    if (orientation.prisme > 0.01 && !f.reduced) {
+    if (orientation.prisme > 0.02 && !f.reduced) {
       // Trois sous-cônes très fins : le prisme d'une lyre ne double pas la
-      // largeur du faisceau, il la démultiplie en lames.
-      const delta = 0.012 * Math.sin(f.t * 4) * orientation.prisme;
+      // largeur du faisceau, il la démultiplie en lames. Les lames latérales
+      // s'allument avec `prisme` (0..1) : jamais un interrupteur.
+      const delta = 0.012 * orientation.prisme * Math.sin(f.t * 3);
       const central = alpha * orientation.intensite;
-      softBeam(ctx, { ...spec, angle: orientation.angle, alpha: central * 0.55, width: largeur * 1.08 });
+      const force = orientation.prisme;
+      softBeam(ctx, {
+        ...spec,
+        angle: orientation.angle,
+        alpha: central * (0.82 + 0.18 * force),
+        width: largeur * 1.08,
+      });
       for (const cote of [-1, 1] as const) {
         softBeam(ctx, {
           ...spec,
           angle: orientation.angle + cote * delta,
-          alpha: central * 0.34,
+          alpha: central * 0.5 * force,
           width: largeur * 0.78,
           // Les lames latérales sont fines : une seule couche suffit, la nappe
           // de fumée se charge d'adoucir leur bord. On garde le budget de
@@ -666,10 +697,11 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
       softBeam(ctx, { ...spec, alpha: alpha * orientation.intensite });
     }
 
-    // La lentille : sans ce point, le faisceau semble partir du vide.
-    ctx.fillStyle = paint(teinte, 0.95, 0.88, alpha * orientation.intensite * 2.2);
+    // La lentille : sans ce point, le faisceau semble partir du vide. Son
+    // diamètre suit l'énergie, pas le beat — une lampe ne strobe pas.
+    ctx.fillStyle = paint(teinte, 0.95, 0.88, alpha * orientation.intensite * 1.9);
     ctx.beginPath();
-    ctx.arc(x, y, 2.2 + f.beat * 3.5, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.2 + f.energy * 1.4, 0, Math.PI * 2);
     ctx.fill();
   }
 };
@@ -683,10 +715,13 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
  */
 const barresLed: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
-  const alpha = (0.06 + 0.26 * f.energy + 0.14 * f.beat) * f.alpha;
+  // Même règle que pour les lyres : la rampe ne clignote pas sur le kick.
+  const alpha = (0.07 + 0.26 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
-  const rideau = f.scene.role === "drop" || f.scene.role === "refrain";
+  const cibleRideau = f.scene.role === "drop" || f.scene.role === "refrain" ? 1 : 0;
+  const local = clamp01((f.t - f.scene.start) / 1.2);
+  const rideau = smoothstep(0, 1, local) * cibleRideau;
   const spectre = clamp01(0.65 * f.bass + 0.35 * f.mid);
   const temps = tempsTempsFort(f, view);
 
@@ -699,10 +734,14 @@ const barresLed: FamilyDraw = (ctx, f, view) => {
     );
     const ouverture = 0.007 + hash01(index * 271 + f.seed) * 0.004;
     const vague = 0.5 + 0.5 * Math.sin(temps * Math.PI - index * 0.25);
-    const modulation = rideau
-      ? 0.35 + 0.65 * spectre
-      : (0.4 + 0.6 * spectre) * (0.65 + 0.35 * vague);
-    const teinte = rideau ? lampHue(f, 0) : lampHue(f, index % 4);
+    const modulationVague = (0.4 + 0.6 * spectre) * (0.65 + 0.35 * vague);
+    const modulationRideau = 0.35 + 0.65 * spectre;
+    const modulation = modulationVague + (modulationRideau - modulationVague) * rideau;
+    // La teinte glisse de la vague au rideau au lieu de basculer d'un coup.
+    const teinteVague = lampHue(f, index % 4);
+    const teinteRideau = lampHue(f, 0);
+    const ecartTeinte = ((teinteRideau - teinteVague + 540) % 360) - 180;
+    const teinte = shiftHue(teinteVague, ecartTeinte * rideau);
 
     softBeam(ctx, {
       x,
@@ -724,9 +763,9 @@ const barresLed: FamilyDraw = (ctx, f, view) => {
       tailHue: shiftHue(teinte, 10),
     });
 
-    ctx.fillStyle = paint(teinte, 0.95, 0.88, alpha * modulation * 2.4);
+    ctx.fillStyle = paint(teinte, 0.95, 0.88, alpha * modulation * 2.2);
     ctx.beginPath();
-    ctx.arc(x, y, 1.8 + f.beat * 2.6, 0, Math.PI * 2);
+    ctx.arc(x, y, 1.8 + f.energy * 1.1, 0, Math.PI * 2);
     ctx.fill();
   }
 };
