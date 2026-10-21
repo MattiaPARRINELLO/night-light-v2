@@ -186,14 +186,13 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 ### La scène
 
 Le spectacle se joue désormais sur un plateau : un pont en treillis à 12-16 % de la
-hauteur, une seconde traverse pour les barres LED, deux totems latéraux, quatre blocs de
-blinders tungstène et une foule stylisée dans les derniers 10 % de la toile. La structure
-est permanente ; seuls les faisceaux changent de figure.
+hauteur, une seconde traverse pour les barres LED, deux totems latéraux et quatre blocs
+de blinders tungstène. La structure est permanente ; seuls les faisceaux changent de
+figure.
 
 Les blinders ne s'éteignent pas d'un coup : leur filament suit `exp(-Δt / 0,22 s)`, puis
 passe du blanc chaud à l'ambre et au rouge avant de tomber au noir. Au-dessus de 0,6
-d'intensité, un flare anamorphique étire le halo horizontalement. La foule, elle, reste
-une silhouette tant que les blinders ou les lyres ne piquent pas vers le sol.
+d'intensité, un flare anamorphique étire le halo horizontalement.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
@@ -363,7 +362,7 @@ src/
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
     families/           les vingt-huit familles d'effets
-      concert-rig.ts    structure, lyres, barres LED, blinders et foule
+      concert-rig.ts    structure, lyres, barres LED et blinders
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API

@@ -22,7 +22,6 @@ export {
   couleurBlinder,
   decroissanceFilament,
   dessinerBlinders,
-  dessinerFoule,
   dessinerStructure,
   intensiteBlinder,
   NOMBRE_BATTENS,

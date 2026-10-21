@@ -3,7 +3,6 @@ import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
 import {
   contrastHue,
   dessinerBlinders,
-  dessinerFoule,
   dessinerStructure,
   drawCoreGlow,
   drawFamily,
@@ -598,12 +597,8 @@ export function renderFrame(input: RenderInput): void {
     }
   }
 
-  // Foule et blinders : la foule est une masse sombre qui passe devant la
-  // lumière, puis les blinders tungsten la révèlent par rebond. Les deux
-  // couches sont permanentes — elles ne suivent pas le fondu de scène, sinon
+  // Blinders : couche permanente, elle ne suit pas le fondu de scène, sinon
   // l'impact d'un drop s'éteindrait au moment précis où il doit frapper.
-  ctx.globalCompositeOperation = "source-over";
-  dessinerFoule(ctx, permanent, view);
   ctx.globalCompositeOperation = "lighter";
   dessinerBlinders(ctx, permanent, view, settings.flashes);
 

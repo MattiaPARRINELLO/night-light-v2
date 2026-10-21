@@ -12,8 +12,8 @@ import { paint } from "./util";
  *
  * Le spectacle n'est plus seulement une abstraction lumineuse : il se joue sur
  * une vraie scène. Un pont technique en treillis porte huit lyres motorisées,
- * une seconde traverse accroche seize barres LED, quatre blocs de blinders
- * tungstène éclairent la salle, et une foule stylisée occupe le bas de l'image.
+ * une seconde traverse accroche seize barres LED et quatre blocs de blinders
+ * tungstène éclairent la salle.
  *
  * Règle absolue : tout est calculé à partir de `(time, view, plan, frameState)`.
  * Aucun angle ne s'accumule d'une image à l'autre, aucun filament ne garde son
@@ -283,8 +283,8 @@ function melangeCouleur(a: CouleurFilament, b: CouleurFilament, ratio: number): 
  *
  * C'est la seule couleur du spectacle qui ne sort pas de la palette : un
  * blinders tungstène est physiquement chaud, on ne peut pas le teinter sans
- * mentir sur la source. Le reste du plateau — structure, faisceaux, foule —
- * continue de suivre la palette de la scène.
+ * mentir sur la source. La structure et les faisceaux, eux, continuent de
+ * suivre la palette de la scène.
  */
 export function couleurBlinder(intensite: number): CouleurFilament {
   const i = clamp01(intensite);
@@ -370,24 +370,6 @@ export function intensiteBlinder(f: FrameState, view: TrackView, index: number):
   // En mode réduit, le filament rougeoie doucement mais ne claque jamais : on
   // plafonne l'intensité pour rester sous le seuil du flare.
   return clamp01(f.reduced ? Math.min(0.32, brut * 0.55) : brut);
-}
-
-/**
- * Lumière indirecte reçue par la foule.
- *
- * Elle ne vient que de deux endroits : les blinders qui balaient le bas de la
- * scène et les lyres qui piquent vers le sol. Sans l'un ou l'autre, la foule
- * reste une silhouette à peine devinée.
- */
-function illuminationFoule(f: FrameState, view: TrackView): number {
-  const role = f.scene.role;
-  const lyres =
-    role === "drop" || role === "refrain" ? 0.6 : role === "montee" ? 0.35 : role === "couplet" ? 0.15 : 0.1;
-  let blinders = 0;
-  for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
-    blinders = Math.max(blinders, intensiteBlinder(f, view, index));
-  }
-  return clamp01(lyres * (0.45 + 0.55 * f.energy) + blinders * 0.9);
 }
 
 /**
@@ -547,142 +529,10 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
 }
 
 /**
- * Foule de dos, en bas de toile.
- *
- * Les silhouettes sont opaques et sombres : c'est la lumière qui les révèle.
- * Le liseré et la nappe du bas ne s'allument donc que si `illuminationFoule`
- * trouve des blinders ou des lyres pointés vers le sol.
- *
- * Appelée après les faisceaux, en `source-over` : la foule passe devant la
- * lumière et se découpe en ombres, comme dans une vraie salle.
- */
-export function dessinerFoule(ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView): void {
-  const { width: w, height: h } = f;
-  const lumiere = illuminationFoule(f, view);
-  const teinte = lampHue(f, 0);
-
-  // Nappe de retour : la lumière indirecte qui monte du parterre.
-  if (lumiere > 0.02) {
-    const nappe = ctx.createLinearGradient(0, h * 0.84, 0, h);
-    nappe.addColorStop(0, paint(teinte, 0.75, 0.6, 0));
-    nappe.addColorStop(1, paint(teinte, 0.8, 0.62, 0.1 * lumiere));
-    ctx.fillStyle = nappe;
-    ctx.beginPath();
-    ctx.moveTo(0, h * 0.84);
-    ctx.lineTo(w, h * 0.84);
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  const ancienBout = ctx.lineCap;
-  ctx.lineCap = "round";
-
-  // Deux rangs : le fond, plus petit et plus sombre, donne la profondeur ; le
-  // premier rang, plus grand et décalé, casse la régularité d'une haie.
-  const dessinerRang = (
-    nombre: number,
-    tailleMin: number,
-    tailleMax: number,
-    baseMin: number,
-    baseMax: number,
-    remplissage: string,
-    liserais: boolean,
-  ): void => {
-    for (let index = 0; index < nombre; index += 1) {
-      const centre = (index + 0.5) / nombre;
-      const derive = (hash01(index * 173 + f.seed) - 0.5) * 0.032;
-      const x = w * (centre + derive);
-      const taille = h * (tailleMin + hash01(index * 311 + f.seed) * (tailleMax - tailleMin));
-      const baseY = h * (baseMin + hash01(index * 457 + f.seed) * (baseMax - baseMin));
-      const tete = taille * 0.23;
-      const sommetTete = baseY - taille * 0.82;
-      const epaules = baseY - taille * 0.6;
-
-      // Corps et tête dans la même teinte : les deux formes fusionnent, la
-      // silhouette n'a plus l'air d'un pion posé sur un socle.
-      ctx.fillStyle = remplissage;
-      ctx.beginPath();
-      ctx.moveTo(x - taille * 0.82, h + 2);
-      ctx.quadraticCurveTo(x - taille * 0.62, epaules + taille * 0.16, x - taille * 0.25, epaules + taille * 0.06);
-      ctx.quadraticCurveTo(x - taille * 0.12, epaules, x, epaules - taille * 0.02);
-      ctx.quadraticCurveTo(x + taille * 0.12, epaules, x + taille * 0.25, epaules + taille * 0.06);
-      ctx.quadraticCurveTo(x + taille * 0.62, epaules + taille * 0.16, x + taille * 0.82, h + 2);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(x, sommetTete, tete, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Quelques bras levés, très minoritaires : c'est ce détail qui fait lire
-      // un public de concert plutôt qu'une rangée de silhouettes sages.
-      const levee = hash01(index * 911 + f.seed + (liserais ? 17 : 0));
-      if (levee > 0.78) {
-        ctx.strokeStyle = remplissage;
-        ctx.lineWidth = Math.max(1.5, taille * 0.075);
-        ctx.beginPath();
-        ctx.moveTo(x - taille * 0.38, epaules + taille * 0.22);
-        ctx.quadraticCurveTo(x - taille * 0.64, epaules - taille * 0.28, x - taille * 0.52, sommetTete - taille * 0.38);
-        ctx.stroke();
-        if (levee > 0.91) {
-          ctx.beginPath();
-          ctx.moveTo(x + taille * 0.38, epaules + taille * 0.22);
-          ctx.quadraticCurveTo(x + taille * 0.64, epaules - taille * 0.28, x + taille * 0.52, sommetTete - taille * 0.38);
-          ctx.stroke();
-        }
-      }
-
-      if (liserais && lumiere > 0.04) {
-        const lueur = paint(teinte, 0.8, 0.8, 0.2 * lumiere);
-        ctx.strokeStyle = lueur;
-        ctx.lineWidth = Math.max(1, w * 0.0008);
-        // Le liseré reprend le contour : c'est lui qui fait « apparaître » la
-        // foule sans jamais dessiner un visage ni un détail.
-        ctx.beginPath();
-        ctx.arc(x, sommetTete, tete, Math.PI * 0.15, Math.PI * 0.85);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(x - taille * 0.82, h + 2);
-        ctx.quadraticCurveTo(x - taille * 0.62, epaules + taille * 0.16, x - taille * 0.25, epaules + taille * 0.06);
-        ctx.quadraticCurveTo(x - taille * 0.12, epaules, x, epaules - taille * 0.02);
-        ctx.quadraticCurveTo(x + taille * 0.12, epaules, x + taille * 0.25, epaules + taille * 0.06);
-        ctx.quadraticCurveTo(x + taille * 0.62, epaules + taille * 0.16, x + taille * 0.82, h + 2);
-        ctx.stroke();
-      }
-    }
-  };
-
-  const densite = 0.7 + 0.3 * f.quality;
-  dessinerRang(
-    Math.max(7, Math.round((f.reduced ? 8 : 12) * densite)),
-    0.026,
-    0.038,
-    0.915,
-    0.928,
-    "rgba(2,3,9,0.72)",
-    false,
-  );
-  dessinerRang(
-    Math.max(9, Math.round((f.reduced ? 12 : 18) * densite)),
-    0.04,
-    0.06,
-    0.948,
-    0.956,
-    "rgba(2,3,9,0.9)",
-    true,
-  );
-
-  ctx.lineCap = ancienBout;
-}
-
-/**
  * Blinders tungstène et flares anamorphiques.
  *
- * Appelée après la foule, en mode `lighter`. Le halo extérieur reprend la
- * teinte d'accent de la scène ; le cœur, lui, reste chaud — c'est un filament,
- * pas une LED.
+ * Appelée en mode `lighter`. Le halo extérieur reprend la teinte d'accent de la
+ * scène ; le cœur, lui, reste chaud — c'est un filament, pas une LED.
  */
 export function dessinerBlinders(
   ctx: CanvasRenderingContext2D,
@@ -692,12 +542,10 @@ export function dessinerBlinders(
 ): void {
   const { width: w, height: h } = f;
   const budget = clamp01(budgetFlash);
-  let maximum = 0;
 
   for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
     const intensite = intensiteBlinder(f, view, index);
     if (intensite <= 0.008) continue;
-    maximum = Math.max(maximum, intensite);
     const { x, y } = positionBlinder(index, w, h);
     const couleur = couleurBlinder(intensite);
     const rayon = Math.min(w, h) * (0.035 + 0.09 * intensite);
@@ -755,22 +603,6 @@ export function dessinerBlinders(
       ctx.arc(lx, y + 2, 1.5 + 4 * intensite, 0, Math.PI * 2);
       ctx.fill();
     }
-  }
-
-  // Rebond sur la foule : une nappe chaude qui monte du bas de l'écran. Sans
-  // elle, les blinders éclairent le vide et la foule reste un décor mort.
-  if (maximum > 0.02) {
-    const rebond = ctx.createLinearGradient(0, h * 0.86, 0, h);
-    rebond.addColorStop(0, paint(34, 0.85, 0.62, 0));
-    rebond.addColorStop(1, paint(30, 0.9, 0.58, 0.16 * maximum * f.alpha));
-    ctx.fillStyle = rebond;
-    ctx.beginPath();
-    ctx.moveTo(0, h * 0.86);
-    ctx.lineTo(w, h * 0.86);
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.closePath();
-    ctx.fill();
   }
 }
 
