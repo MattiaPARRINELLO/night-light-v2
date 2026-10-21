@@ -222,6 +222,7 @@ export function installLive(Target: { prototype: App }): void {
           fadeIn: 0.7,
           fadeOut: 0.9,
           mood: "pulse",
+          role: "intro",
           reason: "ouverture",
         },
       ],

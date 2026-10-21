@@ -1,6 +1,15 @@
 import type { RenderSettings } from "../types";
 import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
-import { contrastHue, drawCoreGlow, drawFamily, drawWash, hazeFineRadiusPixels, hazeRadiusPixels } from "./families";
+import {
+  contrastHue,
+  dessinerBlinders,
+  dessinerStructure,
+  drawCoreGlow,
+  drawFamily,
+  drawWash,
+  hazeFineRadiusPixels,
+  hazeRadiusPixels,
+} from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
 import { hslToRgb, shorthand } from "./color";
@@ -481,13 +490,18 @@ export function renderFrame(input: RenderInput): void {
   // chaque image, c'est une écriture de framebuffer en moins sur le GPU.
 
   drawBackground(ctx, { ...base, palette });
-  ctx.globalCompositeOperation = "lighter";
 
   // Couche permanente : le fond, le halo et la poussière ne dépendent pas du
   // fondu de scène. C'est ce qui garantit qu'il reste toujours quelque chose à
   // l'écran — y compris au croisement de deux scènes, où tout ce qui suit le
   // poids de la scène disparaît un instant et l'image plonge dans le noir.
   const permanent: FrameState = { ...base, alpha: 1 };
+
+  // Structure fixe : ponts, totems et corps d'appareils. Elle est dessinée en
+  // source-over, avant la lumière, pour rester une silhouette métallique.
+  ctx.globalCompositeOperation = "source-over";
+  dessinerStructure(ctx, permanent);
+  ctx.globalCompositeOperation = "lighter";
 
   // Scène courante + scène sortante pendant le fondu (transition fluide).
   drawFamily(ctx, base, view, scene.family);
@@ -582,6 +596,11 @@ export function renderFrame(input: RenderInput): void {
       ctx.drawImage(nappe.blurPass.canvas, 0, 0, width, height);
     }
   }
+
+  // Blinders : couche permanente, elle ne suit pas le fondu de scène, sinon
+  // l'impact d'un drop s'éteindrait au moment précis où il doit frapper.
+  ctx.globalCompositeOperation = "lighter";
+  dessinerBlinders(ctx, permanent, view, settings.flashes);
 
   drawDust(ctx, permanent);
 
