@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import librosa
 import numpy as np
 
-from server.analysis import HOP, NFFT, _section_count, analyze_file
+from server.analysis import HOP, NFFT, analyze_file
 from server.config import load_settings
 
 settings = load_settings()
@@ -59,7 +59,7 @@ def main(path: str) -> None:
     print(f"\nanalyse complète         {time.perf_counter() - start:6.2f}s")
     print(f"tempo {result.tempo} | temps forts {len(result.beats)} | attaques {len(result.onsets)}")
     print(
-        f"sections ({_section_count(duration)} visées) :",
+        "section :",
         [(s["start"], s["end"], s["label"], s["energy"]) for s in result.sections],
     )
     print("montées :", result.builds)

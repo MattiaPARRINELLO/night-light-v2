@@ -21,12 +21,6 @@ import librosa
 import numpy as np
 
 from .config import Settings
-from .structure import (
-    StructureSegment,
-    estimate_novelty_segments,
-    estimate_structure,
-    section_count,
-)
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -34,11 +28,6 @@ NFFT = 2048
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
-# Fraction du morceau en deçà de laquelle un refrain ne peut pas démarrer : un
-# refrain s'installe après une introduction et un premier couplet, jamais dans
-# le tout premier cinquième. Voir `assign_roles`.
-_OPENING_REFRAIN_GUARD = 0.2
-
 
 class AnalysisError(Exception):
     """Erreur d'analyse, traduite en message compréhensible par l'API."""
@@ -309,248 +298,49 @@ def detect_rhythm(
 # ---------------------------------------------------------------- sections
 
 
-def _structure_bounds(
-    structure: list[StructureSegment], duration: float
-) -> list[tuple[float, float, str]]:
-    """Transforme les blocs de structure en bornes de sections qui couvrent [0, durée]."""
-    bounds: list[tuple[float, float, str]] = []
-    for segment in structure:
-        start = max(0.0, min(segment.start, duration))
-        end = max(0.0, min(segment.end, duration))
-        if end - start > 0.3:
-            bounds.append((start, end, segment.group))
-    if not bounds:
-        return []
-    # La structure démarre à 0 et finit à la durée ; on garantit la couverture
-    # pour qu'aucun instant du morceau ne reste sans section.
-    if bounds[0][0] > 0.3:
-        bounds.insert(0, (0.0, bounds[0][0], bounds[0][2]))
-    if duration - bounds[-1][1] > 0.3:
-        bounds.append((bounds[-1][1], duration, bounds[-1][2]))
-    else:
-        bounds[-1] = (bounds[-1][0], duration, bounds[-1][2])
-    return bounds
+def _energy_label(mean_energy: float) -> str:
+    """Qualifie l'énergie globale du morceau.
 
-
-def assign_roles(sections: list[dict], duration: float) -> None:
-    """Déduit le rôle (couplet, refrain, pont…) et l'occurrence de chaque section.
-
-    Le **refrain** est le groupe répété à la plus forte énergie : dans un morceau
-    de soirée, ce qui revient en montant, c'est lui. Les autres groupes répétés
-    sont des **couplets**. Une section unique de la seconde moitié est un
-    **pont**. Les extrémités sous l'énergie médiane sont l'introduction et
-    l'outro — sans quoi un morceau qui démarre sur son refrain se verrait
-    affubler d'une fausse intro.
+    Pas de pente ici : sur une section qui couvre tout le morceau, une pente
+    globale dirait « montée » du début à la fin. Le suivi fin de l'énergie est
+    déjà porté par les courbes et les montées.
     """
-    members: dict[str, list[int]] = {}
-    for index, section in enumerate(sections):
-        group = str(section.get("group") or "")
-        if group:
-            members.setdefault(group, []).append(index)
-
-    def mean_energy(indexes: list[int]) -> float:
-        values = [float(sections[index].get("energy") or 0.0) for index in indexes]
-        return sum(values) / len(values) if values else 0.0
-
-    repeated = {group: indexes for group, indexes in members.items() if len(indexes) >= 2}
-    refrain = max(repeated, key=lambda group: mean_energy(repeated[group])) if repeated else ""
-
-    # Le refrain doit **revenir** et ne peut pas *ouvrir* le morceau. Sur une
-    # production où couplet et refrain partagent la même boucle (même accords,
-    # même beat — c'est le cas de beaucoup de rap/trap), le tout premier passage
-    # fort n'est encore qu'un couplet chanté ; le nommer « refrain » ferait
-    # démarrer celui-ci bien trop tôt, en pleine première partie. On réserve donc
-    # le rôle au retour du matériau quand sa première apparition tombe dans le
-    # tout premier cinquième du morceau.
-    opening = repeated.get(refrain, [])
-    demote = (
-        bool(opening)
-        and len(opening) >= 2
-        and float(sections[opening[0]].get("start") or 0.0) < duration * _OPENING_REFRAIN_GUARD
-    )
-
-    for index, section in enumerate(sections):
-        group = str(section.get("group") or "")
-        opening_refrain = demote and group == refrain and index == opening[0]
-        if group == refrain and not opening_refrain:
-            section["kind"] = "refrain"
-        elif group in repeated:
-            section["kind"] = "couplet"
-        else:
-            section["kind"] = "section"
-
-    if not sections:
-        return
-    energies = sorted(float(section.get("energy") or 0.0) for section in sections)
-    median = energies[len(energies) // 2]
-    first = sections[0]
-    if first.get("kind") != "refrain" and float(first.get("energy") or 0.0) <= median:
-        first["kind"] = "intro"
-    last = sections[-1]
-    if last.get("kind") != "refrain" and float(last.get("energy") or 0.0) <= median:
-        last["kind"] = "outro"
-    for section in sections[1:-1]:
-        if section.get("kind") == "section" and float(section["start"]) >= duration * 0.5:
-            section["kind"] = "pont"
-
-    # Numérotation par « matériau + rôle » : deux sections de même groupe sont
-    # les occurrences du même passage, deux passages distincts sont numérotés
-    # séparément — même quand l'un ouvre en couplet et revient en refrain.
-    counters: dict[tuple[str, str], int] = {}
-    for section in sections:
-        group = str(section.get("group") or "")
-        if not group:
-            section["occurrence"] = 0
-            continue
-        key = (group, str(section.get("kind") or ""))
-        counters[key] = counters.get(key, 0) + 1
-        section["occurrence"] = counters[key]
-
-
-def assign_progression_roles(sections: list[dict], duration: float) -> None:
-    """Rôles d'un morceau **continu** : la progression d'énergie, pas la répétition.
-
-    Forcer « intro / couplet / refrain » sur du jazz ou de l'ambient serait une
-    invention : aucun matériau ne revient. On décrit donc le trajet réel du
-    morceau — exposition, développement, climax, résolution — en suivant
-    l'énergie. Le climax est le premier maximum ; ce qui l'entoure reste du
-    développement, et le retour au calme après lui est la résolution.
-    """
-    if not sections:
-        return
-    energies = [float(section.get("energy") or 0.0) for section in sections]
-    peak = max(energies)
-    peak_index = energies.index(peak)
-    ordered = sorted(energies)
-    median = ordered[len(ordered) // 2]
-
-    kinds: list[str] = []
-    for index, energy in enumerate(energies):
-        if index == peak_index:
-            kinds.append("climax")
-        elif index == 0:
-            kinds.append("exposition")
-        elif index == len(energies) - 1 and index > peak_index:
-            kinds.append("resolution")
-        elif index > peak_index:
-            kinds.append("resolution" if energy <= max(median, peak * 0.75) else "developpement")
-        elif energy <= median:
-            kinds.append("exposition")
-        else:
-            kinds.append("developpement")
-
-    counters: dict[str, int] = {}
-    for section, kind in zip(sections, kinds, strict=False):
-        section["kind"] = kind
-        section["occurrence"] = counters.get(kind, 0) + 1
-        counters[kind] = section["occurrence"]
+    if mean_energy < 0.08:
+        return "silence"
+    if mean_energy > 0.5:
+        return "intense"
+    return "calme"
 
 
 def detect_sections(
-    spectrum: np.ndarray,
-    y: np.ndarray,
-    sr: int,
-    duration: float,
     energy_curve: np.ndarray,
     energy_times: np.ndarray,
-    report: ProgressFn,
-    phase: Phase,
-    structure: list[StructureSegment] | None = None,
-    novelty: list[StructureSegment] | None = None,
+    duration: float,
 ) -> list[dict]:
-    """Découpe le morceau en sections.
+    """Décrit le morceau comme une **section unique**, de 0 à la fin.
 
-    Si `structure` est fourni (blocs répétés détectés localement), il fixe les
-    frontières et le groupe de chaque section — on économise alors le calcul
-    spectral du découpage de repli. Si `novelty` est fourni (morceau continu sans
-    répétition), il fixe les frontières et les rôles suivent la progression
-    d'énergie. Sinon on retombe sur le regroupement agglomératif, sans groupe.
+    Le découpage automatique (répétition, ruptures spectrales, regroupement
+    agglomératif) est volontairement absent : il produisait plus de frontières
+    fausses que de repères utiles. Le spectacle est piloté par l'énergie, les
+    montées et les temps forts, pas par une grille couplet/refrain inventée.
+
+    On conserve une section pour garder le contrat d'analyse et l'affichage
+    (tableau, bande de structure, étiquette HUD).
     """
-    continuous = bool(novelty) and not structure
-    if structure:
-        bounds: list[tuple[float, float, str]] = _structure_bounds(structure, duration)
-        report(phase, 0.5, f"{len(bounds)} passages repérés")
-    elif novelty:
-        bounds = _structure_bounds(novelty, duration)
-        report(phase, 0.5, f"{len(bounds)} ruptures spectrales repérées")
-    else:
-        report(phase, 0.2, "Caractéristiques spectrales")
-        mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
-        mfcc = librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
-        chroma = librosa.feature.chroma_stft(S=spectrum, sr=sr, hop_length=HOP)
-        features = np.vstack([mfcc, chroma])
-        features = librosa.util.normalize(features, axis=1)
-
-        count = section_count(duration)
-        report(phase, 0.6, f"Regroupement des {count} sections")
-        clusters = librosa.segment.agglomerative(features, count)
-        edges = sorted(
-            {
-                round(float(librosa.frames_to_time(int(b), sr=sr, hop_length=HOP)), 3)
-                for b in np.asarray(clusters, dtype=int)
-            }
-            | {0.0, round(float(duration), 3)}
-        )
-        edges = [
-            edge for index, edge in enumerate(edges) if index == 0 or edge - edges[index - 1] > 0.75
-        ]
-        if edges[-1] < duration:
-            edges.append(round(float(duration), 3))
-        bounds = [(edges[i], edges[i + 1], "") for i in range(len(edges) - 1)]
-
-    sections: list[dict] = []
-    for start, end, group in bounds:
-        if end - start <= 0.3:
-            continue
-        window = (energy_times >= start) & (energy_times < end)
-        segment = energy_curve[window]
-        if segment.size == 0:
-            mean_energy = 0.0
-            slope = 0.0
-        else:
-            mean_energy = float(np.mean(segment))
-            half = max(1, segment.size // 3)
-            slope = float(np.mean(segment[-half:]) - np.mean(segment[:half]))
-        if mean_energy < 0.08:
-            label = "silence"
-        elif slope > 0.12:
-            label = "montee"
-        elif slope < -0.12 and mean_energy < 0.55:
-            label = "descente"
-        elif mean_energy > 0.5 and slope >= -0.05:
-            label = "intense"
-        else:
-            label = "calme"
-        sections.append(
-            {
-                "start": round(float(start), 3),
-                "end": round(float(end), 3),
-                "label": label,
-                "energy": round(float(np.clip(mean_energy, 0.0, 1.0)), 3),
-                "group": group,
-                "kind": "section",
-                "occurrence": 0,
-            }
-        )
-
-    if not sections:
-        sections = [
-            {
-                "start": 0.0,
-                "end": round(float(duration), 3),
-                "label": "intense",
-                "energy": 0.5,
-                "group": "",
-                "kind": "section",
-                "occurrence": 0,
-            }
-        ]
-    if continuous:
-        assign_progression_roles(sections, duration)
-    else:
-        assign_roles(sections, duration)
-    report(phase, 1.0, f"{len(sections)} sections détectées")
-    return sections
+    window = (energy_times >= 0.0) & (energy_times < duration)
+    segment = energy_curve[window]
+    mean_energy = float(np.mean(segment)) if segment.size else 0.0
+    return [
+        {
+            "start": 0.0,
+            "end": round(float(duration), 3),
+            "label": _energy_label(mean_energy),
+            "energy": round(float(np.clip(mean_energy, 0.0, 1.0)), 3),
+            "group": "",
+            "kind": "section",
+            "occurrence": 0,
+        }
+    ]
 
 
 # ------------------------------------------------------------------ montées
@@ -755,8 +545,6 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
             hop_length=HOP,
         )
         librosa.feature.rms(y=noise, hop_length=HOP)
-        # Regroupement agglomératif de la structure (nouveau chemin chaud).
-        librosa.segment.agglomerative(np.abs(np.random.default_rng(1).standard_normal((20, 40))), 3)
     except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
         pass
 
@@ -776,13 +564,11 @@ def analyze_file(
             report(message, float(min(max(value, 0.0), 1.0)))
 
     phases = [
-        Phase("Décodage audio", 0.10),
-        Phase("Enveloppes spectrales", 0.24),
-        Phase("Analyse du rythme", 0.22),
-        Phase("Structure musicale", 0.06),
-        Phase("Découpage en sections", 0.14),
-        Phase("Montées et impacts", 0.12),
-        Phase("Assemblage des données", 0.12),
+        Phase("Décodage audio", 0.12),
+        Phase("Enveloppes spectrales", 0.30),
+        Phase("Analyse du rythme", 0.26),
+        Phase("Montées et impacts", 0.16),
+        Phase("Assemblage des données", 0.16),
     ]
     totals = np.cumsum([phase.weight for phase in phases])
     total = float(totals[-1])
@@ -840,41 +626,16 @@ def analyze_file(
 
     tempo, beats, onsets, meter = detect_rhythm(y, sample_rate, progress, phases[2])
 
-    # Structure répétitive (couplet/refrain…) : calcul local sur le spectre et
-    # les temps forts déjà obtenus, aucun rechargement ni HPSS redondant.
-    progress(phases[3], 0.05, "recherche des passages répétés")
-    structure = estimate_structure(spectrum, beats, sample_rate, duration)
-    novelty = None
-    if structure is None:
-        # Aucun motif ne revient : on découpe sur les ruptures de régime spectral
-        # plutôt que de forcer une grille couplet/refrain qui n'existe pas.
-        progress(phases[3], 0.5, "recherche des ruptures spectrales")
-        novelty = estimate_novelty_segments(spectrum, beats, sample_rate, duration)
-    if structure:
-        detail = f"{len(structure)} passages répétés"
-    elif novelty:
-        detail = f"{len(novelty)} ruptures spectrales"
-    else:
-        detail = "structure non concluante"
-    progress(phases[3], 1.0, detail)
-
-    sections = detect_sections(
-        spectrum,
-        y,
-        sample_rate,
-        duration,
-        energy,
-        frame_times,
-        progress,
-        phases[4],
-        structure,
-        novelty,
-    )
-    progress(phases[5], 0.5, "détection des montées")
+    # Pas de découpage couplet/refrain : la détection coûtait plus cher (temps
+    # d'analyse limité) qu'elle n'apportait de repères fiables. Le morceau reste
+    # une seule section ; le spectacle suit l'énergie, les montées et les temps
+    # forts.
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
+    sections = detect_sections(energy, frame_times, duration)
+    progress(phases[3], 0.5, "détection des montées")
     builds = detect_builds(energy_points, duration, onsets)
-    progress(phases[5], 1.0, f"{len(builds)} montées repérées")
-    progress(phases[6], 1.0, "données du spectacle prêtes")
+    progress(phases[3], 1.0, f"{len(builds)} montées repérées")
+    progress(phases[4], 1.0, "données du spectacle prêtes")
 
     return AnalysisResult(
         duration=round(duration, 3),

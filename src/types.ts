@@ -12,10 +12,9 @@ export const ANALYSIS_SCHEMA = 2 as const;
 export type SectionLabel = "calme" | "montee" | "intense" | "descente" | "silence";
 
 /**
- * Rôle d'une section dans la structure du morceau, déduit de la répétition de
- * son matériau musical (voir `server/structure.py`) ou, quand rien ne revient,
- * de la progression d'énergie (`exposition` → `developpement` → `climax` →
- * `resolution`). `section` couvre ce qui n'entre dans aucune case.
+ * Rôle d'une section dans la structure du morceau. Le découpage automatique
+ * (couplet/refrain) n'existe plus : l'analyse ne produit qu'une section
+ * `section`, et seuls les rôles hérités restent dans le schéma.
  */
 export type SectionKind =
   | "intro"

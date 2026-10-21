@@ -30,6 +30,15 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   l'auto-similarité MFCC et les sections reçoivent des rôles de progression
   (exposition, développement, climax, résolution).
 
+### Retiré
+
+- **Découpage du morceau en sections (couplet/refrain)** : la détection coûtait
+  cher dans le budget d'analyse et multipliait les fausses frontières (refrains
+  enchaînés). Le morceau est désormais décrit par une **section unique**, de 0 à
+  la fin, étiquetée d'après son énergie ; le spectacle suit l'énergie, les
+  montées et les temps forts. `server/structure.py` et la phase « Structure
+  musicale » disparaissent.
+
 ### Ajouté
 
 - **Éventail du plafond** : l'éventail de faisceaux peut désormais partir du haut
