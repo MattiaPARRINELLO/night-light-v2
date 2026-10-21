@@ -18,7 +18,7 @@ SR = 22050
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-from server.analysis import analyze_file  # noqa: E402
+from server.analysis import analyze_file, detect_builds  # noqa: E402
 from server.config import load_settings  # noqa: E402
 
 # Instant de l'impact, connu à la fabrication.
@@ -88,3 +88,67 @@ def test_le_recalage_sur_onset_est_borne(tmp_path) -> None:
     # Hors fenêtre : on ne bouge pas.
     assert _snap_to_onset(2.6, onsets, window=0.1) == 2.6
     assert _snap_to_onset(2.5, None, window=0.3) == 2.5
+
+
+# ------------------------------------------------------------------ drop gaps
+
+# Fin de la montée, puis un cut de 350 ms avant le vrai kick.
+CREST = 12.0
+GAP = 0.35
+IMPACT = CREST + GAP
+
+
+def test_build_se_termine_apres_un_cut_de_350_ms() -> None:
+    """La crête du gradient précède le cut : l'impact doit être après le silence."""
+    step = 0.05
+    times = np.round(np.arange(0.0, 14.0, step), 3)
+    values = np.full_like(times, 0.2)
+    rise = (times >= 8.0) & (times < CREST)
+    values[rise] = np.linspace(0.2, 0.5, int(rise.sum()))
+    # Dernière poussée avant le cut : c'est elle qui porte la crête du gradient.
+    values[(times >= CREST - 0.05) & (times < CREST)] = 0.9
+    values[(times >= CREST) & (times < IMPACT)] = 0.05  # silence franc
+    recovery = (times >= IMPACT) & (times < IMPACT + 0.15)
+    values[recovery] = np.linspace(0.05, 0.9, int(recovery.sum()))
+    values[times >= IMPACT + 0.15] = 0.9
+
+    points = [[float(time), float(value)] for time, value in zip(times, values, strict=False)]
+    builds = detect_builds(points, 14.0, [CREST, IMPACT + 0.02, IMPACT + 0.25])
+
+    assert builds, "une montée suivie d'un impact doit être détectée"
+    fins = [build["end"] for build in builds]
+    plus_proche = min(fins, key=lambda fin: abs(fin - IMPACT))
+    assert abs(plus_proche - IMPACT) <= 0.1, (
+        f"impact visuel à {plus_proche:.2f} s pour un impact audible à {IMPACT:.2f} s "
+        f"(fins détectées : {[round(f, 2) for f in fins]})"
+    )
+    assert plus_proche > CREST + 0.15, "l'impact est resté calé sur le dernier bruit du riser"
+
+
+def test_impact_apres_gap_ignore_le_souffle_residuel() -> None:
+    from server.analysis import _impact_after_gap
+
+    times = np.round(np.arange(0.0, 12.0, 0.05), 3)
+    values = np.full_like(times, 0.05)
+    rise = (times >= 8.0) & (times < 10.0)
+    values[rise] = np.linspace(0.2, 0.9, int(rise.sum()))
+    values[times >= 10.0] = 0.9
+    # Silence franc après la crête, souffle résiduel puis vrai impact.
+    values[(times > 10.0) & (times < 10.3)] = 0.03
+
+    assert _impact_after_gap(times, values, 0, len(times), [10.05, 10.35], 0.9) == 10.35
+    # Sans baisse significative, aucun gap : l'appelant garde son recalage normal.
+    plat = np.full_like(times, 0.8)
+    assert _impact_after_gap(times, plat, 0, len(times), [10.05, 10.35], 0.8) is None
+    # Un creux mais aucun onset après lui : pas d'impact à recaler.
+    assert _impact_after_gap(times, values, 0, len(times), [10.05], 0.9) is None
+    # Décroissance après l'impact (pas de retour près du pic) : pas un gap.
+    decay = np.concatenate(
+        (
+            np.full(200, 0.9),
+            np.linspace(0.9, 0.2, 20),
+            np.full(20, 0.45),
+        )
+    )
+    decay_times = np.arange(len(decay)) * 0.05
+    assert _impact_after_gap(decay_times, decay, 0, len(decay), [10.4], 0.9) is None

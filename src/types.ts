@@ -1,12 +1,21 @@
-/** Schéma de l'analyse produite par le serveur (`POST /api/analyze`). */
+/**
+ * Schéma de l'analyse produite par le serveur (`POST /api/analyze`).
+ *
+ * Version 2, étendue sans rupture :
+ * - `meter` (3 ou 4, optionnel) : métrique dominante estimée, 4 par défaut.
+ * - `midLow` / `midHigh` (optionnels) : subdivision du médium (150–600 Hz et
+ *   600–2500 Hz) ; `mid` reste la bande 150–2000 Hz pour la rétrocompatibilité.
+ * Un client qui ignore ces champs continue de fonctionner tel quel.
+ */
 export const ANALYSIS_SCHEMA = 2 as const;
 
 export type SectionLabel = "calme" | "montee" | "intense" | "descente" | "silence";
 
 /**
  * Rôle d'une section dans la structure du morceau, déduit de la répétition de
- * son matériau musical (voir `server/structure.py`). `section` couvre ce qui
- * n'entre dans aucune case : un passage unique et ni intro, ni pont.
+ * son matériau musical (voir `server/structure.py`) ou, quand rien ne revient,
+ * de la progression d'énergie (`exposition` → `developpement` → `climax` →
+ * `resolution`). `section` couvre ce qui n'entre dans aucune case.
  */
 export type SectionKind =
   | "intro"
@@ -14,6 +23,10 @@ export type SectionKind =
   | "refrain"
   | "pont"
   | "outro"
+  | "exposition"
+  | "developpement"
+  | "climax"
+  | "resolution"
   | "section";
 
 /** Point d'une courbe : `[secondes, valeur 0..1]`. */
@@ -51,6 +64,11 @@ export interface Analysis {
   duration: number;
   /** Tempo estimé en BPM. */
   tempo: number;
+  /**
+   * Métrique dominante estimée : 3 (ternaire) ou 4 (binaire). Optionnel pour
+   * rester compatible avec un serveur antérieur ; absent = 4.
+   */
+  meter?: 3 | 4;
   /** Nombre de temps détectés. */
   beatCount: number;
   /** Seconds per beat, dérivé du tempo. */
@@ -63,8 +81,12 @@ export interface Analysis {
   energy: Point[];
   /** Courbe des basses (30-150 Hz), 0..1. */
   bass: Point[];
-  /** Courbe des médiums (150-2000 Hz), 0..1. */
+  /** Courbe des médiums (150-2000 Hz), 0..1 — conservée pour la compatibilité. */
   mid: Point[];
+  /** Bas-médium (150-600 Hz), 0..1. Subdivision optionnelle de `mid`. */
+  midLow?: Point[];
+  /** Haut-médium (600-2500 Hz), 0..1. Subdivision optionnelle de `mid`. */
+  midHigh?: Point[];
   /** Courbe des aigus (2000-10000 Hz), 0..1. */
   high: Point[];
   /** Sections musicales détectées. */

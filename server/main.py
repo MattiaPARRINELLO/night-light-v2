@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import sniff
-from .analysis import AnalysisError, AnalysisResult, analyze_file, warmup
+from .analysis import AnalysisError, AnalysisResult, analyze_with_timeout, warmup
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
 from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
@@ -149,7 +149,12 @@ class AppState:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
 
         try:
-            result = analyze_file(job.audio_path, self.settings, report=report)
+            result = analyze_with_timeout(
+                job.audio_path,
+                self.settings,
+                report=report,
+                timeout_sec=self.settings.analyze_timeout_sec,
+            )
             self.store.set_result(job_id, to_schema(result))
         except AnalysisError as error:
             self.drop_audio(job_id)
@@ -271,6 +276,7 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "schema": 2,
         "duration": result.duration,
         "tempo": result.tempo,
+        "meter": result.meter,
         "beatCount": len(result.beats),
         "beatPeriod": beat_period,
         "beats": result.beats,
@@ -278,6 +284,8 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "energy": result.energy,
         "bass": result.bass,
         "mid": result.mid,
+        "midLow": result.mid_low,
+        "midHigh": result.mid_high,
         "high": result.high,
         "sections": result.sections,
         "builds": result.builds,

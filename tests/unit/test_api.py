@@ -74,9 +74,14 @@ def test_cycle_complet(client: TestClient, tmp_path: Path) -> None:
     assert analysis["schema"] == 2
     assert analysis["duration"] > 9.0
     assert analysis["tempo"] > 60
+    assert analysis["meter"] in (3, 4)
     assert analysis["beatCount"] > 5
     assert len(analysis["energy"]) > 20
     assert len(analysis["sections"]) >= 1
+    # Extensions additives du schéma 2 : courbes présentes et alignées.
+    for key in ("bass", "mid", "midLow", "midHigh", "high"):
+        assert key in analysis, f"courbe {key} absente du schéma"
+        assert len(analysis[key]) == len(analysis["energy"])
 
     # Le morceau reste lisible tant que la session vit.
     track_response = client.get(f"/api/track/{job_id}")

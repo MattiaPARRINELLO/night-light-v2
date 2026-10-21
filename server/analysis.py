@@ -6,17 +6,27 @@ provient d'un calcul effectué sur les échantillons décodés.
 
 from __future__ import annotations
 
+import contextlib
+import multiprocessing
+import queue as queue_module
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import librosa
 import numpy as np
 
 from .config import Settings
-from .structure import StructureSegment, estimate_structure, section_count
+from .structure import (
+    StructureSegment,
+    estimate_novelty_segments,
+    estimate_structure,
+    section_count,
+)
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -53,11 +63,14 @@ ProgressFn = Callable[[Phase, float, str], None]
 class AnalysisResult:
     duration: float
     tempo: float
+    meter: int
     beats: list[float]
     onsets: list[float]
     energy: list[list[float]]
     bass: list[list[float]]
     mid: list[list[float]]
+    mid_low: list[list[float]]
+    mid_high: list[list[float]]
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
@@ -207,12 +220,62 @@ def band_energy(
 # ----------------------------------------------------------------- rythme
 
 
+def estimate_meter(
+    onset_env: np.ndarray,
+    beats: list[float],
+    tempo: float,
+    sr: int,
+    hop_length: int = HOP,
+) -> int:
+    """Estime la métrique dominante : 3 (ternaire) ou 4 (binaire).
+
+    On mesure la périodicité de l'accentuation des temps forts, par
+    autocorrélation : en 3/4, l'accent revient toutes les 3 pulsations (et 6) ;
+    en 4/4, toutes les 4 (et 8). Sans répétition nette, on garde 4 : c'est
+    l'hypothèse la plus courante, et se tromper vers le ternaire casserait la
+    grille visuelle d'une écrasante majorité de morceaux.
+    """
+    if tempo <= 0 or onset_env.size == 0 or len(beats) < 8:
+        return 4
+    frames = librosa.time_to_frames(np.asarray(beats, dtype=float), sr=sr, hop_length=hop_length)
+    frames = frames[(frames >= 0) & (frames < onset_env.size)]
+    if frames.size < 8:
+        return 4
+
+    # Accent d'un temps = maximum local de l'enveloppe : la densité d'attaques
+    # (charleys, ghost notes) ne doit pas décider de la métrique.
+    accents = np.asarray(
+        [
+            float(np.max(onset_env[max(0, frame - 1) : min(onset_env.size, frame + 2)]))
+            for frame in frames
+        ]
+    )
+    accents = accents - float(np.mean(accents))
+    total = float(np.sum(accents**2))
+    if total <= 1e-9:
+        return 4
+
+    def lag_score(lag: int) -> float:
+        if accents.size <= lag:
+            return 0.0
+        return float(np.dot(accents[:-lag], accents[lag:])) / total
+
+    ternary = max(lag_score(3), lag_score(6))
+    binary = max(lag_score(4), lag_score(8))
+    # Marge volontaire : sans écart net ni accent ternaire franc, l'écart est du
+    # bruit de mesure et on reste sur 4/4. Se tromper vers le ternaire casserait
+    # la grille d'une écrasante majorité de morceaux.
+    if ternary >= 0.45 and ternary > binary * 1.25:
+        return 3
+    return 4
+
+
 def detect_rhythm(
     y: np.ndarray,
     sr: int,
     report: ProgressFn,
     phase: Phase,
-) -> tuple[float, list[float], list[float]]:
+) -> tuple[float, list[float], list[float], int]:
     report(phase, 0.1, "Enveloppe des attaques")
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP)
     report(phase, 0.5, "Estimation du tempo")
@@ -239,7 +302,8 @@ def detect_rhythm(
     )
     unique_beats = sorted({round(float(b), 3) for b in beats})
     unique_onsets = sorted({round(float(o), 3) for o in onsets})
-    return tempo_value, unique_beats, unique_onsets
+    meter = estimate_meter(onset_env, unique_beats, tempo_value, sr)
+    return tempo_value, unique_beats, unique_onsets, meter
 
 
 # ---------------------------------------------------------------- sections
@@ -343,6 +407,45 @@ def assign_roles(sections: list[dict], duration: float) -> None:
         section["occurrence"] = counters[key]
 
 
+def assign_progression_roles(sections: list[dict], duration: float) -> None:
+    """Rôles d'un morceau **continu** : la progression d'énergie, pas la répétition.
+
+    Forcer « intro / couplet / refrain » sur du jazz ou de l'ambient serait une
+    invention : aucun matériau ne revient. On décrit donc le trajet réel du
+    morceau — exposition, développement, climax, résolution — en suivant
+    l'énergie. Le climax est le premier maximum ; ce qui l'entoure reste du
+    développement, et le retour au calme après lui est la résolution.
+    """
+    if not sections:
+        return
+    energies = [float(section.get("energy") or 0.0) for section in sections]
+    peak = max(energies)
+    peak_index = energies.index(peak)
+    ordered = sorted(energies)
+    median = ordered[len(ordered) // 2]
+
+    kinds: list[str] = []
+    for index, energy in enumerate(energies):
+        if index == peak_index:
+            kinds.append("climax")
+        elif index == 0:
+            kinds.append("exposition")
+        elif index == len(energies) - 1 and index > peak_index:
+            kinds.append("resolution")
+        elif index > peak_index:
+            kinds.append("resolution" if energy <= max(median, peak * 0.75) else "developpement")
+        elif energy <= median:
+            kinds.append("exposition")
+        else:
+            kinds.append("developpement")
+
+    counters: dict[str, int] = {}
+    for section, kind in zip(sections, kinds, strict=False):
+        section["kind"] = kind
+        section["occurrence"] = counters.get(kind, 0) + 1
+        counters[kind] = section["occurrence"]
+
+
 def detect_sections(
     spectrum: np.ndarray,
     y: np.ndarray,
@@ -353,17 +456,23 @@ def detect_sections(
     report: ProgressFn,
     phase: Phase,
     structure: list[StructureSegment] | None = None,
+    novelty: list[StructureSegment] | None = None,
 ) -> list[dict]:
     """Découpe le morceau en sections.
 
     Si `structure` est fourni (blocs répétés détectés localement), il fixe les
     frontières et le groupe de chaque section — on économise alors le calcul
-    spectral du découpage de repli. Sinon on retombe sur le regroupement
-    agglomératif, sans groupe.
+    spectral du découpage de repli. Si `novelty` est fourni (morceau continu sans
+    répétition), il fixe les frontières et les rôles suivent la progression
+    d'énergie. Sinon on retombe sur le regroupement agglomératif, sans groupe.
     """
+    continuous = bool(novelty) and not structure
     if structure:
         bounds: list[tuple[float, float, str]] = _structure_bounds(structure, duration)
         report(phase, 0.5, f"{len(bounds)} passages repérés")
+    elif novelty:
+        bounds = _structure_bounds(novelty, duration)
+        report(phase, 0.5, f"{len(bounds)} ruptures spectrales repérées")
     else:
         report(phase, 0.2, "Caractéristiques spectrales")
         mel = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=NFFT, hop_length=HOP, n_mels=64)
@@ -436,7 +545,10 @@ def detect_sections(
                 "occurrence": 0,
             }
         ]
-    assign_roles(sections, duration)
+    if continuous:
+        assign_progression_roles(sections, duration)
+    else:
+        assign_roles(sections, duration)
     report(phase, 1.0, f"{len(sections)} sections détectées")
     return sections
 
@@ -461,6 +573,81 @@ def _snap_to_onset(target: float, onsets: list[float] | None, window: float = 0.
             best_delta = delta
             best = float(onset)
     return best
+
+
+# Un cut de 150 à 450 ms précède souvent le vrai impact (EDM, trap). La crête du
+# gradient de montée tombe alors **avant** le silence : il faut chercher plus
+# loin que la fenêtre habituelle de 300 ms, et surtout après le creux.
+GAP_SEARCH_SEC = 0.6
+# Baisse minimale pour parler de gap : absolue (courbe normalisée) ou relative à
+# la crête. En dessous, il s'agit du bruit de fond de la montée, pas d'un cut.
+_GAP_MIN_DROP = 0.12
+_GAP_RELATIVE_DROP = 0.35
+# Un vrai silence franc tombe sous 30 % du niveau de crête. Sans ce garde-fou,
+# l'oscillation d'un kick régulier ressemble à un cut et déplace l'impact.
+_GAP_MAX_TROUGH_RATIO = 0.3
+
+
+def _onset_level(onset: float, times: np.ndarray, values: np.ndarray, span: float = 0.12) -> float:
+    """Niveau atteint juste après une attaque.
+
+    Un onset marque le *début* de l'impact : la courbe lissée est encore basse à
+    cet instant précis. On mesure donc le maximum sur une courte fenêtre qui suit,
+    sinon un kick parfaitement calé serait jugé « pas énergique ».
+    """
+    window = (times >= onset) & (times <= onset + span)
+    if window.any():
+        return float(np.max(values[window]))
+    return float(np.interp(onset, times, values))
+
+
+def _impact_after_gap(
+    times: np.ndarray,
+    values: np.ndarray,
+    start_index: int,
+    end_index: int,
+    onsets: list[float] | None,
+    peak_level: float,
+) -> float | None:
+    """Cherche un cut (silence franc) dans la montée et l'onset qui le suit.
+
+    On parcourt la montée par la fin : le dernier creux franc est celui qui
+    précède l'impact. Comparer chaque creux à sa crête locale — et non au maximum
+    global du gradient — couvre les risers dont le pic de gradient tombe avant le
+    silence. Le retour doit ensuite atteindre le niveau du pic de la montée :
+    c'est ce qui distingue un drop d'une simple respiration entre deux kicks.
+    """
+    if onsets is None or times.size < 2 or values.size != times.size:
+        return None
+    if end_index <= start_index + 1:
+        return None
+    step = float(np.median(np.diff(times)))
+    lookback = max(2, int(round(GAP_SEARCH_SEC / max(step, 1e-3))))
+    recovery = max(0.08, 0.9 * peak_level)
+
+    for trough_index in range(end_index - 1, start_index + 1, -1):
+        trough = float(values[trough_index])
+        crest_slice = range(max(start_index, trough_index - lookback), trough_index)
+        crest_index = max(crest_slice, key=lambda index: float(values[index]))
+        crest_level = float(values[crest_index])
+        drop = crest_level - trough
+        if drop < max(_GAP_MIN_DROP, _GAP_RELATIVE_DROP * max(crest_level, 1e-6)):
+            continue
+        if trough > _GAP_MAX_TROUGH_RATIO * crest_level:
+            continue
+
+        trough_time = float(times[trough_index])
+        candidates = sorted(
+            float(onset)
+            for onset in onsets
+            if trough_time < float(onset) <= trough_time + GAP_SEARCH_SEC
+        )
+        # Le premier onset qui remonte au niveau du pic : le souffle résiduel du
+        # cut ne doit pas voler l'impact au kick qui suit.
+        for onset in candidates:
+            if _onset_level(onset, times, values) >= recovery:
+                return onset
+    return None
 
 
 def detect_builds(
@@ -503,9 +690,25 @@ def detect_builds(
         # 2 s après le son.
         pic = slice(start_index, min(end_index + 1, len(gradient)))
         if pic.stop > pic.start:
-            end = float(times[min(int(np.argmax(gradient[pic])) + pic.start, len(times) - 1)])
-            # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
-            end = _snap_to_onset(end, onsets)
+            after_gap = _impact_after_gap(
+                times,
+                values,
+                start_index,
+                pic.stop,
+                onsets,
+                float(np.max(values[start_index : pic.stop])),
+            )
+            if after_gap is not None:
+                # Le drop est après le silence : c'est lui qu'il faut fêter.
+                end = after_gap
+            else:
+                crest_index = min(
+                    int(np.argmax(gradient[pic])) + pic.start,
+                    len(times) - 1,
+                )
+                end = float(times[crest_index])
+                # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
+                end = _snap_to_onset(end, onsets)
         # Une vraie montée gagne nettement en niveau, pas seulement quelques %.
         if 2.0 <= end - start <= 30.0 and strength > 0.3 and strength - start_level > 0.18:
             builds.append(
@@ -617,6 +820,15 @@ def analyze_file(
     # feraient clignoter les effets au lieu de suivre son énergie.
     bass = normalize_curve(_smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate))
     mid = normalize_curve(_smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate))
+    # Subdivision du médium : 150–600 Hz (corps, bas-médium lourd) et 600–2500 Hz
+    # (présence, caisses claires). `mid` reste exposé tel quel pour ne pas casser
+    # le contrat du frontend ; ces deux courbes sont un raffinement optionnel.
+    mid_low = normalize_curve(
+        _smooth(band_energy(spectrum, frequencies, 150, 600), 0.35, frame_rate)
+    )
+    mid_high = normalize_curve(
+        _smooth(band_energy(spectrum, frequencies, 600, 2500), 0.35, frame_rate)
+    )
     high = normalize_curve(
         _smooth(band_energy(spectrum, frequencies, 2000, 10000), 0.35, frame_rate)
     )
@@ -626,17 +838,25 @@ def analyze_file(
     energy_raw = 0.62 * rms + 0.38 * ((bass + mid + high) / 3.0)
     energy = normalize_log_curve(energy_raw)
 
-    tempo, beats, onsets = detect_rhythm(y, sample_rate, progress, phases[2])
+    tempo, beats, onsets, meter = detect_rhythm(y, sample_rate, progress, phases[2])
 
     # Structure répétitive (couplet/refrain…) : calcul local sur le spectre et
     # les temps forts déjà obtenus, aucun rechargement ni HPSS redondant.
     progress(phases[3], 0.05, "recherche des passages répétés")
     structure = estimate_structure(spectrum, beats, sample_rate, duration)
-    progress(
-        phases[3],
-        1.0,
-        f"{len(structure)} passages répétés" if structure else "structure non concluante",
-    )
+    novelty = None
+    if structure is None:
+        # Aucun motif ne revient : on découpe sur les ruptures de régime spectral
+        # plutôt que de forcer une grille couplet/refrain qui n'existe pas.
+        progress(phases[3], 0.5, "recherche des ruptures spectrales")
+        novelty = estimate_novelty_segments(spectrum, beats, sample_rate, duration)
+    if structure:
+        detail = f"{len(structure)} passages répétés"
+    elif novelty:
+        detail = f"{len(novelty)} ruptures spectrales"
+    else:
+        detail = "structure non concluante"
+    progress(phases[3], 1.0, detail)
 
     sections = detect_sections(
         spectrum,
@@ -648,6 +868,7 @@ def analyze_file(
         progress,
         phases[4],
         structure,
+        novelty,
     )
     progress(phases[5], 0.5, "détection des montées")
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
@@ -658,12 +879,121 @@ def analyze_file(
     return AnalysisResult(
         duration=round(duration, 3),
         tempo=round(tempo, 3),
+        meter=meter,
         beats=beats,
         onsets=onsets,
         energy=energy_points,
         bass=curve_to_points(frame_times, bass, settings.curve_rate_hz, duration),
         mid=curve_to_points(frame_times, mid, settings.curve_rate_hz, duration),
+        mid_low=curve_to_points(frame_times, mid_low, settings.curve_rate_hz, duration),
+        mid_high=curve_to_points(frame_times, mid_high, settings.curve_rate_hz, duration),
         high=curve_to_points(frame_times, high, settings.curve_rate_hz, duration),
         sections=sections,
         builds=builds,
     )
+
+
+# ------------------------------------------------------------------ timeout
+#
+# `ANALYZE_TIMEOUT_SEC` doit être une garantie dure : un fichier pathologique
+# (STFT énorme, décodage ffmpeg bloqué) ne doit pas immobiliser un worker pour
+# toujours. Un thread ne peut pas être interrompu au milieu de code C (librosa,
+# numpy), et signal.alarm n'agit que sur le thread principal — or `run_analysis`
+# tourne dans un pool de threads. On exécute donc l'analyse dans un process
+# dédié, que l'on peut tuer. Le contexte « spawn » évite d'hériter des verrous
+# d'un serveur multi-thread ; le coût de démarrage est le prix de la garantie.
+
+
+def _analysis_worker(
+    messages: Any,
+    path: str,
+    settings: Settings,
+) -> None:
+    """Point d'entrée du process d'analyse : renvoie le résultat par la queue."""
+
+    def report(message: str, progress: float) -> None:
+        # Un client parti ne doit pas tuer l'analyse.
+        with contextlib.suppress(Exception):
+            messages.put(("progress", message, float(progress)))
+
+    try:
+        result = analyze_file(Path(path), settings, report=report)
+        messages.put(("done", result))
+    except AnalysisError as error:
+        messages.put(("analysis_error", error.code, error.message, error.detail))
+    except BaseException as error:  # noqa: BLE001 - on remonte une erreur lisible
+        messages.put(("crash", type(error).__name__, str(error)[:300]))
+
+
+def analyze_with_timeout(
+    path: Path,
+    settings: Settings,
+    report: Callable[[str, float], None] | None = None,
+    timeout_sec: float | None = None,
+) -> AnalysisResult:
+    """`analyze_file` avec une limite de temps dure.
+
+    Lève `AnalysisError("timeout")` si l'analyse dépasse la limite (par défaut
+    `settings.analyze_timeout_sec`) ; le process est alors tué, sans laisser de
+    worker bloqué. Une limite nulle ou négative désactive le garde-fou et exécute
+    l'analyse en direct.
+    """
+    limit = settings.analyze_timeout_sec if timeout_sec is None else timeout_sec
+    if limit is None or limit <= 0:
+        return analyze_file(path, settings, report=report)
+
+    context = multiprocessing.get_context("spawn")
+    messages = context.Queue()
+    process = context.Process(
+        target=_analysis_worker,
+        args=(messages, str(Path(path).resolve()), settings),
+        name="night-light-analysis",
+        daemon=True,
+    )
+    process.start()
+    deadline = time.monotonic() + limit
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AnalysisError(
+                    "timeout",
+                    f"L'analyse a dépassé la limite de {limit:.0f} s.",
+                    "Morceau trop complexe ou fichier illisible : réessaie avec un "
+                    "fichier plus court, ou augmente ANALYZE_TIMEOUT_SEC.",
+                )
+            try:
+                event = messages.get(timeout=min(remaining, 0.25))
+            except queue_module.Empty:
+                if not process.is_alive() and messages.empty():
+                    raise AnalysisError(
+                        "analysis_failed",
+                        "L'analyse du morceau a échoué.",
+                        "Le process d'analyse s'est arrêté sans résultat "
+                        f"(code {process.exitcode}).",
+                    ) from None
+                continue
+
+            kind = event[0]
+            if kind == "progress":
+                if report is not None:
+                    report(event[1], event[2])
+            elif kind == "done":
+                return event[1]
+            elif kind == "analysis_error":
+                raise AnalysisError(event[1], event[2], event[3])
+            else:
+                raise AnalysisError(
+                    "analysis_failed",
+                    "L'analyse du morceau a échoué.",
+                    f"{event[1]}: {event[2]}",
+                )
+    finally:
+        if process.is_alive():
+            process.terminate()
+        process.join(timeout=5.0)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1.0)
+        messages.close()
+        messages.join_thread()

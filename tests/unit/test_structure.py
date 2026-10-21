@@ -17,9 +17,10 @@ from server.structure import (
     _coalesce,
     _group_sections,
     _letters,
+    estimate_novelty_segments,
     estimate_structure,
 )
-from tests.support.make_fixture import write_structured_track
+from tests.support.make_fixture import write_continuous_track, write_structured_track
 
 
 def _describe(track: Path) -> tuple[np.ndarray, list[float], int, float]:
@@ -104,3 +105,28 @@ def test_structure_repetitive_detectee(tmp_path: Path) -> None:
 def test_morceau_trop_court_sans_structure() -> None:
     spectrum = np.ones((structure.N_FFT // 2 + 1, 50), dtype=np.float32)
     assert estimate_structure(spectrum, [], 22050, 10.0) is None
+
+
+def test_morceau_continu_sans_repetition_passe_par_la_nouveaute(tmp_path: Path) -> None:
+    """Jazz/ambient : rien ne revient, donc `estimate_structure` décline."""
+    track = tmp_path / "continu.wav"
+    write_continuous_track(track, duration=60.0)
+    spectrum, beats, sr, duration = _describe(track)
+
+    assert estimate_structure(spectrum, beats, sr, duration) is None
+
+    segments = estimate_novelty_segments(spectrum, beats, sr, duration)
+    assert segments is not None, "un morceau continu doit rester découpable"
+    assert len(segments) >= 3
+    assert segments[0].start == 0.0
+    assert segments[-1].end == duration
+    for previous, current in zip(segments, segments[1:], strict=False):
+        assert current.start == pytest.approx(previous.end, abs=0.01)
+        assert current.end > current.start
+    # Aucune répétition n'est affirmée : les blocs restent sans groupe.
+    assert all(segment.group == "" for segment in segments)
+
+
+def test_morceau_continu_trop_court_renvoie_none() -> None:
+    spectrum = np.ones((structure.N_FFT // 2 + 1, 50), dtype=np.float32)
+    assert estimate_novelty_segments(spectrum, [], 22050, 10.0) is None
