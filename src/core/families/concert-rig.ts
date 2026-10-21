@@ -412,13 +412,35 @@ function dessinerPoutre(
 ): void {
   const teinte = contrastHue(f);
   const pas = (x1 - x0) / Math.max(segments, 1);
-  ctx.strokeStyle = paint(teinte, 0.28, 0.55, 0.34 * alpha);
-  ctx.lineWidth = Math.max(1, f.width * 0.0011);
+
+  // Les membrures s'effacent aux extrémités : le pont se fond dans le fond au
+  // lieu de traverser toute la toile comme une barre noire.
+  const membrures = ctx.createLinearGradient(x0, 0, x1, 0);
+  membrures.addColorStop(0, paint(teinte, 0.16, 0.62, 0));
+  membrures.addColorStop(0.08, paint(teinte, 0.16, 0.62, 0.2 * alpha));
+  membrures.addColorStop(0.5, paint(teinte, 0.12, 0.7, 0.28 * alpha));
+  membrures.addColorStop(0.92, paint(teinte, 0.16, 0.62, 0.2 * alpha));
+  membrures.addColorStop(1, paint(teinte, 0.16, 0.62, 0));
+  ctx.strokeStyle = membrures;
+  ctx.lineWidth = Math.max(0.7, f.width * 0.0007);
   ctx.beginPath();
   ctx.moveTo(x0, y0);
   ctx.lineTo(x1, y0);
   ctx.moveTo(x0, y1);
   ctx.lineTo(x1, y1);
+  ctx.stroke();
+
+  // Croisillons beaucoup plus discrets que les membrures : ils suggèrent le
+  // treillis sans dessiner une échelle.
+  const croisillons = ctx.createLinearGradient(x0, 0, x1, 0);
+  croisillons.addColorStop(0, paint(teinte, 0.14, 0.54, 0));
+  croisillons.addColorStop(0.15, paint(teinte, 0.14, 0.54, 0.06 * alpha));
+  croisillons.addColorStop(0.5, paint(teinte, 0.12, 0.6, 0.1 * alpha));
+  croisillons.addColorStop(0.85, paint(teinte, 0.14, 0.54, 0.06 * alpha));
+  croisillons.addColorStop(1, paint(teinte, 0.14, 0.54, 0));
+  ctx.strokeStyle = croisillons;
+  ctx.lineWidth = Math.max(0.55, f.width * 0.00045);
+  ctx.beginPath();
   for (let index = 0; index < segments; index += 1) {
     const gauche = x0 + index * pas;
     const droite = gauche + pas;
@@ -427,13 +449,6 @@ function dessinerPoutre(
     ctx.moveTo(droite, y0);
     ctx.lineTo(gauche, y1);
   }
-  ctx.stroke();
-
-  // Lisse centrale : donne l'épaisseur de la poutre sans alourdir le trait.
-  ctx.strokeStyle = paint(teinte, 0.2, 0.42, 0.2 * alpha);
-  ctx.beginPath();
-  ctx.moveTo(x0, (y0 + y1) / 2);
-  ctx.lineTo(x1, (y0 + y1) / 2);
   ctx.stroke();
 }
 
@@ -447,36 +462,42 @@ function dessinerPoutre(
 export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   const alpha = 0.8 + 0.2 * f.energy;
-  const segments = f.reduced ? 10 : Math.min(26, Math.max(12, Math.round(w / 56)));
+  // Moins de segments : le treillis doit se lire comme un filigrane, pas comme
+  // une échelle. La structure reste là, mais ne concurrence plus les faisceaux.
+  const segments = f.reduced ? 8 : Math.min(16, Math.max(10, Math.round(w / 90)));
   const teinte = contrastHue(f);
-  const corps = paint(teinte, 0.18, 0.16, 0.92);
-  const lentille = paint(teinte, 0.45, 0.58, 0.55);
+  const corps = paint(teinte, 0.16, 0.22, 0.55);
+  const lentille = paint(teinte, 0.4, 0.55, 0.35);
 
   dessinerPoutre(ctx, f, w * 0.055, w * 0.945, h * PONT_HAUT, h * PONT_BAS, segments, alpha);
-  // Seconde traverse, plus courte : c'est le rail des barres LED, en retrait.
-  dessinerPoutre(ctx, f, w * 0.245, w * 0.755, h * 0.292, h * 0.318, Math.max(8, Math.round(segments * 0.6)), alpha * 0.9);
+  // Seconde traverse, plus courte et plus discrète : le rail des barres LED.
+  dessinerPoutre(
+    ctx,
+    f,
+    w * 0.245,
+    w * 0.755,
+    h * 0.292,
+    h * 0.318,
+    Math.max(5, Math.round(segments * 0.45)),
+    alpha * 0.55,
+  );
 
-  // Totems latéraux : deux montants fins qui descendent jusqu'au plancher.
-  ctx.strokeStyle = paint(teinte, 0.3, 0.5, 0.22 * alpha);
-  ctx.lineWidth = Math.max(1, w * 0.0009);
+  // Totems latéraux : une seule ligne, qui s'efface en haut et en bas. Assez
+  // pour suggérer un montant, pas assez pour dessiner un cadre.
+  ctx.lineWidth = Math.max(0.55, w * 0.0005);
   for (const cote of [0.045, 0.955] as const) {
     const x = w * cote;
-    const ecart = w * 0.0055;
     const sommet = h * PONT_BAS;
-    const bas = h * 0.985;
+    const bas = h * 0.97;
+    const montant = ctx.createLinearGradient(0, sommet, 0, bas);
+    montant.addColorStop(0, paint(teinte, 0.2, 0.55, 0));
+    montant.addColorStop(0.18, paint(teinte, 0.2, 0.55, 0.08 * alpha));
+    montant.addColorStop(0.7, paint(teinte, 0.18, 0.6, 0.05 * alpha));
+    montant.addColorStop(1, paint(teinte, 0.2, 0.55, 0));
+    ctx.strokeStyle = montant;
     ctx.beginPath();
-    ctx.moveTo(x - ecart, sommet);
-    ctx.lineTo(x - ecart, bas);
-    ctx.moveTo(x + ecart, sommet);
-    ctx.lineTo(x + ecart, bas);
-    for (let index = 0; index < 10; index += 1) {
-      const y0 = sommet + ((bas - sommet) * index) / 10;
-      const y1 = sommet + ((bas - sommet) * (index + 1)) / 10;
-      ctx.moveTo(x - ecart, y0);
-      ctx.lineTo(x + ecart, y1);
-      ctx.moveTo(x + ecart, y0);
-      ctx.lineTo(x - ecart, y1);
-    }
+    ctx.moveTo(x, sommet);
+    ctx.lineTo(x, bas);
     ctx.stroke();
   }
 
@@ -485,8 +506,8 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
     const { x, y } = positionLyre(index, w, h);
     const demi = Math.max(3, w * 0.0042);
     const hauteur = Math.max(6, h * 0.012);
-    ctx.strokeStyle = paint(teinte, 0.25, 0.45, 0.32 * alpha);
-    ctx.lineWidth = Math.max(1, w * 0.0009);
+    ctx.strokeStyle = paint(teinte, 0.22, 0.45, 0.14 * alpha);
+    ctx.lineWidth = Math.max(0.65, w * 0.0006);
     ctx.beginPath();
     ctx.moveTo(x, h * PONT_BAS);
     ctx.lineTo(x, y - hauteur * 0.45);
@@ -542,9 +563,9 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
     ctx.fill();
 
     for (const cote of [-1, 1] as const) {
-      ctx.fillStyle = paint(34, 0.55, 0.32, 0.8);
+      ctx.fillStyle = paint(34, 0.55, 0.32, 0.62);
       ctx.beginPath();
-      ctx.arc(x + cote * demi * 0.46, y + hauteur * 0.7, Math.max(1.2, w * 0.0014), 0, Math.PI * 2);
+      ctx.arc(x + cote * demi * 0.46, y + hauteur * 0.7, Math.max(1.1, w * 0.0013), 0, Math.PI * 2);
       ctx.fill();
     }
   }
