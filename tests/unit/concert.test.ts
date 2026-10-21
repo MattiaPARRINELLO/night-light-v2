@@ -5,10 +5,12 @@ import {
   couleurBlinder,
   decroissanceFilament,
   intensiteBlinder,
+  motifBlinder,
   NOMBRE_BATTENS,
   NOMBRE_BLINDERS,
   NOMBRE_LYRES,
   orientationLyre,
+  poidsBlinder,
   positionBatten,
   positionBlinder,
   positionLyre,
@@ -99,7 +101,7 @@ describe("géométrie du plateau", () => {
     const largeur = 1280;
     const hauteur = 720;
     expect(NOMBRE_BATTENS).toBe(16);
-    expect(NOMBRE_BLINDERS).toBe(4);
+    expect(NOMBRE_BLINDERS).toBe(12);
     for (let index = 0; index < NOMBRE_BATTENS; index += 1) {
       const point = positionBatten(index, largeur, hauteur);
       expect(point.y).toBeCloseTo(hauteur * 0.3, 6);
@@ -176,6 +178,52 @@ describe("inertie thermique des blinders", () => {
     const reduit = intensiteBlinder(frame("drop", 10.02, { reduced: true }), view, 0);
     expect(reduit).toBeLessThan(normal);
     expect(reduit).toBeLessThan(0.35);
+  });
+});
+
+describe("barre de blinders", () => {
+  test("le motif suit le rôle de la scène", () => {
+    expect(motifBlinder("drop")).toBe("tous");
+    expect(motifBlinder("refrain")).toBe("un-sur-deux");
+    expect(motifBlinder("montee")).toBe("chenillard");
+    expect(motifBlinder("couplet")).toBe("un-sur-quatre");
+  });
+
+  test("un drop allume toute la barre", () => {
+    const f = frame("drop", 12);
+    for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
+      expect(poidsBlinder(f, index)).toBeGreaterThan(0.99);
+    }
+  });
+
+  test("un refrain allume une cellule sur deux", () => {
+    const f = frame("refrain", 12);
+    const allumes = Array.from({ length: NOMBRE_BLINDERS }, (_, index) => poidsBlinder(f, index));
+    expect(allumes.filter((poids) => poids > 0.6)).toHaveLength(NOMBRE_BLINDERS / 2);
+  });
+
+  test("un couplet n'allume qu'une cellule sur quatre", () => {
+    const f = frame("couplet", 12);
+    const allumes = Array.from({ length: NOMBRE_BLINDERS }, (_, index) => poidsBlinder(f, index));
+    expect(allumes.filter((poids) => poids > 0.6)).toHaveLength(NOMBRE_BLINDERS / 4);
+  });
+
+  test("le chenillard déplace la zone allumée", () => {
+    const premier = frame("montee", 12);
+    const second = frame("montee", 12.5);
+    const zone = (f: FrameState) =>
+      Array.from({ length: NOMBRE_BLINDERS }, (_, index) => poidsBlinder(f, index))
+        .map((poids, index) => (poids > 0.6 ? index : -1))
+        .filter((index) => index >= 0);
+    expect(zone(premier).length).toBeGreaterThan(0);
+    expect(zone(premier)).not.toEqual(zone(second));
+  });
+
+  test("la barre s'allume entière avant que le motif se mette en place", () => {
+    const debut = frame("refrain", 0);
+    for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
+      expect(poidsBlinder(debut, index)).toBeGreaterThan(0.99);
+    }
   });
 });
 

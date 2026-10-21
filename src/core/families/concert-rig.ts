@@ -13,8 +13,8 @@ import { paint } from "./util";
  *
  * Le spectacle n'est plus seulement une abstraction lumineuse : il se joue sur
  * une vraie scène. Un pont technique en treillis porte huit lyres motorisées,
- * une seconde traverse accroche seize barres LED et quatre blocs de blinders
- * tungstène éclairent la salle.
+ * une seconde traverse accroche seize barres LED et une barre de douze blinders
+ * tungstène éclaire la salle.
  *
  * Règle absolue : tout est calculé à partir de `(time, view, plan, frameState)`.
  * Aucun angle ne s'accumule d'une image à l'autre, aucun filament ne garde son
@@ -26,8 +26,8 @@ import { paint } from "./util";
 export const NOMBRE_LYRES = 8;
 /** Nombre de diodes des barres LED. */
 export const NOMBRE_BATTENS = 16;
-/** Nombre de blocs de blinders (deux lampes par bloc). */
-export const NOMBRE_BLINDERS = 4;
+/** Nombre de blinders de la barre (deux lampes par cellule). */
+export const NOMBRE_BLINDERS = 12;
 /**
  * Constante de refroidissement du filament tungstène, en secondes.
  *
@@ -45,7 +45,7 @@ const PONT_BAS = 0.158;
 const LIGNE_LYRES = 0.14;
 /** Traverse des barres LED. */
 const LIGNE_BATTENS = 0.3;
-/** Hauteur des blocs de blinders, sur le pont supérieur. */
+/** Hauteur de la barre de blinders, sur le pont supérieur. */
 const LIGNE_BLINDERS = 0.132;
 /** Fenêtre de recherche du dernier impact, en secondes. */
 const FENETRE_IMPACT = 2.6;
@@ -53,10 +53,12 @@ const FENETRE_IMPACT = 2.6;
 /**
  * Décalage de refroidissement de chaque bloc, en secondes.
  *
- * Quatre filaments ne refroidissent jamais rigoureusement ensemble. Ce léger
- * décalage suffit à faire vivre la rangée sans jamais tirer au hasard.
+ * Douze filaments ne refroidissent jamais rigoureusement ensemble. Ce léger
+ * décalage suffit à faire vivre la barre sans jamais tirer au hasard.
  */
-const DECALAGES_BLINDERS = [0, 0.018, 0.034, 0.052] as const;
+const DECALAGES_BLINDERS = [
+  0, 0.009, 0.018, 0.027, 0.036, 0.045, 0.054, 0.063, 0.072, 0.081, 0.09, 0.099,
+] as const;
 
 /** Point d'ancrage dans l'espace de la toile, en pixels CSS. */
 export interface PointScene {
@@ -120,11 +122,17 @@ export function positionBatten(index: number, largeur: number, hauteur: number):
   };
 }
 
-/** Position du bloc de blinders `index`, sur le pont supérieur. */
+/**
+ * Position du blinder `index` sur la barre du pont supérieur.
+ *
+ * Les douze cellules couvrent presque toute la largeur du pont : la barre est
+ * continue, et les motifs (un sur deux, un sur quatre, chenillard) peuvent
+ * parcourir toute la scène.
+ */
 export function positionBlinder(index: number, largeur: number, hauteur: number): PointScene {
   const i = borner(index, NOMBRE_BLINDERS);
   return {
-    x: largeur * (0.1 + 0.8 * (i / (NOMBRE_BLINDERS - 1))),
+    x: largeur * (0.09 + 0.82 * (i / (NOMBRE_BLINDERS - 1))),
     y: hauteur * LIGNE_BLINDERS,
   };
 }
@@ -394,6 +402,76 @@ export function intensiteBlinder(f: FrameState, view: TrackView, index: number):
   return clamp01(f.reduced ? Math.min(0.32, brut * 0.55) : brut);
 }
 
+/** Motifs de la barre de blinders. */
+export type MotifBlinder = "tous" | "un-sur-deux" | "un-sur-quatre" | "chenillard";
+
+/**
+ * Motif de la barre selon le rôle de la scène.
+ *
+ * C'est le choix « console » : un drop allume toute la barre, un refrain alterne
+ * une cellule sur deux, un couplet n'en garde qu'une sur quatre et une montée
+ * fait courir un chenillard. Le motif reste une fonction pure du temps musical.
+ */
+export function motifBlinder(role: SceneRole): MotifBlinder {
+  if (role === "drop") return "tous";
+  if (role === "refrain") return "un-sur-deux";
+  if (role === "montee") return "chenillard";
+  if (role === "couplet") return "un-sur-quatre";
+  return "un-sur-deux";
+}
+
+/**
+ * Poids d'allumage de la cellule `index` dans la barre.
+ *
+ * Les motifs ne sont pas des interrupteurs : une cellule s'allume et s'éteint
+ * en fondu, et au début d'une scène la barre s'allume entière avant que le
+ * motif ne se mette en place. Le poids est ensuite multiplié par l'inertie
+ * thermique du filament.
+ */
+export function poidsBlinder(
+  f: FrameState,
+  index: number,
+  role: SceneRole = f.scene.role,
+  motif: MotifBlinder = motifBlinder(role),
+): number {
+  const i = borner(index, NOMBRE_BLINDERS);
+  const temps = f.beatIndex + clamp01(f.beatPhase);
+  const entree = smoothstep(0, 1, clamp01((f.t - f.scene.start) / 1.4));
+  let poids = 1;
+
+  switch (motif) {
+    case "tous":
+      poids = 1;
+      break;
+    case "un-sur-deux": {
+      const phase = (((temps / 4) % 2) + 2) % 2;
+      const groupe = i % 2;
+      const distance = Math.min(Math.abs(groupe - phase), 2 - Math.abs(groupe - phase));
+      poids = 1 - smoothstep(0.3, 0.95, distance);
+      break;
+    }
+    case "un-sur-quatre": {
+      const phase = (((temps / 4) % 4) + 4) % 4;
+      const groupe = i % 4;
+      const distance = Math.min(Math.abs(groupe - phase), 4 - Math.abs(groupe - phase));
+      poids = 1 - smoothstep(0.4, 1.25, distance);
+      break;
+    }
+    case "chenillard": {
+      const position =
+        (((temps / 1.5) % NOMBRE_BLINDERS) + NOMBRE_BLINDERS) % NOMBRE_BLINDERS;
+      const distance = Math.min(
+        Math.abs(i - position),
+        NOMBRE_BLINDERS - Math.abs(i - position),
+      );
+      poids = 1 - smoothstep(0.5, 2, distance);
+      break;
+    }
+  }
+
+  return clamp01(poids * entree + (1 - entree));
+}
+
 /**
  * Traverse en treillis : deux membrures parallèles et des croisillons en X.
  *
@@ -548,24 +626,49 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
     ctx.fill();
   }
 
-  // Blinders : quatre blocs de deux lampes, accrochés au pont supérieur.
-  for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
-    const { x, y } = positionBlinder(index, w, h);
-    const demi = Math.max(5, w * 0.008);
-    const hauteur = Math.max(3, h * 0.006);
-    ctx.fillStyle = corps;
-    ctx.beginPath();
-    ctx.moveTo(x - demi, y - hauteur);
-    ctx.lineTo(x + demi, y - hauteur);
-    ctx.lineTo(x + demi, y + hauteur);
-    ctx.lineTo(x - demi, y + hauteur);
-    ctx.closePath();
-    ctx.fill();
+  // Barre de blinders : un seul boîtier continu, divisé en douze cellules de
+  // deux lampes. C'est la barre qui permet les motifs (tous, un sur deux,
+  // un sur quatre, chenillard).
+  const premier = positionBlinder(0, w, h);
+  const dernier = positionBlinder(NOMBRE_BLINDERS - 1, w, h);
+  const pas = (dernier.x - premier.x) / (NOMBRE_BLINDERS - 1);
+  const x0 = premier.x - pas / 2;
+  const x1 = dernier.x + pas / 2;
+  const hauteurBarre = Math.max(3, h * 0.006);
+  const yBarre = premier.y;
 
+  ctx.fillStyle = corps;
+  ctx.beginPath();
+  ctx.moveTo(x0, yBarre - hauteurBarre);
+  ctx.lineTo(x1, yBarre - hauteurBarre);
+  ctx.lineTo(x1, yBarre + hauteurBarre);
+  ctx.lineTo(x0, yBarre + hauteurBarre);
+  ctx.closePath();
+  ctx.fill();
+
+  // Séparateurs de cellules, à peine visibles.
+  ctx.strokeStyle = paint(teinte, 0.16, 0.32, 0.28);
+  ctx.lineWidth = Math.max(0.5, w * 0.0004);
+  ctx.beginPath();
+  for (let index = 1; index < NOMBRE_BLINDERS; index += 1) {
+    const x = x0 + index * pas;
+    ctx.moveTo(x, yBarre - hauteurBarre);
+    ctx.lineTo(x, yBarre + hauteurBarre);
+  }
+  ctx.stroke();
+
+  for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
+    const { x } = positionBlinder(index, w, h);
     for (const cote of [-1, 1] as const) {
       ctx.fillStyle = paint(34, 0.55, 0.32, 0.62);
       ctx.beginPath();
-      ctx.arc(x + cote * demi * 0.46, y + hauteur * 0.7, Math.max(1.1, w * 0.0013), 0, Math.PI * 2);
+      ctx.arc(
+        x + cote * pas * 0.22,
+        yBarre + hauteurBarre * 0.7,
+        Math.max(1.1, w * 0.0013),
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
     }
   }
@@ -585,9 +688,14 @@ export function dessinerBlinders(
 ): void {
   const { width: w, height: h } = f;
   const budget = clamp01(budgetFlash);
+  // Douze cellules au lieu de quatre : on baisse légèrement chaque source pour
+  // que la barre complète reste dans la même plage de luminosité.
+  const gainBarre = 0.68;
 
   for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
-    const intensite = intensiteBlinder(f, view, index);
+    const poids = poidsBlinder(f, index);
+    if (poids <= 0.02) continue;
+    const intensite = intensiteBlinder(f, view, index) * poids * gainBarre;
     if (intensite <= 0.008) continue;
     const { x, y } = positionBlinder(index, w, h);
     const couleur = couleurBlinder(intensite);

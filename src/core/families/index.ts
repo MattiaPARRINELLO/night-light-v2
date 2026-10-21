@@ -24,17 +24,19 @@ export {
   dessinerBlinders,
   dessinerStructure,
   intensiteBlinder,
+  motifBlinder,
   NOMBRE_BATTENS,
   NOMBRE_BLINDERS,
   NOMBRE_LYRES,
   orientationLyre,
+  poidsBlinder,
   positionBatten,
   positionBlinder,
   positionLyre,
   TAU_FILAMENT,
   tempsTempsFort,
 } from "./concert-rig";
-export type { CouleurFilament, OrientationLyre, PointScene } from "./concert-rig";
+export type { CouleurFilament, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...AMBIENT_FAMILIES,

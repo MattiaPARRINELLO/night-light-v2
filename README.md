@@ -186,9 +186,14 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 ### La scène
 
 Le spectacle se joue désormais sur un plateau : un pont en treillis à 12-16 % de la
-hauteur, une seconde traverse pour les barres LED, deux totems latéraux et quatre blocs
-de blinders tungstène. La structure est permanente ; seuls les faisceaux changent de
+hauteur, une seconde traverse pour les barres LED, deux totems latéraux et une barre de
+douze blinders tungstène. La structure est permanente ; seuls les faisceaux changent de
 figure.
+
+La barre de blinders se pilote par motifs : toute la barre sur un impact, une cellule
+sur deux en refrain, une sur quatre en couplet, et un chenillard sur les montées. Chaque
+cellule garde son inertie thermique, donc les motifs se lisent comme des mouvements de
+console et non comme des interrupteurs.
 
 Les blinders ne s'éteignent pas d'un coup : leur filament suit `exp(-Δt / 0,22 s)`, puis
 passe du blanc chaud à l'ambre et au rouge avant de tomber au noir. Au-dessus de 0,6
