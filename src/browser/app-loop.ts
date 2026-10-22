@@ -8,7 +8,7 @@ import type { App } from "./app";
 import type { HazeLayer, HazeTarget } from "../core/families";
 import { drawTransition, renderFrame, sceneHue, variationStrength } from "../core/render";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
-import { FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, buildShowPlan, sceneAt, type ShowPlan } from "../core/show";
+import { FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, sceneAt, type ShowPlan } from "../core/show";
 import { el } from "./ui";
 
 /**
@@ -220,6 +220,7 @@ export function installLoop(Target: { prototype: App }): void {
       });
       this.frame += 1;
       this.drawTransitionIfNeeded(clamped, plan);
+      this.markFirstFrame();
     } catch (error) {
       // Le rendu a échoué : on descend d'un palier. La valeur reste quantifiée,
       // sinon le nombre d'éléments recommencerait à varier à chaque image.
@@ -241,7 +242,7 @@ export function installLoop(Target: { prototype: App }): void {
     }
     el<HTMLElement>("time-current").textContent = formatTime(t);
     const section = view.sectionAt(t);
-    const scene = sceneAt(this.plan ?? buildShowPlan(view.analysis, this.effectiveReduced()), t);
+    const scene = sceneAt(this.plan ?? this.buildPlan(view.analysis), t);
     // Le rôle structurel (Couplet, Refrain…) est plus parlant que l'énergie
     // quand il est connu ; sinon on retombe sur l'étiquette d'énergie.
     const kind = section.kind !== undefined && section.kind !== "section" ? section.kind : undefined;

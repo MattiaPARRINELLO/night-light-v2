@@ -109,6 +109,8 @@ export function installControl(Target: { prototype: App }): void {
     this.pendingAnalysis = command.analysis;
     this.lastError = null;
     this.clearNotice();
+    this.beginTrackTimings();
+    this.applyJobTimings(command.timings);
     this.debug("analyse", "analyse reçue du dashboard", {
       titre: command.title,
       dureeSec: Number(command.analysis.duration.toFixed(1)),
@@ -220,6 +222,7 @@ export function installControl(Target: { prototype: App }): void {
       error: this.lastError,
       notice: this.notice,
       resolve: this.resolveFailure === null ? null : { ...this.resolveFailure },
+      timings: this.trackTimings === null ? null : { ...this.trackTimings },
       log: debugLog.lines(10),
     };
     link.publishState(state);

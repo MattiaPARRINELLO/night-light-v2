@@ -1,5 +1,27 @@
 import type { Analysis } from "../types";
 
+export interface JobTimings {
+  /** Horodatage de détection, en millisecondes epoch. */
+  detectedAt?: number;
+  queueMs?: number;
+  foundMs?: number;
+  downloadedMs?: number;
+  resolvedMs?: number;
+  analysisMs?: number;
+  analyzedMs?: number;
+  totalMs?: number;
+  audioCache?: boolean;
+  analysisCache?: boolean;
+  analysisError?: string;
+  retrieval?: {
+    searchMs: number;
+    validationMs: number;
+    downloadMs: number;
+    cacheMs: number;
+    totalMs: number;
+  };
+}
+
 export interface JobResponse {
   jobId: string;
   status: JobStatus;
@@ -10,6 +32,7 @@ export interface JobResponse {
   sizeBytes?: number;
   duration?: number;
   result?: { analysis: Analysis };
+  timings?: JobTimings;
   error?: { code: string; message: string; detail?: string };
 }
 
@@ -142,14 +165,14 @@ export function uploadAndAnalyze(
     onPhase?: (state: { progress: number; phase: string; detail: string }) => void;
     signal?: AbortSignal;
   } = {},
-): Promise<{ jobId: string; analysis: Analysis }> {
+): Promise<{ jobId: string; analysis: Analysis; timings?: JobTimings }> {
   const { onUploadProgress, onPhase, signal } = handlers;
   return new Promise((resolve, reject) => {
     uploadFile(file, (ratio) => onUploadProgress?.(ratio), signal)
       .then(async (job) => {
         try {
-          const analysis = await pollJob(job.jobId, onPhase, signal);
-          resolve({ jobId: job.jobId, analysis });
+          const { analysis, timings } = await pollJob(job.jobId, onPhase, signal);
+          resolve({ jobId: job.jobId, analysis, timings });
         } catch (error) {
           reject(error);
         }
@@ -162,7 +185,7 @@ async function pollJob(
   jobId: string,
   onPhase: ((state: { progress: number; phase: string; detail: string }) => void) | undefined,
   signal?: AbortSignal,
-): Promise<Analysis> {
+): Promise<{ analysis: Analysis; timings?: JobTimings }> {
   const started = Date.now();
   const timeoutMs = 12 * 60 * 1000;
   for (;;) {
@@ -172,7 +195,7 @@ async function pollJob(
       const analysis = job.result?.analysis;
       if (analysis === undefined) throw new ApiError("Analyse terminée mais données absentes.", "empty_result");
       onPhase?.({ progress: 1, phase: "Terminé", detail: "Spectacle prêt." });
-      return analysis;
+      return { analysis, timings: job.timings };
     }
     if (job.status === "error") {
       throw new ApiError(
@@ -245,14 +268,14 @@ export function resolveAndAnalyze(
     signal?: AbortSignal;
   } = {},
   trackKey?: string,
-): Promise<{ jobId: string; analysis: Analysis }> {
+): Promise<{ jobId: string; analysis: Analysis; timings?: JobTimings }> {
   const { onPhase, signal } = handlers;
   return new Promise((resolve, reject) => {
     submitResolve({ title, artist, durationSec, trackKey }, signal)
       .then(async (job) => {
         try {
-          const analysis = await pollJob(job.jobId, onPhase, signal);
-          resolve({ jobId: job.jobId, analysis });
+          const { analysis, timings } = await pollJob(job.jobId, onPhase, signal);
+          resolve({ jobId: job.jobId, analysis, timings });
         } catch (error) {
           reject(error);
         }

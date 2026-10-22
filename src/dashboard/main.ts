@@ -643,6 +643,27 @@ class Dashboard {
       sectionCount.textContent = "—";
     }
 
+    const trackTimings = el<HTMLElement>("track-timings");
+    if (state.timings === null) {
+      trackTimings.textContent = "Chronologie : —";
+    } else {
+      const t = state.timings;
+      const stage = (label: string, value: number | null): string =>
+        `${label} ${value === null ? "—" : `+${Math.round(value)} ms`}`;
+      const parts = [
+        "détecté",
+        stage("trouvé", t.foundMs),
+        stage("téléchargé", t.downloadedMs),
+        stage("analysé", t.analyzedMs),
+        stage("calé", t.syncedMs),
+        stage("premier frame", t.firstFrameMs),
+      ];
+      if (t.planMs !== null) parts.push(`plan ${Math.round(t.planMs)} ms`);
+      if (t.analysisCache) parts.push("analyse en cache");
+      else if (t.audioCache) parts.push("audio en cache");
+      trackTimings.textContent = `Chronologie : ${parts.join(" → ")}`;
+    }
+
     // tableau des sections (reconstruit seulement quand l'analyse change)
     const sectionHost = el<HTMLElement>("track-sections");
     if (this.analysis !== this.sectionsSource) {
@@ -1000,14 +1021,14 @@ class Dashboard {
     this.controller = controller;
     this.setProgress("Recherche", 0, title);
     try {
-      const { jobId, analysis } = await resolveAndAnalyze(title, artist, undefined, {
+      const { jobId, analysis, timings } = await resolveAndAnalyze(title, artist, undefined, {
         signal: controller.signal,
         onPhase: ({ progress, phase, detail }) => this.setProgress(phase, progress, detail),
       });
       this.analysis = analysis;
       this.analysisTitle = title;
       this.analysisArtist = artist;
-      this.send({ type: "analysis-ready", jobId, title, artist, analysis });
+      this.send({ type: "analysis-ready", jobId, title, artist, analysis, timings });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
     } catch (error) {

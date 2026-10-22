@@ -25,7 +25,7 @@ import { EMPTY_LIVE_AUDIO, type LiveAudioFeatures } from "../core/liveAudio";
 import type { ExternalPlaybackState } from "../core/playback";
 import type { ShowPlan } from "../core/show";
 import type { TrackView } from "../core/view";
-import { ControlLink } from "../shared/control";
+import { ControlLink, type TrackTimings } from "../shared/control";
 import { DEFAULT_SETTINGS, type Analysis, type RenderSettings } from "../types";
 import { el, setStatus, setUploadState, showScreen } from "./ui";
 
@@ -174,6 +174,8 @@ export class App {
   notice: { text: string; at: number } | null = null;
   /** Échec de résolution automatique, publié uniquement vers le dashboard. */
   resolveFailure: { title: string; artist: string; detail: string; at: number } | null = null;
+  /** Chronologie du morceau en cours, du lecteur au premier frame. */
+  trackTimings: TrackTimings | null = null;
   noticeTimer: number | null = null;
   debugRateWindowAt = 0;
   debugRateWindowCount = 0;

@@ -4,7 +4,7 @@
  */
 
 import type { App } from "./app";
-import { ApiError, fetchNowPlaying, resolveAndAnalyze } from "../core/api";
+import { ApiError, fetchNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
 import { dbgThrottled } from "../core/debug";
 import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
@@ -22,10 +22,57 @@ declare module "./app" {
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
     maybeAutoResolve(): Promise<void>;
+    beginTrackTimings(): void;
+    applyJobTimings(timings: JobTimings | undefined): void;
+    markSynced(): void;
+    markFirstFrame(): void;
   }
 }
 
 export function installResolve(Target: { prototype: App }): void {
+  /** Ouvre une nouvelle chronologie au moment où le morceau est détecté. */
+  Target.prototype.beginTrackTimings = function (this: App): void {
+    this.trackTimings = {
+      detectedAt: Date.now(),
+      foundMs: null,
+      downloadedMs: null,
+      analyzedMs: null,
+      syncedMs: null,
+      firstFrameMs: null,
+      planMs: null,
+      audioCache: false,
+      analysisCache: false,
+    };
+  };
+
+  /** Reporte les mesures serveur sur la chronologie affichée par le dashboard. */
+  Target.prototype.applyJobTimings = function (this: App, timings: JobTimings | undefined): void {
+    if (this.trackTimings === null) this.beginTrackTimings();
+    const current = this.trackTimings;
+    if (current === null || timings === undefined) return;
+    if (typeof timings.detectedAt === "number" && timings.detectedAt > 0) {
+      current.detectedAt = timings.detectedAt;
+    }
+    if (timings.foundMs !== undefined) current.foundMs = timings.foundMs;
+    if (timings.downloadedMs !== undefined) current.downloadedMs = timings.downloadedMs;
+    if (timings.analyzedMs !== undefined) current.analyzedMs = timings.analyzedMs;
+    current.audioCache = timings.audioCache === true;
+    current.analysisCache = timings.analysisCache === true;
+  };
+
+  /** Marque le moment où le show est calé sur le lecteur. */
+  Target.prototype.markSynced = function (this: App): void {
+    if (this.trackTimings === null) return;
+    this.trackTimings.syncedMs = Math.max(0, Date.now() - this.trackTimings.detectedAt);
+  };
+
+  /** Marque la première image réellement dessinée après le calage. */
+  Target.prototype.markFirstFrame = function (this: App): void {
+    const timings = this.trackTimings;
+    if (timings === null || timings.syncedMs === null || timings.firstFrameMs !== null) return;
+    timings.firstFrameMs = Math.max(timings.syncedMs, Date.now() - timings.detectedAt);
+  };
+
   Target.prototype.bindResolve = function (this: App): void {
     const form = el<HTMLFormElement>("resolve-form");
     const status = el<HTMLElement>("resolve-status");
@@ -66,6 +113,8 @@ export function installResolve(Target: { prototype: App }): void {
     // Chaque tentative porte un numéro : une résolution remplacée par un morceau
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
+    const startedAt = performance.now();
+    this.beginTrackTimings();
     // Toute nouvelle résolution — manuelle comprise — annule la précédente :
     // elle ne doit ni continuer à télécharger pour rien, ni écraser son résultat.
     if (this.analysisController !== null) this.analysisController.abort();
@@ -88,7 +137,7 @@ export function installResolve(Target: { prototype: App }): void {
       meta: "Résolution automatique",
     });
     try {
-      const { jobId, analysis } = await resolveAndAnalyze(
+      const { jobId, analysis, timings } = await resolveAndAnalyze(
         title,
         artist,
         duration,
@@ -113,6 +162,7 @@ export function installResolve(Target: { prototype: App }): void {
       if (seq !== this.resolveSeq) return;
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
+      this.applyJobTimings(timings);
       document.body.dataset.analysisReady = "true";
       this.debug("analyse", `analyse terminée · ${title} / ${artist}`, {
         dureeSec: Number(analysis.duration.toFixed(1)),
@@ -120,6 +170,8 @@ export function installResolve(Target: { prototype: App }): void {
         temps: analysis.beats.length,
         montees: analysis.builds.length,
         sections: analysis.sections.length,
+        dureeMs: Math.round(performance.now() - startedAt),
+        analyseEnCache: this.trackTimings?.analysisCache === true,
       });
       void this.tryAutoSynced(title, artist, analysis.duration, analysis);
       status.hidden = true;
@@ -160,6 +212,11 @@ export function installResolve(Target: { prototype: App }): void {
       status.classList.add("is-error");
       status.textContent = message;
     } finally {
+      this.debug("analyse", "résolution terminée", {
+        titre: title,
+        automatique: auto,
+        dureeMs: Math.round(performance.now() - startedAt),
+      });
       // Une résolution remplacée ne doit pas éteindre le contrôleur de la suivante.
       if (this.analysisController === controller) {
         this.analysisController = null;

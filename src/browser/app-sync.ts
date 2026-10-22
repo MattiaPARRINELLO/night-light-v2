@@ -15,7 +15,6 @@ import {
   syncRampDuration,
 } from "../core/playback";
 import { renderFrame } from "../core/render";
-import { buildShowPlan } from "../core/show";
 import { TrackView } from "../core/view";
 import { setStatus, showScreen } from "./ui";
 import type { Analysis } from "../types";
@@ -42,6 +41,14 @@ export function installSync(Target: { prototype: App }): void {
     duration: number,
     analysis: Analysis,
   ): Promise<void> {
+    const startedAt = performance.now();
+    const finish = (verdict: string): void => {
+      this.debug("sync", "tryAutoSynced terminé", {
+        titre: title,
+        verdict,
+        dureeMs: Math.round(performance.now() - startedAt),
+      });
+    };
     // Une analyse qui arrive pendant un show doit d'abord l'arrêter. Sans ça, le
     // deuxième morceau restait bloqué par la garde ci-dessous (`syncedMode` du
     // show précédent) et l'écran continuait d'afficher l'ancien.
@@ -61,7 +68,7 @@ export function installSync(Target: { prototype: App }): void {
     });
     for (let attempt = 0; attempt < 10; attempt += 1) {
       // `view !== null` : un show local a été forcé entre-temps, on ne le remplace pas.
-      if (!this.pendingAnalysis || this.view !== null) return;
+      if (!this.pendingAnalysis || this.view !== null) return finish("show local prioritaire");
       this.debugSync.attempts = attempt + 1;
       try {
         const state = await fetchPlaybackPosition(title, artist, duration);
@@ -117,7 +124,7 @@ export function installSync(Target: { prototype: App }): void {
             Date.now(),
           );
           await this.startSyncedShow(analysis, initialMs, state);
-          return;
+          return finish("calé");
         }
       } catch (error) {
         this.debugSync.match = "position injoignable";
@@ -127,6 +134,7 @@ export function installSync(Target: { prototype: App }): void {
     }
     // Aucune lecture correspondante pendant 20 s : on renonce proprement.
     this.fallbackToLive(title, "Aucune position MPRIS/Spotify correspondante pendant 20 s.");
+    finish("repli en direct");
   };
 
   Target.prototype.startSyncedShow = async function (
@@ -160,7 +168,7 @@ export function installSync(Target: { prototype: App }): void {
     this.debugSync.match = "show lancé à la position du lecteur";
 
     this.syncedView = new TrackView(analysis);
-    this.syncedPlan = buildShowPlan(analysis, this.effectiveReduced());
+    this.syncedPlan = this.buildPlan(analysis);
     // Le show s'ouvre depuis le noir au lieu d'apparaître d'un coup.
     this.beginTransition();
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
@@ -174,6 +182,7 @@ export function installSync(Target: { prototype: App }): void {
     // de dépôt restait « actif » et le dashboard annonçait « Écran affiché :
     // Dépôt » pendant tout le show.
     showScreen("show");
+    this.markSynced();
     this.resize();
     setStatus(`Show synchronisé lancé : ${this.pendingTitle}.`);
     this.debug("sync", "show synchronisé démarré", {
@@ -286,6 +295,7 @@ export function installSync(Target: { prototype: App }): void {
       });
       this.frame += 1;
       this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
+      this.markFirstFrame();
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));
       console.error("Rendu synchronisé interrompu", error);
