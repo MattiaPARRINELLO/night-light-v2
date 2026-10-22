@@ -165,6 +165,7 @@ export function installSync(Target: { prototype: App }): void {
     this.beginTransition();
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
+    this.syncedPaused = false;
     this.syncDriftMs = 0;
     if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
     this.syncedTimer = window.setInterval(() => void this.resyncSynced(analysis.duration), 2500);
@@ -221,6 +222,7 @@ export function installSync(Target: { prototype: App }): void {
       window.clearInterval(this.syncedTimer);
       this.syncedTimer = null;
     }
+    this.syncedPaused = false;
     this.syncedMode = false;
   };
 
@@ -246,6 +248,9 @@ export function installSync(Target: { prototype: App }): void {
    * légèrement différente, et n'est intégré à l'origine qu'une fois rejoint.
    */
   Target.prototype.showTimeMs = function (this: App, nowEpochMs: number): number {
+    // En pause, le temps du show est gelé : il ne doit pas avancer entre deux
+    // resynchronisations, sinon chaque resync le ramènerait en arrière.
+    if (this.syncedPaused) return this.syncedStartMs;
     if (this.syncDriftMs === 0) return this.syncedStartMs + (nowEpochMs - this.syncedStartedAtEpoch);
     const ecoule = nowEpochMs - this.syncCorrectionStart;
     if (ecoule >= this.syncCorrectionDur) {
@@ -343,13 +348,20 @@ export function installSync(Target: { prototype: App }): void {
       if (state.status === "paused") {
         this.debugSync.phase = "PAUSED";
         this.debugSync.match = "lecture en pause · show figé";
-        this.syncedStartedAtEpoch = Date.now();
-        this.syncedStartMs = playerMs;
+        // On se fige une seule fois, à la position du lecteur (avec la latence,
+        // comme le show) : les resyncs suivants ne doivent plus toucher à
+        // l'origine, sinon le temps du show reculerait à chaque contrôle.
+        if (!this.syncedPaused) {
+          this.syncedPaused = true;
+          this.syncedStartMs = targetShowMs;
+          this.syncedStartedAtEpoch = maintenant;
+          this.debug("sync", "lecture en pause · show figé sur place", {
+            positionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
+            positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
+          });
+        }
         // L'origine est réécrite : le rattrapage en cours n'a plus lieu d'être.
         this.syncDriftMs = 0;
-        this.debug("sync", "lecture en pause · show figé sur place", {
-          positionSec: Number((this.syncedStartMs / 1000).toFixed(2)),
-        });
         return;
       }
 
@@ -358,6 +370,14 @@ export function installSync(Target: { prototype: App }): void {
         this.debugSync.match = `lecteur statut=${state.status}`;
         this.debug("sync", `statut de lecture inattendu (${state.status}) · show laissé en l'état`);
         return;
+      }
+
+      // Reprise : le temps repart de la position figée sans saut, puis la
+      // correction éventuelle (lecteur déplacé pendant la pause) s'applique.
+      if (this.syncedPaused) {
+        this.syncedPaused = false;
+        this.syncedStartMs = showMs;
+        this.syncedStartedAtEpoch = maintenant;
       }
 
       this.debugSync.phase = "SHOW_SYNCED";

@@ -114,6 +114,8 @@ export class App {
   syncedRaf = 0;
   syncedTimer: number | null = null;
   syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
+  /** Vrai quand le lecteur est en pause : le temps du show reste figé. */
+  syncedPaused = false;
   /** Écart en cours de rattrapage, en millisecondes (0 si aucun). */
   syncDriftMs = 0;
   syncCorrectionStart = 0;
