@@ -695,6 +695,7 @@ def analyze_with_timeout(
     settings: Settings,
     report: Callable[[str, float], None] | None = None,
     timeout_sec: float | None = None,
+    should_cancel: Callable[[float], bool] | None = None,
 ) -> AnalysisResult:
     """`analyze_file` avec une limite de temps dure.
 
@@ -702,6 +703,9 @@ def analyze_with_timeout(
     `settings.analyze_timeout_sec`) ; le process est alors tué, sans laisser de
     worker bloqué. Une limite nulle ou négative désactive le garde-fou et exécute
     l'analyse en direct.
+
+    `should_cancel(progress)` est consulté régulièrement : s'il renvoie vrai, le
+    process d'analyse est tué immédiatement (changement de morceau MPRIS).
     """
     limit = settings.analyze_timeout_sec if timeout_sec is None else timeout_sec
     if limit is None or limit <= 0:
@@ -717,8 +721,15 @@ def analyze_with_timeout(
     )
     process.start()
     deadline = time.monotonic() + limit
+    progress = 0.0
     try:
         while True:
+            if should_cancel is not None and should_cancel(progress):
+                raise AnalysisError(
+                    "cancelled",
+                    "Analyse abandonnée : le lecteur est passé à un autre morceau.",
+                    "Le process d'analyse a été tué pour libérer le worker.",
+                )
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise AnalysisError(
@@ -741,6 +752,7 @@ def analyze_with_timeout(
 
             kind = event[0]
             if kind == "progress":
+                progress = max(progress, float(event[2]))
                 if report is not None:
                     report(event[1], event[2])
             elif kind == "done":

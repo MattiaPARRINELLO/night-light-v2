@@ -8,6 +8,15 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Détection MPRIS temps réel** : `playerctl --follow metadata` remplace le
+  polling 1 s, avec redémarrage automatique et polling de secours. Les
+  changements partent en SSE (`/api/now-playing/stream`), le front ne sonde le
+  lecteur que si le flux est coupé.
+- **Calage plus rapide** : `tryAutoSynced` essaie immédiatement puis avec des
+  intervalles croissants (250 ms, 500 ms, 1 s…), au lieu d'attendre 2 s entre
+  chaque tentative.
+- **Analyse annulable** : le process d'analyse est tué quand MPRIS passe à un
+  autre morceau, sauf au-delà de 80 % de progression pour alimenter le cache.
 - **Chronologie du morceau** : le serveur mesure recherche, téléchargement,
   analyse et cache ; l'écran de show ajoute le calage et le premier frame. Le
   dashboard affiche la chaîne détecté → trouvé → téléchargé → analysé → calé →

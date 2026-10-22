@@ -10,6 +10,7 @@ import asyncio
 import atexit
 import json
 import logging
+import queue
 import shutil
 import threading
 import time
@@ -37,11 +38,19 @@ from .analysis import (
 from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
-from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
+from .mpris import (
+    add_now_playing_listener,
+    get_now_playing,
+    remove_now_playing_listener,
+    start_mpris_monitor,
+    stop_mpris_monitor,
+    subscribe_now_playing,
+    unsubscribe_now_playing,
+)
 from .playback_position import get_playback_state, match_playback
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
-from .retrieve.models import TrackQuery, audio_cache_key
+from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
 from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
@@ -112,6 +121,30 @@ class AppState:
         self._resolve_stack: list[PendingResolve] = []
         self._resolve_stop = False
         self._resolve_thread: threading.Thread | None = None
+        self.now_playing_key = ""
+        add_now_playing_listener(self._on_now_playing)
+
+    @staticmethod
+    def _same_track(left: str, right: str) -> bool:
+        return normalize_text(left.replace("|", " ")) == normalize_text(right.replace("|", " "))
+
+    def _on_now_playing(self, state: Any) -> None:
+        """Suit la piste réellement jouée, pour interrompre une analyse périmée."""
+        title = getattr(state, "title", "").strip()
+        artist = getattr(state, "artist", "").strip()
+        self.now_playing_key = f"{title}|{artist}" if title else ""
+
+    def _cancellation_check(self, track_key: str) -> Any:
+        """Annule l'analyse si MPRIS est passé à une autre piste (sauf ≥ 80 %)."""
+        started_key = self.now_playing_key
+        active = bool(started_key) and self._same_track(track_key, started_key)
+
+        def should_cancel(progress: float) -> bool:
+            if not active or progress >= 0.8:
+                return False
+            return not self._same_track(track_key, self.now_playing_key)
+
+        return should_cancel
 
     def submit_resolve(self, request: PendingResolve) -> None:
         """Empile une résolution ; le dernier morceau demandé passe devant."""
@@ -157,6 +190,7 @@ class AppState:
         *,
         analysis_key: str | None = None,
         timings: dict[str, Any] | None = None,
+        track_key: str | None = None,
     ) -> None:
         job = self.store.get(job_id)
         if job is None or job.audio_path is None:
@@ -188,6 +222,7 @@ class AppState:
                 self.settings,
                 report=report,
                 timeout_sec=self.settings.analyze_timeout_sec,
+                should_cancel=(self._cancellation_check(track_key) if track_key else None),
             )
             schema = to_schema(result)
             elapsed = time.time() - started_at
@@ -370,9 +405,11 @@ class AppState:
             job_id,
             analysis_key=analysis_key,
             timings={**timings, "analysisCache": False},
+            track_key=used_key,
         )
 
     async def shutdown(self) -> None:
+        remove_now_playing_listener(self._on_now_playing)
         with self._resolve_cond:
             self._resolve_stop = True
             self._resolve_cond.notify_all()
@@ -650,6 +687,33 @@ async def playback_position(
 @app.get("/api/now-playing")
 async def now_playing() -> dict[str, Any]:
     return get_now_playing().to_dict()
+
+
+@app.get("/api/now-playing/stream")
+async def now_playing_stream(request: Request) -> StreamingResponse:
+    """Changements de morceau poussés en SSE (le front garde un polling de secours)."""
+
+    async def stream() -> asyncio.AsyncIterator[str]:
+        subscriber = subscribe_now_playing()
+        try:
+            current = get_now_playing().to_dict()
+            yield f"data: {json.dumps(current, ensure_ascii=False)}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.to_thread(subscriber.get, True, 1.0)
+                except queue.Empty:
+                    continue
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        finally:
+            unsubscribe_now_playing(subscriber)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/audio-levels")

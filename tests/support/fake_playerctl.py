@@ -75,12 +75,35 @@ def main(argv: list[str]) -> int:
         argv[1]
         argv = argv[2:]
 
+    if argv[:1] == ["--follow"] and len(argv) > 1:
+        # Suivi long : imite `playerctl --follow metadata` en réémettant la ligne
+        # formatée dès que le fichier d'état change.
+        argv = argv[2:] if argv[1] == "metadata" else argv[1:]
+        template = argv[argv.index("--format") + 1] if "--format" in argv else ""
+        fields = [
+            field.strip().removeprefix("{{").removesuffix("}}") for field in template.split("|")
+        ]
+        last = None
+        while True:
+            state = load_state()
+            values = {
+                "status": str(state.get("status", "Stopped")),
+                "title": str(state.get("title", "")),
+                "artist": str(state.get("artist", "")),
+                "album": str(state.get("album", "")),
+                "mpris:length": str(int(state.get("length_us", 0) or 0)),
+            }
+            line = "|".join(values.get(field, "") for field in fields)
+            if line != last:
+                print(line, flush=True)
+                last = line
+            time.sleep(0.05)
+
     if argv[:1] == ["metadata"]:
         template = argv[argv.index("--format") + 1] if "--format" in argv else ""
         # playerctl remplace les champs entre accolades : "{{status}}" -> "status".
         fields = [
-            field.strip().removeprefix("{{").removesuffix("}}")
-            for field in template.split("|")
+            field.strip().removeprefix("{{").removesuffix("}}") for field in template.split("|")
         ]
         values = {
             "status": str(state.get("status", "Stopped")),
