@@ -31,7 +31,6 @@ export function installResolve(Target: { prototype: App }): void {
     const status = el<HTMLElement>("resolve-status");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (this.analysisController !== null) return;
       const title = el<HTMLInputElement>("resolve-title").value.trim();
       const artist = el<HTMLInputElement>("resolve-artist").value.trim();
       const rawDuration = el<HTMLInputElement>("resolve-duration").value.trim();
@@ -67,6 +66,9 @@ export function installResolve(Target: { prototype: App }): void {
     // Chaque tentative porte un numéro : une résolution remplacée par un morceau
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
+    // Toute nouvelle résolution — manuelle comprise — annule la précédente :
+    // elle ne doit ni continuer à télécharger pour rien, ni écraser son résultat.
+    if (this.analysisController !== null) this.analysisController.abort();
     const controller = new AbortController();
     this.analysisController = controller;
     this.autoResolving = auto;
