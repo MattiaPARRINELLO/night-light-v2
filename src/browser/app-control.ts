@@ -135,6 +135,10 @@ export function installControl(Target: { prototype: App }): void {
     if (patch.flashes !== undefined) this.flashSlider = Math.max(0, Math.min(2, patch.flashes));
     if (patch.reduced !== undefined) this.settings.reduced = patch.reduced;
     if (patch.noflash !== undefined) this.noflash = patch.noflash;
+    if (patch.transition !== undefined) {
+      this.transitionMode = patch.transition === "black" ? "black" : "crossfade";
+      localStorage.setItem("night-light-transition", this.transitionMode);
+    }
     this.settings.flashes = this.noflash ? 0 : this.flashSlider;
     this.refreshPlan();
   };
@@ -216,6 +220,7 @@ export function installControl(Target: { prototype: App }): void {
         flashes: this.flashSlider,
         reduced: this.settings.reduced,
         noflash: this.noflash,
+        transition: this.transitionMode,
       },
       limits: this.limits === null ? null : { ...this.limits },
       debugOverlay: this.debugOverlayActive,

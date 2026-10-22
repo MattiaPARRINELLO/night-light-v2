@@ -292,6 +292,13 @@
               <label class="switch"><input id="chk-reduced" type="checkbox" /><span>Intensité réduite</span></label>
               <label class="switch"><input id="chk-noflash" type="checkbox" /><span>Sans flashs</span></label>
             </div>
+            <label class="field">
+              <span class="field-label">Entrée dans le show</span>
+              <select id="transition-mode">
+                <option value="crossfade">Fondu enchaîné</option>
+                <option value="black">Fondu noir</option>
+              </select>
+            </label>
             <hr class="dash-sep" />
             <label class="field field-text"><span class="field-label">Latence (ms)</span><input id="latency" type="number" min="-500" max="1000" step="10" value="0" /></label>
             <div class="dash-actions">

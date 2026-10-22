@@ -567,6 +567,7 @@ class Dashboard {
     // réglages
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
+    const transition = el<HTMLSelectElement>("transition-mode");
     const latency = el<HTMLInputElement>("latency");
     if (document.activeElement !== latency) latency.value = String(sync.latencyMs);
     const intensityInput = el<HTMLInputElement>("intensity");
@@ -577,6 +578,7 @@ class Dashboard {
     el<HTMLElement>("flashes-value").textContent = `${Math.round(state.settings.flashes * 100)} %`;
     if (document.activeElement !== reduced) reduced.checked = state.settings.reduced;
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
+    if (document.activeElement !== transition) transition.value = state.settings.transition;
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -881,7 +883,15 @@ class Dashboard {
     const flashes = el<HTMLInputElement>("flashes");
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
+    const transition = el<HTMLSelectElement>("transition-mode");
     const latency = el<HTMLInputElement>("latency");
+
+    transition.addEventListener("change", () => {
+      this.send({
+        type: "set-settings",
+        patch: { transition: transition.value === "black" ? "black" : "crossfade" },
+      });
+    });
 
     intensity.addEventListener("change", () => {
       const value = Number(intensity.value);

@@ -23,6 +23,11 @@ declare module "./app" {
   interface App {
     tryAutoSynced(title: string, artist: string, duration: number, analysis: Analysis): Promise<void>;
     startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void>;
+    startCrossfade(analysis: Analysis, initialMs: number): void;
+    crossfadeDelayMs(analysis: Analysis, initialMs: number): number;
+    composeCrossfade(): void;
+    finishCrossfade(): void;
+    cancelCrossfade(): void;
     startSyncedLoop(): void;
     stopSyncedMode(): void;
     foldSyncCorrection(nowEpochMs: number): void;
@@ -155,12 +160,19 @@ export function installSync(Target: { prototype: App }): void {
     this.view = null;
     this.plan = null;
 
-    this.stopLiveMode();
-    // On coupe le visualiseur en barres, PAS la capture : l'audio vient du
-    // lecteur externe (aucun risque de boucle), et le tableau de bord continue
-    // ainsi d'afficher le son en direct pendant tout le show.
-    this.stopLiveRender();
-    this.liveMode = false;
+    const useCrossfade = this.transitionMode === "crossfade";
+    if (useCrossfade) {
+      // Le live continue de tourner : il fournit la première moitié du fondu.
+      // On ne l'arrête qu'à la fin (voir `finishCrossfade`).
+      this.liveMode = true;
+    } else {
+      this.stopLiveMode();
+      // On coupe le visualiseur en barres, PAS la capture : l'audio vient du
+      // lecteur externe (aucun risque de boucle), et le tableau de bord continue
+      // ainsi d'afficher le son en direct pendant tout le show.
+      this.stopLiveRender();
+      this.liveMode = false;
+    }
     this.syncedMode = true;
     this.debugSync.phase = "SHOW_SYNCED";
     if (state !== undefined) {
@@ -173,21 +185,25 @@ export function installSync(Target: { prototype: App }): void {
 
     this.syncedView = new TrackView(analysis);
     this.syncedPlan = this.buildPlan(analysis);
-    // Le show s'ouvre depuis le noir au lieu d'apparaître d'un coup.
-    this.beginTransition();
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
     this.syncedPaused = false;
     this.syncDriftMs = 0;
     if (this.syncedTimer !== null) window.clearInterval(this.syncedTimer);
     this.syncedTimer = window.setInterval(() => void this.resyncSynced(analysis.duration), 2500);
-    this.startSyncedLoop();
     // Un show calé occupe l'écran de spectacle : sans ce basculement, l'écran
     // de dépôt restait « actif » et le dashboard annonçait « Écran affiché :
     // Dépôt » pendant tout le show.
     showScreen("show");
-    this.markSynced();
     this.resize();
+    if (useCrossfade) {
+      this.startCrossfade(analysis, initialMs);
+    } else {
+      // Le show s'ouvre depuis le noir au lieu d'apparaître d'un coup.
+      this.beginTransition();
+    }
+    this.startSyncedLoop();
+    this.markSynced();
     setStatus(`Show synchronisé lancé : ${this.pendingTitle}.`);
     this.debug("sync", "show synchronisé démarré", {
       titre: this.pendingTitle,
@@ -197,6 +213,129 @@ export function installSync(Target: { prototype: App }): void {
       positionShowSec: Number((this.syncedStartMs / 1000).toFixed(2)),
       dureeSec: Number(analysis.duration.toFixed(1)),
     });
+  };
+
+  /**
+   * Attente avant le fondu : prochain temps fort (au plus un temps), ou l'impact
+   * d'une montée s'il tombe dans les 4 s. Un impact est un meilleur point de
+   * bascule qu'un temps ordinaire, même s'il est un peu plus loin.
+   */
+  Target.prototype.crossfadeDelayMs = function (this: App, analysis: Analysis, initialMs: number): number {
+    const now = (initialMs + this.syncedLatencyMs) / 1000;
+    let beatDelay = analysis.beatPeriod > 0 ? analysis.beatPeriod : 0.5;
+    for (const beat of analysis.beats) {
+      if (beat > now) {
+        beatDelay = Math.min(beatDelay, beat - now);
+        break;
+      }
+    }
+    let dropDelay: number | null = null;
+    for (const build of analysis.builds) {
+      const delta = build.end - now;
+      if (delta >= 0 && delta <= 4 && (dropDelay === null || delta < dropDelay)) {
+        dropDelay = delta;
+      }
+    }
+    return Math.max(0, Math.round((dropDelay ?? beatDelay) * 1000));
+  };
+
+  Target.prototype.startCrossfade = function (this: App, analysis: Analysis, initialMs: number): void {
+    this.cancelCrossfade();
+    const width = Math.max(1, this.canvas.width);
+    const height = Math.max(1, this.canvas.height);
+    const makeCanvas = (): HTMLCanvasElement => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    };
+    const liveCanvas = makeCanvas();
+    const syncedCanvas = makeCanvas();
+    const liveCtx = liveCanvas.getContext("2d");
+    const syncedCtx = syncedCanvas.getContext("2d");
+    if (liveCtx === null || syncedCtx === null) {
+      // Pas de canvas hors écran : on retombe sur l'ouverture historique.
+      this.liveMode = false;
+      this.stopLiveMode();
+      this.stopLiveRender();
+      this.beginTransition();
+      return;
+    }
+    // Aucun voile noir ne doit s'interposer : le fondu enchaîné remplace la
+    // transition depuis le noir.
+    this.transitionStart = 0;
+    const state = {
+      active: false,
+      startedAt: 0,
+      durationMs: 1500,
+      liveCanvas,
+      liveCtx,
+      syncedCanvas,
+      syncedCtx,
+      timer: null as number | null,
+    };
+    this.crossfade = state;
+    const delayMs = this.crossfadeDelayMs(analysis, initialMs);
+    this.debug("sync", "fondu enchaîné armé", {
+      attenteMs: delayMs,
+      positionSec: Number((initialMs / 1000).toFixed(2)),
+    });
+    state.timer = window.setTimeout(() => {
+      state.timer = null;
+      if (this.crossfade !== state) return;
+      // Premier composite : on part de l'image live déjà affichée à l'écran.
+      try {
+        liveCtx.setTransform(1, 0, 0, 1, 0, 0);
+        liveCtx.clearRect(0, 0, width, height);
+        liveCtx.drawImage(this.canvas, 0, 0);
+      } catch {
+        // Si la copie échoue, le premier frame live arrive juste après.
+      }
+      state.active = true;
+      state.startedAt = performance.now();
+      this.debug("sync", "fondu enchaîné démarré", { dureeMs: state.durationMs });
+    }, delayMs);
+  };
+
+  Target.prototype.composeCrossfade = function (this: App): void {
+    const fade = this.crossfade;
+    if (fade === null || !fade.active) return;
+    // Machine à la peine pendant le fondu : on le termine en 0,6 s.
+    if (Math.min(this.quality, this.liveQuality) < 0.5 && fade.durationMs > 600) {
+      fade.durationMs = 600;
+      this.debug("sync", "fondu enchaîné raccourci · qualité < 0,5");
+    }
+    const elapsed = performance.now() - fade.startedAt;
+    const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, fade.durationMs)));
+    // ease-in-out (smoothstep) : pas de saut de luminance aux deux extrémités.
+    const alpha = progress * progress * (3 - 2 * progress);
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.globalCompositeOperation = "source-over";
+    this.ctx.globalAlpha = 1;
+    this.ctx.drawImage(fade.liveCanvas, 0, 0);
+    this.ctx.globalAlpha = alpha;
+    this.ctx.drawImage(fade.syncedCanvas, 0, 0);
+    this.ctx.globalAlpha = 1;
+    if (progress >= 1) this.finishCrossfade();
+  };
+
+  Target.prototype.finishCrossfade = function (this: App): void {
+    const fade = this.crossfade;
+    if (fade === null) return;
+    if (fade.timer !== null) window.clearTimeout(fade.timer);
+    this.crossfade = null;
+    // Le live n'est arrêté qu'ici, une fois le fondu terminé.
+    this.stopLiveMode();
+    this.stopLiveRender();
+    this.liveMode = false;
+    this.debug("sync", "fondu enchaîné terminé · live arrêté");
+  };
+
+  Target.prototype.cancelCrossfade = function (this: App): void {
+    const fade = this.crossfade;
+    if (fade === null) return;
+    if (fade.timer !== null) window.clearTimeout(fade.timer);
+    this.crossfade = null;
   };
 
   Target.prototype.startSyncedLoop = function (this: App): void {
@@ -236,6 +375,7 @@ export function installSync(Target: { prototype: App }): void {
       this.syncedTimer = null;
     }
     this.syncedPaused = false;
+    this.cancelCrossfade();
     this.syncedMode = false;
   };
 
@@ -281,10 +421,12 @@ export function installSync(Target: { prototype: App }): void {
     const plan = this.syncedPlan;
     if (view === null || plan === null) return;
     const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    const fade = this.crossfade;
+    const target = fade === null ? this.ctx : fade.syncedCtx;
     try {
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
-        ctx: this.ctx,
+        ctx: target,
         width: this.canvas.clientWidth,
         height: this.canvas.clientHeight,
         dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
@@ -298,7 +440,11 @@ export function installSync(Target: { prototype: App }): void {
         haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
       });
       this.frame += 1;
-      this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
+      if (fade === null) {
+        this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
+      } else if (fade.active) {
+        this.composeCrossfade();
+      }
       this.markFirstFrame();
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));

@@ -299,10 +299,12 @@ export function installLive(Target: { prototype: App }): void {
     const view = this.liveView;
     const plan = this.livePlan;
     if (view === null || plan === null) return;
+    const fade = this.crossfade;
+    const target = fade !== null && fade.active ? fade.liveCtx : this.ctx;
     try {
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
-        ctx: this.ctx,
+        ctx: target,
         width: this.canvas.clientWidth,
         height: this.canvas.clientHeight,
         dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
@@ -317,7 +319,7 @@ export function installLive(Target: { prototype: App }): void {
         liveAudio: this.liveAudio,
       });
       this.liveFrame += 1;
-      this.drawTransitionIfNeeded(time, plan);
+      if (fade === null) this.drawTransitionIfNeeded(time, plan);
       if (this.liveFrame % 120 === 0) {
         dbgThrottled(
           "live-render",

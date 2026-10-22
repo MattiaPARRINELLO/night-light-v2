@@ -44,6 +44,20 @@ interface Session {
   startedAt: number;
 }
 
+export type TransitionMode = "black" | "crossfade";
+
+/** Deux rendus hors écran, composités pendant un fondu enchaîné. */
+export interface CrossfadeState {
+  active: boolean;
+  startedAt: number;
+  durationMs: number;
+  liveCanvas: HTMLCanvasElement;
+  liveCtx: CanvasRenderingContext2D;
+  syncedCanvas: HTMLCanvasElement;
+  syncedCtx: CanvasRenderingContext2D;
+  timer: number | null;
+}
+
 /** Instantané de la capture système, pour l'overlay de debug. */
 interface CaptureDebug {
   /** Flux SSE : fermé, en connexion, ouvert ou en erreur. */
@@ -127,6 +141,10 @@ export class App {
   syncCorrectionStart = 0;
   syncCorrectionDur = 400;
   syncedMode = false;
+  /** Mode d'entrée dans le show : voile noir historique ou fondu enchaîné. */
+  transitionMode: TransitionMode =
+    localStorage.getItem("night-light-transition") === "black" ? "black" : "crossfade";
+  crossfade: CrossfadeState | null = null;
   debugOverlayActive = false;
   /** Début (performance.now) de la transition en cours, 0 si aucune. */
   transitionStart = 0;
@@ -261,6 +279,8 @@ export class App {
     this.nowPlayingStream = null;
     if (this.nowPlayingWatchdog !== null) window.clearInterval(this.nowPlayingWatchdog);
     this.nowPlayingWatchdog = null;
+    if (this.crossfade?.timer != null) window.clearTimeout(this.crossfade.timer);
+    this.crossfade = null;
     this.stopLoop();
     this.audio.dispose();
   }

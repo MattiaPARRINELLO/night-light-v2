@@ -111,6 +111,8 @@ export interface ShowState {
     flashes: number;
     reduced: boolean;
     noflash: boolean;
+    /** Entrée dans le show : voile noir historique ou fondu enchaîné. */
+    transition: "black" | "crossfade";
   };
   limits: { maxFileBytes: number; maxDurationSec: number } | null;
   debugOverlay: boolean;
@@ -242,7 +244,7 @@ export function emptyShowState(): ShowState {
       correlation: null,
     },
     analysis: null,
-    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false },
+    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, transition: "crossfade" },
     limits: null,
     debugOverlay: false,
     error: null,

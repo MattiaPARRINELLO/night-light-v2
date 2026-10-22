@@ -8,6 +8,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Fondu enchaîné** à l'entrée d'un show synchronisé : le live et le rendu
+  analysé sont dessinés hors écran puis composités en ease-in-out, sans frame
+  noir. La bascule vise le prochain temps fort (au plus un temps) ou l'impact
+  d'une montée dans les 4 s ; elle se raccourcit à 0,6 s si la qualité passe
+  sous 0,5. L'ancien fondu noir reste disponible dans le dashboard.
 - **Détection MPRIS temps réel** : `playerctl --follow metadata` remplace le
   polling 1 s, avec redémarrage automatique et polling de secours. Les
   changements partent en SSE (`/api/now-playing/stream`), le front ne sonde le
