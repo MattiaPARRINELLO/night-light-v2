@@ -299,10 +299,11 @@ def _poll_fallback(previous: NowPlaying, seconds: float = 5.0) -> NowPlaying:
 
 def _monitor_loop() -> None:
     previous = NowPlaying(available=False)
-    if not _playerctl_available():
-        _publish(NowPlaying(available=False, error="playerctl introuvable"))
-        return
     while not _STOP.is_set():
+        if not _playerctl_available():
+            _publish(NowPlaying(available=False, error="playerctl introuvable"))
+            _STOP.wait(5.0)
+            continue
         healthy, previous = _follow_once(previous)
         if _STOP.is_set():
             return
