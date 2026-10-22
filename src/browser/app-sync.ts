@@ -66,7 +66,12 @@ export function installSync(Target: { prototype: App }): void {
       artiste: artist || "—",
       dureeSec: Number(duration.toFixed(1)),
     });
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    // Premier essai immédiat, puis des intervalles croissants : la détection
+    // MPRIS arrive en SSE, donc attendre 2 s fixe ne fait que perdre du temps
+    // quand le morceau est déjà disponible.
+    const delaysMs = [0, 250, 500, 1000, 1500, 2000, 2500, 3000, 3000, 4000];
+    for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
       // `view !== null` : un show local a été forcé entre-temps, on ne le remplace pas.
       if (!this.pendingAnalysis || this.view !== null) return finish("show local prioritaire");
       this.debugSync.attempts = attempt + 1;
@@ -97,7 +102,7 @@ export function installSync(Target: { prototype: App }): void {
         dbgThrottled(
           "sync-attempt",
           "sync",
-          `tentative ${attempt + 1}/10 de synchronisation`,
+          `tentative ${attempt + 1}/${delaysMs.length} de synchronisation`,
           {
             source: state.source,
             lecteur: state.title || "—",
@@ -130,10 +135,9 @@ export function installSync(Target: { prototype: App }): void {
         this.debugSync.match = "position injoignable";
         this.debug("erreur", "lecture de position impossible", error instanceof Error ? error.message : String(error));
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
-    // Aucune lecture correspondante pendant 20 s : on renonce proprement.
-    this.fallbackToLive(title, "Aucune position MPRIS/Spotify correspondante pendant 20 s.");
+    // Aucune lecture correspondante pendant ~17 s : on renonce proprement.
+    this.fallbackToLive(title, "Aucune position MPRIS/Spotify correspondante pendant ~17 s.");
     finish("repli en direct");
   };
 

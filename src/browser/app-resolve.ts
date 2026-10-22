@@ -4,7 +4,7 @@
  */
 
 import type { App } from "./app";
-import { ApiError, fetchNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
+import { ApiError, fetchNowPlaying, normalizeNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
 import { dbgThrottled } from "../core/debug";
 import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
@@ -22,6 +22,10 @@ declare module "./app" {
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
     maybeAutoResolve(): Promise<void>;
+    bindNowPlayingStream(): void;
+    receiveNowPlaying(raw: Record<string, unknown>): void;
+    startNowPlayingPolling(): void;
+    stopNowPlayingPolling(): void;
     beginTrackTimings(): void;
     applyJobTimings(timings: JobTimings | undefined): void;
     markSynced(): void;
@@ -50,12 +54,21 @@ export function installResolve(Target: { prototype: App }): void {
     if (this.trackTimings === null) this.beginTrackTimings();
     const current = this.trackTimings;
     if (current === null || timings === undefined) return;
-    if (typeof timings.detectedAt === "number" && timings.detectedAt > 0) {
-      current.detectedAt = timings.detectedAt;
+    // La chronologie front commence à la détection (SSE) ; le serveur compte à
+    // partir de la création du job, un peu plus tard. On garde la plus ancienne
+    // origine et on décale les étapes serveur de cet écart.
+    const serverBase =
+      typeof timings.detectedAt === "number" && timings.detectedAt > 0
+        ? timings.detectedAt
+        : current.detectedAt;
+    const base = Math.min(current.detectedAt, serverBase);
+    const offset = Math.max(0, serverBase - base);
+    current.detectedAt = base;
+    if (timings.foundMs !== undefined) current.foundMs = Math.round(offset + timings.foundMs);
+    if (timings.downloadedMs !== undefined) {
+      current.downloadedMs = Math.round(offset + timings.downloadedMs);
     }
-    if (timings.foundMs !== undefined) current.foundMs = timings.foundMs;
-    if (timings.downloadedMs !== undefined) current.downloadedMs = timings.downloadedMs;
-    if (timings.analyzedMs !== undefined) current.analyzedMs = timings.analyzedMs;
+    if (timings.analyzedMs !== undefined) current.analyzedMs = Math.round(offset + timings.analyzedMs);
     current.audioCache = timings.audioCache === true;
     current.analysisCache = timings.analysisCache === true;
   };
@@ -114,7 +127,7 @@ export function installResolve(Target: { prototype: App }): void {
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
     const startedAt = performance.now();
-    this.beginTrackTimings();
+    if (!auto || this.trackTimings === null) this.beginTrackTimings();
     // Toute nouvelle résolution — manuelle comprise — annule la précédente :
     // elle ne doit ni continuer à télécharger pour rien, ni écraser son résultat.
     if (this.analysisController !== null) this.analysisController.abort();
@@ -225,10 +238,78 @@ export function installResolve(Target: { prototype: App }): void {
     }
   };
 
+  /** Reçoit un morceau depuis le SSE : même traitement que le polling. */
+  Target.prototype.receiveNowPlaying = function (this: App, raw: Record<string, unknown>): void {
+    const data = normalizeNowPlaying(raw);
+    const key = data.title.trim() === "" ? "" : detectedTrackKey(data);
+    // La chronologie démarre à la détection réelle, pas à l'ouverture du job.
+    if (key !== "" && key !== this.lastDetectedKey) {
+      this.lastDetectedKey = key;
+      this.beginTrackTimings();
+    }
+    this.nowPlaying = data;
+    this.nowPlayingLastEventAt = Date.now();
+    this.stopNowPlayingPolling();
+    this.updateNowPlayingUI();
+    void this.maybeAutoResolve();
+  };
+
+  Target.prototype.startNowPlayingPolling = function (this: App): void {
+    if (this.nowPlayingPollTimer !== null) return;
+    this.debug("sync", "SSE morceau indisponible · polling de secours");
+    this.nowPlayingPollTimer = window.setInterval(() => void this.pollNowPlaying(), 1500);
+    void this.pollNowPlaying();
+  };
+
+  Target.prototype.stopNowPlayingPolling = function (this: App): void {
+    if (this.nowPlayingPollTimer === null) return;
+    window.clearInterval(this.nowPlayingPollTimer);
+    this.nowPlayingPollTimer = null;
+  };
+
+  /**
+   * Ouvre le flux SSE des changements de morceau. Le polling ne sert plus que
+   * de secours : il démarre si le flux tombe ou reste silencieux.
+   */
+  Target.prototype.bindNowPlayingStream = function (this: App): void {
+    if (typeof EventSource === "undefined") {
+      this.startNowPlayingPolling();
+      return;
+    }
+    const source = new EventSource("/api/now-playing/stream");
+    this.nowPlayingStream = source;
+    source.onopen = () => {
+      if (this.nowPlayingStream !== source) return;
+      this.debug("sync", "flux SSE morceau ouvert");
+      this.stopNowPlayingPolling();
+    };
+    source.onmessage = (event) => {
+      if (this.nowPlayingStream !== source) return;
+      try {
+        const raw = JSON.parse(event.data) as Record<string, unknown>;
+        this.receiveNowPlaying(raw);
+      } catch {
+        // Une ligne illisible ne doit pas couper le flux.
+      }
+    };
+    source.onerror = () => {
+      if (this.nowPlayingStream === source) this.startNowPlayingPolling();
+    };
+    this.nowPlayingWatchdog = window.setInterval(() => {
+      if (this.nowPlayingStream === null) return;
+      if (Date.now() - this.nowPlayingLastEventAt > 5000) this.startNowPlayingPolling();
+    }, 1000);
+  };
+
   Target.prototype.pollNowPlaying = async function (this: App): Promise<void> {
     try {
       const data = await fetchNowPlaying();
       this.nowPlaying = data;
+      const key = data.title.trim() === "" ? "" : detectedTrackKey(data);
+      if (key !== "" && key !== this.lastDetectedKey) {
+        this.lastDetectedKey = key;
+        this.beginTrackTimings();
+      }
       this.updateNowPlayingUI();
       dbgThrottled(
         "now-playing",

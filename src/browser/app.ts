@@ -99,6 +99,12 @@ export class App {
   pendingTitle = "";
   lastAutoTrackKey = "";
   nowPlaying: NowPlayingResponse | null = null;
+  nowPlayingStream: EventSource | null = null;
+  nowPlayingPollTimer: number | null = null;
+  nowPlayingWatchdog: number | null = null;
+  nowPlayingLastEventAt = 0;
+  /** Dernière piste détectée, pour ne pas réinitialiser la chronologie en boucle. */
+  lastDetectedKey = "";
   liveCapture: EventSource | null = null;
   liveRaf = 0;
   liveLevels: Record<string, number> = {};
@@ -210,8 +216,7 @@ export class App {
     this.bindLatencyControls();
     showScreen("drop");
     void this.startLiveMode();
-    window.setInterval(() => void this.pollNowPlaying(), 1500);
-    void this.pollNowPlaying();
+    this.bindNowPlayingStream();
     this.bindAnalysis();
     this.bindShow();
     this.bindKeyboard();
@@ -251,6 +256,11 @@ export class App {
     this.controlTimer = null;
     this.control?.close();
     this.control = null;
+    this.stopNowPlayingPolling();
+    this.nowPlayingStream?.close();
+    this.nowPlayingStream = null;
+    if (this.nowPlayingWatchdog !== null) window.clearInterval(this.nowPlayingWatchdog);
+    this.nowPlayingWatchdog = null;
     this.stopLoop();
     this.audio.dispose();
   }
