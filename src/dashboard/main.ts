@@ -743,6 +743,15 @@ class Dashboard {
     el<HTMLElement>("alert-error").hidden = state.error === null;
     setText(el<HTMLElement>("notice-text"), state.notice === null ? "—" : state.notice.text);
     el<HTMLElement>("alert-notice").hidden = state.notice === null;
+    if (state.resolve === null) {
+      setText(el<HTMLElement>("resolve-text"), "—");
+    } else {
+      const name = state.resolve.artist === ""
+        ? state.resolve.title
+        : `${state.resolve.title} — ${state.resolve.artist}`;
+      setText(el<HTMLElement>("resolve-text"), `« ${name} » — non trouvé : ${state.resolve.detail}`);
+    }
+    el<HTMLElement>("alert-resolve").hidden = state.resolve === null;
     this.refreshAlerts();
 
     // rendu visuel

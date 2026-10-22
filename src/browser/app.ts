@@ -172,6 +172,8 @@ export class App {
   lastError: { title: string; message: string; detail: string } | null = null;
   /** Avis discret affiché en bas, sans jamais prendre l'écran. */
   notice: { text: string; at: number } | null = null;
+  /** Échec de résolution automatique, publié uniquement vers le dashboard. */
+  resolveFailure: { title: string; artist: string; detail: string; at: number } | null = null;
   noticeTimer: number | null = null;
   debugRateWindowAt = 0;
   debugRateWindowCount = 0;

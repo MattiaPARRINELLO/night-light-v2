@@ -72,7 +72,11 @@ export function installResolve(Target: { prototype: App }): void {
     this.autoResolving = auto;
     this.pendingTitle = title;
     this.pendingAnalysis = null;
-    el<HTMLElement>("dock-panel").classList.add("is-hidden");
+    // Une nouvelle tentative efface l'échec précédent. Le dock ne se masque que
+    // pour une action manuelle : une résolution automatique doit laisser
+    // l'écran de dépôt intact si elle échoue.
+    this.resolveFailure = null;
+    if (!auto) el<HTMLElement>("dock-panel").classList.add("is-hidden");
     this.debug("analyse", `recherche par titre · ${title} / ${artist}`, { dureeSec: duration ?? "—" });
     setUploadState({
       phase: "Recherche",
@@ -133,7 +137,21 @@ export function installResolve(Target: { prototype: App }): void {
       // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur. Elle ne
       // doit donc pas remplacer le show en cours par l'écran d'erreur.
       this.debug("attention", "morceau non récupéré automatiquement", { message, detail });
-      if (auto) return;
+      if (auto) {
+        // Échec normal côté show : on reste en direct et le dock reste visible.
+        // L'état est publié vers le dashboard uniquement, jamais sur l'écran.
+        this.resolveFailure = {
+          title,
+          artist,
+          detail: error instanceof ApiError ? error.code : "erreur",
+          at: Date.now(),
+        };
+        // Même clé = même morceau : le suivi du lecteur ne doit pas relancer
+        // une résolution qui vient d'échouer.
+        if (trackKey !== undefined) this.lastAutoTrackKey = trackKey;
+        el<HTMLElement>("dock-panel").classList.remove("is-hidden");
+        return;
+      }
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
       showScreen("error");
       status.hidden = false;

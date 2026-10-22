@@ -103,6 +103,11 @@ export interface ShowState {
    * doit jamais prendre l'écran.
    */
   notice: { text: string; at: number } | null;
+  /**
+   * Échec de la résolution automatique du morceau du lecteur. Volontairement
+   * réservé au dashboard : l'écran de show continue en direct.
+   */
+  resolve: { title: string; artist: string; detail: string; at: number } | null;
   /** Dernières lignes du journal de debug, pour le journal du dashboard. */
   log: string[];
 }
@@ -221,6 +226,7 @@ export function emptyShowState(): ShowState {
     debugOverlay: false,
     error: null,
     notice: null,
+    resolve: null,
     log: [],
   };
 }

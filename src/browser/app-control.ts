@@ -219,6 +219,7 @@ export function installControl(Target: { prototype: App }): void {
       debugOverlay: this.debugOverlayActive,
       error: this.lastError,
       notice: this.notice,
+      resolve: this.resolveFailure === null ? null : { ...this.resolveFailure },
       log: debugLog.lines(10),
     };
     link.publishState(state);
