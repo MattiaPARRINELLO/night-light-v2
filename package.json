@@ -22,6 +22,7 @@
     "check:sync": "bun tests/e2e/sync_check.mjs",
     "check:dashboard": "bun tests/e2e/dashboard_check.mjs",
     "check:fallback": "bun tests/e2e/fallback_check.mjs",
+    "check:crossfade": "bun tests/e2e/crossfade_check.mjs",
     "check:family": "bun tests/e2e/family_check.mjs"
   },
   "devDependencies": {
