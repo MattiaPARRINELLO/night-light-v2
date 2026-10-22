@@ -8,6 +8,13 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Chronologie du morceau** : le serveur mesure recherche, téléchargement,
+  analyse et cache ; l'écran de show ajoute le calage et le premier frame. Le
+  dashboard affiche la chaîne détecté → trouvé → téléchargé → analysé → calé →
+  premier frame pour le morceau en cours.
+- **Cache d'analyse** : une réécoute du même morceau (même clé Deezer et même
+  `ANALYZER_VERSION`) ne relance plus librosa. Écriture atomique, invalidation
+  des JSON corrompus et purge LRU via `ANALYSIS_CACHE_MAX_MB`.
 - Tableau de bord complet : analyse du morceau en cours (courbes d'énergie et de
   bandes, sections, temps forts, montées, curseur du show), VU-mètres, progression,
   pulsation au tempo, section active, prochains événements, états capture et rendu.

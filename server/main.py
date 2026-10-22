@@ -12,6 +12,7 @@ import json
 import logging
 import shutil
 import threading
+import time
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
@@ -26,14 +27,21 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import sniff
-from .analysis import AnalysisError, AnalysisResult, analyze_with_timeout, warmup
+from .analysis import (
+    ANALYZER_VERSION,
+    AnalysisError,
+    AnalysisResult,
+    analyze_with_timeout,
+    warmup,
+)
+from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
 from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
 from .playback_position import get_playback_state, match_playback
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
-from .retrieve.models import TrackQuery
+from .retrieve.models import TrackQuery, audio_cache_key
 from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
@@ -83,6 +91,11 @@ class AppState:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = SessionStore(Path(settings.session_dir), settings.session_ttl_sec)
+        self.analysis_cache = AnalysisCache(
+            Path(settings.cache_dir) / "analysis",
+            version=ANALYZER_VERSION,
+            max_bytes=settings.analysis_cache_max_bytes,
+        )
         self.executor = ThreadPoolExecutor(
             max_workers=settings.workers, thread_name_prefix="analysis"
         )
@@ -138,15 +151,36 @@ class AppState:
         if job is not None and job.audio_path is not None and job.owns_audio:
             job.audio_path.unlink(missing_ok=True)
 
-    def run_analysis(self, job_id: str) -> None:
+    def run_analysis(
+        self,
+        job_id: str,
+        *,
+        analysis_key: str | None = None,
+        timings: dict[str, Any] | None = None,
+    ) -> None:
         job = self.store.get(job_id)
         if job is None or job.audio_path is None:
             return
         self.store.set_running(job_id)
+        started_at = time.time()
 
         def report(message: str, progress: float) -> None:
             phase = message.split("—")[0].strip() if "—" in message else "Analyse"
             self.store.update(job_id, progress=progress, phase=phase, message=message)
+
+        def finished(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+            now = time.time()
+            payload = dict(timings or {})
+            detected = payload.get("detectedAt")
+            if not isinstance(detected, (int, float)) or detected <= 0:
+                detected = round(job.created_at * 1000)
+                payload["detectedAt"] = detected
+            payload["analysisMs"] = round((now - started_at) * 1000)
+            payload["analyzedMs"] = round(now * 1000 - detected)
+            payload["totalMs"] = payload["analyzedMs"]
+            if extra:
+                payload.update(extra)
+            return payload
 
         try:
             result = analyze_with_timeout(
@@ -155,12 +189,33 @@ class AppState:
                 report=report,
                 timeout_sec=self.settings.analyze_timeout_sec,
             )
-            self.store.set_result(job_id, to_schema(result))
+            schema = to_schema(result)
+            elapsed = time.time() - started_at
+            _LOGGER.info(
+                "Analyse terminée id=%s durée=%.2fs tempo=%.1f",
+                job_id,
+                elapsed,
+                result.tempo,
+            )
+            if analysis_key is not None:
+                try:
+                    self.analysis_cache.put(analysis_key, schema)
+                except Exception as error:  # noqa: BLE001 - le cache ne doit pas casser l'analyse
+                    _LOGGER.warning("Écriture cache analyse impossible id=%s: %s", job_id, error)
+            self.store.set_result(job_id, schema, timings=finished({"analysisCache": False}))
         except AnalysisError as error:
             self.drop_audio(job_id)
+            self.store.set_timings(
+                job_id,
+                finished({"analysisCache": False, "analysisError": error.code}),
+            )
             self.store.set_error(job_id, error.code, error.message, error.detail)
         except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
             self.drop_audio(job_id)
+            self.store.set_timings(
+                job_id,
+                finished({"analysisCache": False, "analysisError": "analysis_failed"}),
+            )
             self.store.set_error(
                 job_id,
                 "analysis_failed",
@@ -181,6 +236,11 @@ class AppState:
             return
         self.resolve_pending = True
         used_key = (track_key or f"{title.strip()}|{artist.strip()}").strip()
+        detected_at_ms = round(job.created_at * 1000)
+        timings: dict[str, Any] = {
+            "detectedAt": detected_at_ms,
+            "queueMs": max(0, round((time.time() - job.created_at) * 1000)),
+        }
 
         query = TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
         cache = AudioCache(Path(self.settings.cache_dir))
@@ -232,6 +292,34 @@ class AppState:
             )
             return
 
+        # Chronologie du retrieval : c'est le premier endroit où ces mesures
+        # existent. Elles sont désormais journalisées et publiées dans le job.
+        retrieval = {
+            "searchMs": round(result.timings.search_sec * 1000),
+            "validationMs": round(result.timings.validation_sec * 1000),
+            "downloadMs": round(result.timings.download_sec * 1000),
+            "cacheMs": round(result.timings.cache_sec * 1000),
+            "totalMs": round(result.timings.total_sec * 1000),
+        }
+        found_ms = timings["queueMs"] + retrieval["searchMs"] + retrieval["validationMs"]
+        downloaded_ms = found_ms + retrieval["downloadMs"] + retrieval["cacheMs"]
+        timings.update(
+            {
+                "foundMs": found_ms,
+                "downloadedMs": downloaded_ms,
+                "resolvedMs": round((time.time() - job.created_at) * 1000),
+                "audioCache": result.from_cache,
+                "retrieval": retrieval,
+            }
+        )
+        _LOGGER.info(
+            "Retrieval terminé id=%s cache_audio=%s timings=%s",
+            job_id,
+            result.from_cache,
+            result.timings,
+        )
+        self.store.set_timings(job_id, timings)
+
         resolved_job = self.store.get(job_id)
         if resolved_job is not None:
             resolved_job.audio_path = result.cache_entry_path
@@ -251,9 +339,38 @@ class AppState:
                 job_id, "stale_result", "Le morceau a changé pendant la résolution."
             )
             return
+
+        # Le cache d'analyse évite complètement `run_analysis` à la réécoute.
+        analysis_key = audio_cache_key(query)
+        cached_analysis = self.analysis_cache.get(analysis_key)
+        if cached_analysis is not None:
+            now = time.time()
+            analyzed_ms = round(now * 1000 - detected_at_ms)
+            timings.update(
+                {
+                    "analysisMs": 0,
+                    "analyzedMs": analyzed_ms,
+                    "totalMs": analyzed_ms,
+                    "analysisCache": True,
+                }
+            )
+            self.resolve_pending = False
+            self.store.set_result(job_id, cached_analysis, timings=timings)
+            _LOGGER.info(
+                "Analyse servie depuis le cache id=%s version=%s total=%.0f ms",
+                job_id,
+                ANALYZER_VERSION,
+                analyzed_ms,
+            )
+            return
+
         _LOGGER.info("Résolution réussie id=%s, lancement de l'analyse", job_id)
         self.resolve_pending = False
-        self.run_analysis(job_id)
+        self.run_analysis(
+            job_id,
+            analysis_key=analysis_key,
+            timings={**timings, "analysisCache": False},
+        )
 
     async def shutdown(self) -> None:
         with self._resolve_cond:

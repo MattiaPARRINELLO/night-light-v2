@@ -171,3 +171,127 @@ def test_resolve_stack_prioritises_latest_and_keeps_skipped(
     assert done_a["status"] == "error" and done_a["error"]["code"] == "stale_result"
     assert done_b["status"] == "error" and done_b["error"]["code"] == "stale_result"
     assert done_c["status"] == "done", done_c
+
+
+def _fake_resolve_result(query, audio: Path) -> RetrievalResult:
+    return RetrievalResult(
+        query=query,
+        candidate=Candidate(
+            provider="cache",
+            source_id=query.title,
+            title=query.title,
+            artist=query.artist,
+            duration_sec=query.duration_sec,
+        ),
+        cache_entry_path=audio,
+        timings=RetrievalTimings(0.01, 0.01, 0.02, 0.0, 0.04),
+        from_cache=True,
+    )
+
+
+def _resolve_until_done(client: TestClient, payload: dict) -> dict:
+    response = client.post("/api/resolve", json=payload)
+    assert response.status_code == 202, response.text
+    return _wait_for_job(client, response.json()["jobId"])
+
+
+def test_second_listen_skips_analysis(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=4.0)
+    monkeypatch.setattr(
+        "server.main.resolve_track",
+        lambda query, *args, **kwargs: _fake_resolve_result(query, audio),
+    )
+    calls: list[str] = []
+    original = main.AppState.run_analysis
+
+    def counted(self, job_id, **kwargs):
+        calls.append(job_id)
+        return original(self, job_id, **kwargs)
+
+    monkeypatch.setattr(main.AppState, "run_analysis", counted)
+
+    payload = {"title": "Cache Me", "artist": "Test", "duration_sec": 4.0}
+    first = _resolve_until_done(client, payload)
+    assert first["status"] == "done", first
+    assert len(calls) == 1
+    assert first["timings"]["analysisCache"] is False
+
+    second = _resolve_until_done(client, payload)
+    assert second["status"] == "done", second
+    assert len(calls) == 1, "run_analysis a été relancé malgré le cache"
+    assert second["timings"]["analysisCache"] is True
+    assert second["timings"]["analyzedMs"] >= 0
+
+
+def test_corrupted_analysis_cache_triggers_reanalysis(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=4.0)
+    monkeypatch.setattr(
+        "server.main.resolve_track",
+        lambda query, *args, **kwargs: _fake_resolve_result(query, audio),
+    )
+    calls: list[str] = []
+    original = main.AppState.run_analysis
+
+    def counted(self, job_id, **kwargs):
+        calls.append(job_id)
+        return original(self, job_id, **kwargs)
+
+    monkeypatch.setattr(main.AppState, "run_analysis", counted)
+
+    payload = {"title": "Broken Cache", "artist": "Test", "duration_sec": 4.0}
+    assert _resolve_until_done(client, payload)["status"] == "done"
+    assert len(calls) == 1
+
+    key = main.audio_cache_key(TrackQuery(title="Broken Cache", artist="Test", duration_sec=4.0))
+    main.state.analysis_cache.path_for(key).write_text("{ corrompu", encoding="utf-8")
+
+    third = _resolve_until_done(client, payload)
+    assert third["status"] == "done", third
+    assert len(calls) == 2, "un JSON corrompu doit provoquer une réanalyse"
+    assert third["timings"]["analysisCache"] is False
+
+
+def test_analyzer_version_change_invalidates_cache(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    from server.analysis_cache import AnalysisCache
+    from server.retrieve.models import audio_cache_key
+
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=4.0)
+    monkeypatch.setattr(
+        "server.main.resolve_track",
+        lambda query, *args, **kwargs: _fake_resolve_result(query, audio),
+    )
+    calls: list[str] = []
+    original = main.AppState.run_analysis
+
+    def counted(self, job_id, **kwargs):
+        calls.append(job_id)
+        return original(self, job_id, **kwargs)
+
+    monkeypatch.setattr(main.AppState, "run_analysis", counted)
+
+    payload = {"title": "Versioned", "artist": "Test", "duration_sec": 4.0}
+    assert _resolve_until_done(client, payload)["status"] == "done"
+    assert len(calls) == 1
+
+    key = audio_cache_key(TrackQuery(title="Versioned", artist="Test", duration_sec=4.0))
+    assert main.state.analysis_cache.get(key) is not None
+    # Simule un redémarrage avec un analyseur dont la version a changé.
+    main.state.analysis_cache = AnalysisCache(
+        tmp_path / "night-light-cache" / "analysis",
+        version="next-version",
+        max_bytes=main.settings.analysis_cache_max_bytes,
+    )
+
+    third = _resolve_until_done(client, payload)
+    assert third["status"] == "done", third
+    assert len(calls) == 2, "un changement d'ANALYZER_VERSION doit provoquer une réanalyse"
+    assert third["timings"]["analysisCache"] is False

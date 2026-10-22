@@ -25,9 +25,13 @@ from .config import Settings
 SR_DEFAULT = 22050
 HOP = 512
 NFFT = 2048
+# Version du résultat d'analyse. À incrémenter dès que l'algorithme change :
+# le cache d'analyse est indexé dessus, donc les entrées périmées sont ignorées.
+ANALYZER_VERSION = "3"
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
+
 
 class AnalysisError(Exception):
     """Erreur d'analyse, traduite en message compréhensible par l'API."""
