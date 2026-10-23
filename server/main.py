@@ -17,7 +17,7 @@ import time
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -32,6 +32,7 @@ from .analysis import (
     ANALYZER_VERSION,
     AnalysisError,
     AnalysisResult,
+    analyze_file,
     analyze_with_timeout,
     warmup,
 )
@@ -191,24 +192,81 @@ class AppState:
         analysis_key: str | None = None,
         timings: dict[str, Any] | None = None,
         track_key: str | None = None,
+        window: tuple[float, float] | None = None,
     ) -> None:
         job = self.store.get(job_id)
         if job is None or job.audio_path is None:
             return
         self.store.set_running(job_id)
         started_at = time.time()
+        detected = (timings or {}).get("detectedAt")
+        if not isinstance(detected, (int, float)) or detected <= 0:
+            detected = round(job.created_at * 1000)
+        quick_started = time.time()
+        should_cancel = self._cancellation_check(track_key) if track_key else None
 
         def report(message: str, progress: float) -> None:
             phase = message.split("—")[0].strip() if "—" in message else "Analyse"
-            self.store.update(job_id, progress=progress, phase=phase, message=message)
+            mapped = 0.2 + progress * 0.8 if window is not None else progress
+            self.store.update(job_id, progress=mapped, phase=phase, message=message)
+
+        def quick_report(message: str, progress: float) -> None:
+            self.store.update(
+                job_id,
+                progress=min(0.2, 0.02 + progress * 0.18),
+                phase="Analyse rapide",
+                message=message,
+            )
+
+        # Passe rapide : uniquement la fenêtre autour de la position du lecteur.
+        # Elle rend le show utilisable tout de suite ; seule la passe complète
+        # alimente le cache.
+        if window is not None:
+            try:
+                quick = analyze_file(
+                    job.audio_path,
+                    replace(self.settings, sample_rate=min(self.settings.sample_rate, 11025)),
+                    report=quick_report,
+                    window=window,
+                    should_cancel=should_cancel,
+                )
+                quick_ms = round((time.time() - quick_started) * 1000)
+                partial_ms = round(time.time() * 1000 - detected)
+                _LOGGER.info(
+                    "Analyse rapide prête id=%s fenêtre=[%.1f, %.1f] durée=%.2fs tempo=%.1f",
+                    job_id,
+                    window[0],
+                    window[1],
+                    quick_ms / 1000,
+                    quick.tempo,
+                )
+                self.store.set_partial_result(
+                    job_id,
+                    to_schema(quick),
+                    timings={
+                        "partialMs": partial_ms,
+                        "quickAnalysisMs": quick_ms,
+                        "analysisCache": False,
+                    },
+                )
+            except AnalysisError as error:
+                if error.code == "cancelled":
+                    self.drop_audio(job_id)
+                    self.store.set_timings(job_id, {"analysisError": "cancelled"})
+                    self.store.set_error(job_id, error.code, error.message, error.detail)
+                    return
+                _LOGGER.warning(
+                    "Analyse rapide impossible id=%s (%s), passage à l'analyse complète",
+                    job_id,
+                    error.code,
+                )
+            except Exception as error:  # noqa: BLE001 - la passe complète reste possible
+                _LOGGER.warning("Analyse rapide en échec id=%s: %s", job_id, error)
 
         def finished(extra: dict[str, Any] | None = None) -> dict[str, Any]:
             now = time.time()
             payload = dict(timings or {})
-            detected = payload.get("detectedAt")
-            if not isinstance(detected, (int, float)) or detected <= 0:
-                detected = round(job.created_at * 1000)
-                payload["detectedAt"] = detected
+            payload["detectedAt"] = detected
             payload["analysisMs"] = round((now - started_at) * 1000)
             payload["analyzedMs"] = round(now * 1000 - detected)
             payload["totalMs"] = payload["analyzedMs"]
@@ -222,7 +280,7 @@ class AppState:
                 self.settings,
                 report=report,
                 timeout_sec=self.settings.analyze_timeout_sec,
-                should_cancel=(self._cancellation_check(track_key) if track_key else None),
+                should_cancel=should_cancel,
             )
             schema = to_schema(result)
             elapsed = time.time() - started_at
@@ -401,11 +459,20 @@ class AppState:
 
         _LOGGER.info("Résolution réussie id=%s, lancement de l'analyse", job_id)
         self.resolve_pending = False
+        partial_window: tuple[float, float] | None = None
+        try:
+            playback = get_playback_state(title=title, artist=artist, duration_sec=duration_sec)
+            if playback.available and playback.status in {"playing", "paused"}:
+                position = max(0.0, playback.position_ms / 1000.0)
+                partial_window = (max(0.0, position - 5.0), position + 40.0)
+        except Exception as error:  # noqa: BLE001 - la passe complète suffit
+            _LOGGER.warning("Position MPRIS indisponible pour la passe rapide: %s", error)
         self.run_analysis(
             job_id,
             analysis_key=analysis_key,
             timings={**timings, "analysisCache": False},
             track_key=used_key,
+            window=partial_window,
         )
 
     async def shutdown(self) -> None:
@@ -443,6 +510,7 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "high": result.high,
         "sections": result.sections,
         "builds": result.builds,
+        **({"coverage": list(result.coverage)} if result.coverage is not None else {}),
     }
 
 

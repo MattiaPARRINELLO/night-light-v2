@@ -67,6 +67,7 @@ class AnalysisResult:
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
+    coverage: tuple[float, float] | None = None
 
 
 # --------------------------------------------------------------------- décodage
@@ -106,14 +107,28 @@ def decode_with_ffmpeg(path: Path, sample_rate: int) -> np.ndarray | None:
     return np.asarray(audio, dtype=np.float32)
 
 
-def load_audio(path: Path, sample_rate: int) -> np.ndarray:
+def load_audio(
+    path: Path,
+    sample_rate: int,
+    *,
+    offset: float = 0.0,
+    duration: float | None = None,
+) -> np.ndarray:
     try:
-        audio, _ = librosa.load(path, sr=sample_rate, mono=True)
+        audio, _ = librosa.load(
+            path,
+            sr=sample_rate,
+            mono=True,
+            offset=max(0.0, offset),
+            duration=duration,
+        )
         return np.asarray(audio, dtype=np.float32)
     except Exception as direct:  # noqa: BLE001 - on tente le repli ffmpeg
         fallback = decode_with_ffmpeg(path, sample_rate)
         if fallback is not None and fallback.size > 0:
-            return fallback
+            start = int(max(0.0, offset) * sample_rate)
+            end = None if duration is None else start + int(duration * sample_rate)
+            return fallback[start:end]
         raise AnalysisError(
             "unreadable_audio",
             "Ce fichier n'est pas un audio exploitable : le décodage a échoué.",
@@ -560,12 +575,27 @@ def analyze_file(
     path: Path,
     settings: Settings,
     report: Callable[[str, float], None] | None = None,
+    window: tuple[float, float] | None = None,
+    should_cancel: Callable[[float], bool] | None = None,
 ) -> AnalysisResult:
-    """Analyse complète. `report(message, progress)` sert l'avancement réel."""
+    """Analyse complète, ou rapide sur `window = (début, fin)` en secondes.
+
+    Une analyse fenêtrée renvoie `coverage` et une grille de beats extrapolée sur
+    tout le morceau : le show peut démarrer immédiatement, puis être remplacé par
+    l'analyse complète. `should_cancel(progress)` est consulté aux étapes clés.
+    """
 
     def emit(message: str, value: float) -> None:
         if report is not None:
             report(message, float(min(max(value, 0.0), 1.0)))
+
+    def check_cancel(progress: float) -> None:
+        if should_cancel is not None and should_cancel(progress):
+            raise AnalysisError(
+                "cancelled",
+                "Analyse abandonnée : le lecteur est passé à un autre morceau.",
+                "",
+            )
 
     phases = [
         Phase("Décodage audio", 0.12),
@@ -583,23 +613,36 @@ def analyze_file(
         emit(f"{phase.name} — {detail}", (done + phase.weight * ratio) / total)
 
     sample_rate = settings.sample_rate
+    offset = max(0.0, float(window[0])) if window is not None else 0.0
+    window_span = max(1.0, float(window[1]) - offset) if window is not None else None
     emit("Décodage du fichier audio", 0.0)
-    y = load_audio(path, sample_rate)
+    check_cancel(0.0)
+    y = load_audio(path, sample_rate, offset=offset, duration=window_span)
     duration = float(len(y) / sample_rate) if sample_rate > 0 else 0.0
+    check_cancel(0.1)
 
     if duration < 1.0:
         raise AnalysisError(
             "too_short",
             "Le morceau est trop court (moins d'une seconde) pour être analysé.",
         )
-    if duration > settings.max_duration_sec:
+    if window is None:
+        full_duration = duration
+    else:
+        try:
+            full_duration = float(librosa.get_duration(path=path))
+        except Exception:  # noqa: BLE001 - repli raisonnable
+            full_duration = offset + duration
+        full_duration = max(full_duration, offset + duration)
+    if full_duration > settings.max_duration_sec:
         raise AnalysisError(
             "too_long",
-            f"Morceau trop long ({duration / 60:.1f} min). Limite : "
+            f"Morceau trop long ({full_duration / 60:.1f} min). Limite : "
             f"{settings.max_duration_sec / 60:.0f} min.",
         )
 
     spectrum = np.abs(librosa.stft(y, n_fft=NFFT, hop_length=HOP))
+    check_cancel(0.3)
     frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=NFFT)
     frame_times = librosa.frames_to_time(
         np.arange(spectrum.shape[1]), sr=sample_rate, hop_length=HOP
@@ -629,32 +672,57 @@ def analyze_file(
     energy = normalize_log_curve(energy_raw)
 
     tempo, beats, onsets, meter = detect_rhythm(y, sample_rate, progress, phases[2])
+    check_cancel(0.7)
+
+    coverage: tuple[float, float] | None = None
+    if window is not None:
+        coverage = (round(offset, 3), round(min(full_duration, offset + duration), 3))
+        beats = [round(float(beat) + offset, 3) for beat in beats]
+        onsets = [round(float(onset) + offset, 3) for onset in onsets]
+        frame_times = frame_times + offset
+        # Hors fenêtre, la grille de beats est extrapolée avec le tempo trouvé :
+        # le rendu live peut pulser correctement en attendant l'analyse finale.
+        period = 60.0 / tempo if tempo > 0 else 0.0
+        if period > 0.05 and beats:
+            anchor = beats[0]
+            first = int(np.floor((0.0 - anchor) / period))
+            last = int(np.ceil((full_duration - anchor) / period))
+            extrapolated = [anchor + index * period for index in range(first, last + 1)]
+            beats = sorted(
+                {
+                    round(float(beat), 3)
+                    for beat in [*beats, *extrapolated]
+                    if 0.0 <= float(beat) <= full_duration
+                }
+            )
 
     # Pas de découpage couplet/refrain : la détection coûtait plus cher (temps
     # d'analyse limité) qu'elle n'apportait de repères fiables. Le morceau reste
     # une seule section ; le spectacle suit l'énergie, les montées et les temps
     # forts.
-    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
-    sections = detect_sections(energy, frame_times, duration)
+    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, full_duration)
+    sections = detect_sections(energy, frame_times, full_duration)
     progress(phases[3], 0.5, "détection des montées")
-    builds = detect_builds(energy_points, duration, onsets)
+    builds = detect_builds(energy_points, full_duration, onsets)
+    check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")
     progress(phases[4], 1.0, "données du spectacle prêtes")
 
     return AnalysisResult(
-        duration=round(duration, 3),
+        duration=round(full_duration, 3),
         tempo=round(tempo, 3),
         meter=meter,
         beats=beats,
         onsets=onsets,
         energy=energy_points,
-        bass=curve_to_points(frame_times, bass, settings.curve_rate_hz, duration),
-        mid=curve_to_points(frame_times, mid, settings.curve_rate_hz, duration),
-        mid_low=curve_to_points(frame_times, mid_low, settings.curve_rate_hz, duration),
-        mid_high=curve_to_points(frame_times, mid_high, settings.curve_rate_hz, duration),
-        high=curve_to_points(frame_times, high, settings.curve_rate_hz, duration),
+        bass=curve_to_points(frame_times, bass, settings.curve_rate_hz, full_duration),
+        mid=curve_to_points(frame_times, mid, settings.curve_rate_hz, full_duration),
+        mid_low=curve_to_points(frame_times, mid_low, settings.curve_rate_hz, full_duration),
+        mid_high=curve_to_points(frame_times, mid_high, settings.curve_rate_hz, full_duration),
+        high=curve_to_points(frame_times, high, settings.curve_rate_hz, full_duration),
         sections=sections,
         builds=builds,
+        coverage=coverage,
     )
 
 
@@ -673,6 +741,7 @@ def _analysis_worker(
     messages: Any,
     path: str,
     settings: Settings,
+    window: tuple[float, float] | None = None,
 ) -> None:
     """Point d'entrée du process d'analyse : renvoie le résultat par la queue."""
 
@@ -682,7 +751,7 @@ def _analysis_worker(
             messages.put(("progress", message, float(progress)))
 
     try:
-        result = analyze_file(Path(path), settings, report=report)
+        result = analyze_file(Path(path), settings, report=report, window=window)
         messages.put(("done", result))
     except AnalysisError as error:
         messages.put(("analysis_error", error.code, error.message, error.detail))
@@ -696,6 +765,7 @@ def analyze_with_timeout(
     report: Callable[[str, float], None] | None = None,
     timeout_sec: float | None = None,
     should_cancel: Callable[[float], bool] | None = None,
+    window: tuple[float, float] | None = None,
 ) -> AnalysisResult:
     """`analyze_file` avec une limite de temps dure.
 
@@ -709,13 +779,13 @@ def analyze_with_timeout(
     """
     limit = settings.analyze_timeout_sec if timeout_sec is None else timeout_sec
     if limit is None or limit <= 0:
-        return analyze_file(path, settings, report=report)
+        return analyze_file(path, settings, report=report, window=window)
 
     context = multiprocessing.get_context("spawn")
     messages = context.Queue()
     process = context.Process(
         target=_analysis_worker,
-        args=(messages, str(Path(path).resolve()), settings),
+        args=(messages, str(Path(path).resolve()), settings, window),
         name="night-light-analysis",
         daemon=True,
     )

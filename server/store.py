@@ -146,6 +146,23 @@ class SessionStore:
                 job.timings = {**(job.timings or {}), **timings}
             job.created_at = time.time()
 
+    def set_partial_result(
+        self,
+        job_id: str,
+        analysis: dict[str, Any],
+        *,
+        timings: dict[str, Any] | None = None,
+    ) -> None:
+        """Publie une analyse partielle sans terminer le job."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return
+            job.result = {"analysis": analysis, "partial": True}
+            if timings is not None:
+                job.timings = {**(job.timings or {}), **timings}
+            job.created_at = time.time()
+
     def set_error(self, job_id: str, code: str, message: str, detail: str = "") -> None:
         with self._lock:
             job = self._jobs.get(job_id)
