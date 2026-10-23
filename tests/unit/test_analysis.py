@@ -164,7 +164,11 @@ def test_analyse_deterministe(tmp_path: Path) -> None:
     settings = load_settings()
     first = analyze_file(track, settings, report=lambda message, progress: None)
     second = analyze_file(track, settings, report=lambda message, progress: None)
-    assert asdict(first) == asdict(second)
+    first_dict = asdict(first)
+    second_dict = asdict(second)
+    first_dict.pop("phase_timings", None)
+    second_dict.pop("phase_timings", None)
+    assert first_dict == second_dict
 
 
 # ------------------------------------------------------------------ timeout
@@ -172,9 +176,9 @@ def test_analyse_deterministe(tmp_path: Path) -> None:
 
 def test_timeout_leve_une_erreur_explicite(tmp_path: Path) -> None:
     track = tmp_path / "timeout.wav"
-    write_synthetic_track(track, duration=3.0)
+    write_synthetic_track(track, duration=12.0)
     with pytest.raises(AnalysisError) as captured:
-        analyze_with_timeout(track, load_settings(), timeout_sec=0.05)
+        analyze_with_timeout(track, load_settings(), timeout_sec=0.001)
     assert captured.value.code == "timeout"
 
 

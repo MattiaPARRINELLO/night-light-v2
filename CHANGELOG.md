@@ -8,6 +8,14 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Processus d'analyse persistant** : un worker préchauffé au démarrage (imports
+  + JIT numba) réutilisé entre les morceaux ; une annulation le tue et en relance
+  un préchauffé en arrière-plan. L'analyse complète passe d'environ 5 s à froid
+  par processus à ~1,8 s à chaud.
+- **Phases d'analyse** : durées détaillées (démarrage worker, décodage,
+  rééchantillonnage, onset, beat_track, onsets, stft, bandes/rms, courbes,
+  montées, sérialisation) publiées dans `timings.analysisPhases` et affichées
+  dans le dashboard.
 - **Analyse en 2 passes** : une passe rapide sur une fenêtre de 45 s autour de
   la position MPRIS publie une analyse partielle (`coverage`) en moins d'une
   seconde après le téléchargement, puis l'analyse complète remplace le plan en

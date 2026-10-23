@@ -34,6 +34,8 @@ from .analysis import (
     AnalysisResult,
     analyze_file,
     analyze_with_timeout,
+    start_analysis_worker,
+    stop_analysis_worker,
     warmup,
 )
 from .analysis_cache import AnalysisCache
@@ -232,6 +234,9 @@ class AppState:
                 )
                 quick_ms = round((time.time() - quick_started) * 1000)
                 partial_ms = round(time.time() * 1000 - detected)
+                serialize_started = time.monotonic()
+                quick_schema = to_schema(quick)
+                quick_serialize_ms = round((time.monotonic() - serialize_started) * 1000)
                 _LOGGER.info(
                     "Analyse rapide prête id=%s fenêtre=[%.1f, %.1f] durée=%.2fs tempo=%.1f",
                     job_id,
@@ -242,11 +247,15 @@ class AppState:
                 )
                 self.store.set_partial_result(
                     job_id,
-                    to_schema(quick),
+                    quick_schema,
                     timings={
                         "partialMs": partial_ms,
                         "quickAnalysisMs": quick_ms,
                         "analysisCache": False,
+                        "analysisPhases": {
+                            **quick.phase_timings,
+                            "serializationMs": quick_serialize_ms,
+                        },
                     },
                 )
             except AnalysisError as error:
@@ -283,19 +292,34 @@ class AppState:
                 should_cancel=should_cancel,
             )
             schema = to_schema(result)
+            serialize_started = time.monotonic()
+            serialize_ms = round((time.monotonic() - serialize_started) * 1000)
             elapsed = time.time() - started_at
             _LOGGER.info(
-                "Analyse terminée id=%s durée=%.2fs tempo=%.1f",
+                "Analyse terminée id=%s durée=%.2fs tempo=%.1f phases=%s",
                 job_id,
                 elapsed,
                 result.tempo,
+                result.phase_timings,
             )
             if analysis_key is not None:
                 try:
                     self.analysis_cache.put(analysis_key, schema)
                 except Exception as error:  # noqa: BLE001 - le cache ne doit pas casser l'analyse
                     _LOGGER.warning("Écriture cache analyse impossible id=%s: %s", job_id, error)
-            self.store.set_result(job_id, schema, timings=finished({"analysisCache": False}))
+            self.store.set_result(
+                job_id,
+                schema,
+                timings=finished(
+                    {
+                        "analysisCache": False,
+                        "analysisPhases": {
+                            **result.phase_timings,
+                            "serializationMs": serialize_ms,
+                        },
+                    }
+                ),
+            )
         except AnalysisError as error:
             self.drop_audio(job_id)
             self.store.set_timings(
@@ -477,6 +501,7 @@ class AppState:
 
     async def shutdown(self) -> None:
         remove_now_playing_listener(self._on_now_playing)
+        stop_analysis_worker()
         with self._resolve_cond:
             self._resolve_stop = True
             self._resolve_cond.notify_all()
@@ -548,6 +573,7 @@ async def purge_loop() -> None:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
     state.executor.submit(warmup)
+    start_analysis_worker()
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()
     atexit.register(state.store.purge_all)
