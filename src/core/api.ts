@@ -14,6 +14,7 @@ export interface JobTimings {
   totalMs?: number;
   audioCache?: boolean;
   analysisCache?: boolean;
+  analysisPhases?: Record<string, number>;
   analysisError?: string;
   retrieval?: {
     searchMs: number;

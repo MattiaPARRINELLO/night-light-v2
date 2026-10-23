@@ -47,6 +47,7 @@ export function installResolve(Target: { prototype: App }): void {
       planMs: null,
       audioCache: false,
       analysisCache: false,
+      phases: null,
     };
   };
 
@@ -73,6 +74,7 @@ export function installResolve(Target: { prototype: App }): void {
     if (timings.partialMs !== undefined) current.partialMs = Math.round(offset + timings.partialMs);
     current.audioCache = timings.audioCache === true;
     current.analysisCache = timings.analysisCache === true;
+    if (timings.analysisPhases !== undefined) current.phases = { ...timings.analysisPhases };
   };
 
   /** Marque le moment où le show est calé sur le lecteur. */

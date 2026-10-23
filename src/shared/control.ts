@@ -40,6 +40,8 @@ export interface TrackTimings {
   planMs: number | null;
   audioCache: boolean;
   analysisCache: boolean;
+  /** Durées détaillées des phases de la dernière analyse. */
+  phases: Record<string, number> | null;
 }
 
 /** Ce que l'écran de show sait de lui-même, publié pour le dashboard. */

@@ -667,6 +667,38 @@ class Dashboard {
       trackTimings.textContent = `Chronologie : ${parts.join(" → ")}`;
     }
 
+    const trackPhases = el<HTMLElement>("track-phases");
+    if (state.timings?.phases == null) {
+      trackPhases.textContent = "Phases d’analyse : —";
+    } else {
+      const labels: Record<string, string> = {
+        processStartImportsSec: "processus/imports",
+        workerWarmupSec: "préchauffage worker",
+        decodeSec: "décodage",
+        resampleSec: "rééchantillonnage",
+        onsetSec: "onset",
+        beatTrackSec: "beat_track",
+        onsetsSec: "onsets",
+        stftSec: "stft",
+        featuresSec: "bandes/rms",
+        mfccChromaSec: "mfcc/chroma",
+        curvesSec: "courbes",
+        buildsSec: "montées",
+        serializationMs: "sérialisation",
+      };
+      const entries = Object.entries(state.timings.phases)
+        .filter(([, value]) => Number.isFinite(value))
+        .map(([key, value]) => {
+          const label = labels[key] ?? key;
+          const text =
+            key === "processStartImportsSec" || key.endsWith("Ms")
+              ? `${Math.round(value)} ms`
+              : `${(value * 1000).toFixed(0)} ms`;
+          return `${label} ${text}`;
+        });
+      trackPhases.textContent = `Phases d’analyse : ${entries.join(" · ")}`;
+    }
+
     // tableau des sections (reconstruit seulement quand l'analyse change)
     const sectionHost = el<HTMLElement>("track-sections");
     if (this.analysis !== this.sectionsSource) {
