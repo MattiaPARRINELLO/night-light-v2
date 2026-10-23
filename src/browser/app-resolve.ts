@@ -273,6 +273,11 @@ export function installResolve(Target: { prototype: App }): void {
     this.nowPlayingLastEventAt = Date.now();
     this.stopNowPlayingPolling();
     this.updateNowPlayingUI();
+    // Le lecteur annonce le morceau suivant bien avant que son analyse soit
+    // prête : on quitte immédiatement l'ancien show au lieu de le laisser
+    // tourner (et se recaler sur le début du nouveau morceau). Plusieurs
+    // lecteurs à la fois donnent un titre qui va et vient : on s'abstient.
+    if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
     void this.maybeAutoResolve();
   };
 
@@ -333,6 +338,7 @@ export function installResolve(Target: { prototype: App }): void {
         this.beginTrackTimings();
       }
       this.updateNowPlayingUI();
+      if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
       dbgThrottled(
         "now-playing",
         "sync",

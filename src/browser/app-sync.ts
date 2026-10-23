@@ -9,7 +9,7 @@ import { fetchPlaybackPosition, type PlaybackPositionResponse } from "../core/ap
 import { dbgThrottled } from "../core/debug";
 import {
   estimatePlayerPositionMs,
-  normalizePlaybackText,
+  isDifferentTrack,
   syncCorrection,
   syncRamp,
   syncRampDuration,
@@ -23,7 +23,13 @@ import type { Analysis } from "../types";
 declare module "./app" {
   interface App {
     tryAutoSynced(title: string, artist: string, duration: number, analysis: Analysis): Promise<void>;
-    startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void>;
+    startSyncedShow(
+      analysis: Analysis,
+      initialMs: number,
+      title: string,
+      state?: PlaybackPositionResponse,
+    ): Promise<void>;
+    abandonSyncedShowForTrackChange(playerTitle: string): boolean;
     updateSyncedAnalysis(analysis: Analysis): boolean;
     startCrossfade(analysis: Analysis, initialMs: number): void;
     crossfadeDelayMs(analysis: Analysis, initialMs: number): number;
@@ -138,7 +144,7 @@ export function installSync(Target: { prototype: App }): void {
             },
             Date.now(),
           );
-          await this.startSyncedShow(analysis, initialMs, state);
+          await this.startSyncedShow(analysis, initialMs, title, state);
           return finish("calé");
         }
       } catch (error) {
@@ -155,6 +161,7 @@ export function installSync(Target: { prototype: App }): void {
     this: App,
     analysis: Analysis,
     initialMs: number,
+    title: string,
     state?: PlaybackPositionResponse,
   ): Promise<void> {
     // Un show déjà en cours (calé ou local) doit s'arrêter net : sinon son
@@ -184,7 +191,11 @@ export function installSync(Target: { prototype: App }): void {
       this.debugSync.source = state.source;
       this.debugSync.playerTitle = state.title;
     }
-    this.debugSync.expectedTitle = this.pendingTitle;
+    // Le show affiche désormais ce morceau : c'est cette référence — et non
+    // `pendingTitle`, qui peut déjà désigner le suivant — que la boucle de
+    // resynchronisation comparera au lecteur.
+    this.syncedTitle = title;
+    this.debugSync.expectedTitle = title;
     this.debugSync.latencyMs = this.syncedLatencyMs;
     this.debugSync.match = "show lancé à la position du lecteur";
 
@@ -210,9 +221,9 @@ export function installSync(Target: { prototype: App }): void {
     }
     this.startSyncedLoop();
     this.markSynced();
-    setStatus(`Show synchronisé lancé : ${this.pendingTitle}.`);
+    setStatus(`Show synchronisé lancé : ${title}.`);
     this.debug("sync", "show synchronisé démarré", {
-      titre: this.pendingTitle,
+      titre: title,
       source: state?.source ?? "?",
       positionLecteurSec: Number((initialMs / 1000).toFixed(2)),
       latenceMs: this.syncedLatencyMs,
@@ -411,8 +422,26 @@ export function installSync(Target: { prototype: App }): void {
     }
     this.syncedPaused = false;
     this.pendingSynced = null;
+    this.syncedTitle = "";
     this.cancelCrossfade();
     this.syncedMode = false;
+  };
+
+  /**
+   * Le lecteur est passé à un autre morceau que celui du show.
+   *
+   * On rend l'écran au direct plutôt que de laisser la resynchronisation
+   * recaler l'ancien spectacle sur la position du nouveau morceau — ce qui le
+   * faisait repartir de son début. Renvoie `true` si un show a été abandonné.
+   */
+  Target.prototype.abandonSyncedShowForTrackChange = function (this: App, playerTitle: string): boolean {
+    if (!this.syncedMode || !isDifferentTrack(this.syncedTitle, playerTitle)) return false;
+    this.debug("sync", "changement de morceau détecté · retour en Live", {
+      attendu: this.syncedTitle,
+      lecteur: playerTitle,
+    });
+    this.backToDrop();
+    return true;
   };
 
   /**
@@ -504,25 +533,18 @@ export function installSync(Target: { prototype: App }): void {
     // lecteur n'a de sens qu'à cette condition.
     const nowMs = Date.now();
     try {
-      const state = await fetchPlaybackPosition(this.pendingTitle, "", duration);
+      // On interroge le lecteur sur le morceau du show, pas sur le morceau en
+      // cours de résolution : c'est le seul écart qui dit si le spectacle doit
+      // s'arrêter.
+      const showTitle = this.syncedTitle;
+      const state = await fetchPlaybackPosition(showTitle, "", duration);
       this.debugSync.resyncAt = nowMs;
       this.debugSync.source = state.source;
       this.debugSync.playerTitle = state.title;
-      this.debugSync.expectedTitle = this.pendingTitle;
+      this.debugSync.expectedTitle = showTitle;
       this.debugSync.latencyMs = this.syncedLatencyMs;
 
-      if (
-        state.title &&
-        this.pendingTitle &&
-        normalizePlaybackText(state.title) !== normalizePlaybackText(this.pendingTitle)
-      ) {
-        this.debug("sync", "changement de morceau détecté · retour en Live", {
-          attendu: this.pendingTitle,
-          lecteur: state.title,
-        });
-        this.backToDrop();
-        return;
-      }
+      if (this.abandonSyncedShowForTrackChange(state.title)) return;
 
       const player = {
         source: state.source,
