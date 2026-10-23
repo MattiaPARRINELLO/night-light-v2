@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   crossCorrelation,
   estimatePlayerPositionMs,
+  isDifferentTrack,
   normalizePlaybackText,
   showDriftMs,
   syncCorrection,
@@ -12,6 +13,19 @@ import {
 describe("playback helpers", () => {
   it("normalizes versions", () => {
     expect(normalizePlaybackText("Café (Remastered)")).toBe("cafe");
+  });
+
+  it("reconnaît le même morceau malgré les variantes de titre", () => {
+    expect(isDifferentTrack("Café", "Café (Remastered)")).toBe(false);
+    expect(isDifferentTrack("Café", "cafe")).toBe(false);
+    expect(isDifferentTrack("Café", "Thé")).toBe(true);
+  });
+
+  it("ne conclut jamais à un changement depuis un titre vide", () => {
+    // Un lecteur silencieux ou pas encore annoncé ne doit pas abandonner le show.
+    expect(isDifferentTrack("Café", "")).toBe(false);
+    expect(isDifferentTrack("", "Thé")).toBe(false);
+    expect(isDifferentTrack("", "")).toBe(false);
   });
 
   it("estime la position sur la même horloge epoch que le serveur", () => {

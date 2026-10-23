@@ -129,6 +129,16 @@ export class App {
 
   syncedView: TrackView | null = null;
   syncedPlan: ShowPlan | null = null;
+  /**
+   * Titre du morceau que le show synchronisé affiche réellement.
+   *
+   * `pendingTitle` suit le lecteur et change dès qu'un nouveau morceau est
+   * détecté, avant même que son analyse soit prête. Comparer le lecteur à
+   * `pendingTitle` faisait donc croire que tout était en ordre pendant que
+   * l'ancien spectacle tournait encore, et la resynchronisation le recalait sur
+   * la position du nouveau morceau : l'ancien show repartait de son début.
+   */
+  syncedTitle = "";
   /** Analyse finale en attente : on garde la scène courante jusqu'à sa fin. */
   pendingSynced: { view: TrackView; plan: ShowPlan; switchAt: number } | null = null;
   syncedStartMs = 0;

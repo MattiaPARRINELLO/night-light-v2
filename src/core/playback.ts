@@ -22,6 +22,18 @@ export function normalizePlaybackText(value: string | null | undefined): string 
 }
 
 /**
+ * Vrai si le lecteur joue un autre morceau que celui du show.
+ *
+ * Un titre vide (lecteur muet, morceau pas encore annoncé) ne prouve rien : il
+ * ne doit jamais déclencher un changement. La comparaison passe par
+ * `normalizePlaybackText`, donc « Café (Remastered) » reste le même morceau.
+ */
+export function isDifferentTrack(showTitle: string, playerTitle: string): boolean {
+  if (showTitle.trim() === "" || playerTitle.trim() === "") return false;
+  return normalizePlaybackText(showTitle) !== normalizePlaybackText(playerTitle);
+}
+
+/**
  * Position estimée du lecteur à l'instant `nowEpochMs`.
  *
  * `capturedAtMs` (renvoyé par le serveur) et `nowEpochMs` doivent partager la

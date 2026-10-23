@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8797;
 const API = `http://127.0.0.1:${API_PORT}`;
 const TITLE = "Neon Skyline";
@@ -284,10 +284,51 @@ try {
   if (pireVitesse > 3) failures.push(`le temps du show saute (${pireVitesse.toFixed(2)}× la vitesse réelle)`);
   if (plusLente < 0.4) failures.push(`le temps du show se fige (${plusLente.toFixed(2)}×)`);
 
-  // ---- changement de morceau : retour en Live
+  // ---- changement de morceau : l'ancien show doit s'arrêter, pas repartir
+  // Régression : `pendingTitle` suivait le lecteur avant que la nouvelle analyse
+  // soit prête, si bien que la resynchronisation comparait le nouveau morceau à
+  // lui-même, puis recalait l'ANCIEN plan sur la position du nouveau morceau —
+  // le spectacle précédent repartait de son début.
+  const avantChangement = await page.evaluate(() => ({
+    titre: window.nightLight.syncedTitle,
+    tempsMs: window.nightLight.showTimeMs(Date.now()),
+  }));
+  const debutChangement = Date.now();
   fake.state({ status: "Playing", title: "Tout autre morceau", artist: "", album: "", length_us: 11_000_000, position: 1.0 });
-  const retourLive = await waitForState("retour en Live", async () => (await readOverlay(page)).text.includes("mode            LIVE"));
-  console.log(`changement de morceau : ${retourLive ? "retour en Live OK" : "PAS de retour en Live"}`);
+  let ancienShowActif = true;
+  let abandonMs = Number.NaN;
+  let reculAncienShow = 0;
+  let dernierTempsMs = avantChangement.tempsMs;
+  const echeance = Date.now() + 4000;
+  while (Date.now() < echeance) {
+    const etat = await page.evaluate(() => ({
+      synced: window.nightLight.syncedMode,
+      titre: window.nightLight.syncedTitle,
+      tempsMs: window.nightLight.showTimeMs(Date.now()),
+    }));
+    if (!etat.synced || etat.titre !== avantChangement.titre) {
+      ancienShowActif = false;
+      abandonMs = Date.now() - debutChangement;
+      break;
+    }
+    reculAncienShow = Math.max(reculAncienShow, dernierTempsMs - etat.tempsMs);
+    dernierTempsMs = etat.tempsMs;
+    await page.waitForTimeout(80);
+  }
+  const retourLive = await readOverlay(page);
+  console.log(
+    `changement de morceau : ancien show ${ancienShowActif ? "TOUJOURS ACTIF" : `abandonné en ${abandonMs} ms`} · ` +
+      `recul ${Math.round(reculAncienShow)} ms · ${retourLive.mode}`,
+  );
+  if (ancienShowActif) failures.push("changement de morceau : l'ancien show continue après 4 s");
+  // L'abandon doit venir de l'annonce SSE du lecteur, pas de l'expiration des
+  // tentatives de calage (~17 s) ni d'un recalage de l'ancien plan.
+  if (!Number.isNaN(abandonMs) && abandonMs > 2000) {
+    failures.push(`changement de morceau : ancien show abandonné tardivement (${abandonMs} ms)`);
+  }
+  if (reculAncienShow > 500) {
+    failures.push(`changement de morceau : l'ancien show est reparti en arrière de ${Math.round(reculAncienShow)} ms`);
+  }
 
   await page.close();
 } catch (error) {
