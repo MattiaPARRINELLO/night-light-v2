@@ -8,6 +8,16 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **File multi-source** : modèle `QueueTrack`, résolution Deezer par ID puis
+  ISRC (contrôle de durée ±3 s) puis recherche ; providers Spotify API (OAuth
+  PKCE sans secret) et userscript Deezer (`userscripts/deezer-queue.user.js`).
+  Repli MPRIS seul si rien n'est configuré.
+- **Préchargement des 2 suivants** : résolution + analyse complète, cache
+  uniquement, avec un second worker d'analyse dédié pour ne jamais faire
+  attendre le morceau courant. Coût mémoire mesuré : ~259 Mo par worker.
+- **SSE des jobs** : `/api/jobs/{id}/stream` remplace le polling, qui reste en
+  repli après 5 s sans événement. `loadavg` et le nombre de jobs actifs sont
+  ajoutés à `timings`.
 - **Processus d'analyse persistant** : un worker préchauffé au démarrage (imports
   + JIT numba) réutilisé entre les morceaux ; une annulation le tue et en relance
   un préchauffé en arrière-plan. L'analyse complète passe d'environ 5 s à froid

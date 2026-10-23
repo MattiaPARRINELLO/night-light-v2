@@ -10,7 +10,9 @@ import asyncio
 import atexit
 import json
 import logging
+import os
 import queue
+import secrets
 import shutil
 import threading
 import time
@@ -23,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -51,6 +53,10 @@ from .mpris import (
     unsubscribe_now_playing,
 )
 from .playback_position import get_playback_state, match_playback
+from .queue.deezer import lookup_for_queue_track, track_query
+from .queue.manager import QueueManager
+from .queue.models import QueueTrack
+from .queue.spotify import pkce_pair
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
 from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
@@ -86,6 +92,8 @@ class ResolveRequest(BaseModel):
     duration_sec: float | None = None
     duration: float | None = None
     track_key: str | None = None
+    deezer_id: str | None = None
+    isrc: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +105,8 @@ class PendingResolve:
     artist: str
     duration_sec: float
     track_key: str
+    deezer_id: str | None = None
+    isrc: str | None = None
 
 
 class AppState:
@@ -125,6 +135,8 @@ class AppState:
         self._resolve_stop = False
         self._resolve_thread: threading.Thread | None = None
         self.now_playing_key = ""
+        self.active_analyses = 0
+        self.queue = QueueManager(settings, self)
         add_now_playing_listener(self._on_now_playing)
 
     @staticmethod
@@ -136,6 +148,9 @@ class AppState:
         title = getattr(state, "title", "").strip()
         artist = getattr(state, "artist", "").strip()
         self.now_playing_key = f"{title}|{artist}" if title else ""
+        player = getattr(state, "player", "")
+        if title:
+            self.queue.on_mpris_change(player, title, artist)
 
     def _cancellation_check(self, track_key: str) -> Any:
         """Annule l'analyse si MPRIS est passé à une autre piste (sauf ≥ 80 %)."""
@@ -178,6 +193,8 @@ class AppState:
                     request.artist,
                     request.duration_sec,
                     request.track_key,
+                    request.deezer_id,
+                    request.isrc,
                 )
             except Exception:  # noqa: BLE001 - un job ne doit pas tuer le worker
                 _LOGGER.exception("Résolution interrompue id=%s", request.job_id)
@@ -187,7 +204,14 @@ class AppState:
         if job is not None and job.audio_path is not None and job.owns_audio:
             job.audio_path.unlink(missing_ok=True)
 
-    def run_analysis(
+    def run_analysis(self, job_id: str, **kwargs: Any) -> None:
+        self.active_analyses += 1
+        try:
+            self._run_analysis(job_id, **kwargs)
+        finally:
+            self.active_analyses = max(0, self.active_analyses - 1)
+
+    def _run_analysis(
         self,
         job_id: str,
         *,
@@ -279,6 +303,9 @@ class AppState:
             payload["analysisMs"] = round((now - started_at) * 1000)
             payload["analyzedMs"] = round(now * 1000 - detected)
             payload["totalMs"] = payload["analyzedMs"]
+            with suppress(OSError):
+                payload["loadavg"] = [round(value, 2) for value in os.getloadavg()]
+            payload["activeJobs"] = self.store.count()
             if extra:
                 payload.update(extra)
             return payload
@@ -347,6 +374,8 @@ class AppState:
         artist: str,
         duration_sec: float,
         track_key: str | None = None,
+        deezer_id: str | None = None,
+        isrc: str | None = None,
     ) -> None:
         job = self.store.get(job_id)
         if job is None:
@@ -360,6 +389,19 @@ class AppState:
         }
 
         query = TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
+        queue_track = QueueTrack(
+            source="deezer",
+            deezer_id=deezer_id,
+            isrc=isrc,
+            title=title,
+            artist=artist,
+            duration_ms=int(duration_sec * 1000) if duration_sec > 0 else None,
+        )
+        lookup = lookup_for_queue_track(queue_track)
+        preselected = [lookup.candidate] if lookup.candidate is not None else None
+        if lookup.candidate is not None:
+            query = track_query(queue_track, lookup.candidate)
+        timings["resolutionMethod"] = lookup.method
         cache = AudioCache(Path(self.settings.cache_dir))
         _LOGGER.info(
             "Début résolution id=%s titre=%r artiste=%r durée=%.3fs",
@@ -394,6 +436,7 @@ class AppState:
                 cache,
                 thresholds=provider.thresholds,
                 progress=report,
+                preselected=preselected,
             )
         except RetrievalError as error:
             self.resolve_pending = False
@@ -501,6 +544,7 @@ class AppState:
 
     async def shutdown(self) -> None:
         remove_now_playing_listener(self._on_now_playing)
+        self.queue.stop()
         stop_analysis_worker()
         with self._resolve_cond:
             self._resolve_stop = True
@@ -574,6 +618,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
     state.executor.submit(warmup)
     start_analysis_worker()
+    state.queue.start()
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()
     atexit.register(state.store.purge_all)
@@ -716,6 +761,8 @@ async def resolve(request: ResolveRequest) -> JSONResponse:
             artist=artist.strip(),
             duration_sec=duration,
             track_key=track_key,
+            deezer_id=(request.deezer_id or "").strip() or None,
+            isrc=(request.isrc or "").strip() or None,
         )
     )
     return JSONResponse(
@@ -785,7 +832,6 @@ async def now_playing() -> dict[str, Any]:
 
 @app.get("/api/now-playing/stream")
 async def now_playing_stream(request: Request) -> StreamingResponse:
-    """Changements de morceau poussés en SSE (le front garde un polling de secours)."""
 
     async def stream() -> asyncio.AsyncIterator[str]:
         subscriber = subscribe_now_playing()
@@ -808,6 +854,88 @@ async def now_playing_stream(request: Request) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/jobs/{job_id}/stream")
+async def job_stream(job_id: str, request: Request) -> StreamingResponse:
+    """SSE d'un job ; le front garde le polling en repli."""
+    if state.store.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Analyse introuvable ou expirée.")
+
+    async def stream() -> asyncio.AsyncIterator[str]:
+        last = ""
+        while True:
+            if await request.is_disconnected():
+                break
+            job = state.store.get(job_id)
+            if job is None:
+                break
+            payload = json.dumps(job.to_dict(), ensure_ascii=False)
+            if payload != last:
+                last = payload
+                yield f"data: {payload}\n\n"
+            if job.status in {"done", "error"}:
+                break
+            await asyncio.sleep(0.15)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/queue")
+async def queue_status() -> dict[str, Any]:
+    return state.queue.status()
+
+
+@app.post("/api/deezer-queue")
+async def deezer_queue(request: Request) -> dict[str, Any]:
+    """Reçoit la file du userscript Deezer (ID Deezer) ou une URL playlist/album."""
+    try:
+        payload = await request.json()
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="JSON invalide.") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Objet JSON attendu.")
+    snapshot = state.queue.update_deezer(payload)
+    return snapshot.to_dict()
+
+
+_SPOTIFY_PENDING: dict[str, str] = {}
+
+
+@app.get("/api/spotify/login")
+async def spotify_login() -> Any:
+    provider = state.queue.spotify
+    if not provider.configured:
+        raise HTTPException(status_code=400, detail="SPOTIFY_CLIENT_ID absent de .env")
+    verifier, _challenge = pkce_pair()
+    oauth_state = secrets.token_urlsafe(24)
+    _SPOTIFY_PENDING[oauth_state] = verifier
+    return RedirectResponse(provider.authorization_url(oauth_state, verifier))
+
+
+@app.get("/api/spotify/callback")
+async def spotify_callback(code: str = "", state: str = "", error: str = "") -> dict[str, Any]:
+    if error:
+        return {"error": error}
+    verifier = _SPOTIFY_PENDING.pop(state, "")
+    if code == "" or verifier == "":
+        raise HTTPException(status_code=400, detail="Code ou state OAuth invalide/expiré.")
+    provider = state.queue.spotify
+    payload = provider.exchange_code(code, verifier)
+    refresh = str(payload.get("refresh_token") or "")
+    if refresh == "":
+        return {"error": payload.get("error", "refresh_token absent")}
+    # Le secret n'est jamais journalisé : il est affiché une seule fois pour
+    # être recopié dans .env.
+    return {
+        "ok": True,
+        "instructions": "Ajoute cette ligne dans .env puis redémarre le serveur.",
+        "env": f"SPOTIFY_REFRESH_TOKEN={refresh}",
+    }
 
 
 @app.get("/api/audio-levels")
