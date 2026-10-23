@@ -48,6 +48,19 @@ interface Sample {
   showQuality: number;
 }
 
+interface QueueStatus {
+  provider: string;
+  note: string;
+  preload: Array<{
+    key: string;
+    title: string;
+    artist: string;
+    state: string;
+    method: string;
+    error: string;
+  }>;
+}
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (node === null) throw new Error(`Élément manquant dans le DOM : #${id}`);
@@ -299,9 +312,35 @@ class Dashboard {
     this.send({ type: "hello" });
     window.setInterval(() => this.send({ type: "hello" }), 2000);
     window.setInterval(() => this.checkLink(), 1000);
+    window.setInterval(() => void this.refreshQueue(), 2000);
     void this.loadLimits();
     this.bindControls();
     this.checkLink();
+    void this.refreshQueue();
+  }
+
+  private async refreshQueue(): Promise<void> {
+    try {
+      const response = await fetch("/api/queue");
+      if (!response.ok) return;
+      const queue = (await response.json()) as QueueStatus;
+      el<HTMLElement>("queue-provider").textContent = queue.provider || "MPRIS seul";
+      el<HTMLElement>("queue-method").textContent =
+        `Source : ${queue.provider} · ${queue.note || "—"}`;
+      const list = el<HTMLElement>("queue-preload");
+      if (queue.preload.length === 0) {
+        list.innerHTML = "<li>Aucune piste préchargée.</li>";
+        return;
+      }
+      list.innerHTML = queue.preload
+        .map((item) => {
+          const state = item.error ? `${item.state} (${item.error})` : item.state;
+          return `<li>${item.title} — ${item.artist} · ${state} · ${item.method}</li>`;
+        })
+        .join("");
+    } catch {
+      // Le dashboard reste utilisable si le serveur redémarre.
+    }
   }
 
   private send(command: DashboardCommand): void {
@@ -567,6 +606,7 @@ class Dashboard {
     // réglages
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
+    const transition = el<HTMLSelectElement>("transition-mode");
     const latency = el<HTMLInputElement>("latency");
     if (document.activeElement !== latency) latency.value = String(sync.latencyMs);
     const intensityInput = el<HTMLInputElement>("intensity");
@@ -577,6 +617,7 @@ class Dashboard {
     el<HTMLElement>("flashes-value").textContent = `${Math.round(state.settings.flashes * 100)} %`;
     if (document.activeElement !== reduced) reduced.checked = state.settings.reduced;
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
+    if (document.activeElement !== transition) transition.value = state.settings.transition;
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -641,6 +682,60 @@ class Dashboard {
       trackStatus.textContent = "en attente";
       trackFacts.textContent = "—";
       sectionCount.textContent = "—";
+    }
+
+    const trackTimings = el<HTMLElement>("track-timings");
+    if (state.timings === null) {
+      trackTimings.textContent = "Chronologie : —";
+    } else {
+      const t = state.timings;
+      const stage = (label: string, value: number | null): string =>
+        `${label} ${value === null ? "—" : `+${Math.round(value)} ms`}`;
+      const parts = [
+        "détecté",
+        stage("trouvé", t.foundMs),
+        stage("téléchargé", t.downloadedMs),
+        stage("partiel", t.partialMs),
+        stage("analysé", t.analyzedMs),
+        stage("calé", t.syncedMs),
+        stage("premier frame", t.firstFrameMs),
+      ];
+      if (t.planMs !== null) parts.push(`plan ${Math.round(t.planMs)} ms`);
+      if (t.analysisCache) parts.push("analyse en cache");
+      else if (t.audioCache) parts.push("audio en cache");
+      trackTimings.textContent = `Chronologie : ${parts.join(" → ")}`;
+    }
+
+    const trackPhases = el<HTMLElement>("track-phases");
+    if (state.timings?.phases == null) {
+      trackPhases.textContent = "Phases d’analyse : —";
+    } else {
+      const labels: Record<string, string> = {
+        processStartImportsSec: "processus/imports",
+        workerWarmupSec: "préchauffage worker",
+        decodeSec: "décodage",
+        resampleSec: "rééchantillonnage",
+        onsetSec: "onset",
+        beatTrackSec: "beat_track",
+        onsetsSec: "onsets",
+        stftSec: "stft",
+        featuresSec: "bandes/rms",
+        mfccChromaSec: "mfcc/chroma",
+        curvesSec: "courbes",
+        buildsSec: "montées",
+        serializationMs: "sérialisation",
+      };
+      const entries = Object.entries(state.timings.phases)
+        .filter(([, value]) => Number.isFinite(value))
+        .map(([key, value]) => {
+          const label = labels[key] ?? key;
+          const text =
+            key === "processStartImportsSec" || key.endsWith("Ms")
+              ? `${Math.round(value)} ms`
+              : `${(value * 1000).toFixed(0)} ms`;
+          return `${label} ${text}`;
+        });
+      trackPhases.textContent = `Phases d’analyse : ${entries.join(" · ")}`;
     }
 
     // tableau des sections (reconstruit seulement quand l'analyse change)
@@ -743,6 +838,15 @@ class Dashboard {
     el<HTMLElement>("alert-error").hidden = state.error === null;
     setText(el<HTMLElement>("notice-text"), state.notice === null ? "—" : state.notice.text);
     el<HTMLElement>("alert-notice").hidden = state.notice === null;
+    if (state.resolve === null) {
+      setText(el<HTMLElement>("resolve-text"), "—");
+    } else {
+      const name = state.resolve.artist === ""
+        ? state.resolve.title
+        : `${state.resolve.title} — ${state.resolve.artist}`;
+      setText(el<HTMLElement>("resolve-text"), `« ${name} » — non trouvé : ${state.resolve.detail}`);
+    }
+    el<HTMLElement>("alert-resolve").hidden = state.resolve === null;
     this.refreshAlerts();
 
     // rendu visuel
@@ -851,7 +955,15 @@ class Dashboard {
     const flashes = el<HTMLInputElement>("flashes");
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
+    const transition = el<HTMLSelectElement>("transition-mode");
     const latency = el<HTMLInputElement>("latency");
+
+    transition.addEventListener("change", () => {
+      this.send({
+        type: "set-settings",
+        patch: { transition: transition.value === "black" ? "black" : "crossfade" },
+      });
+    });
 
     intensity.addEventListener("change", () => {
       const value = Number(intensity.value);
@@ -991,14 +1103,14 @@ class Dashboard {
     this.controller = controller;
     this.setProgress("Recherche", 0, title);
     try {
-      const { jobId, analysis } = await resolveAndAnalyze(title, artist, undefined, {
+      const { jobId, analysis, timings } = await resolveAndAnalyze(title, artist, undefined, {
         signal: controller.signal,
         onPhase: ({ progress, phase, detail }) => this.setProgress(phase, progress, detail),
       });
       this.analysis = analysis;
       this.analysisTitle = title;
       this.analysisArtist = artist;
-      this.send({ type: "analysis-ready", jobId, title, artist, analysis });
+      this.send({ type: "analysis-ready", jobId, title, artist, analysis, timings });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
     } catch (error) {

@@ -63,6 +63,7 @@
         <p class="alert is-error" id="alert-error" hidden><b class="alert-tag">Erreur</b><span id="prog-error">—</span></p>
         <p class="alert is-stale" id="alert-stale" hidden><b class="alert-tag">Figé</b><span id="stale-text">—</span></p>
         <p class="alert is-notice" id="alert-notice" hidden><b class="alert-tag">Info</b><span id="notice-text">—</span></p>
+        <p class="alert is-notice" id="alert-resolve" hidden><b class="alert-tag">Auto</b><span id="resolve-text">—</span></p>
       </div>
 
       <!-- ================= ZONE 1 : maintenant ================= -->
@@ -79,6 +80,8 @@
           </div>
           <p class="track-facts" id="track-facts">—</p>
         </div>
+        <p class="panel-note" id="track-timings">Chronologie : —</p>
+        <p class="panel-note" id="track-phases">Phases d’analyse : —</p>
 
         <div class="track-plot" id="track-plot">
           <canvas id="track-canvas" width="1120" height="340" tabindex="0" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer."></canvas>
@@ -290,6 +293,13 @@
               <label class="switch"><input id="chk-reduced" type="checkbox" /><span>Intensité réduite</span></label>
               <label class="switch"><input id="chk-noflash" type="checkbox" /><span>Sans flashs</span></label>
             </div>
+            <label class="field">
+              <span class="field-label">Entrée dans le show</span>
+              <select id="transition-mode">
+                <option value="crossfade">Fondu enchaîné</option>
+                <option value="black">Fondu noir</option>
+              </select>
+            </label>
             <hr class="dash-sep" />
             <label class="field field-text"><span class="field-label">Latence (ms)</span><input id="latency" type="number" min="-500" max="1000" step="10" value="0" /></label>
             <div class="dash-actions">
@@ -312,6 +322,15 @@
               <button id="btn-cancel" class="btn btn-ghost" type="button">Annuler l'analyse</button>
             </div>
             <p class="panel-note">L'écran de show n'a pas d'interface : tout se règle ici. Raccourcis clavier sur l'écran de show : <b>D</b> overlay, <b>S</b> show local, <b>Échap</b> annuler, <b>F</b> plein écran.</p>
+          </section>
+
+          <section class="panel" id="panel-queue" aria-label="File et préchargement">
+            <header class="panel-head">
+              <h2>File et préchargement</h2>
+              <span class="panel-tag" id="queue-provider">—</span>
+            </header>
+            <p class="panel-note" id="queue-method">Source : —</p>
+            <ul class="notice-list" id="queue-preload"><li>Aucune piste préchargée.</li></ul>
           </section>
         </div>
       </section>

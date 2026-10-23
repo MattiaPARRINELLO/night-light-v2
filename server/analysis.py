@@ -11,23 +11,29 @@ import multiprocessing
 import queue as queue_module
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import librosa
 import numpy as np
+import soundfile as sf
 
 from .config import Settings
 
 SR_DEFAULT = 22050
 HOP = 512
 NFFT = 2048
+# Version du résultat d'analyse. À incrémenter dès que l'algorithme change :
+# le cache d'analyse est indexé dessus, donc les entrées périmées sont ignorées.
+ANALYZER_VERSION = "3"
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
+
 
 class AnalysisError(Exception):
     """Erreur d'analyse, traduite en message compréhensible par l'API."""
@@ -63,6 +69,8 @@ class AnalysisResult:
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
+    coverage: tuple[float, float] | None = None
+    phase_timings: dict[str, float] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------- décodage
@@ -102,14 +110,51 @@ def decode_with_ffmpeg(path: Path, sample_rate: int) -> np.ndarray | None:
     return np.asarray(audio, dtype=np.float32)
 
 
-def load_audio(path: Path, sample_rate: int) -> np.ndarray:
+def load_audio(
+    path: Path,
+    sample_rate: int,
+    *,
+    offset: float = 0.0,
+    duration: float | None = None,
+    timings: dict[str, float] | None = None,
+) -> np.ndarray:
+    offset = max(0.0, offset)
+    started = time.monotonic()
     try:
-        audio, _ = librosa.load(path, sr=sample_rate, mono=True)
-        return np.asarray(audio, dtype=np.float32)
+        # Décodage direct via libsndfile (MP3/FLAC/WAV/OGG), puis
+        # rééchantillonnage séparé : on mesure les deux coûts distinctement.
+        with sf.SoundFile(path) as stream:
+            source_sr = int(stream.samplerate)
+            if offset > 0:
+                stream.seek(int(offset * source_sr))
+            frames = -1 if duration is None else int(duration * source_sr)
+            data = stream.read(frames=frames, dtype="float32", always_2d=True)
+        decode_sec = time.monotonic() - started
+        if data.ndim == 2 and data.shape[1] > 1:
+            data = data.mean(axis=1)
+        audio = np.asarray(data, dtype=np.float32).reshape(-1)
+        resample_started = time.monotonic()
+        if source_sr != sample_rate and audio.size > 0:
+            audio = librosa.resample(
+                audio,
+                orig_sr=source_sr,
+                target_sr=sample_rate,
+                res_type="soxr_hq",
+            )
+        if timings is not None:
+            timings["decodeSec"] = round(decode_sec, 3)
+            timings["resampleSec"] = round(time.monotonic() - resample_started, 3)
+        return audio
     except Exception as direct:  # noqa: BLE001 - on tente le repli ffmpeg
+        fallback_started = time.monotonic()
         fallback = decode_with_ffmpeg(path, sample_rate)
         if fallback is not None and fallback.size > 0:
-            return fallback
+            start = int(offset * sample_rate)
+            end = None if duration is None else start + int(duration * sample_rate)
+            if timings is not None:
+                timings["decodeSec"] = round(time.monotonic() - fallback_started, 3)
+                timings["resampleSec"] = 0.0
+            return fallback[start:end]
         raise AnalysisError(
             "unreadable_audio",
             "Ce fichier n'est pas un audio exploitable : le décodage a échoué.",
@@ -264,20 +309,28 @@ def detect_rhythm(
     sr: int,
     report: ProgressFn,
     phase: Phase,
+    timings: dict[str, float] | None = None,
 ) -> tuple[float, list[float], list[float], int]:
     report(phase, 0.1, "Enveloppe des attaques")
+    started = time.monotonic()
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=HOP)
+    if timings is not None:
+        timings["onsetSec"] = round(time.monotonic() - started, 3)
     report(phase, 0.5, "Estimation du tempo")
+    started = time.monotonic()
     tempo, beat_frames = librosa.beat.beat_track(
         onset_envelope=onset_env,
         sr=sr,
         hop_length=HOP,
         trim=False,
     )
+    if timings is not None:
+        timings["beatTrackSec"] = round(time.monotonic() - started, 3)
     tempo_value = float(np.atleast_1d(np.asarray(tempo, dtype=float))[0])
     if tempo_value <= 0:
         tempo_value = 120.0
     report(phase, 0.8, "Temps forts et attaques")
+    started = time.monotonic()
     beats = librosa.frames_to_time(beat_frames, sr=sr, hop_length=HOP) + GROUP_DELAY_SEC
     onsets = (
         librosa.onset.onset_detect(
@@ -289,6 +342,8 @@ def detect_rhythm(
         )
         + GROUP_DELAY_SEC
     )
+    if timings is not None:
+        timings["onsetsSec"] = round(time.monotonic() - started, 3)
     unique_beats = sorted({round(float(b), 3) for b in beats})
     unique_onsets = sorted({round(float(o), 3) for o in onsets})
     meter = estimate_meter(onset_env, unique_beats, tempo_value, sr)
@@ -556,12 +611,29 @@ def analyze_file(
     path: Path,
     settings: Settings,
     report: Callable[[str, float], None] | None = None,
+    window: tuple[float, float] | None = None,
+    should_cancel: Callable[[float], bool] | None = None,
 ) -> AnalysisResult:
-    """Analyse complète. `report(message, progress)` sert l'avancement réel."""
+    """Analyse complète, ou rapide sur `window = (début, fin)` en secondes.
+
+    Une analyse fenêtrée renvoie `coverage` et une grille de beats extrapolée sur
+    tout le morceau : le show peut démarrer immédiatement, puis être remplacé par
+    l'analyse complète. `should_cancel(progress)` est consulté aux étapes clés.
+    """
 
     def emit(message: str, value: float) -> None:
         if report is not None:
             report(message, float(min(max(value, 0.0), 1.0)))
+
+    def check_cancel(progress: float) -> None:
+        if should_cancel is not None and should_cancel(progress):
+            raise AnalysisError(
+                "cancelled",
+                "Analyse abandonnée : le lecteur est passé à un autre morceau.",
+                "",
+            )
+
+    phase_timings: dict[str, float] = {}
 
     phases = [
         Phase("Décodage audio", 0.12),
@@ -579,23 +651,44 @@ def analyze_file(
         emit(f"{phase.name} — {detail}", (done + phase.weight * ratio) / total)
 
     sample_rate = settings.sample_rate
+    offset = max(0.0, float(window[0])) if window is not None else 0.0
+    window_span = max(1.0, float(window[1]) - offset) if window is not None else None
     emit("Décodage du fichier audio", 0.0)
-    y = load_audio(path, sample_rate)
+    check_cancel(0.0)
+    y = load_audio(
+        path,
+        sample_rate,
+        offset=offset,
+        duration=window_span,
+        timings=phase_timings,
+    )
     duration = float(len(y) / sample_rate) if sample_rate > 0 else 0.0
+    check_cancel(0.1)
 
     if duration < 1.0:
         raise AnalysisError(
             "too_short",
             "Le morceau est trop court (moins d'une seconde) pour être analysé.",
         )
-    if duration > settings.max_duration_sec:
+    if window is None:
+        full_duration = duration
+    else:
+        try:
+            full_duration = float(librosa.get_duration(path=path))
+        except Exception:  # noqa: BLE001 - repli raisonnable
+            full_duration = offset + duration
+        full_duration = max(full_duration, offset + duration)
+    if full_duration > settings.max_duration_sec:
         raise AnalysisError(
             "too_long",
-            f"Morceau trop long ({duration / 60:.1f} min). Limite : "
+            f"Morceau trop long ({full_duration / 60:.1f} min). Limite : "
             f"{settings.max_duration_sec / 60:.0f} min.",
         )
 
+    spectrum_started = time.monotonic()
     spectrum = np.abs(librosa.stft(y, n_fft=NFFT, hop_length=HOP))
+    phase_timings["stftSec"] = round(time.monotonic() - spectrum_started, 3)
+    check_cancel(0.3)
     frequencies = librosa.fft_frequencies(sr=sample_rate, n_fft=NFFT)
     frame_times = librosa.frames_to_time(
         np.arange(spectrum.shape[1]), sr=sample_rate, hop_length=HOP
@@ -604,6 +697,7 @@ def analyze_file(
 
     # Lissage large : sans lui les courbes servent le battement du morceau et
     # feraient clignoter les effets au lieu de suivre son énergie.
+    features_started = time.monotonic()
     bass = normalize_curve(_smooth(band_energy(spectrum, frequencies, 30, 150), 0.35, frame_rate))
     mid = normalize_curve(_smooth(band_energy(spectrum, frequencies, 150, 2000), 0.35, frame_rate))
     # Subdivision du médium : 150–600 Hz (corps, bas-médium lourd) et 600–2500 Hz
@@ -623,34 +717,73 @@ def analyze_file(
 
     energy_raw = 0.62 * rms + 0.38 * ((bass + mid + high) / 3.0)
     energy = normalize_log_curve(energy_raw)
+    phase_timings["featuresSec"] = round(time.monotonic() - features_started, 3)
 
-    tempo, beats, onsets, meter = detect_rhythm(y, sample_rate, progress, phases[2])
+    tempo, beats, onsets, meter = detect_rhythm(
+        y, sample_rate, progress, phases[2], timings=phase_timings
+    )
+    check_cancel(0.7)
+
+    coverage: tuple[float, float] | None = None
+    if window is not None:
+        coverage = (round(offset, 3), round(min(full_duration, offset + duration), 3))
+        beats = [round(float(beat) + offset, 3) for beat in beats]
+        onsets = [round(float(onset) + offset, 3) for onset in onsets]
+        frame_times = frame_times + offset
+        # Hors fenêtre, la grille de beats est extrapolée avec le tempo trouvé :
+        # le rendu live peut pulser correctement en attendant l'analyse finale.
+        period = 60.0 / tempo if tempo > 0 else 0.0
+        if period > 0.05 and beats:
+            anchor = beats[0]
+            first = int(np.floor((0.0 - anchor) / period))
+            last = int(np.ceil((full_duration - anchor) / period))
+            extrapolated = [anchor + index * period for index in range(first, last + 1)]
+            beats = sorted(
+                {
+                    round(float(beat), 3)
+                    for beat in [*beats, *extrapolated]
+                    if 0.0 <= float(beat) <= full_duration
+                }
+            )
 
     # Pas de découpage couplet/refrain : la détection coûtait plus cher (temps
     # d'analyse limité) qu'elle n'apportait de repères fiables. Le morceau reste
     # une seule section ; le spectacle suit l'énergie, les montées et les temps
     # forts.
-    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, duration)
-    sections = detect_sections(energy, frame_times, duration)
+    curves_started = time.monotonic()
+    energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, full_duration)
+    sections = detect_sections(energy, frame_times, full_duration)
+    bass_points = curve_to_points(frame_times, bass, settings.curve_rate_hz, full_duration)
+    mid_points = curve_to_points(frame_times, mid, settings.curve_rate_hz, full_duration)
+    mid_low_points = curve_to_points(frame_times, mid_low, settings.curve_rate_hz, full_duration)
+    mid_high_points = curve_to_points(frame_times, mid_high, settings.curve_rate_hz, full_duration)
+    high_points = curve_to_points(frame_times, high, settings.curve_rate_hz, full_duration)
+    phase_timings["curvesSec"] = round(time.monotonic() - curves_started, 3)
     progress(phases[3], 0.5, "détection des montées")
-    builds = detect_builds(energy_points, duration, onsets)
+    builds_started = time.monotonic()
+    builds = detect_builds(energy_points, full_duration, onsets)
+    phase_timings["buildsSec"] = round(time.monotonic() - builds_started, 3)
+    check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")
     progress(phases[4], 1.0, "données du spectacle prêtes")
+    phase_timings["mfccChromaSec"] = 0.0
 
     return AnalysisResult(
-        duration=round(duration, 3),
+        duration=round(full_duration, 3),
         tempo=round(tempo, 3),
         meter=meter,
         beats=beats,
         onsets=onsets,
         energy=energy_points,
-        bass=curve_to_points(frame_times, bass, settings.curve_rate_hz, duration),
-        mid=curve_to_points(frame_times, mid, settings.curve_rate_hz, duration),
-        mid_low=curve_to_points(frame_times, mid_low, settings.curve_rate_hz, duration),
-        mid_high=curve_to_points(frame_times, mid_high, settings.curve_rate_hz, duration),
-        high=curve_to_points(frame_times, high, settings.curve_rate_hz, duration),
+        bass=bass_points,
+        mid=mid_points,
+        mid_low=mid_low_points,
+        mid_high=mid_high_points,
+        high=high_points,
         sections=sections,
         builds=builds,
+        coverage=coverage,
+        phase_timings=phase_timings,
     )
 
 
@@ -669,6 +802,7 @@ def _analysis_worker(
     messages: Any,
     path: str,
     settings: Settings,
+    window: tuple[float, float] | None = None,
 ) -> None:
     """Point d'entrée du process d'analyse : renvoie le résultat par la queue."""
 
@@ -678,7 +812,8 @@ def _analysis_worker(
             messages.put(("progress", message, float(progress)))
 
     try:
-        result = analyze_file(Path(path), settings, report=report)
+        messages.put(("started", time.monotonic()))
+        result = analyze_file(Path(path), settings, report=report, window=window)
         messages.put(("done", result))
     except AnalysisError as error:
         messages.put(("analysis_error", error.code, error.message, error.detail))
@@ -686,75 +821,240 @@ def _analysis_worker(
         messages.put(("crash", type(error).__name__, str(error)[:300]))
 
 
+def _persistent_worker(
+    tasks: Any,
+    events: Any,
+) -> None:
+    """Processus d'analyse persistant : préchauffé une fois, puis réutilisé."""
+    with contextlib.suppress(Exception):
+        warmup()
+    events.put(("ready", time.monotonic()))
+    while True:
+        task = tasks.get()
+        if task is None:
+            return
+        task_id, path, settings, window, with_cancel = task
+
+        def report(message: str, progress: float, tid: int = task_id) -> None:
+            with contextlib.suppress(Exception):
+                events.put(("progress", tid, message, float(progress)))
+
+        # L'annulation se fait en tuant ce processus : `with_cancel` n'est là
+        # que pour documenter le contrat et reste utilisé côté parent.
+        try:
+            result = analyze_file(
+                Path(path),
+                settings,
+                report=report,
+                window=window,
+                should_cancel=(lambda _progress: False) if with_cancel else None,
+            )
+            events.put(("done", task_id, result))
+        except AnalysisError as error:
+            events.put(("analysis_error", task_id, error.code, error.message, error.detail))
+        except BaseException as error:  # noqa: BLE001
+            events.put(("crash", task_id, type(error).__name__, str(error)[:300]))
+
+
+class _EngineUnavailable(Exception):
+    pass
+
+
+class PersistentAnalysis:
+    """Un seul process d'analyse, gardé chaud entre les morceaux.
+
+    Il porte le JIT numba et les imports une seule fois. Une annulation tue le
+    process puis en relance un immédiatement, déjà préchauffé.
+    """
+
+    def __init__(self) -> None:
+        self._context = multiprocessing.get_context("spawn")
+        self._lock = threading.Lock()
+        self._tasks: Any = None
+        self._events: Any = None
+        self._process: Any = None
+        self._next_id = 0
+        self._ready_sec = 0.0
+        self._ready_pending = False
+        self._spawn_started = 0.0
+
+    def _spawn(self, *, wait_ready: bool = True) -> None:
+        self._tasks = self._context.Queue()
+        self._events = self._context.Queue()
+        process = self._context.Process(
+            target=_persistent_worker,
+            args=(self._tasks, self._events),
+            name="night-light-analysis-persistent",
+            daemon=True,
+        )
+        self._spawn_started = time.monotonic()
+        process.start()
+        self._process = process
+        self._ready_pending = True
+        if wait_ready:
+            self._await_ready()
+
+    def _await_ready(self) -> None:
+        process = self._process
+        if process is None:
+            raise _EngineUnavailable("aucun process d'analyse")
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            try:
+                event = self._events.get(timeout=0.2)
+            except queue_module.Empty:
+                if not process.is_alive():
+                    self._ready_pending = False
+                    raise _EngineUnavailable(
+                        "le process d'analyse s'est arrêté au démarrage"
+                    ) from None
+                continue
+            if event[0] == "ready":
+                self._ready_sec = round(float(event[1]) - self._spawn_started, 3)
+                self._ready_pending = False
+                return
+        self._ready_pending = False
+        self._kill()
+        raise _EngineUnavailable("le process d'analyse n'a pas fini son préchauffage")
+
+    def _kill(self) -> None:
+        process = self._process
+        self._process = None
+        if process is None:
+            return
+        if process.is_alive():
+            process.terminate()
+        with contextlib.suppress(Exception):
+            process.join(timeout=2.0)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1.0)
+
+    def _restart(self, *, wait_ready: bool = True) -> None:
+        self._kill()
+        try:
+            self._spawn(wait_ready=wait_ready)
+        except _EngineUnavailable:
+            raise
+
+    def start(self) -> None:
+        with self._lock:
+            if self._process is not None and self._process.is_alive():
+                if self._ready_pending:
+                    self._await_ready()
+                return
+            self._spawn()
+
+    def stop(self) -> None:
+        with self._lock:
+            if self._tasks is not None:
+                with contextlib.suppress(Exception):
+                    self._tasks.put(None)
+            self._kill()
+
+    def analyze(
+        self,
+        path: Path,
+        settings: Settings,
+        report: Callable[[str, float], None] | None = None,
+        timeout_sec: float | None = None,
+        should_cancel: Callable[[float], bool] | None = None,
+        window: tuple[float, float] | None = None,
+    ) -> AnalysisResult:
+        with self._lock:
+            if self._process is None or not self._process.is_alive():
+                self._spawn(wait_ready=False)
+            if self._ready_pending:
+                self._await_ready()
+            self._next_id += 1
+            task_id = self._next_id
+            self._tasks.put(
+                (task_id, str(Path(path).resolve()), settings, window, should_cancel is not None)
+            )
+            limit = settings.analyze_timeout_sec if timeout_sec is None else timeout_sec
+            deadline = time.monotonic() + limit if limit and limit > 0 else None
+            progress = 0.0
+            while True:
+                if should_cancel is not None and should_cancel(progress):
+                    self._restart(wait_ready=False)
+                    raise AnalysisError(
+                        "cancelled",
+                        "Analyse abandonnée : le lecteur est passé à un autre morceau.",
+                        "Le process d'analyse a été tué et relancé préchauffé.",
+                    )
+                remaining = 1.0 if deadline is None else deadline - time.monotonic()
+                if remaining <= 0:
+                    self._restart(wait_ready=False)
+                    raise AnalysisError(
+                        "timeout",
+                        f"L'analyse a dépassé la limite de {limit:.0f} s.",
+                        "Le process d'analyse a été tué.",
+                    )
+                try:
+                    event = self._events.get(timeout=min(remaining, 0.2))
+                except queue_module.Empty:
+                    if self._process is None or not self._process.is_alive():
+                        self._restart(wait_ready=False)
+                        raise AnalysisError(
+                            "analysis_failed",
+                            "L'analyse du morceau a échoué.",
+                            "Le process d'analyse s'est arrêté sans résultat.",
+                        ) from None
+                    continue
+                if event[0] == "progress" and event[1] == task_id:
+                    progress = max(progress, float(event[3]))
+                    if report is not None:
+                        report(event[2], event[3])
+                elif event[0] == "done" and event[1] == task_id:
+                    result = event[2]
+                    result.phase_timings["processStartImportsSec"] = 0.0
+                    result.phase_timings["workerWarmupSec"] = self._ready_sec
+                    return result
+                elif event[0] == "analysis_error" and event[1] == task_id:
+                    raise AnalysisError(event[2], event[3], event[4])
+                elif event[0] == "crash" and event[1] == task_id:
+                    raise AnalysisError(
+                        "analysis_failed",
+                        "L'analyse du morceau a échoué.",
+                        f"{event[2]}: {event[3]}",
+                    )
+
+
+_ENGINE = PersistentAnalysis()
+
+
+def start_analysis_worker() -> None:
+    """Préchauffe le process persistant (appelé au lifespan)."""
+    with contextlib.suppress(_EngineUnavailable):
+        # Le prochain appel retentera ; l'analyse par process jetable reste possible.
+        _ENGINE.start()
+
+
+def stop_analysis_worker() -> None:
+    _ENGINE.stop()
+
+
 def analyze_with_timeout(
     path: Path,
     settings: Settings,
     report: Callable[[str, float], None] | None = None,
     timeout_sec: float | None = None,
+    should_cancel: Callable[[float], bool] | None = None,
+    window: tuple[float, float] | None = None,
 ) -> AnalysisResult:
-    """`analyze_file` avec une limite de temps dure.
-
-    Lève `AnalysisError("timeout")` si l'analyse dépasse la limite (par défaut
-    `settings.analyze_timeout_sec`) ; le process est alors tué, sans laisser de
-    worker bloqué. Une limite nulle ou négative désactive le garde-fou et exécute
-    l'analyse en direct.
-    """
-    limit = settings.analyze_timeout_sec if timeout_sec is None else timeout_sec
-    if limit is None or limit <= 0:
-        return analyze_file(path, settings, report=report)
-
-    context = multiprocessing.get_context("spawn")
-    messages = context.Queue()
-    process = context.Process(
-        target=_analysis_worker,
-        args=(messages, str(Path(path).resolve()), settings),
-        name="night-light-analysis",
-        daemon=True,
-    )
-    process.start()
-    deadline = time.monotonic() + limit
+    """Analyse via le process persistant, tué et relancé en cas d'annulation."""
     try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise AnalysisError(
-                    "timeout",
-                    f"L'analyse a dépassé la limite de {limit:.0f} s.",
-                    "Morceau trop complexe ou fichier illisible : réessaie avec un "
-                    "fichier plus court, ou augmente ANALYZE_TIMEOUT_SEC.",
-                )
-            try:
-                event = messages.get(timeout=min(remaining, 0.25))
-            except queue_module.Empty:
-                if not process.is_alive() and messages.empty():
-                    raise AnalysisError(
-                        "analysis_failed",
-                        "L'analyse du morceau a échoué.",
-                        "Le process d'analyse s'est arrêté sans résultat "
-                        f"(code {process.exitcode}).",
-                    ) from None
-                continue
-
-            kind = event[0]
-            if kind == "progress":
-                if report is not None:
-                    report(event[1], event[2])
-            elif kind == "done":
-                return event[1]
-            elif kind == "analysis_error":
-                raise AnalysisError(event[1], event[2], event[3])
-            else:
-                raise AnalysisError(
-                    "analysis_failed",
-                    "L'analyse du morceau a échoué.",
-                    f"{event[1]}: {event[2]}",
-                )
-    finally:
-        if process.is_alive():
-            process.terminate()
-        process.join(timeout=5.0)
-        if process.is_alive():
-            process.kill()
-            process.join(timeout=1.0)
-        messages.close()
-        messages.join_thread()
+        return _ENGINE.analyze(
+            path,
+            settings,
+            report=report,
+            timeout_sec=timeout_sec,
+            should_cancel=should_cancel,
+            window=window,
+        )
+    except _EngineUnavailable as error:
+        raise AnalysisError(
+            "analysis_failed",
+            "Le process d'analyse n'a pas pu démarrer.",
+            str(error)[:300],
+        ) from error

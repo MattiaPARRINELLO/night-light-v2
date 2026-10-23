@@ -4,7 +4,7 @@
  */
 
 import type { App } from "./app";
-import { ApiError, fetchNowPlaying, resolveAndAnalyze } from "../core/api";
+import { ApiError, fetchNowPlaying, normalizeNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
 import { dbgThrottled } from "../core/debug";
 import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
@@ -22,16 +22,79 @@ declare module "./app" {
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
     maybeAutoResolve(): Promise<void>;
+    bindNowPlayingStream(): void;
+    receiveNowPlaying(raw: Record<string, unknown>): void;
+    startNowPlayingPolling(): void;
+    stopNowPlayingPolling(): void;
+    beginTrackTimings(): void;
+    applyJobTimings(timings: JobTimings | undefined): void;
+    markSynced(): void;
+    markFirstFrame(): void;
   }
 }
 
 export function installResolve(Target: { prototype: App }): void {
+  /** Ouvre une nouvelle chronologie au moment où le morceau est détecté. */
+  Target.prototype.beginTrackTimings = function (this: App): void {
+    this.trackTimings = {
+      detectedAt: Date.now(),
+      foundMs: null,
+      downloadedMs: null,
+      analyzedMs: null,
+      partialMs: null,
+      syncedMs: null,
+      firstFrameMs: null,
+      planMs: null,
+      audioCache: false,
+      analysisCache: false,
+      phases: null,
+    };
+  };
+
+  /** Reporte les mesures serveur sur la chronologie affichée par le dashboard. */
+  Target.prototype.applyJobTimings = function (this: App, timings: JobTimings | undefined): void {
+    if (this.trackTimings === null) this.beginTrackTimings();
+    const current = this.trackTimings;
+    if (current === null || timings === undefined) return;
+    // La chronologie front commence à la détection (SSE) ; le serveur compte à
+    // partir de la création du job, un peu plus tard. On garde la plus ancienne
+    // origine et on décale les étapes serveur de cet écart.
+    const serverBase =
+      typeof timings.detectedAt === "number" && timings.detectedAt > 0
+        ? timings.detectedAt
+        : current.detectedAt;
+    const base = Math.min(current.detectedAt, serverBase);
+    const offset = Math.max(0, serverBase - base);
+    current.detectedAt = base;
+    if (timings.foundMs !== undefined) current.foundMs = Math.round(offset + timings.foundMs);
+    if (timings.downloadedMs !== undefined) {
+      current.downloadedMs = Math.round(offset + timings.downloadedMs);
+    }
+    if (timings.analyzedMs !== undefined) current.analyzedMs = Math.round(offset + timings.analyzedMs);
+    if (timings.partialMs !== undefined) current.partialMs = Math.round(offset + timings.partialMs);
+    current.audioCache = timings.audioCache === true;
+    current.analysisCache = timings.analysisCache === true;
+    if (timings.analysisPhases !== undefined) current.phases = { ...timings.analysisPhases };
+  };
+
+  /** Marque le moment où le show est calé sur le lecteur. */
+  Target.prototype.markSynced = function (this: App): void {
+    if (this.trackTimings === null) return;
+    this.trackTimings.syncedMs = Math.max(0, Date.now() - this.trackTimings.detectedAt);
+  };
+
+  /** Marque la première image réellement dessinée après le calage. */
+  Target.prototype.markFirstFrame = function (this: App): void {
+    const timings = this.trackTimings;
+    if (timings === null || timings.syncedMs === null || timings.firstFrameMs !== null) return;
+    timings.firstFrameMs = Math.max(timings.syncedMs, Date.now() - timings.detectedAt);
+  };
+
   Target.prototype.bindResolve = function (this: App): void {
     const form = el<HTMLFormElement>("resolve-form");
     const status = el<HTMLElement>("resolve-status");
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (this.analysisController !== null) return;
       const title = el<HTMLInputElement>("resolve-title").value.trim();
       const artist = el<HTMLInputElement>("resolve-artist").value.trim();
       const rawDuration = el<HTMLInputElement>("resolve-duration").value.trim();
@@ -67,12 +130,21 @@ export function installResolve(Target: { prototype: App }): void {
     // Chaque tentative porte un numéro : une résolution remplacée par un morceau
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
+    const startedAt = performance.now();
+    if (!auto || this.trackTimings === null) this.beginTrackTimings();
+    // Toute nouvelle résolution — manuelle comprise — annule la précédente :
+    // elle ne doit ni continuer à télécharger pour rien, ni écraser son résultat.
+    if (this.analysisController !== null) this.analysisController.abort();
     const controller = new AbortController();
     this.analysisController = controller;
     this.autoResolving = auto;
     this.pendingTitle = title;
     this.pendingAnalysis = null;
-    el<HTMLElement>("dock-panel").classList.add("is-hidden");
+    // Une nouvelle tentative efface l'échec précédent. Le dock ne se masque que
+    // pour une action manuelle : une résolution automatique doit laisser
+    // l'écran de dépôt intact si elle échoue.
+    this.resolveFailure = null;
+    if (!auto) el<HTMLElement>("dock-panel").classList.add("is-hidden");
     this.debug("analyse", `recherche par titre · ${title} / ${artist}`, { dureeSec: duration ?? "—" });
     setUploadState({
       phase: "Recherche",
@@ -81,8 +153,9 @@ export function installResolve(Target: { prototype: App }): void {
       title,
       meta: "Résolution automatique",
     });
+    let partialShown = false;
     try {
-      const { jobId, analysis } = await resolveAndAnalyze(
+      const { jobId, analysis, timings } = await resolveAndAnalyze(
         title,
         artist,
         duration,
@@ -101,12 +174,26 @@ export function installResolve(Target: { prototype: App }): void {
               4000,
             );
           },
+          onPartial: (partial, partialTimings) => {
+            if (seq !== this.resolveSeq) return;
+            partialShown = true;
+            this.pendingAnalysis = partial;
+            this.applyJobTimings(partialTimings);
+            document.body.dataset.analysisReady = "true";
+            this.debug("analyse", "analyse partielle prête · bascule immédiate", {
+              couverture: partial.coverage ?? null,
+              tempo: Number(partial.tempo.toFixed(1)),
+              temps: partial.beats.length,
+            });
+            void this.tryAutoSynced(title, artist, partial.duration, partial);
+          },
         },
         trackKey,
       );
       if (seq !== this.resolveSeq) return;
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
+      this.applyJobTimings(timings);
       document.body.dataset.analysisReady = "true";
       this.debug("analyse", `analyse terminée · ${title} / ${artist}`, {
         dureeSec: Number(analysis.duration.toFixed(1)),
@@ -114,8 +201,14 @@ export function installResolve(Target: { prototype: App }): void {
         temps: analysis.beats.length,
         montees: analysis.builds.length,
         sections: analysis.sections.length,
+        dureeMs: Math.round(performance.now() - startedAt),
+        analyseEnCache: this.trackTimings?.analysisCache === true,
       });
-      void this.tryAutoSynced(title, artist, analysis.duration, analysis);
+      // Si le show partiel tourne déjà, on remplace le plan sans le relancer ;
+      // sinon (analyse en cache, ou aucun calage encore) on tente le calage final.
+      if (!partialShown || !this.updateSyncedAnalysis(analysis)) {
+        void this.tryAutoSynced(title, artist, analysis.duration, analysis);
+      }
       status.hidden = true;
     } catch (error) {
       if (seq !== this.resolveSeq) return;
@@ -133,13 +226,32 @@ export function installResolve(Target: { prototype: App }): void {
       // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur. Elle ne
       // doit donc pas remplacer le show en cours par l'écran d'erreur.
       this.debug("attention", "morceau non récupéré automatiquement", { message, detail });
-      if (auto) return;
+      if (auto) {
+        // Échec normal côté show : on reste en direct et le dock reste visible.
+        // L'état est publié vers le dashboard uniquement, jamais sur l'écran.
+        this.resolveFailure = {
+          title,
+          artist,
+          detail: error instanceof ApiError ? error.code : "erreur",
+          at: Date.now(),
+        };
+        // Même clé = même morceau : le suivi du lecteur ne doit pas relancer
+        // une résolution qui vient d'échouer.
+        if (trackKey !== undefined) this.lastAutoTrackKey = trackKey;
+        el<HTMLElement>("dock-panel").classList.remove("is-hidden");
+        return;
+      }
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
       showScreen("error");
       status.hidden = false;
       status.classList.add("is-error");
       status.textContent = message;
     } finally {
+      this.debug("analyse", "résolution terminée", {
+        titre: title,
+        automatique: auto,
+        dureeMs: Math.round(performance.now() - startedAt),
+      });
       // Une résolution remplacée ne doit pas éteindre le contrôleur de la suivante.
       if (this.analysisController === controller) {
         this.analysisController = null;
@@ -148,10 +260,78 @@ export function installResolve(Target: { prototype: App }): void {
     }
   };
 
+  /** Reçoit un morceau depuis le SSE : même traitement que le polling. */
+  Target.prototype.receiveNowPlaying = function (this: App, raw: Record<string, unknown>): void {
+    const data = normalizeNowPlaying(raw);
+    const key = data.title.trim() === "" ? "" : detectedTrackKey(data);
+    // La chronologie démarre à la détection réelle, pas à l'ouverture du job.
+    if (key !== "" && key !== this.lastDetectedKey) {
+      this.lastDetectedKey = key;
+      this.beginTrackTimings();
+    }
+    this.nowPlaying = data;
+    this.nowPlayingLastEventAt = Date.now();
+    this.stopNowPlayingPolling();
+    this.updateNowPlayingUI();
+    void this.maybeAutoResolve();
+  };
+
+  Target.prototype.startNowPlayingPolling = function (this: App): void {
+    if (this.nowPlayingPollTimer !== null) return;
+    this.debug("sync", "SSE morceau indisponible · polling de secours");
+    this.nowPlayingPollTimer = window.setInterval(() => void this.pollNowPlaying(), 1500);
+    void this.pollNowPlaying();
+  };
+
+  Target.prototype.stopNowPlayingPolling = function (this: App): void {
+    if (this.nowPlayingPollTimer === null) return;
+    window.clearInterval(this.nowPlayingPollTimer);
+    this.nowPlayingPollTimer = null;
+  };
+
+  /**
+   * Ouvre le flux SSE des changements de morceau. Le polling ne sert plus que
+   * de secours : il démarre si le flux tombe ou reste silencieux.
+   */
+  Target.prototype.bindNowPlayingStream = function (this: App): void {
+    if (typeof EventSource === "undefined") {
+      this.startNowPlayingPolling();
+      return;
+    }
+    const source = new EventSource("/api/now-playing/stream");
+    this.nowPlayingStream = source;
+    source.onopen = () => {
+      if (this.nowPlayingStream !== source) return;
+      this.debug("sync", "flux SSE morceau ouvert");
+      this.stopNowPlayingPolling();
+    };
+    source.onmessage = (event) => {
+      if (this.nowPlayingStream !== source) return;
+      try {
+        const raw = JSON.parse(event.data) as Record<string, unknown>;
+        this.receiveNowPlaying(raw);
+      } catch {
+        // Une ligne illisible ne doit pas couper le flux.
+      }
+    };
+    source.onerror = () => {
+      if (this.nowPlayingStream === source) this.startNowPlayingPolling();
+    };
+    this.nowPlayingWatchdog = window.setInterval(() => {
+      if (this.nowPlayingStream === null) return;
+      if (Date.now() - this.nowPlayingLastEventAt > 5000) this.startNowPlayingPolling();
+    }, 1000);
+  };
+
   Target.prototype.pollNowPlaying = async function (this: App): Promise<void> {
     try {
       const data = await fetchNowPlaying();
       this.nowPlaying = data;
+      const key = data.title.trim() === "" ? "" : detectedTrackKey(data);
+      if (key !== "" && key !== this.lastDetectedKey) {
+        this.lastDetectedKey = key;
+        this.beginTrackTimings();
+      }
       this.updateNowPlayingUI();
       dbgThrottled(
         "now-playing",

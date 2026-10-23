@@ -15,6 +15,7 @@
  */
 
 import type { Analysis } from "../types";
+import type { JobTimings } from "../core/api";
 
 export const CONTROL_CHANNEL = "night-light-control";
 /** Version du protocole. Incrémentée à toute rupture de compatibilité. */
@@ -23,6 +24,25 @@ export const CONTROL_VERSION = 1;
 export type ShowMode = "live" | "syncing" | "show-synced" | "show-local" | "paused" | "lost";
 
 export type ScreenName = "drop" | "analysis" | "error" | "show";
+
+/**
+ * Chronologie d'un morceau résolu, en millisecondes depuis la détection.
+ * `null` = étape pas encore atteinte. Le dashboard l'affiche tel quel.
+ */
+export interface TrackTimings {
+  detectedAt: number;
+  foundMs: number | null;
+  downloadedMs: number | null;
+  analyzedMs: number | null;
+  partialMs: number | null;
+  syncedMs: number | null;
+  firstFrameMs: number | null;
+  planMs: number | null;
+  audioCache: boolean;
+  analysisCache: boolean;
+  /** Durées détaillées des phases de la dernière analyse. */
+  phases: Record<string, number> | null;
+}
 
 /** Ce que l'écran de show sait de lui-même, publié pour le dashboard. */
 export interface ShowState {
@@ -94,6 +114,8 @@ export interface ShowState {
     flashes: number;
     reduced: boolean;
     noflash: boolean;
+    /** Entrée dans le show : voile noir historique ou fondu enchaîné. */
+    transition: "black" | "crossfade";
   };
   limits: { maxFileBytes: number; maxDurationSec: number } | null;
   debugOverlay: boolean;
@@ -103,6 +125,13 @@ export interface ShowState {
    * doit jamais prendre l'écran.
    */
   notice: { text: string; at: number } | null;
+  /**
+   * Échec de la résolution automatique du morceau du lecteur. Volontairement
+   * réservé au dashboard : l'écran de show continue en direct.
+   */
+  resolve: { title: string; artist: string; detail: string; at: number } | null;
+  /** Chronologie détecté → trouvé → téléchargé → analysé → calé → premier frame. */
+  timings: TrackTimings | null;
   /** Dernières lignes du journal de debug, pour le journal du dashboard. */
   log: string[];
 }
@@ -127,6 +156,8 @@ export type DashboardCommand =
       artist: string;
       /** Analyse complète, telle que renvoyée par l'API. */
       analysis: Analysis;
+      /** Chronologie serveur, pour l'affichage du dashboard. */
+      timings?: JobTimings;
     };
 
 /** Analyse complète envoyée du show vers le dashboard, à la demande. */
@@ -216,11 +247,13 @@ export function emptyShowState(): ShowState {
       correlation: null,
     },
     analysis: null,
-    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false },
+    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, transition: "crossfade" },
     limits: null,
     debugOverlay: false,
     error: null,
     notice: null,
+    resolve: null,
+    timings: null,
     log: [],
   };
 }

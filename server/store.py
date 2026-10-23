@@ -23,6 +23,7 @@ class Job:
     message: str = ""
     result: dict[str, Any] | None = None
     error: dict[str, str] | None = None
+    timings: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
     audio_path: Path | None = None
     owns_audio: bool = True
@@ -39,6 +40,8 @@ class Job:
         }
         if self.result is not None:
             payload["result"] = self.result
+        if self.timings is not None:
+            payload["timings"] = self.timings
         if self.error is not None:
             payload["error"] = self.error
         return payload
@@ -115,7 +118,22 @@ class SessionStore:
                 job.phase = "Analyse"
                 job.created_at = time.time()
 
-    def set_result(self, job_id: str, analysis: dict[str, Any]) -> None:
+    def set_timings(self, job_id: str, timings: dict[str, Any]) -> None:
+        """Fusionne les mesures de chronologie dans le payload du job."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return
+            job.timings = {**(job.timings or {}), **timings}
+            job.created_at = time.time()
+
+    def set_result(
+        self,
+        job_id: str,
+        analysis: dict[str, Any],
+        *,
+        timings: dict[str, Any] | None = None,
+    ) -> None:
         with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -124,6 +142,25 @@ class SessionStore:
             job.progress = 1.0
             job.phase = "Terminé"
             job.result = {"analysis": analysis}
+            if timings is not None:
+                job.timings = {**(job.timings or {}), **timings}
+            job.created_at = time.time()
+
+    def set_partial_result(
+        self,
+        job_id: str,
+        analysis: dict[str, Any],
+        *,
+        timings: dict[str, Any] | None = None,
+    ) -> None:
+        """Publie une analyse partielle sans terminer le job."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return
+            job.result = {"analysis": analysis, "partial": True}
+            if timings is not None:
+                job.timings = {**(job.timings or {}), **timings}
             job.created_at = time.time()
 
     def set_error(self, job_id: str, code: str, message: str, detail: str = "") -> None:

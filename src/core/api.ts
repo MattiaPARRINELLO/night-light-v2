@@ -1,5 +1,32 @@
 import type { Analysis } from "../types";
 
+export interface JobTimings {
+  /** Horodatage de détection, en millisecondes epoch. */
+  detectedAt?: number;
+  queueMs?: number;
+  foundMs?: number;
+  downloadedMs?: number;
+  resolvedMs?: number;
+  analysisMs?: number;
+  analyzedMs?: number;
+  partialMs?: number;
+  quickAnalysisMs?: number;
+  totalMs?: number;
+  audioCache?: boolean;
+  analysisCache?: boolean;
+  analysisPhases?: Record<string, number>;
+  loadavg?: number[];
+  activeJobs?: number;
+  analysisError?: string;
+  retrieval?: {
+    searchMs: number;
+    validationMs: number;
+    downloadMs: number;
+    cacheMs: number;
+    totalMs: number;
+  };
+}
+
 export interface JobResponse {
   jobId: string;
   status: JobStatus;
@@ -9,7 +36,8 @@ export interface JobResponse {
   filename?: string;
   sizeBytes?: number;
   duration?: number;
-  result?: { analysis: Analysis };
+  result?: { analysis: Analysis; partial?: boolean };
+  timings?: JobTimings;
   error?: { code: string; message: string; detail?: string };
 }
 
@@ -140,16 +168,17 @@ export function uploadAndAnalyze(
   handlers: {
     onUploadProgress?: (ratio: number) => void;
     onPhase?: (state: { progress: number; phase: string; detail: string }) => void;
+    onPartial?: (analysis: Analysis, timings?: JobTimings) => void;
     signal?: AbortSignal;
   } = {},
-): Promise<{ jobId: string; analysis: Analysis }> {
-  const { onUploadProgress, onPhase, signal } = handlers;
+): Promise<{ jobId: string; analysis: Analysis; timings?: JobTimings }> {
+  const { onUploadProgress, onPhase, onPartial, signal } = handlers;
   return new Promise((resolve, reject) => {
     uploadFile(file, (ratio) => onUploadProgress?.(ratio), signal)
       .then(async (job) => {
         try {
-          const analysis = await pollJob(job.jobId, onPhase, signal);
-          resolve({ jobId: job.jobId, analysis });
+          const { analysis, timings } = await pollJob(job.jobId, onPhase, signal, onPartial);
+          resolve({ jobId: job.jobId, analysis, timings });
         } catch (error) {
           reject(error);
         }
@@ -162,31 +191,125 @@ async function pollJob(
   jobId: string,
   onPhase: ((state: { progress: number; phase: string; detail: string }) => void) | undefined,
   signal?: AbortSignal,
-): Promise<Analysis> {
+  onPartial?: (analysis: Analysis, timings?: JobTimings) => void,
+): Promise<{ analysis: Analysis; timings?: JobTimings }> {
   const started = Date.now();
   const timeoutMs = 12 * 60 * 1000;
-  for (;;) {
-    if (signal?.aborted === true) throw new ApiError("Analyse annulée.", "aborted");
-    const job = await fetchJob(jobId, signal);
-    if (job.status === "done") {
-      const analysis = job.result?.analysis;
-      if (analysis === undefined) throw new ApiError("Analyse terminée mais données absentes.", "empty_result");
-      onPhase?.({ progress: 1, phase: "Terminé", detail: "Spectacle prêt." });
-      return analysis;
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let lastPartial = "";
+    let source: EventSource | null = null;
+    let watchdog = 0;
+    let lastEvent = Date.now();
+    let fallbackStarted = false;
+
+    const cleanup = (): void => {
+      if (source !== null) {
+        source.close();
+        source = null;
+      }
+      if (watchdog !== 0) {
+        window.clearInterval(watchdog);
+        watchdog = 0;
+      }
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const fail = (error: unknown): void => {
+      if (done) return;
+      done = true;
+      cleanup();
+      reject(error);
+    };
+    const consume = (job: JobResponse): void => {
+      if (done) return;
+      if (job.status === "done") {
+        const analysis = job.result?.analysis;
+        if (analysis === undefined) {
+          fail(new ApiError("Analyse terminée mais données absentes.", "empty_result"));
+          return;
+        }
+        done = true;
+        cleanup();
+        onPhase?.({ progress: 1, phase: "Terminé", detail: "Spectacle prêt." });
+        resolve({ analysis, timings: job.timings });
+        return;
+      }
+      if (job.result?.partial === true && job.result.analysis !== undefined) {
+        const partial = job.result.analysis;
+        const signature = `${partial.coverage?.join(",") ?? ""}|${partial.tempo}`;
+        if (signature !== lastPartial) {
+          lastPartial = signature;
+          onPartial?.(partial, job.timings);
+        }
+      }
+      if (job.status === "error") {
+        fail(
+          new ApiError(
+            job.error?.message ?? "L'analyse a échoué.",
+            job.error?.code ?? "analysis_error",
+            job.error?.detail,
+          ),
+        );
+        return;
+      }
+      onPhase?.({ progress: job.progress, phase: job.phase, detail: job.message ?? "" });
+      if (Date.now() - started > timeoutMs) {
+        fail(new ApiError("L'analyse prend trop de temps, essaie un morceau plus court.", "timeout"));
+      }
+    };
+
+    const fallbackLoop = async (): Promise<void> => {
+      while (!done) {
+        if (signal?.aborted === true) {
+          fail(new ApiError("Analyse annulée.", "aborted"));
+          return;
+        }
+        try {
+          const job = await fetchJob(jobId, signal);
+          consume(job);
+        } catch (error) {
+          fail(error);
+          return;
+        }
+        if (done) return;
+        await delay(400, signal);
+      }
+    };
+    const startFallback = (): void => {
+      if (done || fallbackStarted) return;
+      fallbackStarted = true;
+      if (source !== null) {
+        source.close();
+        source = null;
+      }
+      void fallbackLoop();
+    };
+    const onAbort = (): void => fail(new ApiError("Analyse annulée.", "aborted"));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted === true) {
+      onAbort();
+      return;
     }
-    if (job.status === "error") {
-      throw new ApiError(
-        job.error?.message ?? "L'analyse a échoué.",
-        job.error?.code ?? "analysis_error",
-        job.error?.detail,
-      );
+    if (typeof EventSource === "undefined") {
+      startFallback();
+      return;
     }
-    onPhase?.({ progress: job.progress, phase: job.phase, detail: job.message ?? "" });
-    if (Date.now() - started > timeoutMs) {
-      throw new ApiError("L'analyse prend trop de temps, essaie un morceau plus court.", "timeout");
-    }
-    await delay(400, signal);
-  }
+    // SSE d'abord ; le polling ne prend le relais que si le flux est coupé ou
+    // silencieux pendant plus de 5 s.
+    source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/stream`);
+    source.onmessage = (event) => {
+      lastEvent = Date.now();
+      try {
+        consume(JSON.parse(event.data) as JobResponse);
+      } catch {
+        // Une ligne illisible ne doit pas couper le flux.
+      }
+    };
+    source.onerror = () => startFallback();
+    watchdog = window.setInterval(() => {
+      if (Date.now() - lastEvent > 5000) startFallback();
+    }, 1000);
+  });
 }
 
 export function audioUrl(jobId: string): string {
@@ -242,17 +365,18 @@ export function resolveAndAnalyze(
   durationSec: number | undefined,
   handlers: {
     onPhase?: (state: { progress: number; phase: string; detail: string }) => void;
+    onPartial?: (analysis: Analysis, timings?: JobTimings) => void;
     signal?: AbortSignal;
   } = {},
   trackKey?: string,
-): Promise<{ jobId: string; analysis: Analysis }> {
-  const { onPhase, signal } = handlers;
+): Promise<{ jobId: string; analysis: Analysis; timings?: JobTimings }> {
+  const { onPhase, onPartial, signal } = handlers;
   return new Promise((resolve, reject) => {
     submitResolve({ title, artist, durationSec, trackKey }, signal)
       .then(async (job) => {
         try {
-          const analysis = await pollJob(job.jobId, onPhase, signal);
-          resolve({ jobId: job.jobId, analysis });
+          const { analysis, timings } = await pollJob(job.jobId, onPhase, signal, onPartial);
+          resolve({ jobId: job.jobId, analysis, timings });
         } catch (error) {
           reject(error);
         }

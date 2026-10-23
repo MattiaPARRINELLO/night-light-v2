@@ -10,12 +10,15 @@ import asyncio
 import atexit
 import json
 import logging
+import os
+import queue
 import shutil
 import threading
+import time
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -26,14 +29,35 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import sniff
-from .analysis import AnalysisError, AnalysisResult, analyze_with_timeout, warmup
+from .analysis import (
+    ANALYZER_VERSION,
+    AnalysisError,
+    AnalysisResult,
+    analyze_file,
+    analyze_with_timeout,
+    start_analysis_worker,
+    stop_analysis_worker,
+    warmup,
+)
+from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
-from .mpris import get_now_playing, start_mpris_monitor, stop_mpris_monitor
+from .mpris import (
+    add_now_playing_listener,
+    get_now_playing,
+    remove_now_playing_listener,
+    start_mpris_monitor,
+    stop_mpris_monitor,
+    subscribe_now_playing,
+    unsubscribe_now_playing,
+)
 from .playback_position import get_playback_state, match_playback
+from .queue.deezer import lookup_for_queue_track, track_query
+from .queue.manager import QueueManager
+from .queue.models import QueueTrack
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
-from .retrieve.models import TrackQuery
+from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
 from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
@@ -66,6 +90,8 @@ class ResolveRequest(BaseModel):
     duration_sec: float | None = None
     duration: float | None = None
     track_key: str | None = None
+    deezer_id: str | None = None
+    isrc: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,12 +103,19 @@ class PendingResolve:
     artist: str
     duration_sec: float
     track_key: str
+    deezer_id: str | None = None
+    isrc: str | None = None
 
 
 class AppState:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = SessionStore(Path(settings.session_dir), settings.session_ttl_sec)
+        self.analysis_cache = AnalysisCache(
+            Path(settings.cache_dir) / "analysis",
+            version=ANALYZER_VERSION,
+            max_bytes=settings.analysis_cache_max_bytes,
+        )
         self.executor = ThreadPoolExecutor(
             max_workers=settings.workers, thread_name_prefix="analysis"
         )
@@ -99,6 +132,35 @@ class AppState:
         self._resolve_stack: list[PendingResolve] = []
         self._resolve_stop = False
         self._resolve_thread: threading.Thread | None = None
+        self.now_playing_key = ""
+        self.active_analyses = 0
+        self.queue = QueueManager(settings, self)
+        add_now_playing_listener(self._on_now_playing)
+
+    @staticmethod
+    def _same_track(left: str, right: str) -> bool:
+        return normalize_text(left.replace("|", " ")) == normalize_text(right.replace("|", " "))
+
+    def _on_now_playing(self, state: Any) -> None:
+        """Suit la piste réellement jouée, pour interrompre une analyse périmée."""
+        title = getattr(state, "title", "").strip()
+        artist = getattr(state, "artist", "").strip()
+        self.now_playing_key = f"{title}|{artist}" if title else ""
+        player = getattr(state, "player", "")
+        if title:
+            self.queue.on_mpris_change(player, title, artist)
+
+    def _cancellation_check(self, track_key: str) -> Any:
+        """Annule l'analyse si MPRIS est passé à une autre piste (sauf ≥ 80 %)."""
+        started_key = self.now_playing_key
+        active = bool(started_key) and self._same_track(track_key, started_key)
+
+        def should_cancel(progress: float) -> bool:
+            if not active or progress >= 0.8:
+                return False
+            return not self._same_track(track_key, self.now_playing_key)
+
+        return should_cancel
 
     def submit_resolve(self, request: PendingResolve) -> None:
         """Empile une résolution ; le dernier morceau demandé passe devant."""
@@ -129,6 +191,8 @@ class AppState:
                     request.artist,
                     request.duration_sec,
                     request.track_key,
+                    request.deezer_id,
+                    request.isrc,
                 )
             except Exception:  # noqa: BLE001 - un job ne doit pas tuer le worker
                 _LOGGER.exception("Résolution interrompue id=%s", request.job_id)
@@ -138,15 +202,111 @@ class AppState:
         if job is not None and job.audio_path is not None and job.owns_audio:
             job.audio_path.unlink(missing_ok=True)
 
-    def run_analysis(self, job_id: str) -> None:
+    def run_analysis(self, job_id: str, **kwargs: Any) -> None:
+        self.active_analyses += 1
+        try:
+            self._run_analysis(job_id, **kwargs)
+        finally:
+            self.active_analyses = max(0, self.active_analyses - 1)
+
+    def _run_analysis(
+        self,
+        job_id: str,
+        *,
+        analysis_key: str | None = None,
+        timings: dict[str, Any] | None = None,
+        track_key: str | None = None,
+        window: tuple[float, float] | None = None,
+    ) -> None:
         job = self.store.get(job_id)
         if job is None or job.audio_path is None:
             return
         self.store.set_running(job_id)
+        started_at = time.time()
+        detected = (timings or {}).get("detectedAt")
+        if not isinstance(detected, (int, float)) or detected <= 0:
+            detected = round(job.created_at * 1000)
+        quick_started = time.time()
+        should_cancel = self._cancellation_check(track_key) if track_key else None
 
         def report(message: str, progress: float) -> None:
             phase = message.split("—")[0].strip() if "—" in message else "Analyse"
-            self.store.update(job_id, progress=progress, phase=phase, message=message)
+            mapped = 0.2 + progress * 0.8 if window is not None else progress
+            self.store.update(job_id, progress=mapped, phase=phase, message=message)
+
+        def quick_report(message: str, progress: float) -> None:
+            self.store.update(
+                job_id,
+                progress=min(0.2, 0.02 + progress * 0.18),
+                phase="Analyse rapide",
+                message=message,
+            )
+
+        # Passe rapide : uniquement la fenêtre autour de la position du lecteur.
+        # Elle rend le show utilisable tout de suite ; seule la passe complète
+        # alimente le cache.
+        if window is not None:
+            try:
+                quick = analyze_file(
+                    job.audio_path,
+                    replace(self.settings, sample_rate=min(self.settings.sample_rate, 11025)),
+                    report=quick_report,
+                    window=window,
+                    should_cancel=should_cancel,
+                )
+                quick_ms = round((time.time() - quick_started) * 1000)
+                partial_ms = round(time.time() * 1000 - detected)
+                serialize_started = time.monotonic()
+                quick_schema = to_schema(quick)
+                quick_serialize_ms = round((time.monotonic() - serialize_started) * 1000)
+                _LOGGER.info(
+                    "Analyse rapide prête id=%s fenêtre=[%.1f, %.1f] durée=%.2fs tempo=%.1f",
+                    job_id,
+                    window[0],
+                    window[1],
+                    quick_ms / 1000,
+                    quick.tempo,
+                )
+                self.store.set_partial_result(
+                    job_id,
+                    quick_schema,
+                    timings={
+                        "partialMs": partial_ms,
+                        "quickAnalysisMs": quick_ms,
+                        "analysisCache": False,
+                        "analysisPhases": {
+                            **quick.phase_timings,
+                            "serializationMs": quick_serialize_ms,
+                        },
+                    },
+                )
+            except AnalysisError as error:
+                if error.code == "cancelled":
+                    self.drop_audio(job_id)
+                    self.store.set_timings(job_id, {"analysisError": "cancelled"})
+                    self.store.set_error(job_id, error.code, error.message, error.detail)
+                    return
+                _LOGGER.warning(
+                    "Analyse rapide impossible id=%s (%s), passage à l'analyse complète",
+                    job_id,
+                    error.code,
+                )
+            except Exception as error:  # noqa: BLE001 - la passe complète reste possible
+                _LOGGER.warning("Analyse rapide en échec id=%s: %s", job_id, error)
+
+        def finished(extra: dict[str, Any] | None = None) -> dict[str, Any]:
+            now = time.time()
+            payload = dict(timings or {})
+            payload["detectedAt"] = detected
+            payload["analysisMs"] = round((now - started_at) * 1000)
+            payload["analyzedMs"] = round(now * 1000 - detected)
+            payload["totalMs"] = payload["analyzedMs"]
+            with suppress(OSError):
+                payload["loadavg"] = [round(value, 2) for value in os.getloadavg()]
+            payload["activeJobs"] = self.store.count()
+            if extra:
+                payload.update(extra)
+            return payload
 
         try:
             result = analyze_with_timeout(
@@ -154,13 +314,50 @@ class AppState:
                 self.settings,
                 report=report,
                 timeout_sec=self.settings.analyze_timeout_sec,
+                should_cancel=should_cancel,
             )
-            self.store.set_result(job_id, to_schema(result))
+            schema = to_schema(result)
+            serialize_started = time.monotonic()
+            serialize_ms = round((time.monotonic() - serialize_started) * 1000)
+            elapsed = time.time() - started_at
+            _LOGGER.info(
+                "Analyse terminée id=%s durée=%.2fs tempo=%.1f phases=%s",
+                job_id,
+                elapsed,
+                result.tempo,
+                result.phase_timings,
+            )
+            if analysis_key is not None:
+                try:
+                    self.analysis_cache.put(analysis_key, schema)
+                except Exception as error:  # noqa: BLE001 - le cache ne doit pas casser l'analyse
+                    _LOGGER.warning("Écriture cache analyse impossible id=%s: %s", job_id, error)
+            self.store.set_result(
+                job_id,
+                schema,
+                timings=finished(
+                    {
+                        "analysisCache": False,
+                        "analysisPhases": {
+                            **result.phase_timings,
+                            "serializationMs": serialize_ms,
+                        },
+                    }
+                ),
+            )
         except AnalysisError as error:
             self.drop_audio(job_id)
+            self.store.set_timings(
+                job_id,
+                finished({"analysisCache": False, "analysisError": error.code}),
+            )
             self.store.set_error(job_id, error.code, error.message, error.detail)
         except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
             self.drop_audio(job_id)
+            self.store.set_timings(
+                job_id,
+                finished({"analysisCache": False, "analysisError": "analysis_failed"}),
+            )
             self.store.set_error(
                 job_id,
                 "analysis_failed",
@@ -175,14 +372,34 @@ class AppState:
         artist: str,
         duration_sec: float,
         track_key: str | None = None,
+        deezer_id: str | None = None,
+        isrc: str | None = None,
     ) -> None:
         job = self.store.get(job_id)
         if job is None:
             return
         self.resolve_pending = True
         used_key = (track_key or f"{title.strip()}|{artist.strip()}").strip()
+        detected_at_ms = round(job.created_at * 1000)
+        timings: dict[str, Any] = {
+            "detectedAt": detected_at_ms,
+            "queueMs": max(0, round((time.time() - job.created_at) * 1000)),
+        }
 
         query = TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
+        queue_track = QueueTrack(
+            source="deezer",
+            deezer_id=deezer_id,
+            isrc=isrc,
+            title=title,
+            artist=artist,
+            duration_ms=int(duration_sec * 1000) if duration_sec > 0 else None,
+        )
+        lookup = lookup_for_queue_track(queue_track)
+        preselected = [lookup.candidate] if lookup.candidate is not None else None
+        if lookup.candidate is not None:
+            query = track_query(queue_track, lookup.candidate)
+        timings["resolutionMethod"] = lookup.method
         cache = AudioCache(Path(self.settings.cache_dir))
         _LOGGER.info(
             "Début résolution id=%s titre=%r artiste=%r durée=%.3fs",
@@ -217,6 +434,7 @@ class AppState:
                 cache,
                 thresholds=provider.thresholds,
                 progress=report,
+                preselected=preselected,
             )
         except RetrievalError as error:
             self.resolve_pending = False
@@ -231,6 +449,34 @@ class AppState:
                 str(error)[:300],
             )
             return
+
+        # Chronologie du retrieval : c'est le premier endroit où ces mesures
+        # existent. Elles sont désormais journalisées et publiées dans le job.
+        retrieval = {
+            "searchMs": round(result.timings.search_sec * 1000),
+            "validationMs": round(result.timings.validation_sec * 1000),
+            "downloadMs": round(result.timings.download_sec * 1000),
+            "cacheMs": round(result.timings.cache_sec * 1000),
+            "totalMs": round(result.timings.total_sec * 1000),
+        }
+        found_ms = timings["queueMs"] + retrieval["searchMs"] + retrieval["validationMs"]
+        downloaded_ms = found_ms + retrieval["downloadMs"] + retrieval["cacheMs"]
+        timings.update(
+            {
+                "foundMs": found_ms,
+                "downloadedMs": downloaded_ms,
+                "resolvedMs": round((time.time() - job.created_at) * 1000),
+                "audioCache": result.from_cache,
+                "retrieval": retrieval,
+            }
+        )
+        _LOGGER.info(
+            "Retrieval terminé id=%s cache_audio=%s timings=%s",
+            job_id,
+            result.from_cache,
+            result.timings,
+        )
+        self.store.set_timings(job_id, timings)
 
         resolved_job = self.store.get(job_id)
         if resolved_job is not None:
@@ -251,11 +497,53 @@ class AppState:
                 job_id, "stale_result", "Le morceau a changé pendant la résolution."
             )
             return
+
+        # Le cache d'analyse évite complètement `run_analysis` à la réécoute.
+        analysis_key = audio_cache_key(query)
+        cached_analysis = self.analysis_cache.get(analysis_key)
+        if cached_analysis is not None:
+            now = time.time()
+            analyzed_ms = round(now * 1000 - detected_at_ms)
+            timings.update(
+                {
+                    "analysisMs": 0,
+                    "analyzedMs": analyzed_ms,
+                    "totalMs": analyzed_ms,
+                    "analysisCache": True,
+                }
+            )
+            self.resolve_pending = False
+            self.store.set_result(job_id, cached_analysis, timings=timings)
+            _LOGGER.info(
+                "Analyse servie depuis le cache id=%s version=%s total=%.0f ms",
+                job_id,
+                ANALYZER_VERSION,
+                analyzed_ms,
+            )
+            return
+
         _LOGGER.info("Résolution réussie id=%s, lancement de l'analyse", job_id)
         self.resolve_pending = False
-        self.run_analysis(job_id)
+        partial_window: tuple[float, float] | None = None
+        try:
+            playback = get_playback_state(title=title, artist=artist, duration_sec=duration_sec)
+            if playback.available and playback.status in {"playing", "paused"}:
+                position = max(0.0, playback.position_ms / 1000.0)
+                partial_window = (max(0.0, position - 5.0), position + 40.0)
+        except Exception as error:  # noqa: BLE001 - la passe complète suffit
+            _LOGGER.warning("Position MPRIS indisponible pour la passe rapide: %s", error)
+        self.run_analysis(
+            job_id,
+            analysis_key=analysis_key,
+            timings={**timings, "analysisCache": False},
+            track_key=used_key,
+            window=partial_window,
+        )
 
     async def shutdown(self) -> None:
+        remove_now_playing_listener(self._on_now_playing)
+        self.queue.stop()
+        stop_analysis_worker()
         with self._resolve_cond:
             self._resolve_stop = True
             self._resolve_cond.notify_all()
@@ -289,6 +577,7 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "high": result.high,
         "sections": result.sections,
         "builds": result.builds,
+        **({"coverage": list(result.coverage)} if result.coverage is not None else {}),
     }
 
 
@@ -326,6 +615,8 @@ async def purge_loop() -> None:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
     state.executor.submit(warmup)
+    start_analysis_worker()
+    state.queue.start()
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()
     atexit.register(state.store.purge_all)
@@ -468,6 +759,8 @@ async def resolve(request: ResolveRequest) -> JSONResponse:
             artist=artist.strip(),
             duration_sec=duration,
             track_key=track_key,
+            deezer_id=(request.deezer_id or "").strip() or None,
+            isrc=(request.isrc or "").strip() or None,
         )
     )
     return JSONResponse(
@@ -533,6 +826,79 @@ async def playback_position(
 @app.get("/api/now-playing")
 async def now_playing() -> dict[str, Any]:
     return get_now_playing().to_dict()
+
+
+@app.get("/api/now-playing/stream")
+async def now_playing_stream(request: Request) -> StreamingResponse:
+
+    async def stream() -> asyncio.AsyncIterator[str]:
+        subscriber = subscribe_now_playing()
+        try:
+            current = get_now_playing().to_dict()
+            yield f"data: {json.dumps(current, ensure_ascii=False)}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.to_thread(subscriber.get, True, 1.0)
+                except queue.Empty:
+                    continue
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        finally:
+            unsubscribe_now_playing(subscriber)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/jobs/{job_id}/stream")
+async def job_stream(job_id: str, request: Request) -> StreamingResponse:
+    """SSE d'un job ; le front garde le polling en repli."""
+    if state.store.get(job_id) is None:
+        raise HTTPException(status_code=404, detail="Analyse introuvable ou expirée.")
+
+    async def stream() -> asyncio.AsyncIterator[str]:
+        last = ""
+        while True:
+            if await request.is_disconnected():
+                break
+            job = state.store.get(job_id)
+            if job is None:
+                break
+            payload = json.dumps(job.to_dict(), ensure_ascii=False)
+            if payload != last:
+                last = payload
+                yield f"data: {payload}\n\n"
+            if job.status in {"done", "error"}:
+                break
+            await asyncio.sleep(0.15)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/queue")
+async def queue_status() -> dict[str, Any]:
+    return state.queue.status()
+
+
+@app.post("/api/deezer-queue")
+async def deezer_queue(request: Request) -> dict[str, Any]:
+    """Reçoit la file du userscript Deezer (ID Deezer) ou une URL playlist/album."""
+    try:
+        payload = await request.json()
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="JSON invalide.") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Objet JSON attendu.")
+    snapshot = state.queue.update_deezer(payload)
+    return snapshot.to_dict()
 
 
 @app.get("/api/audio-levels")

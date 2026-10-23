@@ -25,7 +25,7 @@ import { EMPTY_LIVE_AUDIO, type LiveAudioFeatures } from "../core/liveAudio";
 import type { ExternalPlaybackState } from "../core/playback";
 import type { ShowPlan } from "../core/show";
 import type { TrackView } from "../core/view";
-import { ControlLink } from "../shared/control";
+import { ControlLink, type TrackTimings } from "../shared/control";
 import { DEFAULT_SETTINGS, type Analysis, type RenderSettings } from "../types";
 import { el, setStatus, setUploadState, showScreen } from "./ui";
 
@@ -42,6 +42,20 @@ interface Session {
   title: string;
   duration: number;
   startedAt: number;
+}
+
+export type TransitionMode = "black" | "crossfade";
+
+/** Deux rendus hors écran, composités pendant un fondu enchaîné. */
+export interface CrossfadeState {
+  active: boolean;
+  startedAt: number;
+  durationMs: number;
+  liveCanvas: HTMLCanvasElement;
+  liveCtx: CanvasRenderingContext2D;
+  syncedCanvas: HTMLCanvasElement;
+  syncedCtx: CanvasRenderingContext2D;
+  timer: number | null;
 }
 
 /** Instantané de la capture système, pour l'overlay de debug. */
@@ -99,6 +113,12 @@ export class App {
   pendingTitle = "";
   lastAutoTrackKey = "";
   nowPlaying: NowPlayingResponse | null = null;
+  nowPlayingStream: EventSource | null = null;
+  nowPlayingPollTimer: number | null = null;
+  nowPlayingWatchdog: number | null = null;
+  nowPlayingLastEventAt = 0;
+  /** Dernière piste détectée, pour ne pas réinitialiser la chronologie en boucle. */
+  lastDetectedKey = "";
   liveCapture: EventSource | null = null;
   liveRaf = 0;
   liveLevels: Record<string, number> = {};
@@ -109,16 +129,26 @@ export class App {
 
   syncedView: TrackView | null = null;
   syncedPlan: ShowPlan | null = null;
+  /** Analyse finale en attente : on garde la scène courante jusqu'à sa fin. */
+  pendingSynced: { view: TrackView; plan: ShowPlan; switchAt: number } | null = null;
   syncedStartMs = 0;
   syncedStartedAtEpoch = 0;
   syncedRaf = 0;
   syncedTimer: number | null = null;
   syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
+  /** Vrai quand le lecteur est en pause : le temps du show reste figé. */
+  syncedPaused = false;
+  /** Numéro de la tentative de calage courante : une nouvelle remplace l'ancienne. */
+  syncAttemptSeq = 0;
   /** Écart en cours de rattrapage, en millisecondes (0 si aucun). */
   syncDriftMs = 0;
   syncCorrectionStart = 0;
   syncCorrectionDur = 400;
   syncedMode = false;
+  /** Mode d'entrée dans le show : voile noir historique ou fondu enchaîné. */
+  transitionMode: TransitionMode =
+    localStorage.getItem("night-light-transition") === "black" ? "black" : "crossfade";
+  crossfade: CrossfadeState | null = null;
   debugOverlayActive = false;
   /** Début (performance.now) de la transition en cours, 0 si aucune. */
   transitionStart = 0;
@@ -170,6 +200,10 @@ export class App {
   lastError: { title: string; message: string; detail: string } | null = null;
   /** Avis discret affiché en bas, sans jamais prendre l'écran. */
   notice: { text: string; at: number } | null = null;
+  /** Échec de résolution automatique, publié uniquement vers le dashboard. */
+  resolveFailure: { title: string; artist: string; detail: string; at: number } | null = null;
+  /** Chronologie du morceau en cours, du lecteur au premier frame. */
+  trackTimings: TrackTimings | null = null;
   noticeTimer: number | null = null;
   debugRateWindowAt = 0;
   debugRateWindowCount = 0;
@@ -204,8 +238,7 @@ export class App {
     this.bindLatencyControls();
     showScreen("drop");
     void this.startLiveMode();
-    window.setInterval(() => void this.pollNowPlaying(), 1500);
-    void this.pollNowPlaying();
+    this.bindNowPlayingStream();
     this.bindAnalysis();
     this.bindShow();
     this.bindKeyboard();
@@ -245,6 +278,13 @@ export class App {
     this.controlTimer = null;
     this.control?.close();
     this.control = null;
+    this.stopNowPlayingPolling();
+    this.nowPlayingStream?.close();
+    this.nowPlayingStream = null;
+    if (this.nowPlayingWatchdog !== null) window.clearInterval(this.nowPlayingWatchdog);
+    this.nowPlayingWatchdog = null;
+    if (this.crossfade?.timer != null) window.clearTimeout(this.crossfade.timer);
+    this.crossfade = null;
     this.stopLoop();
     this.audio.dispose();
   }

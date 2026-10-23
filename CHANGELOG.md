@@ -8,6 +8,51 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **File multi-source** : modèle `QueueTrack`, résolution Deezer par ID puis
+  ISRC (contrôle de durée ±3 s) puis recherche ; file Deezer via userscript
+  (`userscripts/deezer-queue.user.js`). Repli MPRIS seul si rien n'est configuré.
+- **Préchargement des 2 suivants** : résolution + analyse complète, cache
+  uniquement, avec un second worker d'analyse dédié pour ne jamais faire
+  attendre le morceau courant. Coût mémoire mesuré : ~259 Mo par worker.
+- **SSE des jobs** : `/api/jobs/{id}/stream` remplace le polling, qui reste en
+  repli après 5 s sans événement. `loadavg` et le nombre de jobs actifs sont
+  ajoutés à `timings`.
+- **Processus d'analyse persistant** : un worker préchauffé au démarrage (imports
+  + JIT numba) réutilisé entre les morceaux ; une annulation le tue et en relance
+  un préchauffé en arrière-plan. L'analyse complète passe d'environ 5 s à froid
+  par processus à ~1,8 s à chaud.
+- **Phases d'analyse** : durées détaillées (démarrage worker, décodage,
+  rééchantillonnage, onset, beat_track, onsets, stft, bandes/rms, courbes,
+  montées, sérialisation) publiées dans `timings.analysisPhases` et affichées
+  dans le dashboard.
+- **Analyse en 2 passes** : une passe rapide sur une fenêtre de 45 s autour de
+  la position MPRIS publie une analyse partielle (`coverage`) en moins d'une
+  seconde après le téléchargement, puis l'analyse complète remplace le plan en
+  fin de scène, avec la même graine. Seule l'analyse finale entre dans le cache.
+  Le front rend en mode live hors de la zone couverte et extrapole la grille de
+  beats ; un tempo partiel au double/halve est réaligné sur le tempo final à la
+  scène suivante.
+- **Fondu enchaîné** à l'entrée d'un show synchronisé : le live et le rendu
+  analysé sont dessinés hors écran puis composités en ease-in-out, sans frame
+  noir. La bascule vise le prochain temps fort (au plus un temps) ou l'impact
+  d'une montée dans les 4 s ; elle se raccourcit à 0,6 s si la qualité passe
+  sous 0,5. L'ancien fondu noir reste disponible dans le dashboard.
+- **Détection MPRIS temps réel** : `playerctl --follow metadata` remplace le
+  polling 1 s, avec redémarrage automatique et polling de secours. Les
+  changements partent en SSE (`/api/now-playing/stream`), le front ne sonde le
+  lecteur que si le flux est coupé.
+- **Calage plus rapide** : `tryAutoSynced` essaie immédiatement puis avec des
+  intervalles croissants (250 ms, 500 ms, 1 s…), au lieu d'attendre 2 s entre
+  chaque tentative.
+- **Analyse annulable** : le process d'analyse est tué quand MPRIS passe à un
+  autre morceau, sauf au-delà de 80 % de progression pour alimenter le cache.
+- **Chronologie du morceau** : le serveur mesure recherche, téléchargement,
+  analyse et cache ; l'écran de show ajoute le calage et le premier frame. Le
+  dashboard affiche la chaîne détecté → trouvé → téléchargé → analysé → calé →
+  premier frame pour le morceau en cours.
+- **Cache d'analyse** : une réécoute du même morceau (même clé Deezer et même
+  `ANALYZER_VERSION`) ne relance plus librosa. Écriture atomique, invalidation
+  des JSON corrompus et purge LRU via `ANALYSIS_CACHE_MAX_MB`.
 - Tableau de bord complet : analyse du morceau en cours (courbes d'énergie et de
   bandes, sections, temps forts, montées, curseur du show), VU-mètres, progression,
   pulsation au tempo, section active, prochains événements, états capture et rendu.

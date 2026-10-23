@@ -7,7 +7,7 @@
 import type { App } from "./app";
 import { audioUrl } from "../core/api";
 import { clamp, formatTime } from "../core/series";
-import { buildShowPlan } from "../core/show";
+import { buildShowPlan, type ShowPlan } from "../core/show";
 import { TrackView } from "../core/view";
 import { el, setPlaying, setShowError, setStatus, showScreen } from "./ui";
 import type { Analysis } from "../types";
@@ -16,6 +16,7 @@ declare module "./app" {
   interface App {
     bindShow(): void;
     startShow(analysis: Analysis): Promise<void>;
+    buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
     refreshPlan(): void;
     togglePlay(): Promise<void>;
@@ -27,6 +28,19 @@ declare module "./app" {
 }
 
 export function installShow(Target: { prototype: App }): void {
+  /** Construit le plan en mesurant le temps réellement passé dans `buildShowPlan`. */
+  Target.prototype.buildPlan = function (this: App, analysis: Analysis, seed?: number): ShowPlan {
+    const startedAt = performance.now();
+    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed);
+    const durationMs = performance.now() - startedAt;
+    this.debug("show", "plan de spectacle construit", {
+      dureeMs: Number(durationMs.toFixed(2)),
+      scenes: plan.scenes.length,
+    });
+    if (this.trackTimings !== null) this.trackTimings.planMs = Math.round(durationMs);
+    return plan;
+  };
+
   Target.prototype.bindShow = function (this: App): void {
     el<HTMLButtonElement>("btn-play").addEventListener("click", () => void this.togglePlay());
     el<HTMLButtonElement>("btn-restart").addEventListener("click", () => void this.restart());
@@ -122,7 +136,7 @@ export function installShow(Target: { prototype: App }): void {
       startedAt: Date.now(),
     };
     this.view = new TrackView(analysis);
-    this.plan = buildShowPlan(analysis, this.effectiveReduced());
+    this.plan = this.buildPlan(analysis);
     this.beginTransition();
     this.audio.load(audioUrl(this.jobId));
     const detectedPosition = this.nowPlaying?.positionSec;
@@ -151,6 +165,7 @@ export function installShow(Target: { prototype: App }): void {
     el<HTMLElement>("time-total").textContent = formatTime(analysis.duration);
 
     showScreen("show");
+    this.markSynced();
     this.resize();
     this.quality = 1;
     this.fps = 60;
@@ -178,7 +193,7 @@ export function installShow(Target: { prototype: App }): void {
   Target.prototype.refreshPlan = function (this: App): void {
     const analysis = this.view?.analysis;
     if (analysis === undefined) return;
-    this.plan = buildShowPlan(analysis, this.effectiveReduced());
+    this.plan = this.buildPlan(analysis);
   };
 
   Target.prototype.togglePlay = async function (this: App): Promise<void> {

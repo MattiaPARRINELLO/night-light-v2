@@ -113,6 +113,8 @@ export interface ShowPlan {
   duration: number;
   seed: number;
   scenes: Scene[];
+  /** Fenêtre analysée disponible ; absente pour une analyse complète. */
+  coverage?: [number, number];
   /** Barres de mesure détectées dans le morceau, en secondes. */
   barStarts: number[];
   /**
@@ -504,8 +506,10 @@ function round3(value: number): number {
  *
  * Fonction pure : même analyse + même mode ⇒ même plan.
  */
-export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
-  const seed = hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
+export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride?: number): ShowPlan {
+  const seed =
+    seedOverride ??
+    hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
@@ -676,7 +680,15 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean): ShowPlan {
     if (scenes.length > 1 && last.role !== "drop") last.role = "finale";
   }
 
-  return { duration, seed, scenes, barStarts: barStarts(analysis), track, backdrop: fond };
+  return {
+    duration,
+    seed,
+    scenes,
+    barStarts: barStarts(analysis),
+    track,
+    backdrop: fond,
+    ...(analysis.coverage !== undefined ? { coverage: analysis.coverage } : {}),
+  };
 }
 
 /** Section musicale contenant l'instant `t`, ou `null`.

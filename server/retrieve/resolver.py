@@ -50,6 +50,7 @@ def resolve_track(
     thresholds: MatchThresholds | None = None,
     downloads_dir: Path | None = None,
     progress: Callable[[str, float, str], None] | None = None,
+    preselected: list[Candidate] | None = None,
 ) -> RetrievalResult:
     thresholds = thresholds or MatchThresholds()
     key = audio_cache_key(query)
@@ -82,12 +83,16 @@ def resolve_track(
             )
 
         report("Recherche", 0.0, "Recherche des candidats")
-        search_start = time.monotonic()
-        try:
-            candidates = provider.search(query)
-        except Exception as error:  # noqa: BLE001
-            raise RetrievalError("search_failed", str(error)) from error
-        search_elapsed = time.monotonic() - search_start
+        if preselected is not None:
+            candidates = list(preselected)
+            search_elapsed = 0.0
+        else:
+            search_start = time.monotonic()
+            try:
+                candidates = provider.search(query)
+            except Exception as error:  # noqa: BLE001
+                raise RetrievalError("search_failed", str(error)) from error
+            search_elapsed = time.monotonic() - search_start
         report("Recherche", 1.0, f"{len(candidates)} candidats trouvés")
 
         report("Validation", 0.0, "Validation des correspondances")
