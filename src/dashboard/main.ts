@@ -51,7 +51,6 @@ interface Sample {
 interface QueueStatus {
   provider: string;
   note: string;
-  spotifyConfigured: boolean;
   preload: Array<{
     key: string;
     title: string;
@@ -327,8 +326,7 @@ class Dashboard {
       const queue = (await response.json()) as QueueStatus;
       el<HTMLElement>("queue-provider").textContent = queue.provider || "MPRIS seul";
       el<HTMLElement>("queue-method").textContent =
-        `Source : ${queue.provider} · ${queue.note || "—"}` +
-        (queue.spotifyConfigured ? " · Spotify configuré" : " · Spotify non configuré");
+        `Source : ${queue.provider} · ${queue.note || "—"}`;
       const list = el<HTMLElement>("queue-preload");
       if (queue.preload.length === 0) {
         list.innerHTML = "<li>Aucune piste préchargée.</li>";

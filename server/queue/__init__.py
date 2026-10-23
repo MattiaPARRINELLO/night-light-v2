@@ -1,1 +1,1 @@
-"""File d'attente multi-source (Spotify API, userscript Deezer, MPRIS)."""
+"""File d'attente Deezer (userscript) avec repli MPRIS."""

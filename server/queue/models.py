@@ -13,7 +13,6 @@ class QueueTrack:
     artist: str = ""
     duration_ms: int | None = None
     deezer_id: str | None = None
-    spotify_id: str | None = None
     isrc: str | None = None
 
     @property
@@ -32,7 +31,6 @@ class QueueTrack:
         return {
             "source": self.source,
             "deezerId": self.deezer_id,
-            "spotifyId": self.spotify_id,
             "isrc": self.isrc,
             "title": self.title,
             "artist": self.artist,
@@ -56,7 +54,6 @@ class QueueTrack:
         return cls(
             source=text("source") or default_source,
             deezer_id=text("deezerId", "deezer_id") or None,
-            spotify_id=text("spotifyId", "spotify_id") or None,
             isrc=text("isrc") or None,
             title=text("title"),
             artist=text("artist"),

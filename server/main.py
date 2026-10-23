@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import queue
-import secrets
 import shutil
 import threading
 import time
@@ -25,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -56,7 +55,6 @@ from .playback_position import get_playback_state, match_playback
 from .queue.deezer import lookup_for_queue_track, track_query
 from .queue.manager import QueueManager
 from .queue.models import QueueTrack
-from .queue.spotify import pkce_pair
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
 from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
@@ -901,41 +899,6 @@ async def deezer_queue(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Objet JSON attendu.")
     snapshot = state.queue.update_deezer(payload)
     return snapshot.to_dict()
-
-
-_SPOTIFY_PENDING: dict[str, str] = {}
-
-
-@app.get("/api/spotify/login")
-async def spotify_login() -> Any:
-    provider = state.queue.spotify
-    if not provider.configured:
-        raise HTTPException(status_code=400, detail="SPOTIFY_CLIENT_ID absent de .env")
-    verifier, _challenge = pkce_pair()
-    oauth_state = secrets.token_urlsafe(24)
-    _SPOTIFY_PENDING[oauth_state] = verifier
-    return RedirectResponse(provider.authorization_url(oauth_state, verifier))
-
-
-@app.get("/api/spotify/callback")
-async def spotify_callback(code: str = "", state: str = "", error: str = "") -> dict[str, Any]:
-    if error:
-        return {"error": error}
-    verifier = _SPOTIFY_PENDING.pop(state, "")
-    if code == "" or verifier == "":
-        raise HTTPException(status_code=400, detail="Code ou state OAuth invalide/expiré.")
-    provider = state.queue.spotify
-    payload = provider.exchange_code(code, verifier)
-    refresh = str(payload.get("refresh_token") or "")
-    if refresh == "":
-        return {"error": payload.get("error", "refresh_token absent")}
-    # Le secret n'est jamais journalisé : il est affiché une seule fois pour
-    # être recopié dans .env.
-    return {
-        "ok": True,
-        "instructions": "Ajoute cette ligne dans .env puis redémarre le serveur.",
-        "env": f"SPOTIFY_REFRESH_TOKEN={refresh}",
-    }
 
 
 @app.get("/api/audio-levels")

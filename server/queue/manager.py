@@ -16,23 +16,19 @@ from ..retrieve.models import audio_cache_key
 from ..retrieve.resolver import RetrievalError, resolve_track
 from .deezer import lookup_for_queue_track, track_query
 from .models import QueueSnapshot, QueueTrack
-from .spotify import SpotifyQueueProvider, load_spotify_config
 
 
 class QueueManager:
     def __init__(self, settings: Any, state: Any) -> None:
         self.settings = settings
         self.state = state
-        self.spotify = SpotifyQueueProvider(load_spotify_config(settings.port))
         self.deezer_snapshot: QueueSnapshot | None = None
         self.snapshot = QueueSnapshot(provider="mpris", note="MPRIS seul")
         self.preload = PreloadManager(settings, state, self)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_spotify = 0.0
         self._last_mpris_key = ""
-        self._last_mpris_refresh = 0.0
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -59,13 +55,6 @@ class QueueManager:
         if key == self._last_mpris_key:
             return
         self._last_mpris_key = key
-        now = time.time()
-        if "spotify" in player.lower():
-            # Revalide la file à chaque changement de morceau, pas à chaque event.
-            if now - self._last_mpris_refresh >= 2.0:
-                self._last_mpris_refresh = now
-                self.refresh(force_spotify=True)
-            return
         # Un lecteur Deezer/navigateur : le userscript pousse la file.
         if self.deezer_snapshot is not None and time.time() - self.deezer_snapshot.checked_at < 30:
             self._apply(self.deezer_snapshot)
@@ -90,22 +79,12 @@ class QueueManager:
         self._apply(snapshot)
         return snapshot
 
-    def refresh(self, *, force_spotify: bool = False) -> QueueSnapshot:
+    def refresh(self) -> QueueSnapshot:
         now = time.time()
-        if self.spotify.configured and (force_spotify or now - self._last_spotify >= 10.0):
-            self._last_spotify = now
-            snapshot = self.spotify.refresh_snapshot()
-            if snapshot.current or snapshot.next:
-                self._apply(snapshot)
-                return snapshot
         if self.deezer_snapshot is not None and now - self.deezer_snapshot.checked_at < 30:
             self._apply(self.deezer_snapshot)
             return self.deezer_snapshot
         mpris = self.state.now_playing_key
-        if self.spotify.configured:
-            snapshot = self.spotify.refresh_snapshot()
-            self._apply(snapshot)
-            return snapshot
         self.snapshot = QueueSnapshot(
             provider="mpris",
             current=QueueTrack(
@@ -127,7 +106,6 @@ class QueueManager:
     def status(self) -> dict[str, Any]:
         return {
             **self.snapshot.to_dict(),
-            "spotifyConfigured": self.spotify.configured,
             "preload": self.preload.status(),
         }
 

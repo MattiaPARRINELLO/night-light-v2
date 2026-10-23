@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from server.queue import deezer
 from server.queue.models import QueueTrack
-from server.queue.spotify import SpotifyConfig, SpotifyQueueProvider, pkce_pair
 
 
 def test_queue_track_key_prefers_deezer_then_isrc() -> None:
@@ -66,53 +65,6 @@ def test_isrc_missing_falls_back_to_search(monkeypatch) -> None:
     assert lookup.candidate is None and lookup.method == "search"
 
 
-def test_spotify_queue_parses_isrc_and_next(monkeypatch) -> None:
-    provider = SpotifyQueueProvider(
-        SpotifyConfig(client_id="id", refresh_token="refresh", redirect_uri="http://127.0.0.1:8787/cb")
-    )
-    monkeypatch.setattr(provider, "_token", lambda: "token")
-    queue = {
-        "currently_playing": {
-            "id": "s1",
-            "name": "Current",
-            "artists": [{"name": "A"}],
-            "duration_ms": 1000,
-            "external_ids": {"isrc": "FR111"},
-        },
-        "queue": [
-            {
-                "id": "s2",
-                "name": "Next",
-                "artists": [{"name": "B"}],
-                "duration_ms": 2000,
-                "external_ids": {"isrc": "FR222"},
-            },
-            {"id": "s3", "name": "Later", "artists": [{"name": "C"}], "duration_ms": 3000},
-        ],
-    }
-    monkeypatch.setattr(provider, "_get", lambda path: queue if "queue" in path else None)
-    snapshot = provider.refresh_snapshot()
-    assert snapshot.current is not None and snapshot.current.isrc == "FR111"
-    assert [track.title for track in snapshot.next] == ["Next", "Later"]
-    assert snapshot.next[0].isrc == "FR222"
-
-
-def test_spotify_authorization_url_uses_pkce_and_loopback() -> None:
-    provider = SpotifyQueueProvider(
-        SpotifyConfig(
-            client_id="client",
-            refresh_token="refresh",
-            redirect_uri="http://127.0.0.1:8787/api/spotify/callback",
-        )
-    )
-    verifier, _challenge = pkce_pair()
-    url = provider.authorization_url("state", verifier)
-    assert "code_challenge_method=S256" in url
-    assert "code_challenge=" in url
-    assert "127.0.0.1" in url
-    assert "client_secret" not in url
-
-
 def test_deezer_queue_endpoint_accepts_userscript_payload(tmp_path, monkeypatch) -> None:
     from dataclasses import replace
 
@@ -147,15 +99,13 @@ def test_deezer_queue_endpoint_accepts_userscript_payload(tmp_path, monkeypatch)
         main.settings = previous_settings
 
 
-def test_queue_manager_without_spotify_falls_back_to_mpris(tmp_path, monkeypatch) -> None:
+def test_queue_manager_without_deezer_falls_back_to_mpris(tmp_path, monkeypatch) -> None:
     from dataclasses import replace
     from types import SimpleNamespace
 
     from server.config import load_settings
     from server.queue.manager import QueueManager
 
-    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
-    monkeypatch.delenv("SPOTIFY_REFRESH_TOKEN", raising=False)
     settings = replace(
         load_settings(),
         session_dir=str(tmp_path / "night-light-sessions"),
