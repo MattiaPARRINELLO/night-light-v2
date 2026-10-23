@@ -41,6 +41,7 @@ export function installResolve(Target: { prototype: App }): void {
       foundMs: null,
       downloadedMs: null,
       analyzedMs: null,
+      partialMs: null,
       syncedMs: null,
       firstFrameMs: null,
       planMs: null,
@@ -69,6 +70,7 @@ export function installResolve(Target: { prototype: App }): void {
       current.downloadedMs = Math.round(offset + timings.downloadedMs);
     }
     if (timings.analyzedMs !== undefined) current.analyzedMs = Math.round(offset + timings.analyzedMs);
+    if (timings.partialMs !== undefined) current.partialMs = Math.round(offset + timings.partialMs);
     current.audioCache = timings.audioCache === true;
     current.analysisCache = timings.analysisCache === true;
   };
@@ -149,6 +151,7 @@ export function installResolve(Target: { prototype: App }): void {
       title,
       meta: "Résolution automatique",
     });
+    let partialShown = false;
     try {
       const { jobId, analysis, timings } = await resolveAndAnalyze(
         title,
@@ -169,6 +172,19 @@ export function installResolve(Target: { prototype: App }): void {
               4000,
             );
           },
+          onPartial: (partial, partialTimings) => {
+            if (seq !== this.resolveSeq) return;
+            partialShown = true;
+            this.pendingAnalysis = partial;
+            this.applyJobTimings(partialTimings);
+            document.body.dataset.analysisReady = "true";
+            this.debug("analyse", "analyse partielle prête · bascule immédiate", {
+              couverture: partial.coverage ?? null,
+              tempo: Number(partial.tempo.toFixed(1)),
+              temps: partial.beats.length,
+            });
+            void this.tryAutoSynced(title, artist, partial.duration, partial);
+          },
         },
         trackKey,
       );
@@ -186,7 +202,11 @@ export function installResolve(Target: { prototype: App }): void {
         dureeMs: Math.round(performance.now() - startedAt),
         analyseEnCache: this.trackTimings?.analysisCache === true,
       });
-      void this.tryAutoSynced(title, artist, analysis.duration, analysis);
+      // Si le show partiel tourne déjà, on remplace le plan sans le relancer ;
+      // sinon (analyse en cache, ou aucun calage encore) on tente le calage final.
+      if (!partialShown || !this.updateSyncedAnalysis(analysis)) {
+        void this.tryAutoSynced(title, artist, analysis.duration, analysis);
+      }
       status.hidden = true;
     } catch (error) {
       if (seq !== this.resolveSeq) return;

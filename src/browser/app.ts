@@ -129,6 +129,8 @@ export class App {
 
   syncedView: TrackView | null = null;
   syncedPlan: ShowPlan | null = null;
+  /** Analyse finale en attente : on garde la scène courante jusqu'à sa fin. */
+  pendingSynced: { view: TrackView; plan: ShowPlan; switchAt: number } | null = null;
   syncedStartMs = 0;
   syncedStartedAtEpoch = 0;
   syncedRaf = 0;
@@ -136,6 +138,8 @@ export class App {
   syncedLatencyMs = Number(localStorage.getItem("night-light-latency") ?? 0);
   /** Vrai quand le lecteur est en pause : le temps du show reste figé. */
   syncedPaused = false;
+  /** Numéro de la tentative de calage courante : une nouvelle remplace l'ancienne. */
+  syncAttemptSeq = 0;
   /** Écart en cours de rattrapage, en millisecondes (0 si aucun). */
   syncDriftMs = 0;
   syncCorrectionStart = 0;

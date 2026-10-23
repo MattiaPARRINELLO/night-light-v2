@@ -656,6 +656,7 @@ class Dashboard {
         "détecté",
         stage("trouvé", t.foundMs),
         stage("téléchargé", t.downloadedMs),
+        stage("partiel", t.partialMs),
         stage("analysé", t.analyzedMs),
         stage("calé", t.syncedMs),
         stage("premier frame", t.firstFrameMs),

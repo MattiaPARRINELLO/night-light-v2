@@ -15,6 +15,7 @@ import {
   syncRampDuration,
 } from "../core/playback";
 import { renderFrame } from "../core/render";
+import { sceneAt } from "../core/show";
 import { TrackView } from "../core/view";
 import { setStatus, showScreen } from "./ui";
 import type { Analysis } from "../types";
@@ -23,6 +24,7 @@ declare module "./app" {
   interface App {
     tryAutoSynced(title: string, artist: string, duration: number, analysis: Analysis): Promise<void>;
     startSyncedShow(analysis: Analysis, initialMs: number, state?: PlaybackPositionResponse): Promise<void>;
+    updateSyncedAnalysis(analysis: Analysis): boolean;
     startCrossfade(analysis: Analysis, initialMs: number): void;
     crossfadeDelayMs(analysis: Analysis, initialMs: number): number;
     composeCrossfade(): void;
@@ -47,6 +49,7 @@ export function installSync(Target: { prototype: App }): void {
     analysis: Analysis,
   ): Promise<void> {
     const startedAt = performance.now();
+    const attemptSeq = (this.syncAttemptSeq += 1);
     const finish = (verdict: string): void => {
       this.debug("sync", "tryAutoSynced terminé", {
         titre: title,
@@ -76,7 +79,9 @@ export function installSync(Target: { prototype: App }): void {
     // quand le morceau est déjà disponible.
     const delaysMs = [0, 250, 500, 1000, 1500, 2000, 2500, 3000, 3000, 4000];
     for (let attempt = 0; attempt < delaysMs.length; attempt += 1) {
+      if (attemptSeq !== this.syncAttemptSeq) return finish("remplacé par une analyse plus récente");
       if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+      if (attemptSeq !== this.syncAttemptSeq) return finish("remplacé par une analyse plus récente");
       // `view !== null` : un show local a été forcé entre-temps, on ne le remplace pas.
       if (!this.pendingAnalysis || this.view !== null) return finish("show local prioritaire");
       this.debugSync.attempts = attempt + 1;
@@ -185,6 +190,7 @@ export function installSync(Target: { prototype: App }): void {
 
     this.syncedView = new TrackView(analysis);
     this.syncedPlan = this.buildPlan(analysis);
+    this.pendingSynced = null;
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
     this.syncedPaused = false;
@@ -213,6 +219,35 @@ export function installSync(Target: { prototype: App }): void {
       positionShowSec: Number((this.syncedStartMs / 1000).toFixed(2)),
       dureeSec: Number(analysis.duration.toFixed(1)),
     });
+  };
+
+  /**
+   * Reçoit l'analyse complète alors qu'un show partiel tourne déjà.
+   *
+   * Le nouveau plan garde la graine du plan partiel (mêmes palettes) et n'est
+   * appliqué qu'à la fin de la scène courante : aucun saut visible, aucune
+   * frame noir. Si le tempo différait d'un facteur 2, le nouveau plan aligne la
+   * grille sur le tempo final dès cette bascule.
+   */
+  Target.prototype.updateSyncedAnalysis = function (this: App, analysis: Analysis): boolean {
+    if (!this.syncedMode || this.syncedPlan === null) return false;
+    const seed = this.syncedPlan.seed;
+    const plan = this.buildPlan(analysis, seed);
+    const view = new TrackView(analysis);
+    const nowSec = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    const currentScene = sceneAt(this.syncedPlan, Math.min(nowSec, this.syncedPlan.duration));
+    const switchAt = Math.max(nowSec + 0.05, currentScene.end);
+    const previousTempo = this.syncedView?.tempo ?? analysis.tempo;
+    const ratio = previousTempo > 0 ? analysis.tempo / previousTempo : 1;
+    this.pendingSynced = { view, plan, switchAt };
+    this.debug("sync", "analyse finale reçue · bascule à la fin de la scène", {
+      dansSec: Number((switchAt - nowSec).toFixed(2)),
+      tempoPartiel: Number(previousTempo.toFixed(1)),
+      tempoFinal: Number(analysis.tempo.toFixed(1)),
+      facteur: Number(ratio.toFixed(2)),
+      aligneTempoFinal: ratio > 1.8 || ratio < 0.55,
+    });
+    return true;
   };
 
   /**
@@ -375,6 +410,7 @@ export function installSync(Target: { prototype: App }): void {
       this.syncedTimer = null;
     }
     this.syncedPaused = false;
+    this.pendingSynced = null;
     this.cancelCrossfade();
     this.syncedMode = false;
   };
@@ -417,10 +453,19 @@ export function installSync(Target: { prototype: App }): void {
   };
 
   Target.prototype.renderSynced = function (this: App): void {
+    const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    const pending = this.pendingSynced;
+    if (pending !== null && time >= pending.switchAt) {
+      this.syncedView = pending.view;
+      this.syncedPlan = pending.plan;
+      this.pendingSynced = null;
+      this.debug("sync", "plan final appliqué · fin de la scène partielle");
+    }
     const view = this.syncedView;
     const plan = this.syncedPlan;
     if (view === null || plan === null) return;
-    const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    const coverage = plan.coverage;
+    const outside = coverage !== undefined && (time < coverage[0] || time > coverage[1]);
     const fade = this.crossfade;
     const target = fade === null ? this.ctx : fade.syncedCtx;
     try {
@@ -438,6 +483,7 @@ export function installSync(Target: { prototype: App }): void {
         quality: this.quality,
         frame: this.frame,
         haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
+        liveAudio: outside ? this.liveAudio : undefined,
       });
       this.frame += 1;
       if (fade === null) {

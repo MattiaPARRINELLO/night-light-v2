@@ -16,7 +16,7 @@ declare module "./app" {
   interface App {
     bindShow(): void;
     startShow(analysis: Analysis): Promise<void>;
-    buildPlan(analysis: Analysis): ShowPlan;
+    buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
     refreshPlan(): void;
     togglePlay(): Promise<void>;
@@ -29,9 +29,9 @@ declare module "./app" {
 
 export function installShow(Target: { prototype: App }): void {
   /** Construit le plan en mesurant le temps réellement passé dans `buildShowPlan`. */
-  Target.prototype.buildPlan = function (this: App, analysis: Analysis): ShowPlan {
+  Target.prototype.buildPlan = function (this: App, analysis: Analysis, seed?: number): ShowPlan {
     const startedAt = performance.now();
-    const plan = buildShowPlan(analysis, this.effectiveReduced());
+    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed);
     const durationMs = performance.now() - startedAt;
     this.debug("show", "plan de spectacle construit", {
       dureeMs: Number(durationMs.toFixed(2)),

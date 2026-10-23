@@ -92,6 +92,11 @@ export interface Analysis {
   sections: Section[];
   /** Montées d'énergie détectées, avec l'impact qui les conclut. */
   builds: Build[];
+  /**
+   * Fenêtre réellement analysée pour une analyse rapide, en secondes.
+   * Absent = analyse complète.
+   */
+  coverage?: [number, number];
 }
 
 export interface RenderSettings {

@@ -34,6 +34,7 @@ export interface TrackTimings {
   foundMs: number | null;
   downloadedMs: number | null;
   analyzedMs: number | null;
+  partialMs: number | null;
   syncedMs: number | null;
   firstFrameMs: number | null;
   planMs: number | null;
