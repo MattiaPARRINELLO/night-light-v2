@@ -3,7 +3,7 @@ import { hash01 } from "../series";
 import { softBeam } from "./beams";
 import { rowPositions } from "./geometry";
 import { contrastHue, lampHue } from "./harmony";
-import { beatSwing, elementEnvelope } from "./tempo";
+import { beatSwing, elementEnvelopeForEnergy } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
 import { GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
 import { count, paint } from "./util";
@@ -47,8 +47,10 @@ const spots: FamilyDraw = (ctx, f, view) => {
     // à être tous de la même couleur, c'est ce qui donne du relief à la scène.
     const hue = lampHue(f, i);
     // Les projecteurs ne restent pas tous allumés : chacun a son cycle, donc la
-    // salle change de visage sans qu'aucun ne s'éteigne d'un coup.
-    const allumage = elementEnvelope(f, view, i * 3 + 1, f.energy > 0.55 ? 12 : 22, 0.8);
+    // salle change de visage sans qu'aucun ne s'éteigne d'un coup. Le cycle
+    // s'accélère avec l'énergie, mais par mélange : un seuil franc décalait la
+    // phase de toutes les lampes en une image.
+    const allumage = elementEnvelopeForEnergy(f, view, i * 3 + 1, 22, 12, 0.8);
     if (allumage <= 0.01) continue;
     const alpha = (0.06 + 0.28 * f.energy + 0.18 * f.beat) * f.alpha * allumage;
 
@@ -342,7 +344,7 @@ const curtain: FamilyDraw = (ctx, f, view) => {
     const hue = lampHue(f, i);
     // Chaque faisceau s'allume et s'éteint à son tour, sur un cycle musical :
     // la lumière « voyage » le long de la rangée au lieu de clignoter en bloc.
-    const phase = elementEnvelope(f, view, i, f.energy > 0.55 ? 10 : 20, 0.85);
+    const phase = elementEnvelopeForEnergy(f, view, i, 20, 10, 0.85);
     if (phase <= 0.01) continue;
     const aperture = (0.01 + 0.016 * hash01(i * 271 + f.seed)) * (0.6 + phase * 0.8 + f.beat * 0.3);
     const portee = length * (0.78 + phase * 0.35);

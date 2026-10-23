@@ -20,6 +20,7 @@ import {
   curvedBeam,
   drawFamily,
   elementEnvelope,
+  elementEnvelopeForEnergy,
   type FrameState,
   GRAND_BALAYAGE_BEATS,
   hazeFineRadiusPixels,
@@ -990,6 +991,32 @@ describe("allumage et extinction des elements", () => {
     expect(Math.min(...valeurs)).toBeLessThan(Math.max(...valeurs));
     // Et il y a toujours de la lumière : le rideau ne s'éteint jamais en entier.
     expect(Math.max(...valeurs)).toBeGreaterThan(2);
+  });
+
+  test("la traverse du seuil d'energie n'eteint rien d'un coup", () => {
+    // Les projecteurs choisissaient un cycle court des que l'energie depassait
+    // 0,55. Deux cycles differents ne sont pas en phase : au franchissement,
+    // une lampe passait de pleine lumiere a eteinte en une image. Le melange
+    // doit rendre la traversee continue.
+    const pas = 1 / (60 * (60 / 128));
+    let position = 20;
+    let precedent: number | undefined;
+    let sautMax = 0;
+    for (let etape = 0; etape < 240; etape += 1) {
+      const energy = 0.45 + 0.25 * (etape / 239);
+      position += pas;
+      const courant = elementEnvelopeForEnergy(
+        frame({ energy, beatIndex: Math.floor(position), beatPhase: position % 1 }),
+        view,
+        3,
+        22,
+        12,
+        0.8,
+      );
+      if (precedent !== undefined) sautMax = Math.max(sautMax, Math.abs(courant - precedent));
+      precedent = courant;
+    }
+    expect(sautMax).toBeLessThan(0.09);
   });
 
   test("un passage fort allume et eteint plus souvent", () => {

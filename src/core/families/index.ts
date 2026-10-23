@@ -13,7 +13,7 @@ export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./type
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
 export { contrastHue, lampHue, sceneChord } from "./harmony";
-export { beatSwing, colorFlip, elementEnvelope } from "./tempo";
+export { beatSwing, colorFlip, elementEnvelope, elementEnvelopeForEnergy } from "./tempo";
 export { rowPositions } from "./geometry";
 export { lyreWavePhase } from "./figures";
 export { drawCoreGlow, drawWash } from "./projectors";

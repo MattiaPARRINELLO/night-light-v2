@@ -1,4 +1,4 @@
-import { clamp01, hash01, smoothstep } from "../series";
+import { clamp01, hash01, mix, smoothstep } from "../series";
 import type { TrackView } from "../view";
 import type { FrameState } from "./types";
 
@@ -44,6 +44,37 @@ export function elementEnvelope(
   const debutExtinction = allume - extinction;
   if (phase < debutExtinction) return 1;
   return 1 - smoothstep(debutExtinction, allume, phase);
+}
+
+/**
+ * Même enveloppe, mais dont la cadence suit l'énergie sans jamais se couper.
+ *
+ * `elementEnvelope` se compte en temps forts : changer de cycle en cours de
+ * morceau décale la phase de tous les éléments d'un seul coup. Choisir un cycle
+ * court dès que l'énergie franchit un seuil — ce que faisaient les projecteurs —
+ * faisait donc passer une lampe de pleine lumière à éteinte entre deux images,
+ * au gré des passages forts.
+ *
+ * Ici les deux cycles tournent en permanence et se mélangent selon l'énergie.
+ * Le mélange vaut exactement 0 et 1 aux extrémités : traverser le seuil ne
+ * produit aucun saut, et chaque lampe garde son extinction progressive. La
+ * salle s'anime seulement plus vite dans un passage fort.
+ */
+export function elementEnvelopeForEnergy(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  calme: number,
+  fort: number,
+  duty = 0.8,
+  phaseOffset = 0,
+): number {
+  const melange = smoothstep(0.45, 0.65, f.energy);
+  if (melange <= 0) return elementEnvelope(f, view, index, calme, duty, phaseOffset);
+  if (melange >= 1) return elementEnvelope(f, view, index, fort, duty, phaseOffset);
+  const lent = elementEnvelope(f, view, index, calme, duty, phaseOffset);
+  const rapide = elementEnvelope(f, view, index, fort, duty, phaseOffset);
+  return mix(lent, rapide, melange);
 }
 
 /**
