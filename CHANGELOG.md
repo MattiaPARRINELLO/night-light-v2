@@ -8,6 +8,13 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Analyse en 2 passes** : une passe rapide sur une fenêtre de 45 s autour de
+  la position MPRIS publie une analyse partielle (`coverage`) en moins d'une
+  seconde après le téléchargement, puis l'analyse complète remplace le plan en
+  fin de scène, avec la même graine. Seule l'analyse finale entre dans le cache.
+  Le front rend en mode live hors de la zone couverte et extrapole la grille de
+  beats ; un tempo partiel au double/halve est réaligné sur le tempo final à la
+  scène suivante.
 - **Fondu enchaîné** à l'entrée d'un show synchronisé : le live et le rendu
   analysé sont dessinés hors écran puis composités en ease-in-out, sans frame
   noir. La bascule vise le prochain temps fort (au plus un temps) ou l'impact
