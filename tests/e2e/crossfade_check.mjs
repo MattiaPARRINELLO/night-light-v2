@@ -70,10 +70,23 @@ try {
 
   const result = await page.evaluate(async () => {
     const app = window.nightLight;
+    const analysis = app.pendingAnalysis;
+    // Isole du lecteur MPRIS réel de la machine.
+    app.nowPlayingStream?.close();
+    app.nowPlayingStream = null;
+    if (app.nowPlayingWatchdog !== null) window.clearInterval(app.nowPlayingWatchdog);
+    app.nowPlayingWatchdog = null;
+    app.stopNowPlayingPolling();
+    app.resolveSeq += 1;
+    app.analysisController?.abort();
+    app.analysisController = null;
+    app.syncAttemptSeq += 1;
     app.transitionMode = "crossfade";
     app.pendingTitle = "Crossfade";
     const started = Date.now();
-    await app.startSyncedShow(app.pendingAnalysis, 3000);
+    await app.startSyncedShow(analysis, 3000);
+    if (app.syncedTimer !== null) window.clearInterval(app.syncedTimer);
+    app.syncedTimer = null;
     const samples = [];
     let endedAt = 0;
     for (let i = 0; i < 500; i += 1) {

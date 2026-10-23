@@ -48,6 +48,20 @@ interface Sample {
   showQuality: number;
 }
 
+interface QueueStatus {
+  provider: string;
+  note: string;
+  spotifyConfigured: boolean;
+  preload: Array<{
+    key: string;
+    title: string;
+    artist: string;
+    state: string;
+    method: string;
+    error: string;
+  }>;
+}
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (node === null) throw new Error(`Élément manquant dans le DOM : #${id}`);
@@ -299,9 +313,36 @@ class Dashboard {
     this.send({ type: "hello" });
     window.setInterval(() => this.send({ type: "hello" }), 2000);
     window.setInterval(() => this.checkLink(), 1000);
+    window.setInterval(() => void this.refreshQueue(), 2000);
     void this.loadLimits();
     this.bindControls();
     this.checkLink();
+    void this.refreshQueue();
+  }
+
+  private async refreshQueue(): Promise<void> {
+    try {
+      const response = await fetch("/api/queue");
+      if (!response.ok) return;
+      const queue = (await response.json()) as QueueStatus;
+      el<HTMLElement>("queue-provider").textContent = queue.provider || "MPRIS seul";
+      el<HTMLElement>("queue-method").textContent =
+        `Source : ${queue.provider} · ${queue.note || "—"}` +
+        (queue.spotifyConfigured ? " · Spotify configuré" : " · Spotify non configuré");
+      const list = el<HTMLElement>("queue-preload");
+      if (queue.preload.length === 0) {
+        list.innerHTML = "<li>Aucune piste préchargée.</li>";
+        return;
+      }
+      list.innerHTML = queue.preload
+        .map((item) => {
+          const state = item.error ? `${item.state} (${item.error})` : item.state;
+          return `<li>${item.title} — ${item.artist} · ${state} · ${item.method}</li>`;
+        })
+        .join("");
+    } catch {
+      // Le dashboard reste utilisable si le serveur redémarre.
+    }
   }
 
   private send(command: DashboardCommand): void {

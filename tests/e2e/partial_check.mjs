@@ -79,10 +79,22 @@ try {
       tempo: final.tempo * 2,
       beatPeriod: final.beatPeriod / 2,
     };
+    // Le test ne dépend pas du lecteur MPRIS réel de la machine.
+    app.nowPlayingStream?.close();
+    app.nowPlayingStream = null;
+    if (app.nowPlayingWatchdog !== null) window.clearInterval(app.nowPlayingWatchdog);
+    app.nowPlayingWatchdog = null;
+    app.stopNowPlayingPolling();
+    app.nowPlaying = null;
+    app.resolveSeq += 1;
+    app.analysisController?.abort();
+    app.analysisController = null;
+    app.syncAttemptSeq += 1;
     app.transitionMode = "crossfade";
     app.pendingTitle = "Partial";
     // Annule le calage automatique lancé par le dépôt du fichier.
     app.syncAttemptSeq += 1;
+    app.pendingAnalysis = null;
     const started = Date.now();
     await app.startSyncedShow(partial, 3000);
     // Le test ne dépend pas du lecteur MPRIS réel : on coupe le resync qui
@@ -106,7 +118,7 @@ try {
       samples.push(lit);
     };
     app.updateSyncedAnalysis(final);
-    while (app.pendingSynced !== null && Date.now() - started < 25000) {
+    while ((app.pendingSynced !== null || app.syncedPlan.coverage !== undefined) && Date.now() - started < 25000) {
       sample();
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
@@ -130,7 +142,7 @@ try {
       `remplacement : ${result.frames} frames, ${result.zeroFrames} noir(s) · ` +
       `graine ${result.partialSeed === result.finalSeed ? "identique" : "DIFFÉRENTE"} · ` +
       `couverture finale ${result.coverageFinal === null ? "complète" : result.coverageFinal} · ` +
-      `écart ${driftMs} ms`,
+      `écart ${driftMs} ms` ,
   );
   if (result.firstFrameMs >= 2000) failures.push(`bascule partielle trop lente : ${result.firstFrameMs} ms`);
   if (result.zeroFrames > 0) failures.push(`${result.zeroFrames} frame(s) noir(s) pendant le remplacement`);
