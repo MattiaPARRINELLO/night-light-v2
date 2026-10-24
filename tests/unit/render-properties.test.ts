@@ -292,7 +292,11 @@ describe("R5 — aucun état caché : ni hasard, ni horloge dans le cœur du ren
         }
         if (!entry.name.endsWith(".ts")) continue;
         if (allowed.has(entry.name)) continue;
-        const source = readFileSync(path, "utf8");
+        // On ignore les commentaires : une mention documentaire de `Math.random`
+        // n'est pas une lecture du hasard. Seul le code exécuté compte.
+        const source = readFileSync(path, "utf8")
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/(^|[^:])\/\/.*$/gm, "$1");
         for (const forbidden of ["Math.random", "Date.now", "performance.now"]) {
           if (source.includes(forbidden)) offenders.push(`${path} → ${forbidden}`);
         }

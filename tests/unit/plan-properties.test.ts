@@ -231,11 +231,11 @@ describe("P9 — fenêtre de teinte et écart entre scènes voisines", () => {
     });
   }
 
-  // BUG DE PRODUCTION (agent A) : show.ts:611-620 applique d'abord l'écart
-  // minimal (`MIN_HUE_STEP`) puis ramène la teinte dans la fenêtre ±spread de
-  // l'ancre. Le second clamp peut annuler le premier : deux scènes voisines
-  // peuvent se retrouver à moins de 34°.
-  test.failing(`écart ≥ ${MIN_HUE_STEP}° entre scènes voisines (show.ts:611-620)`, () => {
+  // BUG D'ORIGINE : l'écart minimal (`MIN_HUE_STEP`) était appliqué avant le
+  // clamp vers la fenêtre ±spread de l'ancre, qui pouvait l'annuler. Corrigé
+  // par la PR #30 (`hueWithGap` résout les deux contraintes ensemble) : le
+  // test n'est plus marqué `failing`.
+  test(`écart ≥ ${MIN_HUE_STEP}° entre scènes voisines (show.ts:611-620)`, () => {
     const violations: string[] = [];
     for (const { name, analysis } of tracks) {
       const plan = buildShowPlan(analysis, false);
