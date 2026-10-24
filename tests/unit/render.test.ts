@@ -3,10 +3,13 @@ import { describe, expect, test } from "bun:test";
 import {
   beatDrive,
   beatStrength,
+  clampHueToAnchor,
   drawTransition,
   ENERGY_FLOOR,
   flashAdmitted,
+  HUE_BUDGET_MARGIN_DEG,
   renderFrame,
+  sceneAnchor,
   sceneHue,
   transitionAlpha,
   visibleEnergy,
@@ -1711,9 +1714,34 @@ describe("couleur", () => {
     let previous = sceneHue(scene, 0, 0, 0, false);
     for (let t = 0.1; t < 60; t += 0.1) {
       const hue = sceneHue(scene, t, 0, 0, false);
-      // Dérive lente (0,4 °/s) + respiration : aucun saut d'un pas à l'autre.
+      // Dérive périodique + respiration : aucun saut d'un pas à l'autre.
       expect(hueGap(previous, hue)).toBeLessThan(2);
       previous = hue;
     }
+  });
+
+  test("sur toute la durée, la teinte ne quitte jamais le budget d'ancre", () => {
+    const data = analysis({ duration: 600 });
+    const plan = buildShowPlan(data, false, 41);
+    const view = new TrackView(data);
+    for (let t = 0; t < 600; t += 0.5) {
+      const scene =
+        plan.scenes.find((candidate) => t >= candidate.start && t < candidate.end) ?? plan.scenes[plan.scenes.length - 1]!;
+      const anchor = sceneAnchor(scene, plan.track);
+      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false, anchor);
+      const budget = scene.palette.spread + HUE_BUDGET_MARGIN_DEG;
+      expect(hueGap(anchor, hue)).toBeLessThanOrEqual(budget);
+    }
+  });
+
+  test("le plafonnement de teinte est doux : pas de palier au bord du budget", () => {
+    const spread = 40;
+    const limit = spread + HUE_BUDGET_MARGIN_DEG;
+    // Juste sous la limite, la teinte est presque inchangée ; au-delà, elle se
+    // rapproche sans jamais s'y coller exactement.
+    expect(clampHueToAnchor(150 + spread, 150, spread)).toBeLessThan(150 + spread);
+    const tresLoin = clampHueToAnchor(150 + 170, 150, spread);
+    expect(hueGap(150, tresLoin)).toBeLessThan(limit);
+    expect(hueGap(150, tresLoin)).toBeGreaterThan(limit * 0.95);
   });
 });

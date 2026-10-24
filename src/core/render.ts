@@ -70,6 +70,24 @@ export const HUE_DRIFT_PER_SEC = 0.4;
 /** Respiration de la teinte autour de celle de la scène, en degrés. */
 const HUE_BREATH_DEG = 14;
 /**
+ * Marge de teinte au-delà du `spread` de la palette, en degrés.
+ *
+ * Le contrat de couleur borne la teinte rendue autour de l'ancre du morceau :
+ * `|teinte − ancre| ≤ spread + HUE_BUDGET_MARGIN_DEG`, dérive, respiration,
+ * sauts d'impact et variante compris.
+ *
+ * À remplacer par l'import de `show.ts` après fusion de la branche du plan.
+ */
+export const HUE_BUDGET_MARGIN_DEG = 12;
+/**
+ * Période de la dérive de teinte, en secondes.
+ *
+ * Une dérive linéaire (`0,4 °/s × t`) sortait de l'identité du morceau au bout
+ * de quelques minutes : à 4 min, 96° de dérive cumulée. Une sinusoïde bornée à
+ * une demi-largeur de palette fait respirer la couleur sans jamais la quitter.
+ */
+const HUE_DRIFT_PERIOD_SEC = 90;
+/**
  * Saut de teinte à l'impact, en degrés.
  *
  * L'impact doit se voir — la couleur change franchement — mais il ne doit pas
@@ -338,6 +356,39 @@ export function drawTransition(
   ctx.fillRect(Math.max(0, x - demi), 0, Math.min(width, demi * 2), height);
 }
 
+/** Écart angulaire signé, dans ]-180 ; 180]. */
+export function angularDelta(from: number, to: number): number {
+  return ((((to - from) % 360) + 540) % 360) - 180;
+}
+
+/**
+ * Ancre colorée de la scène : la teinte du morceau dont elle est partie.
+ *
+ * `show.ts` ancre tantôt sur la teinte principale, tantôt sur la complémentaire
+ * (moments forts), et ajoute une dérive inférieure à une demi-largeur de
+ * palette. On retrouve donc l'ancre en prenant, des deux teintes du morceau,
+ * celle dont la scène est la plus proche.
+ */
+export function sceneAnchor(scene: Scene, track: { hue: number; accent: number }): number {
+  const distanceHue = Math.abs(angularDelta(scene.palette.hue, track.hue));
+  const distanceAccent = Math.abs(angularDelta(scene.palette.hue, track.accent));
+  return distanceAccent < distanceHue ? track.accent : track.hue;
+}
+
+/**
+ * Ramène une teinte dans le budget autour de l'ancre, sans jamais la couper.
+ *
+ * `tanh` compresse progressivement : les petites variations passent presque
+ * inchangées, les grandes se rapprochent de la limite sans l'atteindre. Une
+ * coupure dure aurait produit un palier visible — la couleur se serait figée au
+ * bord du budget pendant tout un passage fort.
+ */
+export function clampHueToAnchor(hue: number, anchor: number, spread: number): number {
+  const limit = Math.max(1, spread + HUE_BUDGET_MARGIN_DEG);
+  const offset = angularDelta(anchor, hue);
+  return (anchor + limit * Math.tanh(offset / limit) + 360) % 360;
+}
+
 /**
  * Teinte réellement dessinée à l'instant `t`.
  *
@@ -346,10 +397,24 @@ export function drawTransition(
  * scène, la couleur faisait un bond de plusieurs dizaines de degrés en plein
  * spectacle. Fonction partagée avec l'affichage, pour que le HUD annonce la
  * teinte qui est vraiment à l'écran.
+ *
+ * `anchor` est l'ancre du morceau (voir `sceneAnchor`). Sans elle, la fonction
+ * se rabat sur la teinte de la scène : le résultat reste borné, mais c'est le
+ * rendu qui applique le budget exact.
  */
-export function sceneHue(scene: Scene, t: number, drop: number, variation: number, reduced: boolean): number {
+export function sceneHue(
+  scene: Scene,
+  t: number,
+  drop: number,
+  variation: number,
+  reduced: boolean,
+  anchor: number = scene.palette.hue,
+): number {
+  const spread = scene.palette.spread;
+  // Dérive périodique, d'amplitude une demi-largeur de palette : la couleur
+  // respire autour de l'ancre au lieu de s'en éloigner sans fin.
   const drift =
-    HUE_DRIFT_PER_SEC * t * (reduced ? 0.4 : 1) +
+    (0.5 * spread * Math.sin((2 * Math.PI * t) / HUE_DRIFT_PERIOD_SEC)) * (reduced ? 0.4 : 1) +
     Math.sin(t * 0.11) * HUE_BREATH_DEG * (reduced ? 0.5 : 1);
   // Les sauts sont bornés : un impact fait changer la lumière, il ne change pas
   // de morceau.
@@ -357,7 +422,8 @@ export function sceneHue(scene: Scene, t: number, drop: number, variation: numbe
     -HUE_IMPACT_LIMIT,
     Math.min(HUE_IMPACT_LIMIT, DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation),
   );
-  return (scene.palette.hue + drift + impact + 360) % 360;
+  const base = scene.palette.hue;
+  return clampHueToAnchor(base + drift + impact, anchor, spread);
 }
 
 /**
@@ -442,7 +508,8 @@ export function renderFrame(input: RenderInput): void {
   const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
   const variation = reduced ? 0 : variationStrength(scene, t);
   const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
-  const paletteHue = sceneHue(scene, t, drop, variation, reduced);
+  const anchor = sceneAnchor(scene, plan.track);
+  const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
   const palette: Palette = {
     name: scene.palette.name,
     hue: paletteHue,
@@ -516,7 +583,10 @@ export function renderFrame(input: RenderInput): void {
       ...base,
       palette: {
         ...palette,
-        hue: (palette.hue + 48) % 360,
+        // La variante garde son écart de 48°, ramené lui aussi dans le budget
+        // autour de l'ancre : le spectacle ne doit jamais sortir de l'identité
+        // colorée du morceau, même quand une autre famille surgit.
+        hue: clampHueToAnchor(palette.hue + 48, anchor, scene.palette.spread),
         saturation: Math.min(1, palette.saturation + 0.1),
       },
       alpha: base.alpha * variation * 0.8,
@@ -531,7 +601,7 @@ export function renderFrame(input: RenderInput): void {
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
-      palette: { ...palette, hue: (palette.hue + 25) % 360 },
+      palette: { ...palette, hue: clampHueToAnchor(palette.hue + 25, anchor, scene.palette.spread) },
       alpha: base.alpha * wash,
       intensity: base.intensity,
     };
