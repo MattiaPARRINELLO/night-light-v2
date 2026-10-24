@@ -369,6 +369,11 @@ describe("diversite du spectacle", () => {
   test("un long morceau exploite toutes les familles visuelles", () => {
     const long = analysis({
       duration: 600,
+      // Grille régulière à 120 BPM : les scènes durent 8 s, donc elles portent
+      // une variation (le seuil est de 8 s).
+      tempo: 120,
+      beatPeriod: 0.5,
+      beats: Array.from({ length: 1200 }, (_, index) => index * 0.5),
       sections: [
         { start: 0, end: 200, label: "calme", energy: 0.25 },
         { start: 200, end: 400, label: "intense", energy: 0.8 },
@@ -411,6 +416,57 @@ describe("diversite du spectacle", () => {
     });
     const nu = analysis({ duration: 180, beats: [], onsets: [], sections: [], builds: [] });
     expect(sceneCadence(buildShowPlan(riche, false))).toBeLessThan(sceneCadence(buildShowPlan(nu, false)));
+  });
+
+  test("à 170 BPM en 3/4, les scènes restent dans la fenêtre 5–9 s", () => {
+    const beatPeriod = 60 / 170;
+    const data = analysis({
+      duration: 60,
+      tempo: 170,
+      meter: 3,
+      beatPeriod,
+      beats: Array.from({ length: Math.floor(60 / beatPeriod) }, (_, index) =>
+        Number((index * beatPeriod).toFixed(3)),
+      ),
+      onsets: [],
+      sections: [],
+      builds: [],
+    });
+    const plan = buildShowPlan(data, false);
+    const spans = plan.scenes.map((scene) => scene.end - scene.start);
+    // Le cycle de 12 temps vaut 4,24 s, sous le plancher de 5 s : la fusion
+    // garde une frontière de cycle sur deux, soit ~8,48 s, jamais 12,7 s.
+    expect(Math.min(...spans)).toBeGreaterThanOrEqual(5);
+    expect(sceneCadence(plan)).toBeGreaterThanOrEqual(5);
+    expect(sceneCadence(plan)).toBeLessThanOrEqual(9);
+    expect(Math.max(...spans)).toBeLessThanOrEqual(12);
+    // Chaque frontière conservée est un vrai cycle : aucun changement inventé.
+    const boundaries = new Set(plan.barStarts.map((time) => Number(time.toFixed(2))));
+    for (const scene of plan.scenes.slice(1)) {
+      expect(
+        boundaries.has(Number(scene.start.toFixed(2))) ||
+          Math.abs(scene.start - data.duration) < 0.01,
+      ).toBe(true);
+    }
+  });
+
+  test("aucune variation sur une scène de moins de 8 s", () => {
+    const plan = buildShowPlan(
+      analysis({
+        duration: 120,
+        beats: Array.from({ length: 300 }, (_, index) => index * 0.4),
+        builds: [{ start: 30, end: 40, strength: 0.9 }],
+      }),
+      false,
+    );
+    let courtes = 0;
+    for (const scene of plan.scenes) {
+      if (scene.end - scene.start < 8) {
+        courtes += 1;
+        expect(scene.variant).toBe(scene.family);
+      }
+    }
+    expect(courtes).toBeGreaterThan(0);
   });
 
   test("le tirage de famille ne répète jamais et dépend de la graine", () => {

@@ -293,6 +293,12 @@ const MIN_HUE_STEP = 34;
 const BARS_PER_CYCLE = 4;
 /** Longueur minimale d'une scène, en secondes. */
 const MIN_SCENE_SPAN = 5;
+/**
+ * En deçà de cette durée, une scène ne porte pas de variation : le second
+ * passage d'une figure n'a pas le temps de se lire et se confond avec un
+ * changement de scène raté.
+ */
+const MIN_VARIATION_SPAN = 8;
 
 /**
  * Seuils de l'arbre de décision de `familyFor`.
@@ -767,7 +773,12 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     const calm = CALM_FAMILIES.includes(family);
     const pool = calm ? ALL_FAMILIES : CALM_FAMILIES;
     const others = pool.filter((candidate) => candidate !== family);
-    const variant = others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
+    const variantCandidate =
+      others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
+    // Une scène courte n'a pas de variation : `variant` répète alors la
+    // famille principale, donc aucune seconde figure ne surgit. Le rendu
+    // n'a pas besoin de connaître cette règle.
+    const variation = end - start >= MIN_VARIATION_SPAN;
 
     // La couche de fond est la même pour tout le morceau (voir `fond`) : si la
     // scène tombe dessus, elle prendrait sa place et il ne resterait aucun
@@ -826,7 +837,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
       start: round3(start),
       end: round3(Math.min(end, duration)),
       family: principale,
-      variant,
+      variant: variation ? variantCandidate : principale,
       backdrop: fond,
       palette: {
         name: track.name,
