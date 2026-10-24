@@ -17,6 +17,8 @@ import {
   ENERGY_FLOOR,
   flashAdmitted,
   flashAlpha,
+  FLASH_ATTACK_BEAT_SEC,
+  FLASH_ATTACK_DROP_SEC,
   renderFrame,
   sceneHue,
   surgeAlpha,
@@ -145,25 +147,35 @@ function analyseFlashes(analysis: Analysis, settings: RenderSettings = DEFAULT_S
   };
   for (let t = 0; t < analysis.duration; t += 1 / 30) {
     const energy = visibleEnergy(view.energyAt(t));
+    const lastBeat = view.lastBeatAt(t);
+    const lastImpact = view.lastBuildEnd(t);
     const state = {
       reduced: false,
       beat: beatStrength(view, t),
       bass: view.bassAt(t),
       build: view.buildProgress(t),
       buildStrength: view.buildAt(t)?.strength ?? 0,
+      drop: view.dropImpact(t),
+      beatAge: lastBeat === -Infinity ? Infinity : t - lastBeat,
+      dropAge: lastImpact === -Infinity ? Infinity : t - lastImpact,
       energy,
       surge: view.energyTrend(t, 1.2),
     } as unknown as FrameState;
     const alpha = Math.max(flashAlpha(state, settings), surgeAlpha(state, settings));
-    const admitted = alpha > 0.002 && flashAdmitted(view, t);
+    // Naissance = premier alpha strictement positif : l'attaque est dosée par
+    // `FLASH_ATTACK_*`, la latence doit rester nulle (F1).
+    const admitted = alpha > 1e-9 && flashAdmitted(view, t);
     if (admitted) {
       if (!inEvent || t - last > 0.3) {
         flush();
         inEvent = true;
         start = t;
         drop = view.buildsEndingIn(t - 0.2, t).length > 0;
-        last = t;
       }
+      // `last` suit chaque image admise : sinon un flash long était découpé en
+      // plusieurs évènements toutes les 0,3 s, et F1 attribuait une naissance
+      // tardive à un évènement qui durait depuis longtemps.
+      last = t;
       peak = Math.max(peak, alpha);
     } else if (inEvent && t - last > 0.3) {
       flush();
@@ -385,6 +397,54 @@ describe("F1 — un flash naît sur un temps fort ou un build, jamais dans le vi
       }
     });
   }
+});
+
+describe("F4 — durée de montée du flash", () => {
+  // La naissance est à latence nulle (F1) ; la montée, elle, est dosée. On
+  // mesure l'âge auquel l'alpha atteint 90 % de son maximum, sur un état
+  // synthétique où seule l'attaque intervient.
+  const base = {
+    t: 0,
+    reduced: false,
+    beat: 1,
+    bass: 1,
+    build: 0,
+    buildStrength: 0,
+    drop: 0,
+    beatAge: 0,
+    dropAge: Infinity,
+    energy: 1,
+    surge: 0,
+  } as unknown as FrameState;
+
+  function riseAge(kind: "beat" | "drop"): number {
+    const state = (age: number) =>
+      ({
+        ...base,
+        beat: kind === "beat" ? 1 : 0,
+        drop: kind === "drop" ? 1 : 0,
+        beatAge: kind === "beat" ? age : Infinity,
+        dropAge: kind === "drop" ? age : Infinity,
+      }) as unknown as FrameState;
+    const peak = flashAlpha(state(1), DEFAULT_SETTINGS);
+    for (let age = 0; age <= 0.5; age += 0.001) {
+      if (flashAlpha(state(age), DEFAULT_SETTINGS) >= 0.9 * peak) return age;
+    }
+    return Infinity;
+  }
+
+  test("un temps fort pique en ~40 ms", () => {
+    const age = riseAge("beat");
+    expect(age).toBeGreaterThanOrEqual(FLASH_ATTACK_BEAT_SEC * 0.85);
+    expect(age).toBeLessThanOrEqual(FLASH_ATTACK_BEAT_SEC * 1.15);
+  });
+
+  test("un drop monte plus lentement (~120 ms)", () => {
+    const age = riseAge("drop");
+    expect(age).toBeGreaterThanOrEqual(FLASH_ATTACK_DROP_SEC * 0.85);
+    expect(age).toBeLessThanOrEqual(FLASH_ATTACK_DROP_SEC * 1.15);
+    expect(age).toBeGreaterThan(riseAge("beat"));
+  });
 });
 
 describe("F2 — les flashs de drop sont plus forts que les flashs ordinaires", () => {

@@ -57,8 +57,26 @@ export type { FrameState };
 export const FLASH_CEILING = 0.8;
 /** Poids d'un temps fort ordinaire dans le flash, relativement à un drop. */
 const BEAT_FLASH_WEIGHT = 0.55;
-/** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
-const FLASH_ATTACK_SEC = 0.12;
+/**
+ * Latence entre le déclencheur musical et la naissance du flash, en secondes.
+ *
+ * Nulle : un flash naît sur le temps fort ou sur l'impact, jamais après. C'est
+ * une propriété mesurée (`tests/unit/render-properties.test.ts`, F1) ; ne pas la
+ * confondre avec la durée de montée ci-dessous, qui dose l'attaque visible.
+ */
+export const FLASH_LATENCY_SEC = 0;
+/**
+ * Durée de montée d'un flash de temps fort, en secondes.
+ *
+ * Courte : un flash qui pique après le kick paraît traînant.
+ */
+export const FLASH_ATTACK_BEAT_SEC = 0.04;
+/**
+ * Durée de montée d'un flash de drop, en secondes.
+ *
+ * Plus lente : l'impact est large, la montée participe au geste.
+ */
+export const FLASH_ATTACK_DROP_SEC = 0.12;
 /**
  * Nombre de temps forts par phrase hors drop.
  *
@@ -173,8 +191,9 @@ function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
 export function flashAlphaAt(
   beat: number,
   bass: number,
-  build: number,
-  buildStrength: number,
+  drop: number,
+  /** Conservé pour la compatibilité de l'API de diagnostic (`drop` porte déjà la force). */
+  _buildStrength: number,
   energy: number,
   reduced: boolean,
   settings: RenderSettings,
@@ -183,7 +202,7 @@ export function flashAlphaAt(
   const budget = settings.flashes;
   if (budget <= 0) return 0;
   const beatHit = beat * (0.35 + 0.65 * bass) * BEAT_FLASH_WEIGHT;
-  const dropHit = build > 0.92 ? buildStrength * 0.95 : 0;
+  const dropHit = drop > 0 ? drop * 0.95 : 0;
   const raw = Math.max(beatHit, dropHit);
   if (raw < 0.2) return 0;
   const gated = raw * smoothstep(0.12, 0.4, energy);
@@ -193,9 +212,19 @@ export function flashAlphaAt(
 /**
  * Opacité du flash global. Plafonnée, et réservée aux moments porteurs : le
  * mode réduit l'annule et le budget utilisateur la dose.
+ *
+ * La naissance est à latence nulle (`FLASH_LATENCY_SEC`) ; seule la montée est
+ * dosée, séparément pour un temps fort et pour un drop. Les composantes sont
+ * évaluées séparément pour que chacune ait son attaque.
  */
 export function flashAlpha(f: FrameState, settings: RenderSettings): number {
-  return flashAlphaAt(f.beat, f.bass, f.build, f.buildStrength, f.energy, f.reduced, settings);
+  const beatAlpha = flashAlphaAt(f.beat, f.bass, 0, 0, f.energy, f.reduced, settings);
+  const dropAlpha = flashAlphaAt(0, f.bass, f.drop, f.buildStrength, f.energy, f.reduced, settings);
+  // Âge infini = aucun déclencheur : pas d'attaque en cours (facteur 1), sinon
+  // `clamp01` ramènerait l'infini à 0 et éteindrait le flash.
+  const attackBeat = Number.isFinite(f.beatAge) ? clamp01(f.beatAge / FLASH_ATTACK_BEAT_SEC) : 1;
+  const attackDrop = Number.isFinite(f.dropAge) ? clamp01(f.dropAge / FLASH_ATTACK_DROP_SEC) : 1;
+  return Math.max(beatAlpha * attackBeat, dropAlpha * attackDrop);
 }
 
 /**
@@ -474,14 +503,17 @@ export function sceneHue(
  * Aucun état n'est conservé : `t` seul décide.
  */
 export function flashAdmitted(view: TrackView, t: number): boolean {
-  const beats = view.beatsIn(t - FLASH_ATTACK_SEC - 0.05, t);
+  // Fenêtre d'éligibilité : latence nulle + la plus longue des montées. Un
+  // flash reste admis pendant toute son attaque, jamais au-delà.
+  const window = FLASH_LATENCY_SEC + Math.max(FLASH_ATTACK_BEAT_SEC, FLASH_ATTACK_DROP_SEC) + 0.05;
+  const beats = view.beatsIn(t - window, t);
   const lastBeat = beats.length > 0 ? (beats[beats.length - 1] ?? -Infinity) : -Infinity;
   const lastDrop = view.lastBuildEnd(t);
   const current = Math.max(lastBeat, lastDrop);
   if (current === -Infinity) return false;
 
   const age = t - current;
-  if (age < -0.02 || age > FLASH_ATTACK_SEC) return false;
+  if (age < -0.02 || age > window) return false;
 
   // Impact de montée : toujours, et sans attendre la cadence.
   if (lastDrop >= lastBeat) return true;
@@ -533,6 +565,12 @@ export function renderFrame(input: RenderInput): void {
   const beat = liveAudio !== undefined ? liveAudio.transient : beatStrength(view, t);
   const build = liveAudio !== undefined ? 0 : view.buildProgress(t);
   const buildNow = view.buildAt(t);
+  // Flash : le trigger est l'instant de naissance (latence nulle). On expose
+  // l'âge des deux déclencheurs pour que l'attaque puisse être dosée.
+  const lastBeat = liveAudio !== undefined ? -Infinity : view.lastBeatAt(t);
+  const lastImpact = liveAudio !== undefined ? -Infinity : view.lastBuildEnd(t);
+  const beatAge = lastBeat === -Infinity ? Infinity : t - lastBeat;
+  const dropAge = lastImpact === -Infinity ? Infinity : t - lastImpact;
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
   // le morceau « change de lumière » sans cesse.
@@ -575,6 +613,9 @@ export function renderFrame(input: RenderInput): void {
     beatIndex: view.beatIndexAt(t),
     build,
     buildStrength: buildNow?.strength ?? 0,
+    drop: liveAudio !== undefined ? 0 : view.dropImpact(t),
+    beatAge,
+    dropAge,
     surge,
     intensity: scene.intensity * settings.intensity * (isLive ? (1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85) : (1 + surge * 0.6 + beatDriveValue * 0.5)),
     alpha: sceneWeight(scene, t),
