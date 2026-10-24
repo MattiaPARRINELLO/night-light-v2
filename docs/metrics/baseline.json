@@ -1,0 +1,661 @@
+{
+  "aggregate": {
+    "meanBackgroundLightness": 0.093831,
+    "meanBrightSceneShare": 0.983333,
+    "meanFlashesPerMinute": 20.316667,
+    "meanMaxDriftFromSceneHueDeg": 50.460601,
+    "meanMaxHueDeltaDeg": 125.870623,
+    "meanSceneCount": 3.4,
+    "meanTopFamilyShare": 0.391667,
+    "totalDeadVisibleFrames": 0,
+    "trackCount": 10
+  },
+  "corpus": {
+    "hash": "7226ceb0cd896d837de8a299b95e0651cabc30e3da5b802a66e2fd312dbcd892",
+    "tracks": 10
+  },
+  "fps": 30,
+  "harness": "scripts/measure.ts",
+  "label": "baseline",
+  "tools": {
+    "bun": "1.4.3",
+    "node": "v26.3.0"
+  },
+  "tracks": {
+    "a_aigus_denses": {
+      "analysis": {
+        "beatCount": 65,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 30,
+        "onsetCount": 255,
+        "sectionCount": 1,
+        "tempo": 129.199
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 157.276991,
+        "adjacentHueGapMinDeg": 64.377212,
+        "brightSceneShare": 1,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "particles": 1,
+          "pont-concert": 1,
+          "rings": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 221.654203,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "aerien": 3,
+          "explosif": 1
+        },
+        "roleHistogram": {
+          "couplet": 1,
+          "drop": 1,
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 4,
+        "topFamilyShare": 0.25
+      },
+      "render": {
+        "backgroundLightnessMax": 0.132125,
+        "backgroundLightnessMean": 0.090996,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.241299,
+        "flashAlphaMedian": 0.140342,
+        "flashEventCount": 9,
+        "flashesPerMinute": 18,
+        "frames": 900,
+        "maxDriftFromSceneHueDeg": 51.665579,
+        "maxHueDeltaDeg": 178.889464,
+        "maxHueDeltaOutsideEventDeg": 178.889464,
+        "ordinaryFlashAlphaMedian": 0.140342,
+        "rawEnergyBelowFloorShare": 0.198889,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.10836,
+        "p95Ms": 0.374085,
+        "peakMemoryBytes": 25583616
+      }
+    },
+    "b_basses_seules": {
+      "analysis": {
+        "beatCount": 63,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 30,
+        "onsetCount": 61,
+        "sectionCount": 1,
+        "tempo": 123.047
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 168.261845,
+        "adjacentHueGapMinDeg": 168.223687,
+        "brightSceneShare": 1,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "pont-concert": 1,
+          "rings": 1,
+          "spots": 1,
+          "waves": 1
+        },
+        "hueWindowDeg": 174.089486,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "aerien": 2,
+          "explosif": 2
+        },
+        "roleHistogram": {
+          "couplet": 1,
+          "drop": 1,
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 4,
+        "topFamilyShare": 0.25
+      },
+      "render": {
+        "backgroundLightnessMax": 0.1325,
+        "backgroundLightnessMean": 0.093671,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0.115851,
+        "dropFlashEventCount": 1,
+        "flashAlphaMax": 0.224574,
+        "flashAlphaMedian": 0.166919,
+        "flashEventCount": 9,
+        "flashesPerMinute": 18,
+        "frames": 900,
+        "maxDriftFromSceneHueDeg": 51.76706,
+        "maxHueDeltaDeg": 170.692968,
+        "maxHueDeltaOutsideEventDeg": 158.629566,
+        "ordinaryFlashAlphaMedian": 0.167777,
+        "rawEnergyBelowFloorShare": 0.212222,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.084018,
+        "p95Ms": 0.26341,
+        "peakMemoryBytes": 2752512
+      }
+    },
+    "c_voix_mediane": {
+      "analysis": {
+        "beatCount": 53,
+        "buildCount": 2,
+        "coverage": null,
+        "duration": 30,
+        "onsetCount": 311,
+        "sectionCount": 1,
+        "tempo": 103.359
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 163.264628,
+        "adjacentHueGapMinDeg": 161.996049,
+        "brightSceneShare": 1,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "pont-concert": 1,
+          "rings": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 195.466793,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "aerien": 1,
+          "explosif": 2
+        },
+        "roleHistogram": {
+          "couplet": 1,
+          "drop": 1,
+          "intro": 1
+        },
+        "sceneCount": 3,
+        "topFamilyShare": 0.333333
+      },
+      "render": {
+        "backgroundLightnessMax": 0.132375,
+        "backgroundLightnessMean": 0.097516,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.254151,
+        "flashAlphaMedian": 0.207078,
+        "flashEventCount": 5,
+        "flashesPerMinute": 10,
+        "frames": 900,
+        "maxDriftFromSceneHueDeg": 52.016419,
+        "maxHueDeltaDeg": 153.192431,
+        "maxHueDeltaOutsideEventDeg": 153.192431,
+        "ordinaryFlashAlphaMedian": 0.207078,
+        "rawEnergyBelowFloorShare": 0.175556,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.057658,
+        "p95Ms": 0.147067,
+        "peakMemoryBytes": 4849664
+      }
+    },
+    "d_trois_drops": {
+      "analysis": {
+        "beatCount": 97,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 45,
+        "onsetCount": 118,
+        "sectionCount": 1,
+        "tempo": 129.199
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 165.159247,
+        "adjacentHueGapMinDeg": 38.923029,
+        "brightSceneShare": 1,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "beams": 1,
+          "mirror": 1,
+          "pont-concert": 1,
+          "rings": 1,
+          "spiral": 1,
+          "waves": 1
+        },
+        "hueWindowDeg": 190.531011,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 0.994167,
+        "moodHistogram": {
+          "aerien": 3,
+          "calme": 1,
+          "explosif": 2
+        },
+        "roleHistogram": {
+          "couplet": 3,
+          "drop": 1,
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 6,
+        "topFamilyShare": 0.166667
+      },
+      "render": {
+        "backgroundLightnessMax": 0.1325,
+        "backgroundLightnessMean": 0.085882,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.156879,
+        "flashAlphaMedian": 0.138826,
+        "flashEventCount": 2,
+        "flashesPerMinute": 2.666667,
+        "frames": 1350,
+        "maxDriftFromSceneHueDeg": 51.813643,
+        "maxHueDeltaDeg": 166.419076,
+        "maxHueDeltaOutsideEventDeg": 166.419076,
+        "ordinaryFlashAlphaMedian": 0.138826,
+        "rawEnergyBelowFloorShare": 0.265185,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.082561,
+        "p95Ms": 0.154135,
+        "peakMemoryBytes": 1363968
+      }
+    },
+    "e_sans_montee": {
+      "analysis": {
+        "beatCount": 61,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 30,
+        "onsetCount": 119,
+        "sectionCount": 1,
+        "tempo": 117.454
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 142.442358,
+        "adjacentHueGapMinDeg": 27.970018,
+        "brightSceneShare": 1,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "particles": 1,
+          "pont-concert": 1,
+          "rings": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 217.557642,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "aerien": 1,
+          "explosif": 3
+        },
+        "roleHistogram": {
+          "couplet": 2,
+          "drop": 1,
+          "intro": 1
+        },
+        "sceneCount": 4,
+        "topFamilyShare": 0.25
+      },
+      "render": {
+        "backgroundLightnessMax": 0.131125,
+        "backgroundLightnessMean": 0.094562,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0.262832,
+        "dropFlashEventCount": 1,
+        "flashAlphaMax": 0.262832,
+        "flashAlphaMedian": 0.176879,
+        "flashEventCount": 15,
+        "flashesPerMinute": 30,
+        "frames": 900,
+        "maxDriftFromSceneHueDeg": 51.730402,
+        "maxHueDeltaDeg": 152.845788,
+        "maxHueDeltaOutsideEventDeg": 131.080057,
+        "ordinaryFlashAlphaMedian": 0.172978,
+        "rawEnergyBelowFloorShare": 0.19,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.09242,
+        "p95Ms": 0.170032,
+        "peakMemoryBytes": 393216
+      }
+    },
+    "f_silence_milieu": {
+      "analysis": {
+        "beatCount": 82,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 40,
+        "onsetCount": 121,
+        "sectionCount": 1,
+        "tempo": 123.047
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 59.215952,
+        "adjacentHueGapMinDeg": 39.135106,
+        "brightSceneShare": 0.833333,
+        "dropFamilies": {
+          "pont-concert": 1
+        },
+        "dropReasons": {
+          "build": 1
+        },
+        "dropSceneCount": 1,
+        "familyHistogram": {
+          "beams": 1,
+          "particles": 1,
+          "pont-concert": 1,
+          "rings": 1,
+          "spiral": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 181.624752,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 0.916667,
+        "moodHistogram": {
+          "aerien": 2,
+          "calme": 1,
+          "explosif": 3
+        },
+        "roleHistogram": {
+          "couplet": 4,
+          "drop": 1,
+          "intro": 1
+        },
+        "sceneCount": 6,
+        "topFamilyShare": 0.166667
+      },
+      "render": {
+        "backgroundLightnessMax": 0.1325,
+        "backgroundLightnessMean": 0.093611,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0.138534,
+        "dropFlashEventCount": 1,
+        "flashAlphaMax": 0.323028,
+        "flashAlphaMedian": 0.160743,
+        "flashEventCount": 17,
+        "flashesPerMinute": 25.5,
+        "frames": 1200,
+        "maxDriftFromSceneHueDeg": 52.05388,
+        "maxHueDeltaDeg": 163.203785,
+        "maxHueDeltaOutsideEventDeg": 89.776088,
+        "ordinaryFlashAlphaMedian": 0.16153,
+        "rawEnergyBelowFloorShare": 0.270833,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.08126,
+        "p95Ms": 0.265283,
+        "peakMemoryBytes": 393216
+      }
+    },
+    "g_court": {
+      "analysis": {
+        "beatCount": 9,
+        "buildCount": 0,
+        "coverage": null,
+        "duration": 4,
+        "onsetCount": 15,
+        "sectionCount": 1,
+        "tempo": 117.454
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 0,
+        "adjacentHueGapMinDeg": 360,
+        "brightSceneShare": 1,
+        "dropFamilies": {},
+        "dropReasons": {},
+        "dropSceneCount": 0,
+        "familyHistogram": {
+          "beams": 1
+        },
+        "hueWindowDeg": 0,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "pulse": 1
+        },
+        "roleHistogram": {
+          "intro": 1
+        },
+        "sceneCount": 1,
+        "topFamilyShare": 1
+      },
+      "render": {
+        "backgroundLightnessMax": 0.1305,
+        "backgroundLightnessMean": 0.09542,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.17235,
+        "flashAlphaMedian": 0.152552,
+        "flashEventCount": 2,
+        "flashesPerMinute": 30,
+        "frames": 121,
+        "maxDriftFromSceneHueDeg": 37.052192,
+        "maxHueDeltaDeg": 14.154471,
+        "maxHueDeltaOutsideEventDeg": 12.225681,
+        "ordinaryFlashAlphaMedian": 0.152552,
+        "rawEnergyBelowFloorShare": 0.190083,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.090396,
+        "p95Ms": 0.13187,
+        "peakMemoryBytes": 0
+      }
+    },
+    "h_tempo_douteux": {
+      "analysis": {
+        "beatCount": 35,
+        "buildCount": 1,
+        "coverage": null,
+        "duration": 20,
+        "onsetCount": 135,
+        "sectionCount": 1,
+        "tempo": 99.384
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 158.949593,
+        "adjacentHueGapMinDeg": 158.949593,
+        "brightSceneShare": 1,
+        "dropFamilies": {},
+        "dropReasons": {},
+        "dropSceneCount": 0,
+        "familyHistogram": {
+          "particles": 1,
+          "tunnel": 1
+        },
+        "hueWindowDeg": 158.949593,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "calme": 1,
+          "explosif": 1
+        },
+        "roleHistogram": {
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 2,
+        "topFamilyShare": 0.5
+      },
+      "render": {
+        "backgroundLightnessMax": 0.1325,
+        "backgroundLightnessMean": 0.098117,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.275006,
+        "flashAlphaMedian": 0.213964,
+        "flashEventCount": 5,
+        "flashesPerMinute": 15,
+        "frames": 600,
+        "maxDriftFromSceneHueDeg": 52.186101,
+        "maxHueDeltaDeg": 153.959342,
+        "maxHueDeltaOutsideEventDeg": 153.959342,
+        "ordinaryFlashAlphaMedian": 0.213964,
+        "rawEnergyBelowFloorShare": 0.351667,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.080643,
+        "p95Ms": 0.149162,
+        "peakMemoryBytes": 18272256
+      }
+    },
+    "i1_tres_faible": {
+      "analysis": {
+        "beatCount": 41,
+        "buildCount": 0,
+        "coverage": null,
+        "duration": 20,
+        "onsetCount": 79,
+        "sectionCount": 1,
+        "tempo": 117.454
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 39.887365,
+        "adjacentHueGapMinDeg": 39.887365,
+        "brightSceneShare": 1,
+        "dropFamilies": {},
+        "dropReasons": {},
+        "dropSceneCount": 0,
+        "familyHistogram": {
+          "particles": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 39.887365,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "explosif": 2
+        },
+        "roleHistogram": {
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 2,
+        "topFamilyShare": 0.5
+      },
+      "render": {
+        "backgroundLightnessMax": 0.131125,
+        "backgroundLightnessMean": 0.094669,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.2538,
+        "flashAlphaMedian": 0.160695,
+        "flashEventCount": 10,
+        "flashesPerMinute": 30,
+        "frames": 600,
+        "maxDriftFromSceneHueDeg": 52.160365,
+        "maxHueDeltaDeg": 52.717109,
+        "maxHueDeltaOutsideEventDeg": 52.717109,
+        "ordinaryFlashAlphaMedian": 0.160695,
+        "rawEnergyBelowFloorShare": 0.185,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.092333,
+        "p95Ms": 0.144161,
+        "peakMemoryBytes": 14348288
+      }
+    },
+    "i2_sature": {
+      "analysis": {
+        "beatCount": 41,
+        "buildCount": 0,
+        "coverage": null,
+        "duration": 20,
+        "onsetCount": 79,
+        "sectionCount": 1,
+        "tempo": 117.454
+      },
+      "plan": {
+        "adjacentHueGapMedianDeg": 39.887365,
+        "adjacentHueGapMinDeg": 39.887365,
+        "brightSceneShare": 1,
+        "dropFamilies": {},
+        "dropReasons": {},
+        "dropSceneCount": 0,
+        "familyHistogram": {
+          "particles": 1,
+          "spots": 1
+        },
+        "hueWindowDeg": 39.887365,
+        "longestFamilyStreak": 1,
+        "meanSceneBrightness": 1,
+        "moodHistogram": {
+          "explosif": 2
+        },
+        "roleHistogram": {
+          "finale": 1,
+          "intro": 1
+        },
+        "sceneCount": 2,
+        "topFamilyShare": 0.5
+      },
+      "render": {
+        "backgroundLightnessMax": 0.131125,
+        "backgroundLightnessMean": 0.09387,
+        "backgroundLightnessMin": 0.06725,
+        "dropFlashAlphaMedian": 0,
+        "dropFlashEventCount": 0,
+        "flashAlphaMax": 0.247068,
+        "flashAlphaMedian": 0.168644,
+        "flashEventCount": 8,
+        "flashesPerMinute": 24,
+        "frames": 600,
+        "maxDriftFromSceneHueDeg": 52.160365,
+        "maxHueDeltaDeg": 52.631794,
+        "maxHueDeltaOutsideEventDeg": 52.631794,
+        "ordinaryFlashAlphaMedian": 0.168644,
+        "rawEnergyBelowFloorShare": 0.185,
+        "visibleEnergyBelowFloorShare": 0
+      },
+      "timing": {
+        "medianMs": 0.067692,
+        "p95Ms": 0.228679,
+        "peakMemoryBytes": 4980736
+      }
+    }
+  }
+}
