@@ -154,10 +154,10 @@ describe("P6 — déterminisme", () => {
 });
 
 describe("P7 — la graine compte", () => {
-  // BUG CONNU « le hash ne choisit rien » : dans show.ts:579,
-  // `familyFor(..., turn + hash01(seed + turn) * 0.9, ...)` puis
-  // `Math.floor(turn + x)` (show.ts:349) — x ∈ [0, 0.9) est TOUJOURS arrondi
-  // à l'entier `turn`. La graine est donc sans effet sur le choix de famille.
+  // BUG D'ORIGINE « le hash ne choisit rien » : `familyFor(...)` recevait
+  // `turn + hash01(seed + turn) * 0,9`, puis `Math.floor` ramenait toujours à
+  // l'entier `turn`. Corrigé par la PR #30 (permutation Fisher-Yates dérivée
+  // de la graine) : le test n'est plus marqué `failing`.
   const divergences = tracks.map(({ name, analysis }) => {
     const first = buildShowPlan(analysis, false, 1);
     const second = buildShowPlan(analysis, false, 2);
@@ -166,10 +166,13 @@ describe("P7 — la graine compte", () => {
     for (let index = 0; index < count; index += 1) {
       if (first.scenes[index]!.family !== second.scenes[index]!.family) different += 1;
     }
-    return { name, share: count === 0 ? 0 : different / count };
-  });
+    return { name, share: count === 0 ? 0 : different / count, count };
+  })
+    // Une piste d'une seule scène ne permet pas de comparer des familles
+    // (0/1 = 0 % n'est pas une mesure de diversité) : `g_court` est exclue.
+    .filter(({ count }) => count >= 2);
 
-  test.failing(
+  test(
     "deux graines différentes changent au moins 30 % des familles (show.ts:579 + show.ts:349)",
     () => {
       const report = divergences
