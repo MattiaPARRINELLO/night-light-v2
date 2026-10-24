@@ -6,7 +6,7 @@ import { contrastHue, lampHue } from "./harmony";
 import { beatSwing, elementEnvelope } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
 import { GRAND_BALAYAGE_BEATS } from "./types";
-import { count, paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 /**
  * Étoile : quelques rayons partant d'un foyer qui dérive lentement, chacun
@@ -18,7 +18,10 @@ const etoile: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   // Douze branches : avec sept, et comme chacune pulse à son tour, on n'en voyait
   // que trois ou quatre — une croix floue, pas une étoile.
-  const branches = f.reduced ? 6 : count(12, f.quality, false);
+  const baseBranches = f.reduced ? 6 : 12;
+  const branchSlots = count(baseBranches, 1, f.reduced);
+  const branches = count(baseBranches, f.quality, f.reduced);
+  const activeBranches = activeSlots(branchSlots, branches, f.seed);
   // Foyer qui dérive lentement dans le cadre, jamais au bord.
   const derive = Math.sin(f.t * 0.07) * 0.18;
   const cx = w * (0.5 + derive);
@@ -29,8 +32,8 @@ const etoile: FamilyDraw = (ctx, f, view) => {
   if (alpha <= 0.002) return;
   const cycle = f.reduced ? 24 : f.energy > 0.55 ? 8 : 14;
 
-  for (let i = 0; i < branches; i += 1) {
-    const part = i / branches;
+  for (const i of activeBranches) {
+    const part = i / branchSlots;
     const angle = rotation + part * Math.PI * 2;
     // Chaque branche pulse à son tour — mais sur une longueur qui varie peu :
     // c'est ce qui garde la forme d'étoile reconnaissable.
@@ -72,7 +75,9 @@ const etoile: FamilyDraw = (ctx, f, view) => {
  */
 const vortex: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const raySlots = count(11, 1, f.reduced);
   const rayons = count(11, f.quality, f.reduced);
+  const activeRays = activeSlots(raySlots, rayons, f.seed);
   const cx = w * 0.5;
   const cy = h * 0.56;
   const portee = Math.hypot(w, h) * 0.98;
@@ -85,8 +90,8 @@ const vortex: FamilyDraw = (ctx, f, view) => {
   // autour du foyer, et c'est ce départ décalé qui fait tourner l'ensemble.
   const depart = Math.min(w, h) * 0.06;
 
-  for (let i = 0; i < rayons; i += 1) {
-    const part = rayons === 1 ? 0.5 : i / (rayons - 1);
+  for (const i of activeRays) {
+    const part = raySlots === 1 ? 0.5 : i / (raySlots - 1);
     const angle = tour + part * Math.PI * 2 * 0.9;
     const hue = lampHue(f, i);
     curvedBeam(ctx, {
@@ -154,8 +159,10 @@ export function lyreWavePhase(f: FrameState, view: TrackView, index: number): nu
 
 const lyre: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(7, 1, f.reduced);
   const tetes = count(7, f.quality, f.reduced);
-  const positions = rowPositions(tetes, w, w * 0.08);
+  const active = activeSlots(slotCount, tetes, f.seed);
+  const positions = rowPositions(slotCount, w, w * 0.08);
   const y = h * 0.985;
   const portee = Math.hypot(w, h) * 1.05;
   const alpha = (0.11 + 0.3 * f.energy + 0.2 * f.beat) * f.alpha;
@@ -173,7 +180,7 @@ const lyre: FamilyDraw = (ctx, f, view) => {
   ctx.fillStyle = sol;
   ctx.fillRect(0, y - 2, w, 2.5);
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     const x = positions[i] ?? 0;
     const phase = lyreWavePhase(f, view, i);
     const angle = -Math.PI / 2 + Math.sin(phase) * amplitude;
@@ -218,7 +225,9 @@ const mandala: FamilyDraw = (ctx, f, view) => {
   const cx = w * 0.5;
   const cy = h * 0.5;
   const rayon = Math.min(w, h);
+  const petalSlots = count(8, 1, f.reduced);
   const petales = count(8, f.quality, f.reduced);
+  const activePetals = activeSlots(petalSlots, petales, f.seed);
   const portee = Math.hypot(w, h) * 0.92;
   const alpha = (0.1 + 0.3 * f.energy + 0.18 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
@@ -228,8 +237,8 @@ const mandala: FamilyDraw = (ctx, f, view) => {
   // une rosace ouverte comme une fleur.
   const ouverture = (0.17 + 0.12 * f.energy) * (1 + 0.25 * Math.sin(f.t * 0.6));
 
-  for (let i = 0; i < petales; i += 1) {
-    const part = petales === 1 ? 0.5 : i / petales;
+  for (const i of activePetals) {
+    const part = petalSlots === 1 ? 0.5 : i / petalSlots;
     const base = tour + part * Math.PI * 2;
     const hue = lampHue(f, i);
     const allumage = elementEnvelope(f, view, i * 5, f.reduced ? 26 : f.energy > 0.55 ? 8 : 14, 0.75);
@@ -287,7 +296,9 @@ const mandala: FamilyDraw = (ctx, f, view) => {
  */
 const treillis: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
+  const brinSlots = count(9, 1, f.reduced);
   const brins = count(9, f.quality, f.reduced);
+  const activeBrins = activeSlots(brinSlots, brins, f.seed);
   const portee = Math.hypot(w, h) * 1.35;
   const alpha = (0.09 + 0.26 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
@@ -303,8 +314,8 @@ const treillis: FamilyDraw = (ctx, f) => {
     const nx = -Math.sin(theta);
     const ny = Math.cos(theta);
     const etendue = (Math.abs(nx) * w + Math.abs(ny) * h) * ecart;
-    for (let i = 0; i < brins; i += 1) {
-      const ratio = brins === 1 ? 0 : i / (brins - 1) - 0.5;
+    for (const i of activeBrins) {
+      const ratio = brinSlots === 1 ? 0 : i / (brinSlots - 1) - 0.5;
       const d = ratio * etendue;
       // Le départ est reculé d'une demi-portée : le faisceau traverse tout le
       // cadre au lieu de commencer au milieu.
