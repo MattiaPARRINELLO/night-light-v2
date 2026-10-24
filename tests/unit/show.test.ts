@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, minHueStepEff, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -120,6 +120,34 @@ describe("show plan", () => {
 
 
 
+  test("une étiquette globale ne pilote ni le rôle ni l'humeur locale", () => {
+    // Le serveur ne produit qu'une section de 0 à la fin, étiquetée d'après
+    // l'énergie moyenne. Si ce label pilotait les scènes, tout le morceau
+    // serait « montée » et pulsé du début à la fin.
+    const global = analysis({
+      sections: [{ start: 0, end: 120, label: "montee", energy: 0.5 }],
+    });
+    const plan = buildShowPlan(global, false);
+    expect(plan.scenes.some((scene) => scene.role === "montee")).toBe(false);
+    expect(plan.scenes.filter((scene) => scene.mood === "pulse").length).toBeLessThan(plan.scenes.length);
+    // Même chose pour un label « silence » : les scènes gardent leur caractère.
+    const silence = buildShowPlan(
+      analysis({ sections: [{ start: 0, end: 120, label: "silence", energy: 0.5 }] }),
+      false,
+    );
+    expect(silence.scenes.some((scene) => scene.mood === "explosif" || scene.mood === "pulse")).toBe(true);
+
+    // Une section réellement locale, elle, garde son rôle.
+    const local = analysis({
+      sections: [
+        { start: 0, end: 40, label: "calme", energy: 0.2, kind: "couplet", group: "A" },
+        { start: 40, end: 80, label: "intense", energy: 0.9, kind: "refrain", group: "B" },
+        { start: 80, end: 120, label: "calme", energy: 0.2, kind: "couplet", group: "A" },
+      ],
+    });
+    expect(buildShowPlan(local, false).scenes.some((scene) => scene.role === "refrain")).toBe(true);
+  });
+
   test("un plan sans section reste utilisable", () => {
     const plan = buildShowPlan(analysis({ sections: [] }), false) as ShowPlan;
     expect(plan.scenes.length).toBeGreaterThan(1);
@@ -127,6 +155,126 @@ describe("show plan", () => {
     expect(first.start).toBe(0);
     expect(sceneAt(plan, 5).end).toBeGreaterThan(0);
     expect(plan.scenes.at(-1)!.end).toBeCloseTo(120, 1);
+  });
+});
+
+describe("bords et entrées dégénérées", () => {
+  test("un morceau plus court que 5 s produit une seule scène", () => {
+    const plan = buildShowPlan(analysis({ duration: 3, beats: [], sections: [], builds: [] }), false);
+    expect(plan.scenes).toHaveLength(1);
+    expect(plan.scenes[0]!.start).toBe(0);
+    expect(plan.scenes[0]!.end).toBeCloseTo(3, 3);
+  });
+
+  test("tempo = 0 et aucune courbe restent utilisables", () => {
+    const plan = buildShowPlan(
+      analysis({
+        tempo: 0,
+        beatPeriod: 0,
+        beats: [],
+        onsets: [],
+        energy: [],
+        high: [],
+        sections: [],
+        builds: [],
+      }),
+      false,
+    );
+    expect(plan.scenes.length).toBeGreaterThan(0);
+    for (const scene of plan.scenes) {
+      expect(Number.isFinite(scene.palette.hue)).toBe(true);
+      expect(scene.end).toBeGreaterThan(scene.start);
+    }
+  });
+
+  test("sans aucun événement, la grille de secours garde des scènes", () => {
+    const plan = buildShowPlan(
+      analysis({ duration: 61, tempo: 0, beatPeriod: 0, beats: [], onsets: [], sections: [], builds: [] }),
+      false,
+    );
+    expect(plan.scenes.length).toBeGreaterThanOrEqual(6);
+    expect(plan.scenes.at(-1)!.end).toBeCloseTo(61, 1);
+  });
+
+  test("une couverture partielle (courbes à 0 hors fenêtre) ne casse rien", () => {
+    // Analyse rapide : les courbes valent 0 hors de la fenêtre analysée, et
+    // `coverage` dit au rendu où se trouve la partie fiable.
+    const plan = buildShowPlan(
+      analysis({
+        duration: 60,
+        coverage: [20, 40],
+        energy: [
+          [0, 0],
+          [20, 0.4],
+          [40, 0.9],
+          [60, 0],
+        ],
+        high: [
+          [0, 0],
+          [20, 0.1],
+          [40, 0.2],
+          [60, 0],
+        ],
+        sections: [],
+        builds: [],
+      }),
+      false,
+    );
+    expect(plan.coverage).toEqual([20, 40]);
+    for (const scene of plan.scenes) {
+      expect(scene.end).toBeGreaterThan(scene.start);
+      expect(Number.isFinite(scene.palette.hue)).toBe(true);
+    }
+  });
+
+  test("les quatre branches de l'arbre de famille sont atteignables", () => {
+    const base = {
+      duration: 64,
+      beats: Array.from({ length: 128 }, (_, index) => index * 0.5),
+      sections: [],
+      builds: [],
+    };
+    // Courbes échantillonnées à 1 Hz : une courbe réduite à deux points laisse
+    // des fenêtres vides, qui retombent volontairement sur 0,3 / 0,5.
+    const plat = (value: number): Array<[number, number]> =>
+      Array.from({ length: 65 }, (_, index) => [index, value] as [number, number]);
+    const energeticFamilies = new Set([
+      "beams", "spots", "spiral", "shutters", "bars", "grid", "mirror", "parade",
+      "crossfire", "curtain", "burst", "gobos", "pendule", "couronne", "pluie",
+      "portique", "etoile", "vortex", "lyre", "mandala", "treillis", "rideaux",
+      "lyres-suspendues", "barres-led", "pont-concert",
+    ]);
+    const calm = buildShowPlan(
+      analysis({ ...base, energy: plat(0.1), high: plat(0.05) }),
+      false,
+    );
+    const bright = buildShowPlan(
+      analysis({ ...base, energy: plat(0.5), high: plat(0.45), onsets: [] }),
+      false,
+    );
+    const dense = buildShowPlan(
+      analysis({
+        ...base,
+        energy: plat(0.5),
+        high: plat(0.05),
+        onsets: Array.from({ length: 512 }, (_, index) => index * 0.125),
+      }),
+      false,
+    );
+    const energetic = buildShowPlan(
+      analysis({ ...base, energy: plat(0.85), high: plat(0.05), onsets: [] }),
+      false,
+    );
+    for (const scene of calm.scenes) {
+      expect(["waves", "tunnel", "particles", "rings", "spiral", "pluie"]).toContain(scene.family);
+    }
+    expect(
+      bright.scenes.some((scene) =>
+        ["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"].includes(scene.family),
+      ),
+    ).toBe(true);
+    expect(dense.scenes.some((scene) => energeticFamilies.has(scene.family))).toBe(true);
+    expect(energetic.scenes.some((scene) => energeticFamilies.has(scene.family))).toBe(true);
   });
 });
 
@@ -341,6 +489,11 @@ describe("diversite du spectacle", () => {
   test("un long morceau exploite toutes les familles visuelles", () => {
     const long = analysis({
       duration: 600,
+      // Grille régulière à 120 BPM : les scènes durent 8 s, donc elles portent
+      // une variation (le seuil est de 8 s).
+      tempo: 120,
+      beatPeriod: 0.5,
+      beats: Array.from({ length: 1200 }, (_, index) => index * 0.5),
       sections: [
         { start: 0, end: 200, label: "calme", energy: 0.25 },
         { start: 200, end: 400, label: "intense", energy: 0.8 },
@@ -352,12 +505,15 @@ describe("diversite du spectacle", () => {
     // Compte toutes les familles réellement dessinées : la famille principale,
     // la variation, et la couche de fond commune — qui n'apparaît jamais comme
     // famille principale, justement parce qu'elle est partagée par tout le
-    // morceau.
+    // morceau. L'arbre de décision restreint chaque scène à un réservoir :
+    // l'atteignabilité se mesure donc sur plusieurs tirages, pas sur un seul.
     const dessinees = new Set<FamilyId>();
-    for (const scene of plan.scenes) {
-      dessinees.add(scene.family);
-      dessinees.add(scene.variant);
-      dessinees.add(scene.backdrop);
+    for (let seed = 1; seed <= 20; seed += 1) {
+      for (const scene of buildShowPlan(long, false, seed).scenes) {
+        dessinees.add(scene.family);
+        dessinees.add(scene.variant);
+        dessinees.add(scene.backdrop);
+      }
     }
     // Le compte vient des libellés : ajouter une famille sans la rendre
     // atteignable par le plan fait échouer ce test, et c'est voulu.
@@ -380,6 +536,167 @@ describe("diversite du spectacle", () => {
     });
     const nu = analysis({ duration: 180, beats: [], onsets: [], sections: [], builds: [] });
     expect(sceneCadence(buildShowPlan(riche, false))).toBeLessThan(sceneCadence(buildShowPlan(nu, false)));
+  });
+
+  test("le contrat de couleur tient sur 6 morceaux × 400 graines", () => {
+    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    const morceaux = [58, 74, 96, 118, 142, 170].map((tempo, index) =>
+      analysis({
+        duration: 64 + index * 8,
+        tempo,
+        meter: index % 2 === 0 ? 4 : 3,
+        beatPeriod: 60 / tempo,
+        beats: Array.from({ length: Math.floor((64 + index * 8) / (60 / tempo)) }, (_, beat) =>
+          Number((beat * (60 / tempo)).toFixed(3)),
+        ),
+        sections: [],
+        builds: index % 3 === 0 ? [{ start: 30, end: 34, strength: 0.8 }] : [],
+      }),
+    );
+    let paires = 0;
+    for (const morceau of morceaux) {
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const plan = buildShowPlan(morceau, false, seed);
+        let precedent: number | undefined;
+        for (const scene of plan.scenes) {
+          const presDeLaBase = ecart(scene.palette.hue, plan.track.hue);
+          const presDuComplement = ecart(scene.palette.hue, plan.track.accent);
+          // Toutes les teintes restent dans le budget de l'un des deux pôles.
+          expect(Math.min(presDeLaBase, presDuComplement)).toBeLessThanOrEqual(plan.track.spread + 1e-6);
+          if (precedent !== undefined) {
+            paires += 1;
+            expect(ecart(scene.palette.hue, precedent)).toBeGreaterThanOrEqual(
+              minHueStepEff(plan.track.spread) - 1e-6,
+            );
+          }
+          precedent = scene.palette.hue;
+        }
+      }
+    }
+    // 6 pistes × 400 graines, plusieurs scènes chacune.
+    expect(paires).toBeGreaterThan(13_200);
+  });
+
+  test("à 170 BPM en 3/4, les scènes restent dans la fenêtre 5–9 s", () => {
+    const beatPeriod = 60 / 170;
+    const data = analysis({
+      duration: 60,
+      tempo: 170,
+      meter: 3,
+      beatPeriod,
+      beats: Array.from({ length: Math.floor(60 / beatPeriod) }, (_, index) =>
+        Number((index * beatPeriod).toFixed(3)),
+      ),
+      onsets: [],
+      sections: [],
+      builds: [],
+    });
+    const plan = buildShowPlan(data, false);
+    const spans = plan.scenes.map((scene) => scene.end - scene.start);
+    // Le cycle de 12 temps vaut 4,24 s, sous le plancher de 5 s : la fusion
+    // garde une frontière de cycle sur deux, soit ~8,48 s, jamais 12,7 s.
+    expect(Math.min(...spans)).toBeGreaterThanOrEqual(5);
+    expect(sceneCadence(plan)).toBeGreaterThanOrEqual(5);
+    expect(sceneCadence(plan)).toBeLessThanOrEqual(9);
+    expect(Math.max(...spans)).toBeLessThanOrEqual(12);
+    // Chaque frontière conservée est un vrai cycle : aucun changement inventé.
+    const boundaries = new Set(plan.barStarts.map((time) => Number(time.toFixed(2))));
+    for (const scene of plan.scenes.slice(1)) {
+      expect(
+        boundaries.has(Number(scene.start.toFixed(2))) ||
+          Math.abs(scene.start - data.duration) < 0.01,
+      ).toBe(true);
+    }
+  });
+
+  test("aucune variation sur une scène de moins de 8 s", () => {
+    const plan = buildShowPlan(
+      analysis({
+        duration: 120,
+        beats: Array.from({ length: 300 }, (_, index) => index * 0.4),
+        builds: [{ start: 30, end: 40, strength: 0.9 }],
+      }),
+      false,
+    );
+    let courtes = 0;
+    for (const scene of plan.scenes) {
+      if (scene.end - scene.start < 8) {
+        courtes += 1;
+        expect(scene.variant).toBe(scene.family);
+      }
+    }
+    expect(courtes).toBeGreaterThan(0);
+  });
+
+  test("le tirage de famille ne répète jamais et dépend de la graine", () => {
+    // Caractère volontairement moyen : toutes les scènes tombent dans le
+    // réservoir général, donc la suite de familles ne dépend que du tirage.
+    const data = analysis({
+      duration: 64,
+      beats: Array.from({ length: 128 }, (_, index) => index * 0.5),
+      onsets: Array.from({ length: 64 }, (_, index) => index * 1),
+      energy: [
+        [0, 0.5],
+        [64, 0.5],
+      ],
+      high: [
+        [0, 0.1],
+        [64, 0.1],
+      ],
+      sections: [],
+      builds: [],
+    });
+    const sequences = new Set<string>();
+    const familles = new Set<FamilyId>();
+    for (let seed = 1; seed <= 10_000; seed += 1) {
+      const plan = buildShowPlan(data, false, seed);
+      const suite = plan.scenes.map((scene) => scene.family);
+      for (let index = 1; index < suite.length; index += 1) {
+        expect(suite[index]).not.toBe(suite[index - 1]);
+      }
+      for (let start = 0; start + 6 <= suite.length; start += 1) {
+        sequences.add(suite.slice(start, start + 6).join(">"));
+      }
+      for (const family of suite) familles.add(family);
+    }
+    expect(sequences.size).toBeGreaterThanOrEqual(20);
+    // Toutes les familles du réservoir général apparaissent : la couche de fond
+    // change avec la graine, donc aucune famille n'est structurellement exclue
+    // sur l'ensemble des tirages.
+    expect(familles.size).toBe(Object.keys(FAMILY_LABELS).length);
+  });
+
+  test("les drops d'un morceau ne partagent jamais leur signature", () => {
+    const data = analysis({
+      duration: 100,
+      beats: Array.from({ length: 200 }, (_, index) => index * 0.5),
+      sections: [],
+      builds: [
+        { start: 18, end: 20, strength: 0.9 },
+        { start: 48, end: 50, strength: 0.45 },
+        { start: 78, end: 80, strength: 0.75 },
+      ],
+    });
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const plan = buildShowPlan(data, false, seed * 97);
+      const drops = plan.scenes.filter((scene) => scene.role === "drop");
+      expect(drops.length).toBeGreaterThanOrEqual(3);
+      // La signature est complète sur chaque drop.
+      for (const drop of drops) expect(drop.drop).toBeDefined();
+      const signatures = drops.map(
+        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
+      );
+      expect(new Set(signatures).size).toBe(signatures.length);
+      // Les impacts forts déploient le pont, les plus doux alternent lyres et
+      // barres LED.
+      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBeGreaterThanOrEqual(2);
+      expect(
+        drops.some((scene) => scene.family === "lyres-suspendues" || scene.family === "barres-led"),
+      ).toBe(true);
+    }
+    // Le mode réduit ne force ni pont ni signature.
+    const reduced = buildShowPlan(data, true);
+    for (const scene of reduced.scenes) expect(scene.drop).toBeUndefined();
   });
 
   test("chaque phrase porte une humeur et une intensite coherente", () => {
@@ -480,7 +797,7 @@ describe("changements justifies par la musique", () => {
     const famillesDenses = new Set(buildShowPlan(dense, false).scenes.map((scene) => scene.family));
     // Un passage lent sans attaques ne doit pas afficher de barres ni de grille.
     for (const family of famillesCalmes) {
-      expect(["waves", "tunnel", "particles", "rings", "spiral", "beams", "shutters", "spots"]).toContain(family);
+      expect(["waves", "tunnel", "particles", "rings", "spiral", "beams", "shutters", "spots", "parade", "mirror"]).toContain(family);
     }
     expect(famillesDenses.has("bars") || famillesDenses.has("beams") || famillesDenses.has("shutters")).toBe(true);
   });
