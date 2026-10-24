@@ -12,5 +12,9 @@ __pycache__/
 *.shot/
 node_modules/
 
+# Corpus audio de test : régénéré par tests/support/make_fixture.py en < 10 s,
+# donc jamais committé (voir docs/testing.md).
+tests/fixtures/corpus/
+
 # Le projet utilise bun (bun.lock) : le lock npm n'est qu'un artefact.
 package-lock.json
