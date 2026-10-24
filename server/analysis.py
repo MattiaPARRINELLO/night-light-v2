@@ -181,6 +181,19 @@ def _smooth(values: np.ndarray, seconds: float, rate: float) -> np.ndarray:
     return np.convolve(values, kernel / total, mode="same")
 
 
+def sanitize_curve(values: np.ndarray) -> np.ndarray:
+    """Remplace NaN/inf par des valeurs finies avant toute sérialisation.
+
+    Une courbe ne doit jamais transporter de NaN jusqu'au front : une seule
+    valeur non finie contamine les sommes, les comparaisons et le rendu. On
+    ramène les NaN à 0 et les infinis dans `[0, 1]` — une énergie infinie n'a
+    pas de sens, mais elle ne doit pas casser le spectacle pour autant.
+    """
+    if values.size == 0:
+        return values
+    return np.nan_to_num(values, nan=0.0, posinf=1.0, neginf=0.0)
+
+
 def normalize_curve(
     values: np.ndarray,
     floor_q: float = 0.35,
@@ -188,6 +201,7 @@ def normalize_curve(
     gamma: float = 0.85,
 ) -> np.ndarray:
     """Normalisation robuste par quantiles, puis compression douce."""
+    values = sanitize_curve(values)
     if values.size == 0:
         return values
     finite = values[np.isfinite(values)]
@@ -198,7 +212,7 @@ def normalize_curve(
     if high - low < 1e-9:
         return np.zeros_like(values)
     out = np.clip((values - low) / (high - low), 0.0, 1.0)
-    return np.power(out, gamma)
+    return sanitize_curve(np.power(out, gamma))
 
 
 def normalize_log_curve(
@@ -213,6 +227,7 @@ def normalize_log_curve(
     normalisation linéaire par quantiles, les passages modérés s'écrasent à 0 et
     le show se vide pendant les couplets.
     """
+    values = sanitize_curve(values)
     if values.size == 0:
         return values
     finite = values[np.isfinite(values)]
@@ -223,7 +238,7 @@ def normalize_log_curve(
     high = float(np.quantile(log, ceil_q))
     if high - low < 1e-9:
         return np.zeros_like(values)
-    return np.clip((log - low) / (high - low), floor, 1.0)
+    return sanitize_curve(np.clip((log - low) / (high - low), floor, 1.0))
 
 
 def curve_to_points(
@@ -233,13 +248,19 @@ def curve_to_points(
     duration: float,
 ) -> list[list[float]]:
     """Rééchantillonne une courbe à cadence fixe et la sérialise."""
-    if values.size == 0 or duration <= 0:
+    if values.size == 0 or duration <= 0 or not np.isfinite(duration):
         return []
+    values = sanitize_curve(values)
+    times = sanitize_curve(times)
     step = 1.0 / max(rate_hz, 1.0)
     grid = np.arange(0.0, duration + step * 0.5, step)
     resampled = np.interp(grid, times, values, left=0.0, right=0.0)
     resampled = _smooth(np.clip(resampled, 0.0, 1.0), 0.14, rate_hz)
-    return [[round(float(t), 3), round(float(v), 2)] for t, v in zip(grid, resampled, strict=False)]
+    resampled = sanitize_curve(resampled)
+    return [
+        [round(float(t), 3), round(float(v), 2)]
+        for t, v in zip(grid, np.clip(resampled, 0.0, 1.0), strict=False)
+    ]
 
 
 def band_energy(
@@ -327,7 +348,9 @@ def detect_rhythm(
     if timings is not None:
         timings["beatTrackSec"] = round(time.monotonic() - started, 3)
     tempo_value = float(np.atleast_1d(np.asarray(tempo, dtype=float))[0])
-    if tempo_value <= 0:
+    # `NaN <= 0` est faux : sans le test de finitude, un tempo NaN traversait
+    # toute l'analyse et faisait dériver la grille de repli jusqu'au rendu.
+    if not np.isfinite(tempo_value) or tempo_value <= 0:
         tempo_value = 120.0
     report(phase, 0.8, "Temps forts et attaques")
     started = time.monotonic()
@@ -344,8 +367,8 @@ def detect_rhythm(
     )
     if timings is not None:
         timings["onsetsSec"] = round(time.monotonic() - started, 3)
-    unique_beats = sorted({round(float(b), 3) for b in beats})
-    unique_onsets = sorted({round(float(o), 3) for o in onsets})
+    unique_beats = sorted({round(float(b), 3) for b in beats if np.isfinite(b)})
+    unique_onsets = sorted({round(float(o), 3) for o in onsets if np.isfinite(o)})
     meter = estimate_meter(onset_env, unique_beats, tempo_value, sr)
     return tempo_value, unique_beats, unique_onsets, meter
 
@@ -385,6 +408,8 @@ def detect_sections(
     window = (energy_times >= 0.0) & (energy_times < duration)
     segment = energy_curve[window]
     mean_energy = float(np.mean(segment)) if segment.size else 0.0
+    if not np.isfinite(mean_energy):
+        mean_energy = 0.0
     return [
         {
             "start": 0.0,
@@ -504,7 +529,9 @@ def detect_builds(
     if len(energy_points) < 8:
         return []
     times = np.array([point[0] for point in energy_points], dtype=float)
-    values = np.array([point[1] for point in energy_points], dtype=float)
+    values = sanitize_curve(np.array([point[1] for point in energy_points], dtype=float))
+    if not np.all(np.isfinite(times)) or times.size < 2:
+        return []
     rate = 1.0 / max(float(np.median(np.diff(times))) if times.size > 1 else 0.05, 1e-3)
     smooth = _smooth(values, min(2.0, max(0.5, duration / 6.0)), rate)
     if values.size < 3:
@@ -555,6 +582,10 @@ def detect_builds(
                 # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
                 end = _snap_to_onset(end, onsets)
         # Une vraie montée gagne nettement en niveau, pas seulement quelques %.
+        strength = float(np.nan_to_num(strength, nan=0.0, posinf=1.0, neginf=0.0))
+        if not np.isfinite(start) or not np.isfinite(end):
+            index = end_index + 1
+            continue
         if 2.0 <= end - start <= 30.0 and strength > 0.3 and strength - start_level > 0.18:
             builds.append(
                 {
