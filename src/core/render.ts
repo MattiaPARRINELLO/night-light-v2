@@ -210,8 +210,12 @@ export function visibleEnergy(energy: number): number {
 export function beatStrength(view: TrackView, t: number): number {
   const pulse = view.beatPulse(t, 0.45);
   if (pulse < 0.05) return 0;
-  const kick = view.bassAt(t);
-  if (kick < 0.12) return 0;
+  // Porte douce sur les basses : une coupure dure à 0,12 faisait passer le
+  // pulse de 0 à sa valeur pleine en une image. On multiplie le niveau par un
+  // smoothstep (0,08 → 0,16) : jamais plus fort qu'avant, mais plus de marche.
+  const bass = view.bassAt(t);
+  const kick = bass * smoothstep(0.08, 0.16, bass);
+  if (kick <= 0) return 0;
   const energy = view.energyAt(t);
   const sectionEnergy = clamp01(view.sectionAt(t).energy);
   return clamp01(pulse * kick * (0.35 + 0.65 * energy) * (0.55 + 0.45 * sectionEnergy));

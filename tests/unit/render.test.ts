@@ -1628,6 +1628,31 @@ describe("pulse en accord avec la musique", () => {
     expect(beatStrength(view, 42.02)).toBe(0);
   });
 
+  test("la porte sur les basses est douce, sans marche d'une image à l'autre", () => {
+    // La basse traverse le seuil pendant le morceau : le pulse doit monter
+    // progressivement, pas sauter de 0 à sa valeur pleine.
+    const data = analysis({ bass: [[0, 0.05], [8, 0.2], [60, 0.2]] });
+    const view = new TrackView(data);
+    let previous = beatStrength(view, 0);
+    let maxStep = 0;
+    for (let t = 1 / 60; t < 20; t += 1 / 60) {
+      // Le saut d'attaque sur un temps fort est l'évènement musical lui-même :
+      // on mesure la continuité ailleurs (franchissement du seuil de basses).
+      if (data.beats.some((beat) => t - beat >= 0 && t - beat < 1 / 60)) continue;
+      const value = beatStrength(view, t);
+      maxStep = Math.max(maxStep, Math.abs(value - previous));
+      previous = value;
+    }
+    expect(maxStep).toBeLessThan(0.25);
+  });
+
+  test("une piste sans basses ne déclenche aucun pulse", () => {
+    const view = new TrackView(analysis({ bass: [[0, 0.02], [60, 0.02]] }));
+    let max = 0;
+    for (let t = 0; t < 60; t += 1 / 60) max = Math.max(max, beatStrength(view, t));
+    expect(max).toBeLessThan(0.05);
+  });
+
   test("un kick dans un passage intense pulse plus fort qu'en passage calme", () => {
     const view = new TrackView(analysis());
     const intense = beatStrength(view, 42.02);
