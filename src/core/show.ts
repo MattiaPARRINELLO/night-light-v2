@@ -45,6 +45,29 @@ export type FamilyId =
  */
 export type SceneRole = "intro" | "couplet" | "refrain" | "montee" | "drop" | "finale";
 
+/** Orientation des lyres pendant un drop. */
+export type DropLyres = "convergence" | "croisee" | "eventail";
+/** Comportement des barres LED pendant un drop. */
+export type DropBarres = "onde" | "rideau" | "alterne";
+/** Motif de la barre de blinders pendant un drop. */
+export type DropBlinders = "tous" | "un-sur-deux" | "chenillard";
+
+/**
+ * Signature d'un drop : quatre choix tirés du morceau, pas du rôle seul.
+ *
+ * Deux drops ne doivent pas se ressembler, même quand ils tombent à quelques
+ * secondes d'intervalle. La signature est calculée dans `buildShowPlan` à
+ * partir de la graine, du rang du drop et de la force de la montée, puis
+ * consommée par le rendu (`concert-rig.ts`).
+ */
+export interface DropSignature {
+  lyres: DropLyres;
+  barres: DropBarres;
+  blinders: DropBlinders;
+  /** Ancre de teinte : complémentaire du morceau ou pôle opposé. */
+  hue: "accent" | "contraste";
+}
+
 export const SCENE_ROLE_LABELS: Record<SceneRole, string> = {
   intro: "introduction",
   couplet: "couplet",
@@ -74,6 +97,8 @@ export interface Scene {
   mood: Mood;
   /** Rôle dramaturgique : pilote les cinématiques de concert. */
   role: SceneRole;
+  /** Signature du drop ; absente sur les scènes qui n'en sont pas. */
+  drop?: DropSignature;
   /** Ce qui, dans le morceau, a déclenché ce changement d'ambiance. */
   reason: SceneReason;
 }
@@ -464,6 +489,41 @@ function roleFor(section: Section | null, reason: SceneReason, index: number): S
   return "couplet";
 }
 
+const DROP_LYRES: readonly DropLyres[] = ["convergence", "croisee", "eventail"];
+const DROP_BARRES: readonly DropBarres[] = ["onde", "rideau", "alterne"];
+const DROP_BLINDERS: readonly DropBlinders[] = ["tous", "un-sur-deux", "chenillard"];
+/**
+ * Signature déterministe d'un drop.
+ *
+ * La combinaison (3 orientations × 3 barres × 3 motifs × 2 teintes = 54) est
+ * tirée de `hashString(graine|rang|force)`. `attempt` sert uniquement à
+ * écarter une combinaison déjà utilisée par un drop trop proche : le résultat
+ * reste une fonction pure de ses arguments.
+ */
+export function dropSignature(
+  seed: number,
+  rank: number,
+  strength: number,
+  attempt = 0,
+): DropSignature {
+  const base = hashString(`${seed}|drop|${rank}|${strength.toFixed(3)}|${attempt}`);
+  const combo = Math.floor(hash01(base) * DROP_LYRES.length * DROP_BARRES.length * DROP_BLINDERS.length * 2);
+  return {
+    lyres: DROP_LYRES[combo % DROP_LYRES.length]!,
+    barres: DROP_BARRES[Math.floor(combo / DROP_LYRES.length) % DROP_BARRES.length]!,
+    blinders:
+      DROP_BLINDERS[Math.floor(combo / (DROP_LYRES.length * DROP_BARRES.length)) % DROP_BLINDERS.length]!,
+    hue: Math.floor(combo / (DROP_LYRES.length * DROP_BARRES.length * DROP_BLINDERS.length)) % 2 === 0
+      ? "accent"
+      : "contraste",
+  };
+}
+
+/** Clé stable d'une signature, pour garantir l'unicité dans un plan. */
+function signatureKey(signature: DropSignature): string {
+  return `${signature.lyres}/${signature.barres}/${signature.blinders}/${signature.hue}`;
+}
+
 /**
  * Saturation d'une humeur. Le spectacle doit éclairer une salle : les passages
  * forts sont franchement saturés, les passages calmes se permettent une couleur
@@ -622,6 +682,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
   // pour qu'on ne voie jamais deux fois la même figure d'affilée.
   let previousFamily: FamilyId | undefined;
   let beforePreviousFamily: FamilyId | undefined;
+  // Rang des drops et signatures déjà jouées : deux drops d'un même morceau,
+  // a fortiori rapprochés, ne rejouent pas la même combinaison.
+  let dropRank = 0;
+  const usedDropSignatures = new Set<string>();
 
   for (let index = 0; index < events.length - 1; index += 1) {
     const event = events[index];
@@ -657,13 +721,37 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     // On ne mémorise pas cette famille dans le groupe, sinon tout le refrain
     // resterait un pont concert.
     const forceConcert = !reduced && role === "drop";
+    // Force de la montée qui a produit ce drop (0 pour un drop hors build).
+    const strength = event.reason === "build" ? clamp01(event.weight) : 0;
+    let signature: DropSignature | undefined;
+    if (forceConcert) {
+      const rank = dropRank;
+      signature = dropSignature(seed, rank, strength);
+      // Deux drops ne partagent jamais leur signature dans un même plan : la
+      // contrainte des 15 s est couverte, et un morceau très long épuise les
+      // 54 combinaisons avant de répéter. On décale la combinaison d'un cran,
+      // de façon déterministe.
+      for (let attempt = 1; attempt < 54; attempt += 1) {
+        if (!usedDropSignatures.has(signatureKey(signature))) break;
+        signature = dropSignature(seed, rank, strength, attempt);
+      }
+      usedDropSignatures.add(signatureKey(signature));
+      dropRank += 1;
+    }
     let family: FamilyId;
     const cachedFamily = grouped ? groupFamilies.get(group) : undefined;
     const excluded: FamilyId[] = [];
     if (previousFamily !== undefined) excluded.push(previousFamily);
     if (beforePreviousFamily !== undefined) excluded.push(beforePreviousFamily);
     if (forceConcert) {
-      family = "pont-concert";
+      // Le plateau complet est réservé aux vrais impacts ; une montée plus
+      // douce alterne lyres suspendues et barres LED.
+      family =
+        strength >= 0.6
+          ? "pont-concert"
+          : dropRank % 2 === 1
+            ? "lyres-suspendues"
+            : "barres-led";
     } else if (cachedFamily !== undefined) {
       // Un groupe est un matériau musical qui revient : il garde sa famille.
       family = cachedFamily;
@@ -700,7 +788,17 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
     const fort = refrain || mood === "explosif" || (mood === "pulse" && caractere.energy > 0.6);
-    const ancre = fort ? track.accent : track.hue;
+    // La signature de drop choisit le pôle de teinte : tantôt la
+    // complémentaire du morceau, tantôt le pôle opposé (l'ancre de base). Les
+    // deux restent dans le budget de couleur autour de l'ancre de scène.
+    const ancre =
+      signature?.hue === "contraste"
+        ? fort
+          ? track.hue
+          : track.accent
+        : fort
+          ? track.accent
+          : track.hue;
     const derive = grouped
       ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
       : (hash01(seed + turn * 977) - 0.5) * track.spread;
@@ -744,6 +842,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
       mood,
       role,
       reason: event.reason,
+      ...(signature !== undefined ? { drop: signature } : {}),
     });
   }
 

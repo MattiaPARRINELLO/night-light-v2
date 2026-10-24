@@ -423,6 +423,39 @@ describe("diversite du spectacle", () => {
     expect(familles.size).toBe(Object.keys(FAMILY_LABELS).length);
   });
 
+  test("les drops d'un morceau ne partagent jamais leur signature", () => {
+    const data = analysis({
+      duration: 100,
+      beats: Array.from({ length: 200 }, (_, index) => index * 0.5),
+      sections: [],
+      builds: [
+        { start: 18, end: 20, strength: 0.9 },
+        { start: 48, end: 50, strength: 0.45 },
+        { start: 78, end: 80, strength: 0.75 },
+      ],
+    });
+    for (let seed = 1; seed <= 5; seed += 1) {
+      const plan = buildShowPlan(data, false, seed * 97);
+      const drops = plan.scenes.filter((scene) => scene.role === "drop");
+      expect(drops.length).toBeGreaterThanOrEqual(3);
+      // La signature est complète sur chaque drop.
+      for (const drop of drops) expect(drop.drop).toBeDefined();
+      const signatures = drops.map(
+        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
+      );
+      expect(new Set(signatures).size).toBe(signatures.length);
+      // Les impacts forts déploient le pont, les plus doux alternent lyres et
+      // barres LED.
+      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBeGreaterThanOrEqual(2);
+      expect(
+        drops.some((scene) => scene.family === "lyres-suspendues" || scene.family === "barres-led"),
+      ).toBe(true);
+    }
+    // Le mode réduit ne force ni pont ni signature.
+    const reduced = buildShowPlan(data, true);
+    for (const scene of reduced.scenes) expect(scene.drop).toBeUndefined();
+  });
+
   test("chaque phrase porte une humeur et une intensite coherente", () => {
     const plan = buildShowPlan(analysis({ duration: 120 }), false);
     for (const scene of plan.scenes) {

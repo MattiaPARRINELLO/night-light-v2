@@ -141,6 +141,9 @@ function main(): void {
         const previous = plan.scenes[index - 1]!;
         summary.hueGaps.push(hueGap(scene.palette.hue, previous.palette.hue));
       }
+      const signature = scene.drop === undefined
+        ? "—"
+        : `${scene.drop.lyres}/${scene.drop.barres}/${scene.drop.blinders}/${scene.drop.hue}`;
       if (scene.role === "drop") {
         summary.drops.push({
           track: track.name,
@@ -149,6 +152,7 @@ function main(): void {
           mood: scene.mood,
           reason: scene.reason,
           hue: Math.round(scene.palette.hue),
+          signature,
         });
       }
       if (!asJson) {
@@ -156,7 +160,8 @@ function main(): void {
           `${track.name.padEnd(11)} #${String(scene.index).padStart(2)} ` +
             `${scene.start.toFixed(2).padStart(6)}→${scene.end.toFixed(2).padStart(6)} ` +
             `${scene.family.padEnd(16)} ${scene.mood.padEnd(9)} ${scene.role.padEnd(8)} ` +
-            `${scene.reason.padEnd(9)} hue ${scene.palette.hue.toFixed(0).padStart(3)} ${branch}`,
+            `${scene.reason.padEnd(9)} hue ${scene.palette.hue.toFixed(0).padStart(3)} ${branch}` +
+            `${scene.role === "drop" ? ` [${signature}]` : ""}`,
         );
       }
     }

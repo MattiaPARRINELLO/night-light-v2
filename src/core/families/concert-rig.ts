@@ -1,6 +1,6 @@
 import { shiftHue } from "../color";
 import { clamp01, hash01, mix, smoothstep } from "../series";
-import type { SceneRole } from "../show";
+import type { DropSignature, SceneRole } from "../show";
 import type { TrackView } from "../view";
 import { softBeam } from "./beams";
 import { contrastHue, lampHue } from "./harmony";
@@ -188,17 +188,28 @@ export function orientationLyre(
 
   switch (role) {
     case "drop": {
-      // Convergence : toutes les têtes visent le même point au sol, mais la
-      // tête ne saute pas. Elle part de la verticale et rejoint la cible en
-      // 0,9 s : c'est le temps d'un vrai mouvement de lyre, pas une coupure.
-      const cibleX = f.width * (0.5 + 0.035 * Math.sin(f.t * 0.35));
-      const cibleY = f.height * 1.02;
-      const { x, y } = positionLyre(i, f.width, f.height);
-      const angleCible = Math.atan2(cibleY - y, cibleX - x);
+      // La signature du drop décide du geste. Aucune enveloppe ne change :
+      // une lyre part toujours de la verticale et rejoint sa cible en 0,9 s.
+      const geste = f.scene.drop?.lyres ?? "convergence";
       const local = clamp01((f.t - f.scene.start) / 0.9);
       const convergence = smoothstep(0, 1, local);
-      angle = base + (angleCible - base) * convergence;
-      ouverture = 0.017;
+      if (geste === "eventail") {
+        // Éventail symétrique : même ouverture lente que la montée, tenue
+        // pendant tout le drop.
+        const ouvertureEventail = 0.11 * (0.7 + 0.3 * Math.sin(f.t * 0.22));
+        angle = base + (i - centre) * ouvertureEventail;
+      } else {
+        // Convergence centrale, ou croisée : chaque tête vise le côté opposé.
+        const cibleX =
+          geste === "croisee"
+            ? f.width * (0.5 + ((centre - i) / (NOMBRE_LYRES - 1)) * 0.9)
+            : f.width * (0.5 + 0.035 * Math.sin(f.t * 0.35));
+        const cibleY = f.height * 1.02;
+        const { x, y } = positionLyre(i, f.width, f.height);
+        const angleCible = Math.atan2(cibleY - y, cibleX - x);
+        angle = base + (angleCible - base) * convergence;
+      }
+      ouverture = geste === "eventail" ? 0.023 : 0.017;
       prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy);
       intensite = 0.95;
       break;
@@ -264,6 +275,22 @@ export function orientationLyre(
  * rampe (`sin(time · 2π · f_tempo − j · 0,4)`), ce qui donne la vague
  * d'inclinaison typique des barres motorisées.
  */
+/**
+ * Part de rideau visée par une lame de barre LED à l'instant courant.
+ *
+ * Le refrain ferme toujours le rideau. Un drop suit sa signature : rideau
+ * complet, onde qui continue, ou alternance d'une lame sur deux. Les enveloppes
+ * de transition restent celles de `angleBatten` (1,2 s).
+ */
+function cibleRideau(f: FrameState, index: number, role: SceneRole): number {
+  if (role === "refrain") return 1;
+  if (role !== "drop") return 0;
+  const mode = f.scene.drop?.barres ?? "rideau";
+  if (mode === "onde") return 0;
+  if (mode === "alterne") return index % 2 === 0 ? 1 : 0;
+  return 1;
+}
+
 export function angleBatten(
   f: FrameState,
   view: TrackView,
@@ -279,9 +306,8 @@ export function angleBatten(
 
   // Le passage de la vague au rideau se fait en douceur sur 1,2 s : les lames
   // se redressent progressivement au lieu de basculer d'un coup à la frontière.
-  const cibleRideau = role === "drop" || role === "refrain" ? 1 : 0;
   const local = clamp01((f.t - f.scene.start) / 1.2);
-  const rideau = smoothstep(0, 1, local) * cibleRideau;
+  const rideau = smoothstep(0, 1, local) * cibleRideau(f, j, role);
   return vague + (base - vague) * rideau;
 }
 
@@ -412,8 +438,10 @@ export type MotifBlinder = "tous" | "un-sur-deux" | "un-sur-quatre" | "chenillar
  * une cellule sur deux, un couplet n'en garde qu'une sur quatre et une montée
  * fait courir un chenillard. Le motif reste une fonction pure du temps musical.
  */
-export function motifBlinder(role: SceneRole): MotifBlinder {
-  if (role === "drop") return "tous";
+export function motifBlinder(role: SceneRole, drop?: DropSignature): MotifBlinder {
+  // Un drop n'allume plus systématiquement toute la barre : la signature du
+  // plan choisit entre barre complète, une sur deux et chenillard.
+  if (role === "drop") return drop?.blinders ?? "tous";
   if (role === "refrain") return "un-sur-deux";
   if (role === "montee") return "chenillard";
   if (role === "couplet") return "un-sur-quatre";
@@ -432,7 +460,7 @@ export function poidsBlinder(
   f: FrameState,
   index: number,
   role: SceneRole = f.scene.role,
-  motif: MotifBlinder = motifBlinder(role),
+  motif: MotifBlinder = motifBlinder(role, f.scene.drop),
 ): number {
   const i = borner(index, NOMBRE_BLINDERS);
   const temps = f.beatIndex + clamp01(f.beatPhase);
@@ -848,15 +876,15 @@ const barresLed: FamilyDraw = (ctx, f, view) => {
   const alpha = (0.07 + 0.26 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
-  const cibleRideau = f.scene.role === "drop" || f.scene.role === "refrain" ? 1 : 0;
   const local = clamp01((f.t - f.scene.start) / 1.2);
-  const rideau = smoothstep(0, 1, local) * cibleRideau;
   const spectre = clamp01(0.65 * f.bass + 0.35 * f.mid);
   const temps = tempsTempsFort(f, view);
 
   for (let index = 0; index < NOMBRE_BATTENS; index += 1) {
     const { x, y } = positionBatten(index, w, h);
     const angle = angleBatten(f, view, index);
+    // Une lame sur deux peut rester en vague : le rideau n'est plus binaire.
+    const rideau = smoothstep(0, 1, local) * cibleRideau(f, index, f.scene.role);
     const portee = Math.min(
       Math.hypot(w, h) * 1.2,
       (h * 1.06 - y) / Math.max(Math.sin(angle), 0.45),
