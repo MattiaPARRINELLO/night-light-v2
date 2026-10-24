@@ -53,13 +53,13 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", default="tests/fixtures/corpus")
+    parser.add_argument("--track", action="append", default=[], help="piste isolée (répétable)")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    corpus = Path(args.corpus)
-    tracks = sorted(corpus.glob("*.wav"))
+    tracks = [Path(track) for track in args.track] or sorted(Path(args.corpus).glob("*.wav"))
     if not tracks:
-        parser.error(f"aucune piste dans {corpus} : lance make_fixture.py corpus")
+        parser.error(f"aucune piste dans {args.corpus} : lance make_fixture.py corpus")
 
     settings = load_settings()
     payload = []

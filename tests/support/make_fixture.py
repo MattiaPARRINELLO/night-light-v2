@@ -457,9 +457,11 @@ if __name__ == "__main__":
     else:
         destination = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/night-light-test.wav")
         argument = sys.argv[2] if len(sys.argv) > 2 else ""
-        if argument == "rich":
-            write_rich_track(destination)
-            print(f"{destination} — piste de démonstration riche (4 caractères)")
+        if argument.startswith("rich"):
+            # `rich` = 60 s ; `rich:180` = durée explicite (piste longue).
+            length = float(argument.split(":", 1)[1]) if ":" in argument else 60.0
+            write_rich_track(destination, duration=length)
+            print(f"{destination} — piste de démonstration riche ({length:.0f} s)")
         else:
             duration = float(argument) if argument.strip() else 12.0
             tempo = write_synthetic_track(destination, duration=duration)
