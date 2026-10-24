@@ -1,114 +1,184 @@
-# Spécification des effets de scène
+# Spécification des scènes et des effets
 
-Cette page décrit ce que le spectacle **fait réellement**, règle par règle, avec
-une colonne « statut » :
+Ce document décrit **comment le plan de spectacle est décidé** : échelles des
+courbes, arbre de choix des familles, tirage déterministe, signature des drops,
+durées et contrat de couleur. Il complète `src/core/show.ts` (le plan) et
+`src/core/families/concert-rig.ts` (le rendu de concert).
 
-| statut | sens |
-| --- | --- |
-| **ACTIF** | la règle existe et s'applique telle que décrite ; preuve en `fichier:ligne` |
-| **CODE MORT** | le code existe mais rien ne l'atteint avec les analyses réelles |
-| **PARTIEL** | la règle s'applique, mais une autre règle peut l'annuler dans certains cas |
-| **DIVERGENT** | le code fait autre chose que ce qui est annoncé, ou viole une règle déclarée |
+## 1. Le temps `t`
 
-<!-- À METTRE À JOUR APRÈS FUSION : tirage de famille -->
-<!-- À METTRE À JOUR APRÈS FUSION : brightness (saturation > 0,62) -->
-<!-- À METTRE À JOUR APRÈS FUSION : drops -->
-<!-- À METTRE À JOUR APRÈS FUSION : dérive de teinte -->
-<!-- À METTRE À JOUR APRÈS FUSION : flashs -->
-<!-- À METTRE À JOUR APRÈS FUSION : code mort (backdrop, reason, familles inatteignables) -->
+`t` est la position de lecture en **secondes**, telle que la reçoit le rendu
+(`FrameState.t`). Tous les effets sont des fonctions de `t`, jamais d'un état
+accumulé : une pause, un seek ou un retour en arrière redonnent exactement la
+même image.
 
-## 1. Découpage en scènes
+Repères dérivés :
 
-| règle | code | statut | preuve |
-| --- | --- | --- | --- |
-| seuls des événements musicaux créent une frontière (section, fin de montée, retour de cycle, ouverture, finale) | `sceneBoundaries` | ACTIF | `src/core/show.ts:453-493` |
-| deux événements à moins de 5 s fusionnent ; l'impact de montée gagne | `MIN_SCENE_SPAN`, score `build × 1,25` | ACTIF | `src/core/show.ts:270`, `475-491` |
-| aucune scène ne dure moins de 5 s (hors morceau < 5 s) | `MIN_SCENE_SPAN` | ACTIF | `src/core/show.ts:270`, `540-544` |
-| la dernière scène finit avec le morceau et devient `finale` (sauf drop final) | fin de `buildShowPlan` | ACTIF | `src/core/show.ts:674-681` |
-| les scènes se suivent sans trou ni chevauchement | — | ACTIF | test `tests/unit/plan-properties.test.ts` (P1) |
-| même analyse + même mode + même graine ⇒ plan identique | fonction pure | ACTIF | `src/core/show.ts:499-692`, test P6 |
-
-## 2. Choix de la famille
-
-| règle | code | statut | preuve |
-| --- | --- | --- | --- |
-| le tirage de famille dépend de la graine | `familyFor(..., turn + hash01(seed + turn) * 0.9, ...)` | **CODE MORT** | `src/core/show.ts:579` + `349` : `Math.floor` annule la fraction, la graine ne change rien (mesuré : **0 %** de familles différentes entre graines 1 et 2, `tests/unit/plan-properties.test.ts` P7) |
-| `refrain` → alternance lyres suspendues / barres LED | `familyFor` | **CODE MORT** | `src/core/show.ts:360` ; le serveur n'émet jamais `kind: "refrain"` (`server/analysis.py:370-398`) |
-| `montée` → barres LED | `familyFor` | **CODE MORT** | `src/core/show.ts:361` ; le rôle `montee` n'est jamais produit (voir §3) |
-| brillance > 0,62 → réservoir `particles/spots/spiral/rings/beams/mirror/parade` | `familyFor` | **DIVERGENT** | `src/core/show.ts:363-365` ; `caractereAt` initialise la brillance à 0,5 (`289-305`), donc la plupart des scènes réelles dépassent 0,62 (mesure : **98,3 %** des scènes, `docs/metrics/baseline.json`) |
-| au moins 6 familles distinctes sur 3 min, famille dominante < 25 % | — | ACTIF sur la piste longue | test P8 (`tests/unit/plan-properties.test.ts`) |
-| chaque famille déclarée est atteignable | — | **CODE MORT** | 20 familles sur 29 ne sont jamais choisies sur le corpus (test X3) |
-| deux scènes voisines n'ont jamais la même famille | — | ACTIF sur le corpus | tests P3/P4 |
-
-## 3. Rôles et humeurs
-
-| règle | code | statut | preuve |
-| --- | --- | --- | --- |
-| fin de montée → `drop` | `roleFor` | ACTIF | `src/core/show.ts:380` |
-| section `intro`/`refrain`/`couplet`/`outro`/`pont` → rôle correspondant | `roleFor` | **CODE MORT** | `src/core/show.ts:381-385` ; le serveur ne produit que `kind: "section"` (`server/analysis.py:388-398`) |
-| ouverture / index 0 → `intro` | `roleFor` | ACTIF | `src/core/show.ts:386` |
-| libellé `montee` / `descente` / `silence` → `montee` / `finale` | `roleFor` | **CODE MORT** | `src/core/show.ts:387-388` ; l'analyse ne produit que `calme`, `intense` ou `silence` (`server/analysis.py:356-367`) |
-| énergie > 0,62 → humeur `explosif` | `moodFor` | ACTIF | `src/core/show.ts:423` |
-| énergie < 0,3 → humeur `calme` | `moodFor` | ACTIF | `src/core/show.ts:427` |
-| brillance > 0,68 → `aerien`, sinon `pulse` | `moodFor` | **DIVERGENT** | `src/core/show.ts:428-429` ; la branche `pulse` par défaut n'est atteinte sur aucune scène du corpus (brillance saturée), test X4 |
-| un impact force l'humeur explosive | `buildShowPlan` | ACTIF | `src/core/show.ts:557-558` |
-| un refrain force l'humeur explosive | idem | **CODE MORT** | `src/core/show.ts:556-558` (aucun refrain détecté) |
-
-## 4. Couleur
-
-| règle | code | statut | preuve |
-| --- | --- | --- | --- |
-| une palette de morceau stable (teinte + complémentaire + spread) | `TRACK_PALETTES`, `plan.track` | ACTIF | `src/core/show.ts:250-259`, `517` |
-| chaque scène reste dans ±spread de son ancre (teinte ou complémentaire) | clamp final | ACTIF | `src/core/show.ts:615-620`, test P9 |
-| deux scènes voisines ont au moins 34° d'écart | `MIN_HUE_STEP` | **DIVERGENT** | `src/core/show.ts:611-620` ; le clamp ±spread s'applique APRÈS le pas minimal et peut le réduire (mesuré : **28,0°** sur la piste `e_sans_montee`, test P9) |
-| les moments forts basculent sur la complémentaire | `fort` | ACTIF | `src/core/show.ts:599-602` |
-| dérive continue de 0,4°/s + respiration ±14° | `sceneHue` | **DIVERGENT** | `src/core/render.ts:350-361` ; la dérive n'est pas bornée : sur 10 min elle atteint 240°, très au-delà de `spread + marge` (test X1) |
-| saut de teinte à l'impact borné à 32° | `HUE_IMPACT_LIMIT` | ACTIF | `src/core/render.ts:83`, `356-359` |
-| saut de teinte de drop de 26° (et non 70°) | `DROP_HUE_JUMP` | ACTIF | `src/core/render.ts:79` ; la valeur annoncée dans le README (70°) est fausse |
-| accord multicolore des lampes | `lampHue`, `sceneChord` | ACTIF | `src/core/families/harmony.ts:100-118` |
-| la teinte du plan est indépendante de la graine ? | `derive = hash01(seed + turn * 977)` | ACTIF (la teinte, elle, change avec la graine) | `src/core/show.ts:603-606` |
-
-## 5. Rendu, flashs, wash
-
-| règle | code | statut | preuve |
-| --- | --- | --- | --- |
-| plafond d'opacité d'un flash à 0,4 | `FLASH_CEILING` | ACTIF | `src/core/render.ts:51`, `145-155` |
-| flash de temps fort espacé d'au moins 1,6 s | `FLASH_MIN_GAP` | **PARTIEL** | `src/core/render.ts:59`, `378-397` ; un impact de montée garde la priorité (`389`) et peut tomber juste après un flash de temps fort (intervalle minimal mesuré sur le corpus : **0,317 s**) |
-| un flash naît dans les 0,12 s après son déclencheur | `FLASH_ATTACK_SEC` | ACTIF | `src/core/render.ts:61`, `385-386` ; test F1 |
-| un flash de drop est plus fort qu'un flash ordinaire (≥ 2×) | `flashAlpha` | **DIVERGENT** | `src/core/render.ts:149-154` ; mesuré : **0,69×**, **1,52×**, **0,87×** selon les pistes (test F2) |
-| wash de projecteurs après un impact | `WASH_SPAN_SEC = 6,5 s` | ACTIF | `src/core/render.ts:230-257` ; le README annonce 2,5 s |
-| lavage blanc bref réservé aux vrais drops | `realDrop > 0,35` | ACTIF | `src/core/render.ts:546-556` |
-| variation au milieu de phrase, bords exactement nuls | `variationStrength` | ACTIF | `src/core/render.ts:282-290` |
-| plancher d'énergie visible 0,26 | `ENERGY_FLOOR` | ACTIF | `src/core/render.ts:176-181` ; test R7 |
-| fond, halo et poussière indépendants du fondu de scène | `permanent` | ACTIF | `src/core/render.ts:494-508` |
-| pas de `clearRect` : le fond repeint tout l'écran | fond opaque | ACTIF | `src/core/render.ts:488-492` |
-| cache de vignette par contexte et dimensions | `vignetteCache` | ACTIF | `src/core/render.ts:624-647` ; test R1 (pureté sur contexte partagé) |
-| qualité quantifiée par paliers, jamais sous le minimum de 3 éléments | `quantizeQuality`, `count` | ACTIF | `src/core/series.ts:81-88`, `src/core/families/util.ts:9-12` ; test R4 |
-| mode réduit : aucun flash, wash, variation ni famille de concert | `reduced` | ACTIF | `src/core/render.ts:443`, `530`, `607` ; `src/core/show.ts:352-356` ; test P10 |
-
-## 6. Champs du plan consommés par le rendu
-
-| champ | consommé ? | preuve |
+| Repère | Définition | Usage |
 | --- | --- | --- |
-| `index` | oui | `src/core/render.ts:558` |
-| `start`, `end` | oui | `sceneWeight`, `variationStrength` |
-| `family` | oui | `drawFamily` (`render.ts:507`) |
-| `variant` | oui | `render.ts:525` |
-| `palette` | oui | `render.ts:446-457` |
-| `intensity` | oui | `render.ts:476`, `570` |
-| `fadeIn`, `fadeOut` | oui (via `sceneWeight`) | `src/core/show.ts:732-739` |
-| `mood` | oui | `src/core/families/harmony.ts:100`, `118` |
-| `role` | oui | `src/core/families/concert-rig.ts:175`, `381`, `851` |
-| **`backdrop`** | **non** | aucune lecture dans `render.ts` ni `families/` ; test X2 |
-| **`reason`** | **non** | aucune lecture dans `render.ts` ni `families/` ; test X2 |
+| `scene.start` / `scene.end` | bornes de la scène dans le morceau | fondu, variations |
+| `t - scene.start` | temps local de scène | entrées (convergence 0,9 s, rideau 1,2 s) |
+| `beatIndex`, `beatPhase` | index du temps fort et phase 0..1 | chenillard, ballyhoo |
+| `build`, `buildStrength` | progression et force d'une montée | prisme, blinders |
+| `energy`, `bass`, `mid`, `high` | valeurs instantanées 0..1 | modulation des faisceaux |
 
-Le champ `plan.backdrop` existe aussi au niveau du plan (`src/core/show.ts:130`)
-et n'est lu par personne : c'est le cas de code mort connu.
+Le plan est lui aussi une fonction pure : `buildShowPlan(analyse, réduit,
+graine)` ne lit ni `Math.random` ni `Date.now`. Deux appels avec les mêmes
+entrées donnent le même plan, scène par scène.
 
-## 7. Ce que cette page ne couvre pas
+## 2. Échelles des courbes
 
-- La photosensibilité : hors périmètre du projet (voir le cahier de tests D5).
-- Les familles prises une par une : voir `src/core/families/*.ts` et
-  `tests/unit/render.test.ts`.
-- Les mesures chiffrées complètes : `docs/metrics/baseline.json` et
-  `docs/metrics/README.md`.
+Le serveur (`server/analysis.py`) produit des courbes à 20 Hz, échantillonnées
+et sérialisées par `curve_to_points`.
+
+- **bass**, **mid**, **high** : énergie de bande (30–150 Hz, 150–2000 Hz,
+  2000–10000 Hz), lissée puis **normalisée par quantiles** (`normalize_curve`,
+  quantiles 0,35–0,985) et bornée à `[0, 1]`. Une valeur de 0,5 est donc une
+  valeur médiane *de ce morceau*, pas une valeur absolue.
+- **energy** : `0,62 × RMS + 0,38 × (bass + mid + high) / 3`, puis
+  `normalize_log_curve` (logarithme, quantiles 0,10–0,99, plancher 0,05). Cette
+  courbe est **bimodale** sur le corpus de mesure : 18,9 % ≤ 0,05, 9,2 % ≥ 0,95,
+  seulement 8,8 % dans `[0,40 ; 0,60]`. C'est une propriété connue du serveur,
+  pas du plan.
+- **onsets** : instants d'attaque, en secondes.
+- **beats** : grille de temps forts ; `barStarts` en garde un sur un cycle
+  (`meter × 4` temps), avec une grille régulière de secours si aucun temps
+  n'est détecté.
+
+`caractereAt(analyse, début, fin)` résume un intervalle :
+
+- `energy` = moyenne des points d'énergie de la fenêtre (0,3 si vide) ;
+- `density` = nombre d'attaques / durée (attaques/s) ;
+- `brightness` = **moyenne** des points de `high` de la fenêtre (0,5 si vide).
+
+La brillance était auparavant une **somme** de `high × 0,5` sur tous les points
+à 20 Hz, donc saturée à ~1 : la branche « brillance » était prise 67 % du
+temps. La moyenne la ramène sur la même échelle 0..1 que les autres courbes.
+
+## 3. Arbre de décision des familles
+
+`familyFor` choisit un **réservoir**, puis un tirage déterministe dans ce
+réservoir. L'ordre des règles va du plus spécifique au plus général :
+
+| Ordre | Condition | Réservoir | Justification |
+| --- | --- | --- | --- |
+| 1 | mode réduit, énergie < 0,22 | familles calmes | restrictions du mode réduit |
+| 2 | mode réduit, densité < 0,6 att/s | familles calmes | idem |
+| 3 | mode réduit | `beams`, `waves`, `rings`, `particles` | palette réduite |
+| 4 | rôle `refrain` | `lyres-suspendues` / `barres-led` en alternance | ballyhoo de concert |
+| 5 | rôle `montee` | `barres-led` | vague de montée |
+| 6 | énergie < 0,22 | familles calmes | passage sans percussion |
+| 7 | brillance > **0,30** | particules, projecteurs, spirale, anneaux, faisceaux, miroirs, défilé | spectre clair, figure aérienne |
+| 8 | densité > **5,2** att/s | familles rythmiques | passage dense |
+| 9 | énergie > **0,62** | familles énergétiques | passage fort |
+| 10 | sinon | toutes les familles | diversité |
+
+Les seuils 7–9 ont été recalibrés sur l'histogramme du corpus de mesure
+(`tests/support/make_corpus.py`, 43 scènes) après le passage de la brillance en
+moyenne :
+
+| Seuil | Ancienne valeur | Nouvelle valeur | Histogramme | Alternative mesurée |
+| --- | --- | --- | --- | --- |
+| brillance | 0,62 | **0,30** | médiane 0,19, p90 0,32, max 0,71 | 0,35 (branche ~5 %) |
+| densité | 2,2 | **5,2** | médiane 5,1, p75 5,3 | 4,0 (étouffe la branche énergie) |
+| énergie | 0,60 | **0,62** | deux modes, rien entre 0,55 et 0,68 | 0,65 (identique en pratique) |
+| brillance d'humeur | 0,68 | **0,09** | même cause d'échelle | 0,08 |
+
+Distribution des branches sur le corpus : énergie 25,6 %, calme 20,9 %,
+général 20,9 %, drop 11,6 %, brillance 11,6 %, densité 9,3 %. Aucune branche ne
+dépasse 45 %, densité et énergie sont toutes deux au-dessus de 3 %.
+
+### Rôle et humeur
+
+- `roleFor` : une fin de montée est toujours un `drop` ; sinon la section
+  **locale** décide (intro, refrain, couplet, pont → montée, outro → finale).
+- Une section qui couvre ≥ 95 % du morceau est une **étiquette globale** : elle
+  ne fournit ni rôle ni humeur. Le serveur ne produisant qu'une section 0→fin,
+  cette règle est ce qui évite que tout le morceau soit « intense ».
+- `moodFor` : silence → sombre, montée → pulsé, énergie > 0,62 → explosif,
+  énergie < 0,30 → calme, brillance > 0,09 → aérien, sinon pulsé.
+- Un refrain ou un impact force l'humeur explosive (hors mode réduit).
+
+## 4. Tirage de famille
+
+Chaque réservoir est **permuté** par Fisher-Yates avec `hash01(graine + i)` :
+la graine suffit, aucun appel à `Math.random`. Le plan parcourt ensuite la
+permutation au rang de la scène.
+
+Règles :
+
+1. la famille des **deux scènes précédentes** est exclue du tirage ;
+2. la seconde exclusion ne s'applique que si le réservoir a au moins 5 entrées ;
+3. la **couche de fond** est toujours exclue : elle reste commune à tout le
+   morceau et ne doit jamais devenir la figure principale ;
+4. une **section musicale répétée** (`group` non vide) garde sa famille et sa
+   teinte d'une occurrence à l'autre.
+
+Propriété vérifiée sur 10 000 graines : aucune répétition consécutive, 20 913
+séquences distinctes de longueur 6, toutes les familles atteignables.
+
+## 5. Signature des drops
+
+Un `drop` ne se contente plus du rôle : il reçoit une signature déterministe de
+`hashString("graine|drop|rang|force")`.
+
+| Axe | Valeurs | Effet |
+| --- | --- | --- |
+| `lyres` | convergence, croisée, éventail | cible des huit lyres |
+| `barres` | onde, rideau, alterné | rideau LED (une lame sur deux possible) |
+| `blinders` | tous, un sur deux, chenillard | motif de la barre |
+| `hue` | accent, contraste | pôle de teinte du drop |
+
+- 54 combinaisons ; une signature n'est **jamais réutilisée dans le même
+  plan**, donc deux drops à moins de 15 s diffèrent forcément.
+- `pont-concert` est réservé aux montées de force ≥ 0,6 ; en dessous, les
+  familles `lyres-suspendues` et `barres-led` alternent.
+- Le mode réduit ne produit ni signature ni pont forcé.
+- Les cycles, enveloppes et géométries existants ne changent pas : seule la
+  cible (angle, rideau, motif) est choisie.
+
+## 6. Durées et variation
+
+- Une scène dure au moins **5 s**. Deux événements plus rapprochés fusionnent :
+  on garde le meilleur score (les impacts de montée ont un bonus de 1,25).
+- À 170 BPM en 3/4, un cycle vaut 4,24 s, sous le plancher : la fusion conserve
+  une frontière de cycle sur deux, soit ~8,48 s (jamais 12,7 s). Médiane
+  mesurée : 8,48 s, maximum 11,1 s.
+- Une scène de moins de **8 s** n'a pas de variation : `scene.variant` répète sa
+  famille principale, donc aucune seconde figure n'apparaît.
+  *Limite connue* : le rendu ajoute aussi un saut de teinte lié à
+  `variationStrength` (`render.ts`) ; le désactiver sous 8 s demanderait de
+  modifier ce fichier.
+
+## 7. Contrat de couleur
+
+Toute scène a une **ancre** : la teinte du morceau (`track.hue`) ou sa
+complémentaire (`track.accent`). Un moment fort prend la complémentaire.
+
+- `palette.hue` reste dans **± spread** de l'ancre choisie.
+- Deux scènes voisines respectent
+  `MIN_HUE_STEP_EFF = min(34°, spread × 0,9)` (`minHueStepEff`).
+- **L'écart gagne sur le clamp.** Si pousser la teinte dans la fenêtre de
+  l'ancre ne suffit pas, on bascule sur l'autre pôle du morceau au lieu de
+  réduire l'écart.
+- `HUE_BUDGET_MARGIN_DEG = 12` est exporté pour le rendu : la dérive d'impact
+  ou de variation ne doit pas faire sortir la teinte rendue de
+  `|teinte − ancre| ≤ spread + 12°`.
+- L'identité d'un groupe musical prime sur l'écart quand ses occurrences
+  reviennent.
+
+Mesures : écart voisin minimum 28,0° → **34,1°**, médiane 47,4°, 0/43 teinte
+hors budget sur le corpus, et 0 paire sous le seuil effectif sur 6 morceaux ×
+400 graines.
+
+## 8. Entrées dégénérées
+
+| Entrée | Comportement |
+| --- | --- |
+| durée < 5 s | une seule scène `[0, durée]` (le plancher de 5 s ne peut pas s'appliquer) |
+| `tempo = 0` | grille de secours régulière (pas de 8 s), plan utilisable |
+| `beats = []` | `barStarts` réguliers, pas de chenillard rythmé |
+| `builds = []` | aucun drop, rôles issus des sections et du caractère |
+| `sections = []` | aucun rôle de section ; caractère et raison d'événement seuls |
+| couverture partielle | les courbes valent 0 hors fenêtre ; `coverage` est recopié dans le plan, le rendu sait où la donnée est fiable |
+| courbe vide sur une fenêtre | énergie → 0,3, brillance → 0,5 (milieu d'échelle documenté) |
