@@ -19,6 +19,8 @@
     "lint": "oxlint && uv run ruff check .",
     "test": "bun scripts/test.mjs",
     "check": "bash scripts/check.sh",
+    "measure": "bun scripts/measure.ts",
+    "compare-metrics": "bun scripts/compare-metrics.ts",
     "check:browser": "bun tests/e2e/browser_check.mjs",
     "check:sync": "bun tests/e2e/sync_check.mjs",
     "check:dashboard": "bun tests/e2e/dashboard_check.mjs",

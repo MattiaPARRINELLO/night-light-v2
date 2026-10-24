@@ -333,7 +333,6 @@ def write_trois_drops(path: Path) -> None:
     duration = 45.0
     t = np.arange(int(SR * duration)) / SR
     rng = np.random.default_rng(104)
-    beat = 60.0 / 128.0
     groove = _groove(duration, 128.0, 104, kick=0.75, hats=0.14, snare=0.2, bass=0.28)
 
     gain = np.full_like(t, 0.32)
