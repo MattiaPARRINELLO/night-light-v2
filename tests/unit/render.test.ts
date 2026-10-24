@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   beatDrive,
@@ -1836,6 +1839,59 @@ describe("stabilite de la qualite", () => {
       const first = renderAt(time, analysis(), DEFAULT_SETTINGS, low);
       const second = renderAt(time, analysis(), DEFAULT_SETTINGS, high);
       expect(second.join("|")).toBe(first.join("|"));
+    }
+  });
+});
+
+describe("vérifications transverses", () => {
+  /** Évènements de flash (début de salve) pour un pas d'échantillonnage donné. */
+  function flashEvents(view: TrackView, step: number, until = 60): number[] {
+    const events: number[] = [];
+    let previous = false;
+    for (let t = 0; t <= until; t += step) {
+      const admitted = flashAdmitted(view, t);
+      if (admitted && !previous) events.push(Number(t.toFixed(3)));
+      previous = admitted;
+    }
+    return events;
+  }
+
+  test("les flashs admis sont les mêmes aux pas 1/60 et 1/30", () => {
+    const view = new TrackView(analysis());
+    const fin = flashEvents(view, 1 / 60);
+    const grossier = flashEvents(view, 1 / 30);
+    expect(grossier.length).toBe(fin.length);
+    for (let i = 0; i < fin.length; i += 1) {
+      expect(Math.abs(fin[i]! - grossier[i]!)).toBeLessThan(1 / 30 + 1e-9);
+    }
+  });
+
+  test("aucune image noire sur 1 000 instants du corpus", () => {
+    // Le plancher d'énergie (0,26) garantit une luminosité de fond minimale :
+    // le dégradé de fond a une composante HSL d'au moins ~0,05, et le halo
+    // central est toujours dessiné. On vérifie que chaque image produit bien
+    // son fond, son halo et sa poussière.
+    const data = analysis({ builds: [] });
+    for (let index = 0; index < 1000; index += 1) {
+      // Générateur déterministe : pas de Math.random dans le diagnostic.
+      const t = (hash01(index * 7919 + 13) * 60 + 0.001) % 60;
+      expect(visibleEnergy(new TrackView(data).energyAt(t))).toBeGreaterThanOrEqual(ENERGY_FLOOR);
+      const operations = renderAt(t, data);
+      expect(operations.some((operation) => operation.startsWith("fillRect:0.0,0.0,1280.0,720.0"))).toBe(true);
+      expect(operations.filter((operation) => operation.startsWith("radial:")).length).toBeGreaterThan(0);
+    }
+  });
+
+  test("ni render.ts ni les familles ne consultent l'horloge ou le hasard", () => {
+    const sources = [readFileSync(new URL("../../src/core/render.ts", import.meta.url), "utf8")];
+    const dossier = fileURLToPath(new URL("../../src/core/families/", import.meta.url));
+    for (const fichier of readdirSync(dossier)) {
+      if (fichier.endsWith(".ts")) sources.push(readFileSync(join(dossier, fichier), "utf8"));
+    }
+    for (const source of sources) {
+      expect(source.includes("Math.random")).toBe(false);
+      expect(source.includes("Date.now")).toBe(false);
+      expect(source.includes("performance.now")).toBe(false);
     }
   });
 });
