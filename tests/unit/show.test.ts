@@ -158,6 +158,126 @@ describe("show plan", () => {
   });
 });
 
+describe("bords et entrées dégénérées", () => {
+  test("un morceau plus court que 5 s produit une seule scène", () => {
+    const plan = buildShowPlan(analysis({ duration: 3, beats: [], sections: [], builds: [] }), false);
+    expect(plan.scenes).toHaveLength(1);
+    expect(plan.scenes[0]!.start).toBe(0);
+    expect(plan.scenes[0]!.end).toBeCloseTo(3, 3);
+  });
+
+  test("tempo = 0 et aucune courbe restent utilisables", () => {
+    const plan = buildShowPlan(
+      analysis({
+        tempo: 0,
+        beatPeriod: 0,
+        beats: [],
+        onsets: [],
+        energy: [],
+        high: [],
+        sections: [],
+        builds: [],
+      }),
+      false,
+    );
+    expect(plan.scenes.length).toBeGreaterThan(0);
+    for (const scene of plan.scenes) {
+      expect(Number.isFinite(scene.palette.hue)).toBe(true);
+      expect(scene.end).toBeGreaterThan(scene.start);
+    }
+  });
+
+  test("sans aucun événement, la grille de secours garde des scènes", () => {
+    const plan = buildShowPlan(
+      analysis({ duration: 61, tempo: 0, beatPeriod: 0, beats: [], onsets: [], sections: [], builds: [] }),
+      false,
+    );
+    expect(plan.scenes.length).toBeGreaterThanOrEqual(6);
+    expect(plan.scenes.at(-1)!.end).toBeCloseTo(61, 1);
+  });
+
+  test("une couverture partielle (courbes à 0 hors fenêtre) ne casse rien", () => {
+    // Analyse rapide : les courbes valent 0 hors de la fenêtre analysée, et
+    // `coverage` dit au rendu où se trouve la partie fiable.
+    const plan = buildShowPlan(
+      analysis({
+        duration: 60,
+        coverage: [20, 40],
+        energy: [
+          [0, 0],
+          [20, 0.4],
+          [40, 0.9],
+          [60, 0],
+        ],
+        high: [
+          [0, 0],
+          [20, 0.1],
+          [40, 0.2],
+          [60, 0],
+        ],
+        sections: [],
+        builds: [],
+      }),
+      false,
+    );
+    expect(plan.coverage).toEqual([20, 40]);
+    for (const scene of plan.scenes) {
+      expect(scene.end).toBeGreaterThan(scene.start);
+      expect(Number.isFinite(scene.palette.hue)).toBe(true);
+    }
+  });
+
+  test("les quatre branches de l'arbre de famille sont atteignables", () => {
+    const base = {
+      duration: 64,
+      beats: Array.from({ length: 128 }, (_, index) => index * 0.5),
+      sections: [],
+      builds: [],
+    };
+    // Courbes échantillonnées à 1 Hz : une courbe réduite à deux points laisse
+    // des fenêtres vides, qui retombent volontairement sur 0,3 / 0,5.
+    const plat = (value: number): Array<[number, number]> =>
+      Array.from({ length: 65 }, (_, index) => [index, value] as [number, number]);
+    const energeticFamilies = new Set([
+      "beams", "spots", "spiral", "shutters", "bars", "grid", "mirror", "parade",
+      "crossfire", "curtain", "burst", "gobos", "pendule", "couronne", "pluie",
+      "portique", "etoile", "vortex", "lyre", "mandala", "treillis", "rideaux",
+      "lyres-suspendues", "barres-led", "pont-concert",
+    ]);
+    const calm = buildShowPlan(
+      analysis({ ...base, energy: plat(0.1), high: plat(0.05) }),
+      false,
+    );
+    const bright = buildShowPlan(
+      analysis({ ...base, energy: plat(0.5), high: plat(0.45), onsets: [] }),
+      false,
+    );
+    const dense = buildShowPlan(
+      analysis({
+        ...base,
+        energy: plat(0.5),
+        high: plat(0.05),
+        onsets: Array.from({ length: 512 }, (_, index) => index * 0.125),
+      }),
+      false,
+    );
+    const energetic = buildShowPlan(
+      analysis({ ...base, energy: plat(0.85), high: plat(0.05), onsets: [] }),
+      false,
+    );
+    for (const scene of calm.scenes) {
+      expect(["waves", "tunnel", "particles", "rings", "spiral", "pluie"]).toContain(scene.family);
+    }
+    expect(
+      bright.scenes.some((scene) =>
+        ["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"].includes(scene.family),
+      ),
+    ).toBe(true);
+    expect(dense.scenes.some((scene) => energeticFamilies.has(scene.family))).toBe(true);
+    expect(energetic.scenes.some((scene) => energeticFamilies.has(scene.family))).toBe(true);
+  });
+});
+
 describe("couleurs", () => {
   test("hsl vers rgb", () => {
     expect(hslToRgb({ h: 0, s: 1, l: 0.5 })).toEqual({ r: 255, g: 0, b: 0 });
