@@ -14,7 +14,16 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { buildShowPlan, type Scene, type ShowPlan } from "../../src/core/show";
+import {
+  BRIGHTNESS_THRESHOLD,
+  buildShowPlan,
+  CALM_ENERGY_THRESHOLD,
+  caractereAt,
+  DENSITY_THRESHOLD,
+  ENERGY_THRESHOLD,
+  type Scene,
+  type ShowPlan,
+} from "../../src/core/show";
 import type { Analysis } from "../../src/types";
 
 const DEFAULT_CORPUS = "/tmp/night-light-plan-corpus";
@@ -57,31 +66,12 @@ function branchOf(scene: Scene, analysis: Analysis, reduced = false): Branch {
   if (scene.role === "refrain") return "refrain";
   if (scene.role === "montee") return "montee";
   if (scene.role === "drop") return "drop";
-  const caracter = caracterAt(analysis, scene.start, scene.end);
-  if (caracter.energy < 0.22) return "calme";
-  if (caracter.brightness > 0.62) return "brillance";
-  if (caracter.density > 2.2) return "densite";
-  if (caracter.energy > 0.6) return "energie";
+  const caracter = caractereAt(analysis, scene.start, scene.end);
+  if (caracter.energy < CALM_ENERGY_THRESHOLD) return "calme";
+  if (caracter.brightness > BRIGHTNESS_THRESHOLD) return "brillance";
+  if (caracter.density > DENSITY_THRESHOLD) return "densite";
+  if (caracter.energy > ENERGY_THRESHOLD) return "energie";
   return "general";
-}
-
-/** Copie locale de `caractereAt` : le diagnostic ne doit pas déformer la mesure. */
-function caracterAt(analysis: Analysis, start: number, end: number) {
-  const span = Math.max(end - start, 1e-6);
-  const energies: number[] = [];
-  let brightness = 0.5;
-  for (const [time, value] of analysis.energy) {
-    if (time >= start && time <= end) energies.push(value);
-  }
-  for (const [time, value] of analysis.high) {
-    if (time >= start && time <= end) brightness += value * 0.5;
-  }
-  const onsets = analysis.onsets.filter((onset) => onset >= start && onset < end).length;
-  return {
-    energy: energies.length > 0 ? energies.reduce((sum, value) => sum + value, 0) / energies.length : 0.3,
-    density: onsets / span,
-    brightness: Math.min(Math.max(brightness, 0), 1),
-  };
 }
 
 function histogram(values: string[]): string {

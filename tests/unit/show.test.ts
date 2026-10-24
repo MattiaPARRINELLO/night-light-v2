@@ -352,12 +352,15 @@ describe("diversite du spectacle", () => {
     // Compte toutes les familles réellement dessinées : la famille principale,
     // la variation, et la couche de fond commune — qui n'apparaît jamais comme
     // famille principale, justement parce qu'elle est partagée par tout le
-    // morceau.
+    // morceau. L'arbre de décision restreint chaque scène à un réservoir :
+    // l'atteignabilité se mesure donc sur plusieurs tirages, pas sur un seul.
     const dessinees = new Set<FamilyId>();
-    for (const scene of plan.scenes) {
-      dessinees.add(scene.family);
-      dessinees.add(scene.variant);
-      dessinees.add(scene.backdrop);
+    for (let seed = 1; seed <= 20; seed += 1) {
+      for (const scene of buildShowPlan(long, false, seed).scenes) {
+        dessinees.add(scene.family);
+        dessinees.add(scene.variant);
+        dessinees.add(scene.backdrop);
+      }
     }
     // Le compte vient des libellés : ajouter une famille sans la rendre
     // atteignable par le plan fait échouer ce test, et c'est voulu.

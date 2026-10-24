@@ -269,6 +269,28 @@ const BARS_PER_CYCLE = 4;
 /** Longueur minimale d'une scène, en secondes. */
 const MIN_SCENE_SPAN = 5;
 
+/**
+ * Seuils de l'arbre de décision de `familyFor`.
+ *
+ * `brightness`, `density` et `energy` sont mesurés sur l'intervalle de la scène
+ * (voir `caractereAt`). Les valeurs d'origine (0,62 / 2,2 / 0,60) avaient été
+ * calibrées quand `brightness` était une **somme** saturée à ~1 : depuis son
+ * passage en moyenne (échelle réelle 0..1, médiane du corpus ≈ 0,19), il faut
+ * les relire sur l'histogramme du corpus (tests/support/make_corpus.py) :
+ *
+ * - brillance : médiane 0,19, p90 0,32, max 0,71 → 0,30 garde la branche pour
+ *   les passages réellement clairs (~12 % du corpus). Alternative : 0,35.
+ * - densité : médiane 5,1 attaques/s, p75 5,3 → 5,2 ne garde que les passages
+ *   les plus denses (~9 %). Alternative : 4,0 (~35 %), qui étouffe la branche
+ *   énergie.
+ * - énergie : inchangée (0,62) : elle sépare nettement les deux modes du
+ *   corpus (médiane 0,72, aucune scène entre 0,55 et 0,68).
+ */
+export const BRIGHTNESS_THRESHOLD = 0.3;
+export const DENSITY_THRESHOLD = 5.2;
+export const ENERGY_THRESHOLD = 0.62;
+export const CALM_ENERGY_THRESHOLD = 0.22;
+
 /** Métrique validée : 3 ou 4, avec 4 comme hypothèse par défaut. */
 export function meterOf(analysis: Analysis): 3 | 4 {
   return analysis.meter === 3 ? 3 : 4;
@@ -289,18 +311,23 @@ export interface Caractere {
 export function caractereAt(analysis: Analysis, start: number, end: number): Caractere {
   const span = Math.max(end - start, 1e-6);
   const energies: number[] = [];
-  let brightness = 0.5;
+  const highs: number[] = [];
   for (const [time, value] of analysis.energy) {
     if (time >= start && time <= end) energies.push(value);
   }
   for (const [time, value] of analysis.high) {
-    if (time >= start && time <= end) brightness += value * 0.5;
+    if (time >= start && time <= end) highs.push(value);
   }
   const onsets = analysis.onsets.filter((onset) => onset >= start && onset < end).length;
   return {
     energy: energies.length > 0 ? energies.reduce((sum, value) => sum + value, 0) / energies.length : 0.3,
     density: onsets / span,
-    brightness: clamp01(brightness),
+    // Moyenne et non somme : `high` est déjà une courbe 0..1 à 20 Hz. Une
+    // somme sur une fenêtre de 8 s valait ~1 quel que soit le morceau, donc
+    // la branche « brillance » était toujours prise. Une fenêtre vide retombe
+    // sur le milieu de l'échelle, comme pour l'énergie.
+    brightness:
+      highs.length > 0 ? clamp01(highs.reduce((sum, value) => sum + value, 0) / highs.length) : 0.5,
   };
 }
 
@@ -350,7 +377,7 @@ function familyFor(
   const pick = (list: FamilyId[]) => list[index % list.length] ?? list[0] ?? "beams";
 
   if (reduced) {
-    if (energy < 0.22) return pick(CALM_FAMILIES);
+    if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
     if (density < 0.6) return pick(CALM_FAMILIES);
     return pick(["beams", "waves", "rings", "particles"] as FamilyId[]);
   }
@@ -359,12 +386,12 @@ function familyFor(
   // les réservoirs historiques, où les familles concert restent disponibles.
   if (role === "refrain") return index % 2 === 0 ? "lyres-suspendues" : "barres-led";
   if (role === "montee") return "barres-led";
-  if (energy < 0.22) return pick(CALM_FAMILIES);
-  if (brightness > 0.62) {
+  if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
+  if (brightness > BRIGHTNESS_THRESHOLD) {
     return pick(["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"] as FamilyId[]);
   }
-  if (density > 2.2) return pick(RHYTHMIC_FAMILIES);
-  if (energy > 0.6) return pick(ENERGETIC_FAMILIES);
+  if (density > DENSITY_THRESHOLD) return pick(RHYTHMIC_FAMILIES);
+  if (energy > ENERGY_THRESHOLD) return pick(ENERGETIC_FAMILIES);
   return pick(ALL_FAMILIES);
 }
 
@@ -417,15 +444,26 @@ function paletteLightness(mood: Mood): number {
   return 0.6;
 }
 
+/**
+ * Seuil de brillance de l'humeur aérienne.
+ *
+ * Même cause que `BRIGHTNESS_THRESHOLD` : l'ancien 0,68 était une valeur de
+ * somme saturée. Sur l'échelle réelle (médiane ≈ 0,19), 0,68 ne laissait plus
+ * qu'une scène du corpus devenir aérienne. 0,09 restaure une humeur « aérien »
+ * minoritaire (~7 %), sans empiéter sur « calme » (énergie < 0,3) ni sur
+ * « explosif » (énergie > 0,62). Alternative mesurée : 0,08 (~9 %).
+ */
+const MOOD_BRIGHTNESS_THRESHOLD = 0.09;
+
 function moodFor(caractere: Caractere, label: string): Mood {
   if (label === "silence") return "sombre";
   if (label === "montee") return "pulse";
-  if (caractere.energy > 0.62) return "explosif";
+  if (caractere.energy > ENERGY_THRESHOLD) return "explosif";
   // Un passage vraiment calme reste sombre : c'est le creux qui rend l'impact
   // lisible, et ça repose la salle entre deux montées. L'aérien est réservé aux
   // passages modérés mais clairs dans le spectre.
   if (caractere.energy < 0.3) return "calme";
-  if (caractere.brightness > 0.68) return "aerien";
+  if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "aerien";
   return "pulse";
 }
 
