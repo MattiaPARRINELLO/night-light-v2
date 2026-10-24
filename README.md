@@ -304,9 +304,35 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 - les flashs sont suffisamment espacés pour ne pas former de stroboscope ; ce n'est pas une
   garantie, et le mieux reste de les couper si tu y es sensible.
 
+## Développement
+
+L'ordre est important : sans `node_modules`, `bun run typecheck` échoue avec
+`TS2688` (types `bun`, `node` et `vite` introuvables). Ce n'est pas une erreur
+de code, c'est une précondition.
+
+```bash
+bun install             # 1. dépendances front (obligatoire avant typecheck)
+uv sync                 # 2. environnement Python (.venv via uv)
+bun run typecheck       # 3. types (tsc)
+bun run lint            # 4. oxlint (front) + ruff (serveur)
+bun run test            # 5. types + tests front + tests serveur
+```
+
+Pour lancer uniquement l'API d'analyse :
+
+```bash
+uv run uvicorn server.main:app --host 127.0.0.1 --port 8787
+```
+
+`bun scripts/check.sh` (ou `bun run check`) enchaîne installation, typecheck,
+lint et tests, et s'arrête au premier problème. La mesure de référence
+(nombre de tests, durée, versions d'outils) est dans
+[`docs/baseline.md`](docs/baseline.md).
+
 ## Vérifier
 
 ```bash
+bun run check           # tout : install, typecheck, lint, tests (arrêt au premier échec)
 bun run lint            # oxlint (front) + ruff (serveur)
 bun run typecheck       # types (tsc)
 bun run test            # types + tests front + tests serveur
