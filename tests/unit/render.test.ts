@@ -344,12 +344,17 @@ describe("pulsage de secours sur les temps forts", () => {
     expect(beatDrive(view, 8.4, 1)).toBe(0);
   });
 
-  test("se taît dès que le morceau a assez de montées", () => {
+  test("s'efface progressivement quand les montées se multiplient", () => {
     const view = new TrackView(analysis());
-    // Jusqu'à deux montées, le morceau reste jugé peu dynamique ; à trois, les
-    // vrais drops suffisent à porter le spectacle.
+    // Jusqu'à deux montées, le morceau reste jugé peu dynamique ; au-delà, les
+    // vrais drops prennent le relais et l'impulsion s'efface sans rupture.
     expect(beatDrive(view, 8.02, 2)).toBeGreaterThan(0);
-    expect(beatDrive(view, 8.02, 3)).toBe(0);
+    const trois = beatDrive(view, 8.02, 3);
+    const quatre = beatDrive(view, 8.02, 4);
+    expect(trois).toBeGreaterThan(0);
+    expect(trois).toBeLessThan(beatDrive(view, 8.02, 2));
+    expect(quatre).toBeLessThan(trois);
+    expect(beatDrive(view, 8.02, 6)).toBe(0);
     expect(beatDrive(view, 8.02, 9)).toBe(0);
   });
 
@@ -360,25 +365,34 @@ describe("pulsage de secours sur les temps forts", () => {
     expect(beatDrive(view, 8.02, 1)).toBeCloseTo(attendu, 6);
   });
 
-  test("le pulsage de secours éclaire le rendu sur un morceau sans montée", () => {
-    // Même analyse, sauf les montées : sans le pulsage de secours, un morceau
-    // sans montée resterait éteint entre deux temps forts. Il pousse désormais la
-    // palette vers le blanc et fait sauter la teinte — l'image change, sans
-    // ajouter le moindre élément (la surcouche de projecteurs qu'il déclenchait
-    // autrefois a été retirée, elle faisait « vu-mètre »).
-    const trace = (data: Analysis) => renderAt(8.02, data);
-    const sansMontee = trace(analysis({ builds: [] }));
-    const monteesLointaines = trace(
-      analysis({
-        builds: [
-          { start: 20, end: 24, strength: 0.9 },
-          { start: 40, end: 44, strength: 0.9 },
-          { start: 50, end: 54, strength: 0.9 },
-        ],
-      }),
-    );
-    expect(sansMontee.join("|")).not.toBe(monteesLointaines.join("|"));
-    expect(sansMontee.length).toBe(monteesLointaines.length);
+  test("le pulsage de secours ne fait plus clignoter la teinte", () => {
+    // Piste sans aucune montée : `beatDrive` continue de porter l'intensité,
+    // mais la couleur ne reçoit plus que le vrai drop. Deux images successives
+    // ne doivent donc pas sauter de 12°.
+    const data = analysis({ builds: [] });
+    const plan = buildShowPlan(data, false);
+    const view = new TrackView(data);
+    const scene = plan.scenes[0]!;
+    const anchor = sceneAnchor(scene, plan.track);
+    let previous: number | undefined;
+    const gap = (a: number, b: number) => Math.abs(((b - a + 540) % 360) - 180);
+    for (let t = 0; t < scene.end - 0.1; t += 1 / 60) {
+      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false, anchor);
+      if (previous !== undefined) expect(gap(previous, hue)).toBeLessThan(2);
+      previous = hue;
+    }
+  });
+
+  test("une piste à trois montées n'a plus de rupture d'intensité", () => {
+    // L'ancien seuil dur (`builds > 2 → 0`) faisait perdre d'un coup toute
+    // l'impulsion à la troisième montée. L'atténuation est désormais continue :
+    // la valeur décroît, sans marche.
+    const view = new TrackView(analysis());
+    const valeurs = [2, 3, 4, 5, 6].map((builds) => beatDrive(view, 8.02, builds));
+    for (let i = 1; i < valeurs.length; i += 1) {
+      expect(valeurs[i]!).toBeLessThanOrEqual(valeurs[i - 1]!);
+      expect(valeurs[i - 1]! - valeurs[i]!).toBeLessThan(0.13);
+    }
   });
 });
 

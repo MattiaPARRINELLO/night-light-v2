@@ -173,13 +173,12 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
 }
 
 /**
- * Nombre de montées en dessous duquel le morceau est jugé insuffisamment
- * dynamique : les drops ne suffisent alors plus à porter le spectacle.
+ * Nombre de montées à partir duquel l'impulsion de secours commence à
+ * s'effacer. Elle disparaît complètement quatre montées plus loin.
  */
 const BEAT_DRIVE_MAX_BUILDS = 2;
-
-/** Part d'un vrai drop que prend une impulsion de temps fort. */
-const BEAT_DRIVE_WEIGHT = 0.6;
+/** Nombre de montées au-delà du seuil avant extinction complète. */
+const BEAT_DRIVE_FADE_BUILDS = 4;
 
 /**
  * Plancher visuel de l'énergie.
@@ -228,15 +227,18 @@ export function beatStrength(view: TrackView, t: number): number {
  * vrai drop pour rester honnête avec la musique.
  *
  * Retourne 0 dès que le morceau a assez de montées : les vrais drops restent
- * prioritaires, et un morceau dynamique ne voit rien changer.
+ * prioritaires, et un morceau dynamique ne voit rien changer. L'extinction est
+ * progressive — une piste à exactement trois montées perdait d'un coup toute son
+ * impulsion avec l'ancien seuil dur.
  */
 export function beatDrive(view: TrackView, t: number, builds: number): number {
-  if (builds > BEAT_DRIVE_MAX_BUILDS) return 0;
+  const attenuation = clamp01(1 - (builds - BEAT_DRIVE_MAX_BUILDS) / BEAT_DRIVE_FADE_BUILDS);
+  if (attenuation <= 0) return 0;
   const pulse = view.beatPulse(t, 0.45);
   if (pulse < 0.05) return 0;
   // L'énergie locale dose l'impulsion : un temps fort sur un passage creux
   // reste discret.
-  return clamp01(pulse * (0.35 + 0.65 * view.energyAt(t)));
+  return clamp01(attenuation * pulse * (0.35 + 0.65 * view.energyAt(t)));
 }
 
 /**
@@ -501,11 +503,13 @@ export function renderFrame(input: RenderInput): void {
   const buildNow = view.buildAt(t);
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
-  // le morceau « change de lumière » sans cesse. Le pulsage de secours sur les
-  // temps forts ne sert qu'aux morceaux sans montée, pour qu'un morceau fort
-  // d'un bout à l'autre ne paraisse pas mort entre deux scènes.
+  // le morceau « change de lumière » sans cesse.
+  // L'impulsion de secours sur les temps forts ne touche plus la couleur : elle
+  // ne sert qu'à l'intensité et à la taille, sinon un morceau sans montée faisait
+  // clignoter la teinte de 12° d'une image à l'autre. Le saut de couleur reste
+  // réservé au vrai drop (`buildIntensity`).
   const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
-  const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
+  const drop = liveAudio !== undefined ? 0 : view.buildIntensity(t);
   const variation = reduced ? 0 : variationStrength(scene, t);
   const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
   const anchor = sceneAnchor(scene, plan.track);
