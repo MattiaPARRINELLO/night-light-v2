@@ -157,9 +157,9 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-<!-- À METTRE À JOUR APRÈS FUSION : tirage de famille (la graine ne choisit rien) -->
-
-Vingt-neuf familles visuelles tournantes. Les projecteurs se déclinent en figures de
+Vingt-neuf familles visuelles tournantes. Le tirage suit la graine du morceau par une
+permutation déterministe : deux morceaux différents ne déroulent pas les mêmes familles,
+et les deux scènes précédentes sont exclues pour éviter les répétitions. Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
 vortex, lyres, lyres suspendues, barres LED, pont concert. Les autres jouent sur la
@@ -186,8 +186,6 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
 
 ### La scène
-
-<!-- À METTRE À JOUR APRÈS FUSION : rôles refrain/montée (code mort) -->
 
 Le spectacle se joue désormais sur un plateau : un pont en treillis à 12-16 % de la
 hauteur, une seconde traverse pour les barres LED, deux totems latéraux et une barre de
@@ -222,10 +220,8 @@ Trois règles, toutes vérifiées par des tests :
 - **chaque élément s'allume et s'éteint progressivement** (`elementEnvelope`) : montée
   lissée, maintien, extinction lissée, jamais de saut. Le cycle se compte en temps forts et
   chaque élément a son décalage, donc ils s'allument l'un après l'autre ;
-- <!-- À METTRE À JOUR APRÈS FUSION : code mort (plan.backdrop n'est lu par personne) -->
-  **la couche de fond est commune à tout le morceau** (`plan.backdrop`) : c'est l'élément qui
-  reste à l'écran quand tout le reste change. Avec le fond, le halo et la poussière — qui ne
-  dépendent plus du fondu de scène — l'écran ne passe jamais par le noir entre deux scènes.
+- **le fond, le halo et la poussière sont permanents** (couche `permanent` du rendu) : ils ne
+  dépendent pas du fondu de scène, donc l'écran ne passe jamais par le noir entre deux scènes.
 
 L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
 contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
@@ -250,8 +246,6 @@ machine qui souffle, où seule la résolution de la surface baisse. À défaut d
 (`beamLayers`).
 
 ### La couleur
-
-<!-- À METTRE À JOUR APRÈS FUSION : dérive de teinte non bornée, saturation de la brillance -->
 
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
 sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
@@ -281,24 +275,30 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
 Le passage du direct au show programmé (et le retour) n'est pas une coupure : l'image s'ouvre
 depuis le noir avec un front lumineux qui balaie l'écran, sur environ 1,5 s.
 
-Deux couches sont visibles en permanence : la famille de la phrase et une couche de fond
-discrète, de sorte qu'une image montre toujours deux mondes superposés.
+Le fond, le halo et la poussière sont dessinés en permanence sous la famille de la phrase :
+une image montre toujours deux mondes superposés, même quand la scène change.
 
 **Réactions aux moments forts** :
 
-<!-- À METTRE À JOUR APRÈS FUSION : drops et flashs -->
+La dérive de teinte est une sinusoïde bornée (période 90 s) et la teinte rendue est
+ramenée dans la fenêtre du morceau : elle ne sort jamais du budget de couleur, même après
+plusieurs minutes. La brillance d'une scène est la **moyenne** de la courbe aiguë, plus une
+somme saturée : les réservoirs de familles sont réellement distincts.
 
 - **drop** : quand une montée se résout sur l'impact, saut de teinte borné à 26°
-  (`DROP_HUE_JUMP`, `src/core/render.ts:79`), wash complet de projecteurs pendant 6,5 s
-  (`WASH_SPAN_SEC`, `src/core/render.ts:230`) et lavage blanc bref ;
+  (`DROP_HUE_JUMP`), wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage
+  blanc bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
+  lyres, geste des barres, motif des blinders, pôle de teinte — donc deux impacts ne se
+  ressemblent pas ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
   spectacle pulse sur les temps forts ;
 - **temps forts** : flashs cadencés, pulsations du noyau lumineux, ondes des anneaux.
 
 Tout cela reste dosé : un flash ne dépasse jamais 80 % d'opacité (`FLASH_CEILING`), et la
 cadence suit la musique — un flash par temps fort pendant un drop, un seul par phrase hors
-drop. Un impact de montée garde la priorité. Le mode
-réduit supprime les flashs, le wash de drop et les variations.
+drop. Un impact de montée garde la priorité. Le flash naît sur son déclencheur (latence
+nulle) puis monte en 40 ms sur un temps fort, 120 ms sur un drop. Le mode réduit supprime
+les flashs, le wash de drop et les variations.
 
 **Synchronisation** : chaque image est rendue à partir de `audio.currentTime`. Aucun état
 n'accumule de dérive, donc la position du spectacle est toujours juste, y compris après

@@ -16,12 +16,12 @@ une colonne « statut » :
 | **PARTIEL** | la règle s'applique, mais une autre règle peut l'annuler dans certains cas |
 | **DIVERGENT** | le code fait autre chose que ce qui est annoncé, ou viole une règle déclarée |
 
-<!-- À METTRE À JOUR APRÈS FUSION : tirage de famille -->
-<!-- À METTRE À JOUR APRÈS FUSION : brightness (saturation > 0,62) -->
-<!-- À METTRE À JOUR APRÈS FUSION : drops -->
-<!-- À METTRE À JOUR APRÈS FUSION : dérive de teinte -->
-<!-- À METTRE À JOUR APRÈS FUSION : flashs -->
-<!-- À METTRE À JOUR APRÈS FUSION : code mort (backdrop, reason, familles inatteignables) -->
+<!-- ÉTAT AVANT FUSION : tirage de famille -->
+<!-- ÉTAT AVANT FUSION : brightness (saturation > 0,62) -->
+<!-- ÉTAT AVANT FUSION : drops -->
+<!-- ÉTAT AVANT FUSION : dérive de teinte -->
+<!-- ÉTAT AVANT FUSION : flashs -->
+<!-- ÉTAT AVANT FUSION : code mort (backdrop, reason, familles inatteignables) -->
 
 ## 1. Découpage en scènes
 

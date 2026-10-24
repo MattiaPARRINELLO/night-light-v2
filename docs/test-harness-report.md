@@ -86,18 +86,14 @@ plancher visible**. Coût du rendu mesuré : médiane ≈ 0,11 ms/image, p95
 
 ## 6. Marqueurs « À METTRE À JOUR APRÈS FUSION »
 
-Dans `README.md` :
+Ces marqueurs ont été **traités par l'intégration** (branche `fix/integration`) :
 
-1. `tirage de famille (la graine ne choisit rien)` — avant « Le spectacle » ;
-2. `rôles refrain/montée (code mort)` — avant « La scène » ;
-3. `code mort (plan.backdrop n'est lu par personne)` — dans les règles de
-   continuité ;
-4. `dérive de teinte non bornée, saturation de la brillance` — avant « La
-   couleur » ;
-5. `drops et flashs` — avant « Réactions aux moments forts ».
-
-Dans `docs/scene-effects-spec.md`, les six mêmes sujets sont marqués en tête de
-page (tirage, brightness, drops, dérive, flashs, code mort).
+- les cinq marqueurs du `README.md` ont été retirés et le texte mis à jour
+  (tirage par graine, couche permanente réelle, dérive bornée, brillance en
+  moyenne, signature de drop, latence/montée des flashs) ;
+- le document d'audit de C est conservé sous `docs/scene-effects-audit.md` avec
+  ses marqueurs renommés « ÉTAT AVANT FUSION » ;
+- la spécification à jour est `docs/scene-effects-spec.md` (PR #30).
 
 ## 7. Hypothèses et hésitations
 

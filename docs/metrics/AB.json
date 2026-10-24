@@ -84,9 +84,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.097645,
-        "p95Ms": 0.266222,
-        "peakMemoryBytes": 25903104
+        "medianMs": 0.09372,
+        "p95Ms": 0.277264,
+        "peakMemoryBytes": 25690112
       }
     },
     "b_basses_seules": {
@@ -151,9 +151,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.084513,
-        "p95Ms": 0.274737,
-        "peakMemoryBytes": 3788800
+        "medianMs": 0.07777,
+        "p95Ms": 0.257088,
+        "peakMemoryBytes": 2797568
       }
     },
     "c_voix_mediane": {
@@ -216,9 +216,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.073926,
-        "p95Ms": 0.151194,
-        "peakMemoryBytes": 2752512
+        "medianMs": 0.076121,
+        "p95Ms": 0.166624,
+        "peakMemoryBytes": 5373952
       }
     },
     "d_trois_drops": {
@@ -286,9 +286,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.060196,
-        "p95Ms": 0.181883,
-        "peakMemoryBytes": 1388544
+        "medianMs": 0.058942,
+        "p95Ms": 0.180275,
+        "peakMemoryBytes": 1335296
       }
     },
     "e_sans_montee": {
@@ -352,9 +352,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.075306,
-        "p95Ms": 0.160387,
-        "peakMemoryBytes": 749568
+        "medianMs": 0.077438,
+        "p95Ms": 0.155435,
+        "peakMemoryBytes": 262144
       }
     },
     "f_silence_milieu": {
@@ -421,9 +421,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.087178,
-        "p95Ms": 0.169928,
-        "peakMemoryBytes": 524288
+        "medianMs": 0.075117,
+        "p95Ms": 0.182218,
+        "peakMemoryBytes": 1835008
       }
     },
     "g_court": {
@@ -477,8 +477,8 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.117858,
-        "p95Ms": 0.185603,
+        "medianMs": 0.101254,
+        "p95Ms": 0.163064,
         "peakMemoryBytes": 0
       }
     },
@@ -536,8 +536,8 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.053403,
-        "p95Ms": 0.088445,
+        "medianMs": 0.04667,
+        "p95Ms": 0.073689,
         "peakMemoryBytes": 131072
       }
     },
@@ -594,8 +594,8 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.045895,
-        "p95Ms": 0.084669,
+        "medianMs": 0.042205,
+        "p95Ms": 0.077503,
         "peakMemoryBytes": 0
       }
     },
@@ -652,9 +652,9 @@
         "visibleEnergyBelowFloorShare": 0
       },
       "timing": {
-        "medianMs": 0.042373,
-        "p95Ms": 0.08235,
-        "peakMemoryBytes": 1572864
+        "medianMs": 0.042303,
+        "p95Ms": 0.079936,
+        "peakMemoryBytes": 262144
       }
     }
   }
