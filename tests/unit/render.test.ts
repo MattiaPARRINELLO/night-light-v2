@@ -7,6 +7,8 @@ import {
   drawTransition,
   ENERGY_FLOOR,
   flashAdmitted,
+  flashAlphaAt,
+  FLASH_CEILING,
   HUE_BUDGET_MARGIN_DEG,
   renderFrame,
   sceneAnchor,
@@ -396,11 +398,10 @@ describe("pulsage de secours sur les temps forts", () => {
   });
 });
 
-describe("moderation des flashs", () => {
-  test("les flashs de temps fort restent espacés d'au moins FLASH_MIN_GAP", () => {
-    // 0,5 s entre deux temps forts (120 BPM) : sans modération, deux flashs par
-    // seconde. La cadence doit retomber à un toutes les ~1,6 s au minimum. On
-    // compte les évènements, pas les images : un flash dure plusieurs images.
+describe("cadence musicale des flashs", () => {
+  test("hors drop, un seul temps fort par phrase porte un flash", () => {
+    // 0,5 s entre deux temps forts (120 BPM) : un flash par phrase de 8 temps,
+    // soit un toutes les 4 s. On compte les évènements, pas les images.
     const view = new TrackView(analysis());
     const events: number[] = [];
     for (let t = 0; t < 20; t += 1 / 60) {
@@ -408,9 +409,8 @@ describe("moderation des flashs", () => {
       if (flashAdmitted(view, t) && (precedent === undefined || t - precedent > 0.3)) events.push(t);
     }
     expect(events.length).toBeGreaterThanOrEqual(4);
-    expect(events.length).toBeLessThanOrEqual(13);
     for (let i = 1; i < events.length; i += 1) {
-      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(3.9);
     }
   });
 
@@ -420,17 +420,19 @@ describe("moderation des flashs", () => {
     expect(flashAdmitted(view, 8.05)).toBe(true);
   });
 
-  test("un drop garde sa priorité, même juste après un flash de temps fort", () => {
-    // La montée de l'analyse se termine à 22 s, pile sur un temps fort : le drop
-    // doit flasher malgré la modération des temps forts.
+  test("un drop flashe à chaque temps fort, sans attendre la phrase", () => {
+    // La montée se termine à 22 s. Pendant le drop, chaque temps fort porte un
+    // flash : la cadence suit la musique au lieu d'un métronome de 1,6 s.
     const view = new TrackView(analysis());
     expect(flashAdmitted(view, 22.02)).toBe(true);
+    expect(flashAdmitted(view, 22.52)).toBe(true);
+    expect(flashAdmitted(view, 23.02)).toBe(true);
     expect(flashAdmitted(view, 22.3)).toBe(false);
   });
 
-  test("la cadence s'espace toute seule sur un morceau rapide", () => {
-    // 180 BPM contre 60 BPM : dans les deux cas l'intervalle minimum est
-    // respecté, et le morceau rapide ne martèle pas davantage.
+  test("la cadence de phrase s'adapte au tempo", () => {
+    // 180 BPM : une phrase (8 temps) dure 2,67 s ; 60 BPM : 8 s. Dans les deux
+    // cas, un seul flash par phrase hors drop.
     const rapide = new TrackView(analysis({ tempo: 180, beatPeriod: 1 / 3, beats: buildBeats(1 / 3, 60) }));
     const lente = new TrackView(analysis({ tempo: 60, beatPeriod: 1.0, beats: buildBeats(1.0, 60) }));
     const evenements = (view: TrackView) => {
@@ -441,16 +443,25 @@ describe("moderation des flashs", () => {
       }
       return out;
     };
-    for (const view of [rapide, lente]) {
-      const events = evenements(view);
-      expect(events.length).toBeGreaterThan(3);
-      for (let i = 1; i < events.length; i += 1) {
-        expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
-      }
-    }
-    // 20 s de morceau : jamais plus d'un flash toutes les 1,6 s.
-    expect(evenements(rapide).length).toBeLessThanOrEqual(13);
-    expect(evenements(lente).length).toBeLessThanOrEqual(13);
+    expect(evenements(rapide).length).toBeGreaterThanOrEqual(6);
+    expect(evenements(lente).length).toBeGreaterThanOrEqual(2);
+    expect(evenements(rapide).length).toBeGreaterThan(evenements(lente).length);
+  });
+
+  test("le drop est plus lumineux qu'un temps fort ordinaire", () => {
+    // settings.flashes = 1 : la hiérarchie doit rester lisible.
+    const settings = { ...DEFAULT_SETTINGS, flashes: 1 };
+    const ordinaire = flashAlphaAt(1, 0.9, 0, 0, 0.9, false, settings);
+    const drop = flashAlphaAt(0, 0.9, 1, 1, 0.9, false, settings);
+    expect(drop).toBeGreaterThan(ordinaire * 1.3);
+    expect(drop).toBeLessThanOrEqual(FLASH_CEILING);
+    expect(ordinaire).toBeGreaterThan(0);
+  });
+
+  test("le budget utilisateur et le mode réduit restent souverains", () => {
+    const zero = { ...DEFAULT_SETTINGS, flashes: 0 };
+    expect(flashAlphaAt(1, 1, 1, 1, 1, false, zero)).toBe(0);
+    expect(flashAlphaAt(1, 1, 1, 1, 1, true, DEFAULT_SETTINGS)).toBe(0);
   });
 
   test("le lavage blanc ne vient jamais du pulsage de secours", () => {
@@ -1589,9 +1600,10 @@ describe("flashs", () => {
     // Passage « intense » (40-60 s) : basse forte et énergie haute, donc les
     // temps forts portent un kick et méritent un flash. Le flash doit naître
     // juste après l'attaque, pas pendant la décroissance ni à contretemps.
-    expect(flashFramesAt(42.25)).toBe(0);
-    expect(flashFramesAt(42.05)).toBe(1);
+    // Hors drop, la cadence de phrase allume les temps forts 44 s et 48 s.
+    expect(flashFramesAt(44.25)).toBe(0);
     expect(flashFramesAt(44.05)).toBe(1);
+    expect(flashFramesAt(48.25)).toBe(0);
   });
 
   test("aucun flash dans un passage calme", () => {
@@ -1603,7 +1615,7 @@ describe("flashs", () => {
     }
   });
 
-  test("deux flashs restent toujours espacés d'au moins FLASH_MIN_GAP", () => {
+  test("hors drop, les flashs restent espacés d'une phrase", () => {
     // Evenements = début de chaque salve de flashs.
     const events: number[] = [];
     let flashing = false;
@@ -1612,10 +1624,9 @@ describe("flashs", () => {
       if (isFlash && !flashing) events.push(t);
       flashing = isFlash;
     }
-    expect(events.length).toBeGreaterThan(3);
-    expect(events.length).toBeLessThanOrEqual(14);
+    expect(events.length).toBeGreaterThan(2);
     for (let i = 1; i < events.length; i += 1) {
-      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(3.9);
     }
   });
 });

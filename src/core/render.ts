@@ -47,18 +47,26 @@ export interface RenderInput {
 
 export type { FrameState };
 
-/** Plafond d'opacité d'un flash : évite les sauts de luminosité agressifs. */
-export const FLASH_CEILING = 0.4;
 /**
- * Deux flashs de temps fort sont toujours séparés d'au moins cette durée.
+ * Plafond d'opacité d'un flash.
  *
- * La modération compte autant que l'effet : à 130 BPM, des temps forts toutes
- * les 0,46 s donneraient plus de deux flashs par seconde, et une salle qui
- * martèle finit par fatiguer. Un drop de montée garde sa priorité.
+ * L'ancien plafond de 0,4 écrasait les impacts : un drop ne se distinguait plus
+ * d'un temps fort ordinaire. Il reste un plafond (jamais un blanc pur), mais il
+ * laisse la place à la hiérarchie : temps fort ≈ 0,44, drop ≈ 0,72.
  */
-const FLASH_MIN_GAP = 1.6;
+export const FLASH_CEILING = 0.8;
+/** Poids d'un temps fort ordinaire dans le flash, relativement à un drop. */
+const BEAT_FLASH_WEIGHT = 0.55;
 /** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
 const FLASH_ATTACK_SEC = 0.12;
+/**
+ * Nombre de temps forts par phrase hors drop.
+ *
+ * Hors impact, la lumière ne clignote pas : un seul temps fort par phrase porte
+ * un flash. Pendant un drop, la cadence suit la musique (un flash par temps
+ * fort), comme demandé par la direction artistique.
+ */
+const PHRASE_BEATS = 8;
 /**
  * Glissement continu de la teinte, en degrés par seconde.
  *
@@ -157,19 +165,37 @@ function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
 }
 
 /**
- * Opacité du flash global. Volontairement plafonnée et espacée : le spectacle
- * ne clignote jamais à haute fréquence, et le mode réduit l'annule.
+ * Opacité du flash global, à partir des composantes utiles.
+ *
+ * Séparée de `flashAlpha` pour que le diagnostic puisse mesurer l'alpha sans
+ * construire un `FrameState` complet.
  */
-export function flashAlpha(f: FrameState, settings: RenderSettings): number {
-  if (f.reduced) return 0;
+export function flashAlphaAt(
+  beat: number,
+  bass: number,
+  build: number,
+  buildStrength: number,
+  energy: number,
+  reduced: boolean,
+  settings: RenderSettings,
+): number {
+  if (reduced) return 0;
   const budget = settings.flashes;
   if (budget <= 0) return 0;
-  const beatHit = f.beat * (0.35 + 0.65 * f.bass);
-  const dropHit = f.build > 0.92 ? f.buildStrength * 0.9 : 0;
+  const beatHit = beat * (0.35 + 0.65 * bass) * BEAT_FLASH_WEIGHT;
+  const dropHit = build > 0.92 ? buildStrength * 0.95 : 0;
   const raw = Math.max(beatHit, dropHit);
-  if (raw < 0.3) return 0;
-  const gated = raw * smoothstep(0.12, 0.4, f.energy);
+  if (raw < 0.2) return 0;
+  const gated = raw * smoothstep(0.12, 0.4, energy);
   return Math.min(gated, 1) * FLASH_CEILING * Math.min(budget, 1.5);
+}
+
+/**
+ * Opacité du flash global. Plafonnée, et réservée aux moments porteurs : le
+ * mode réduit l'annule et le budget utilisateur la dose.
+ */
+export function flashAlpha(f: FrameState, settings: RenderSettings): number {
+  return flashAlphaAt(f.beat, f.bass, f.build, f.buildStrength, f.energy, f.reduced, settings);
 }
 
 /**
@@ -438,17 +464,17 @@ export function sceneHue(
  * Fonction pure du temps musical, donc déterministe : mêmes entrées ⇒ même
  * réponse, ce qui garde le spectacle identique après une pause ou un saut.
  *
- * Trois conditions :
- * 1. il doit naître sur l'attaque d'un évènement (pas pendant la décroissance) ;
- * 2. un impact de montée garde la priorité — il est rare, et c'est le moment que
- *    le spectacle doit montrer ;
- * 3. sinon, le temps fort doit tomber dans la cadence : un flash tous les
- *    `n` temps forts, `n` choisi pour que l'intervalle dépasse `FLASH_MIN_GAP`.
- *    À 130 BPM, un flash toutes les 0,46 s fatigue ; tous les 4 temps forts
- *    (≈ 2 s), le spectacle respire.
+ * La cadence est musicale, plus métronomique :
+ * 1. il faut naître sur l'attaque d'un évènement (pas pendant la décroissance) ;
+ * 2. un impact de montée est toujours admis — c'est le moment que le spectacle
+ *    doit montrer ;
+ * 3. pendant un drop, chaque temps fort peut flasher (la salle suit la musique) ;
+ * 4. hors drop, un seul temps fort par phrase porte un flash.
+ *
+ * Aucun état n'est conservé : `t` seul décide.
  */
 export function flashAdmitted(view: TrackView, t: number): boolean {
-  const beats = view.beatsIn(t - (FLASH_MIN_GAP + 1.0), t);
+  const beats = view.beatsIn(t - FLASH_ATTACK_SEC - 0.05, t);
   const lastBeat = beats.length > 0 ? (beats[beats.length - 1] ?? -Infinity) : -Infinity;
   const lastDrop = view.lastBuildEnd(t);
   const current = Math.max(lastBeat, lastDrop);
@@ -457,15 +483,17 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
   const age = t - current;
   if (age < -0.02 || age > FLASH_ATTACK_SEC) return false;
 
-  // Impact de montée : prioritaire.
+  // Impact de montée : toujours, et sans attendre la cadence.
   if (lastDrop >= lastBeat) return true;
 
-  // Temps fort : cadence espacée, calée sur l'index du temps fort pour rester
-  // stable quel que soit le moment où l'image est calculée.
-  const period = Math.max(view.beatPeriod, 0.05);
-  const every = Math.max(1, Math.ceil(FLASH_MIN_GAP / period));
-  if (every <= 1) return true;
-  return view.beatIndexAt(current) % every === 0;
+  // Pendant un drop, la musique donne la cadence : un flash par temps fort.
+  // La fenêtre couvre la retombée immédiate (~1,5 s) pendant laquelle la salle
+  // « bat » encore avec l'impact.
+  if (view.buildsEndingIn(t - 1.5, t).length > 0) return true;
+
+  // Hors drop : un seul temps fort par phrase, calé sur l'index du temps fort
+  // pour rester stable quel que soit le moment où l'image est calculée.
+  return view.beatIndexAt(current) % PHRASE_BEATS === 0;
 }
 
 /**

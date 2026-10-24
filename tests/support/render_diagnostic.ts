@@ -13,9 +13,9 @@
  * une autre a exactement trois montées.
  */
 import { buildShowPlan } from "../../src/core/show";
-import { flashAdmitted, sceneHue } from "../../src/core/render";
+import { beatStrength, flashAdmitted, flashAlphaAt, sceneHue, visibleEnergy } from "../../src/core/render";
 import { TrackView } from "../../src/core/view";
-import type { Analysis } from "../../src/types";
+import { DEFAULT_SETTINGS, type Analysis } from "../../src/types";
 
 const DURATION = 600;
 const FRAME = 1 / 60;
@@ -118,7 +118,10 @@ interface TrackReport {
   hueMaxStepOutsideImpactDeg: number;
   sceneHueSamples: Array<[number, number]>;
   flashCount: number;
+  flashesPerMinute: number;
   flashMinGap: number;
+  maxFlashAlpha: number;
+  dropFlashCount: number;
 }
 
 function diagnose(track: CorpusTrack, seed: number): TrackReport {
@@ -163,9 +166,24 @@ function diagnose(track: CorpusTrack, seed: number): TrackReport {
 
   const flashEvents: number[] = [];
   let wasAdmitted = false;
+  let maxFlashAlpha = 0;
+  let dropFlashCount = 0;
   for (let t = 0; t <= DURATION; t += FRAME) {
     const admitted = flashAdmitted(view, t);
-    if (admitted && !wasAdmitted) flashEvents.push(Number(t.toFixed(3)));
+    const alpha = flashAlphaAt(
+      beatStrength(view, t),
+      view.bassAt(t),
+      view.buildProgress(t),
+      view.buildAt(t)?.strength ?? 0,
+      visibleEnergy(view.energyAt(t)),
+      false,
+      { ...DEFAULT_SETTINGS, flashes: 1 },
+    );
+    if (alpha > maxFlashAlpha) maxFlashAlpha = alpha;
+    if (admitted && !wasAdmitted) {
+      flashEvents.push(Number(t.toFixed(3)));
+      if (view.buildsEndingIn(t - 1.5, t).length > 0) dropFlashCount += 1;
+    }
     wasAdmitted = admitted;
   }
   let minGap = Infinity;
@@ -182,7 +200,10 @@ function diagnose(track: CorpusTrack, seed: number): TrackReport {
     hueMaxStepOutsideImpactDeg: Number(maxStepOutsideImpact.toFixed(3)),
     sceneHueSamples: samples,
     flashCount: flashEvents.length,
+    flashesPerMinute: Number(((flashEvents.length / DURATION) * 60).toFixed(2)),
     flashMinGap: Number.isFinite(minGap) ? Number(minGap.toFixed(3)) : Infinity,
+    maxFlashAlpha: Number(maxFlashAlpha.toFixed(3)),
+    dropFlashCount,
   };
 }
 
@@ -194,21 +215,25 @@ const json = process.argv.includes("--json");
 if (json) {
   console.log(JSON.stringify({ scene: SCENE_REPORT, corpus: reports }, null, 2));
 } else {
-  console.log("piste                          spread  |hue-ancre| max  budget  Δhue/60fps  hors impact  flashs  écart min");
+  console.log("piste                          spread  |hue-ancre| max  budget  Δhue/60fps  hors impact  flashs/min  écart min  alpha max  flashs drop");
   for (const report of reports) {
     console.log(
       `${report.name.padEnd(30)} ${String(report.spread).padStart(6)} ${report.hueMaxFromAnchor
         .toFixed(2)
         .padStart(17)} ${String(report.budget).padStart(7)} ${report.hueMaxStepDeg
         .toFixed(3)
-        .padStart(11)} ${report.hueMaxStepOutsideImpactDeg.toFixed(3).padStart(12)} ${String(report.flashCount).padStart(7)} ${String(
-        report.flashMinGap,
-      ).padStart(10)}`,
+        .padStart(11)} ${report.hueMaxStepOutsideImpactDeg.toFixed(3).padStart(12)} ${report.flashesPerMinute
+        .toFixed(2)
+        .padStart(11)} ${String(report.flashMinGap).padStart(10)} ${report.maxFlashAlpha.toFixed(3).padStart(9)} ${String(
+        report.dropFlashCount,
+      ).padStart(11)}`,
     );
   }
   console.log(`\nScène synthétique (${SCENE_REPORT.name}) :`);
   console.log(`  |hue − ancre| max = ${SCENE_REPORT.hueMaxFromAnchor}° (budget ${SCENE_REPORT.budget}°)`);
   console.log(`  Δhue/60 fps max = ${SCENE_REPORT.hueMaxStepDeg}° (hors impact ${SCENE_REPORT.hueMaxStepOutsideImpactDeg}°)`);
-  console.log(`  flashs = ${SCENE_REPORT.flashCount}, écart min = ${SCENE_REPORT.flashMinGap} s`);
+  console.log(
+    `  flashs = ${SCENE_REPORT.flashCount} (${SCENE_REPORT.flashesPerMinute}/min), écart min = ${SCENE_REPORT.flashMinGap} s, alpha max = ${SCENE_REPORT.maxFlashAlpha}, flashs de drop = ${SCENE_REPORT.dropFlashCount}`,
+  );
   console.log(`  premiers échantillons sceneHue : ${SCENE_REPORT.sceneHueSamples.slice(0, 6).map(([t, h]) => `${t}s=${h}°`).join(", ")}`);
 }

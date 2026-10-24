@@ -285,9 +285,9 @@ discrète, de sorte qu'une image montre toujours deux mondes superposés.
   spectacle pulse sur les temps forts ;
 - **temps forts** : flashs cadencés, pulsations du noyau lumineux, ondes des anneaux.
 
-Tout cela est plafonné : un flash ne dépasse jamais 40 % d'opacité, deux flashs sont
-séparés d'au moins 0,14 s, et le mode réduit supprime les flashs, le wash de drop
-et les variations.
+Tout cela reste dosé : un flash ne dépasse jamais 80 % d'opacité, et la cadence suit la
+musique — un flash par temps fort pendant un drop, un seul par phrase hors drop. Le mode
+réduit supprime les flashs, le wash de drop et les variations.
 
 **Synchronisation** : chaque image est rendue à partir de `audio.currentTime`. Aucun état
 n'accumule de dérive, donc la position du spectacle est toujours juste, y compris après
@@ -296,8 +296,8 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 **Confort visuel** :
 
 - mode « intensité réduite » (moins d'éléments, mouvements ralentis, aucun flash) ;
-- curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et un espacement
-  minimal entre deux flashs ;
+- curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
+  musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
 - deux teintes voisines sont toujours séparées d'au moins ~34°, pour éviter les alternances
   de couleur agressives ;
