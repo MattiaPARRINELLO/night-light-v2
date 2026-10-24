@@ -278,6 +278,14 @@ class Dashboard {
   private analysisArtist = "";
   private sectionsSource: Analysis | null = null;
   private lastAnalysisRequestAt = 0;
+  /**
+   * Dernier instant où une analyse a été chargée localement.
+   *
+   * Sert de garde avant d'effacer un graphe parce que le show n'en porte plus :
+   * juste après un envoi, l'état du show peut encore décrire le morceau
+   * précédent le temps d'un aller-retour.
+   */
+  private analysisLoadedAt = 0;
   private readonly chart: TrackChart;
 
   constructor() {
@@ -296,6 +304,7 @@ class Dashboard {
         this.analysis = payload.analysis;
         this.analysisTitle = payload.title;
         this.analysisArtist = payload.artist;
+        this.analysisLoadedAt = Date.now();
         this.sectionsSource = null;
         this.render();
         return;
@@ -365,7 +374,20 @@ class Dashboard {
   /** Réclame au show l'analyse complète si on ne l'a pas ou qu'elle a changé. */
   private requestAnalysisIfNeeded(): void {
     const remote = this.state.analysis;
-    if (remote === null) return;
+    if (remote === null) {
+      // Le show ne porte plus de morceau : changement de piste (retour au direct
+      // pendant la résolution), écran de dépôt. Garder le graphe précédent
+      // laisserait croire que le dashboard suit encore le morceau terminé.
+      const mode = this.state.mode;
+      const suivant = mode === "live" || mode === "syncing" || mode === "lost";
+      if (suivant && Date.now() - this.analysisLoadedAt > 2000) {
+        this.analysis = null;
+        this.analysisTitle = "";
+        this.analysisArtist = "";
+        this.sectionsSource = null;
+      }
+      return;
+    }
     // Un morceau différent de celui qu'on a localement (chargé depuis le show,
     // par MPRIS, ou après un rechargement) : on jette le graphe périmé.
     if (this.analysis !== null) {
@@ -569,13 +591,16 @@ class Dashboard {
 
     // synchronisation
     el<HTMLElement>("sync-source").textContent = sync.source === "" ? "aucune source" : sync.source;
-    el<HTMLElement>("sync-player").textContent = fmtTime(sync.playerMs / 1000);
-    el<HTMLElement>("sync-show").textContent = fmtTime(sync.showMs / 1000);
+    // En direct, il n'y a pas de position de show à comparer : garder les
+    // dernières valeurs synchronisées les ferait passer pour des mesures
+    // vivantes, alors qu'elles datent du morceau abandonné.
+    el<HTMLElement>("sync-player").textContent = live ? "—" : fmtTime(sync.playerMs / 1000);
+    el<HTMLElement>("sync-show").textContent = live ? "—" : fmtTime(sync.showMs / 1000);
     const syncDrift = el<HTMLElement>("sync-drift");
-    syncDrift.textContent = signed(sync.driftMs);
-    syncDrift.classList.toggle("is-good", driftAbs <= 150);
-    syncDrift.classList.toggle("is-warn", driftAbs > 150 && driftAbs < 1500);
-    syncDrift.classList.toggle("is-bad", driftAbs >= 1500);
+    syncDrift.textContent = live ? "—" : signed(sync.driftMs);
+    syncDrift.classList.toggle("is-good", !live && driftAbs <= 150);
+    syncDrift.classList.toggle("is-warn", !live && driftAbs > 150 && driftAbs < 1500);
+    syncDrift.classList.toggle("is-bad", !live && driftAbs >= 1500);
     el<HTMLElement>("sync-latency").textContent = `${sync.latencyMs} ms`;
     el<HTMLElement>("sync-attempts").textContent = String(sync.attempts);
     el<HTMLElement>("sync-correlation").textContent =
@@ -676,6 +701,14 @@ class Dashboard {
         pluriel(state.analysis.builds, "montée", "montées"),
       ].join(" · ");
       sectionCount.textContent = pluriel(state.analysis.sections, "section", "sections");
+    } else if (state.mode === "live" && state.sync.playerTitle.trim() !== "") {
+      // Le lecteur joue un morceau que le show n'a pas encore analysé : on
+      // affiche son titre plutôt que l'ancien morceau ou « aucun morceau ».
+      trackTitle.textContent = state.sync.playerTitle;
+      trackArtist.textContent = "le show suit le direct · analyse du lecteur en cours";
+      trackStatus.textContent = "en attente d'analyse";
+      trackFacts.textContent = "—";
+      sectionCount.textContent = "—";
     } else {
       trackTitle.textContent = "Aucun morceau chargé";
       trackArtist.textContent = "Dépose un fichier ou cherche par titre, dans « Lancer un morceau »";
@@ -1085,6 +1118,7 @@ class Dashboard {
       this.analysis = analysis;
       this.analysisTitle = title;
       this.analysisArtist = "";
+      this.analysisLoadedAt = Date.now();
       this.send({ type: "analysis-ready", jobId, title, artist: "", analysis });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
@@ -1110,6 +1144,7 @@ class Dashboard {
       this.analysis = analysis;
       this.analysisTitle = title;
       this.analysisArtist = artist;
+      this.analysisLoadedAt = Date.now();
       this.send({ type: "analysis-ready", jobId, title, artist, analysis, timings });
       this.setProgress("Terminé", 1, "Spectacle prêt — calage en cours");
       window.setTimeout(() => this.hideProgress(), 2500);
