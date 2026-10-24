@@ -120,6 +120,34 @@ describe("show plan", () => {
 
 
 
+  test("une étiquette globale ne pilote ni le rôle ni l'humeur locale", () => {
+    // Le serveur ne produit qu'une section de 0 à la fin, étiquetée d'après
+    // l'énergie moyenne. Si ce label pilotait les scènes, tout le morceau
+    // serait « montée » et pulsé du début à la fin.
+    const global = analysis({
+      sections: [{ start: 0, end: 120, label: "montee", energy: 0.5 }],
+    });
+    const plan = buildShowPlan(global, false);
+    expect(plan.scenes.some((scene) => scene.role === "montee")).toBe(false);
+    expect(plan.scenes.filter((scene) => scene.mood === "pulse").length).toBeLessThan(plan.scenes.length);
+    // Même chose pour un label « silence » : les scènes gardent leur caractère.
+    const silence = buildShowPlan(
+      analysis({ sections: [{ start: 0, end: 120, label: "silence", energy: 0.5 }] }),
+      false,
+    );
+    expect(silence.scenes.some((scene) => scene.mood === "explosif" || scene.mood === "pulse")).toBe(true);
+
+    // Une section réellement locale, elle, garde son rôle.
+    const local = analysis({
+      sections: [
+        { start: 0, end: 40, label: "calme", energy: 0.2, kind: "couplet", group: "A" },
+        { start: 40, end: 80, label: "intense", energy: 0.9, kind: "refrain", group: "B" },
+        { start: 80, end: 120, label: "calme", energy: 0.2, kind: "couplet", group: "A" },
+      ],
+    });
+    expect(buildShowPlan(local, false).scenes.some((scene) => scene.role === "refrain")).toBe(true);
+  });
+
   test("un plan sans section reste utilisable", () => {
     const plan = buildShowPlan(analysis({ sections: [] }), false) as ShowPlan;
     expect(plan.scenes.length).toBeGreaterThan(1);

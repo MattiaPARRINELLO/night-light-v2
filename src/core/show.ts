@@ -698,10 +698,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     if (end <= start) continue;
 
     const caractere = caractereAt(analysis, start, end);
-    // Une section unique couvre tout le morceau : son étiquette globale ne doit
-    // pas figer le rôle de chaque scène. On s'en remet alors au caractère de
-    // l'intervalle (énergie, brillance) et aux événements détectés.
-    const section = analysis.sections.length > 1 ? sectionAt(analysis, start) : null;
+    // Une section qui couvre tout le morceau est une étiquette **globale** :
+    // elle ne doit jamais figer le rôle ni l'humeur d'une scène locale. On s'en
+    // remet alors au caractère de l'intervalle et aux événements détectés.
+    const section = localSectionAt(analysis, start);
     const label = section?.label ?? "intense";
     const group = section?.group !== undefined && section.group !== "" ? section.group : "";
     const grouped = group !== "";
@@ -889,6 +889,22 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     backdrop: fond,
     ...(analysis.coverage !== undefined ? { coverage: analysis.coverage } : {}),
   };
+}
+
+/**
+ * Section **locale** contenant l'intervalle, ou `null`.
+ *
+ * Une section qui couvre la quasi-totalité du morceau n'est pas un repère
+ * local : c'est le label global produit par `detect_sections` (une seule
+ * section de 0 à la fin). La laisser piloter l'humeur ou le rôle figerait
+ * toutes les scènes sur la même étiquette.
+ */
+function localSectionAt(analysis: Analysis, start: number): Section | null {
+  const section = sectionAt(analysis, start);
+  if (section === null) return null;
+  const span = section.end - section.start;
+  const global = span >= analysis.duration * 0.95 && section.start <= analysis.duration * 0.05;
+  return global ? null : section;
 }
 
 /** Section musicale contenant l'instant `t`, ou `null`.
