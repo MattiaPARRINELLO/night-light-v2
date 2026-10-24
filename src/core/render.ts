@@ -47,18 +47,26 @@ export interface RenderInput {
 
 export type { FrameState };
 
-/** Plafond d'opacité d'un flash : évite les sauts de luminosité agressifs. */
-export const FLASH_CEILING = 0.4;
 /**
- * Deux flashs de temps fort sont toujours séparés d'au moins cette durée.
+ * Plafond d'opacité d'un flash.
  *
- * La modération compte autant que l'effet : à 130 BPM, des temps forts toutes
- * les 0,46 s donneraient plus de deux flashs par seconde, et une salle qui
- * martèle finit par fatiguer. Un drop de montée garde sa priorité.
+ * L'ancien plafond de 0,4 écrasait les impacts : un drop ne se distinguait plus
+ * d'un temps fort ordinaire. Il reste un plafond (jamais un blanc pur), mais il
+ * laisse la place à la hiérarchie : temps fort ≈ 0,44, drop ≈ 0,72.
  */
-const FLASH_MIN_GAP = 1.6;
+export const FLASH_CEILING = 0.8;
+/** Poids d'un temps fort ordinaire dans le flash, relativement à un drop. */
+const BEAT_FLASH_WEIGHT = 0.55;
 /** Un flash ne naît que dans cette fenêtre après son évènement déclencheur. */
 const FLASH_ATTACK_SEC = 0.12;
+/**
+ * Nombre de temps forts par phrase hors drop.
+ *
+ * Hors impact, la lumière ne clignote pas : un seul temps fort par phrase porte
+ * un flash. Pendant un drop, la cadence suit la musique (un flash par temps
+ * fort), comme demandé par la direction artistique.
+ */
+const PHRASE_BEATS = 8;
 /**
  * Glissement continu de la teinte, en degrés par seconde.
  *
@@ -69,6 +77,24 @@ const FLASH_ATTACK_SEC = 0.12;
 export const HUE_DRIFT_PER_SEC = 0.4;
 /** Respiration de la teinte autour de celle de la scène, en degrés. */
 const HUE_BREATH_DEG = 14;
+/**
+ * Marge de teinte au-delà du `spread` de la palette, en degrés.
+ *
+ * Le contrat de couleur borne la teinte rendue autour de l'ancre du morceau :
+ * `|teinte − ancre| ≤ spread + HUE_BUDGET_MARGIN_DEG`, dérive, respiration,
+ * sauts d'impact et variante compris.
+ *
+ * À remplacer par l'import de `show.ts` après fusion de la branche du plan.
+ */
+export const HUE_BUDGET_MARGIN_DEG = 12;
+/**
+ * Période de la dérive de teinte, en secondes.
+ *
+ * Une dérive linéaire (`0,4 °/s × t`) sortait de l'identité du morceau au bout
+ * de quelques minutes : à 4 min, 96° de dérive cumulée. Une sinusoïde bornée à
+ * une demi-largeur de palette fait respirer la couleur sans jamais la quitter.
+ */
+const HUE_DRIFT_PERIOD_SEC = 90;
 /**
  * Saut de teinte à l'impact, en degrés.
  *
@@ -139,29 +165,46 @@ function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
 }
 
 /**
- * Opacité du flash global. Volontairement plafonnée et espacée : le spectacle
- * ne clignote jamais à haute fréquence, et le mode réduit l'annule.
+ * Opacité du flash global, à partir des composantes utiles.
+ *
+ * Séparée de `flashAlpha` pour que le diagnostic puisse mesurer l'alpha sans
+ * construire un `FrameState` complet.
  */
-export function flashAlpha(f: FrameState, settings: RenderSettings): number {
-  if (f.reduced) return 0;
+export function flashAlphaAt(
+  beat: number,
+  bass: number,
+  build: number,
+  buildStrength: number,
+  energy: number,
+  reduced: boolean,
+  settings: RenderSettings,
+): number {
+  if (reduced) return 0;
   const budget = settings.flashes;
   if (budget <= 0) return 0;
-  const beatHit = f.beat * (0.35 + 0.65 * f.bass);
-  const dropHit = f.build > 0.92 ? f.buildStrength * 0.9 : 0;
+  const beatHit = beat * (0.35 + 0.65 * bass) * BEAT_FLASH_WEIGHT;
+  const dropHit = build > 0.92 ? buildStrength * 0.95 : 0;
   const raw = Math.max(beatHit, dropHit);
-  if (raw < 0.3) return 0;
-  const gated = raw * smoothstep(0.12, 0.4, f.energy);
+  if (raw < 0.2) return 0;
+  const gated = raw * smoothstep(0.12, 0.4, energy);
   return Math.min(gated, 1) * FLASH_CEILING * Math.min(budget, 1.5);
 }
 
 /**
- * Nombre de montées en dessous duquel le morceau est jugé insuffisamment
- * dynamique : les drops ne suffisent alors plus à porter le spectacle.
+ * Opacité du flash global. Plafonnée, et réservée aux moments porteurs : le
+ * mode réduit l'annule et le budget utilisateur la dose.
+ */
+export function flashAlpha(f: FrameState, settings: RenderSettings): number {
+  return flashAlphaAt(f.beat, f.bass, f.build, f.buildStrength, f.energy, f.reduced, settings);
+}
+
+/**
+ * Nombre de montées à partir duquel l'impulsion de secours commence à
+ * s'effacer. Elle disparaît complètement quatre montées plus loin.
  */
 const BEAT_DRIVE_MAX_BUILDS = 2;
-
-/** Part d'un vrai drop que prend une impulsion de temps fort. */
-const BEAT_DRIVE_WEIGHT = 0.6;
+/** Nombre de montées au-delà du seuil avant extinction complète. */
+const BEAT_DRIVE_FADE_BUILDS = 4;
 
 /**
  * Plancher visuel de l'énergie.
@@ -193,8 +236,12 @@ export function visibleEnergy(energy: number): number {
 export function beatStrength(view: TrackView, t: number): number {
   const pulse = view.beatPulse(t, 0.45);
   if (pulse < 0.05) return 0;
-  const kick = view.bassAt(t);
-  if (kick < 0.12) return 0;
+  // Porte douce sur les basses : une coupure dure à 0,12 faisait passer le
+  // pulse de 0 à sa valeur pleine en une image. On multiplie le niveau par un
+  // smoothstep (0,08 → 0,16) : jamais plus fort qu'avant, mais plus de marche.
+  const bass = view.bassAt(t);
+  const kick = bass * smoothstep(0.08, 0.16, bass);
+  if (kick <= 0) return 0;
   const energy = view.energyAt(t);
   const sectionEnergy = clamp01(view.sectionAt(t).energy);
   return clamp01(pulse * kick * (0.35 + 0.65 * energy) * (0.55 + 0.45 * sectionEnergy));
@@ -210,15 +257,18 @@ export function beatStrength(view: TrackView, t: number): number {
  * vrai drop pour rester honnête avec la musique.
  *
  * Retourne 0 dès que le morceau a assez de montées : les vrais drops restent
- * prioritaires, et un morceau dynamique ne voit rien changer.
+ * prioritaires, et un morceau dynamique ne voit rien changer. L'extinction est
+ * progressive — une piste à exactement trois montées perdait d'un coup toute son
+ * impulsion avec l'ancien seuil dur.
  */
 export function beatDrive(view: TrackView, t: number, builds: number): number {
-  if (builds > BEAT_DRIVE_MAX_BUILDS) return 0;
+  const attenuation = clamp01(1 - (builds - BEAT_DRIVE_MAX_BUILDS) / BEAT_DRIVE_FADE_BUILDS);
+  if (attenuation <= 0) return 0;
   const pulse = view.beatPulse(t, 0.45);
   if (pulse < 0.05) return 0;
   // L'énergie locale dose l'impulsion : un temps fort sur un passage creux
   // reste discret.
-  return clamp01(pulse * (0.35 + 0.65 * view.energyAt(t)));
+  return clamp01(attenuation * pulse * (0.35 + 0.65 * view.energyAt(t)));
 }
 
 /**
@@ -338,6 +388,39 @@ export function drawTransition(
   ctx.fillRect(Math.max(0, x - demi), 0, Math.min(width, demi * 2), height);
 }
 
+/** Écart angulaire signé, dans ]-180 ; 180]. */
+export function angularDelta(from: number, to: number): number {
+  return ((((to - from) % 360) + 540) % 360) - 180;
+}
+
+/**
+ * Ancre colorée de la scène : la teinte du morceau dont elle est partie.
+ *
+ * `show.ts` ancre tantôt sur la teinte principale, tantôt sur la complémentaire
+ * (moments forts), et ajoute une dérive inférieure à une demi-largeur de
+ * palette. On retrouve donc l'ancre en prenant, des deux teintes du morceau,
+ * celle dont la scène est la plus proche.
+ */
+export function sceneAnchor(scene: Scene, track: { hue: number; accent: number }): number {
+  const distanceHue = Math.abs(angularDelta(scene.palette.hue, track.hue));
+  const distanceAccent = Math.abs(angularDelta(scene.palette.hue, track.accent));
+  return distanceAccent < distanceHue ? track.accent : track.hue;
+}
+
+/**
+ * Ramène une teinte dans le budget autour de l'ancre, sans jamais la couper.
+ *
+ * `tanh` compresse progressivement : les petites variations passent presque
+ * inchangées, les grandes se rapprochent de la limite sans l'atteindre. Une
+ * coupure dure aurait produit un palier visible — la couleur se serait figée au
+ * bord du budget pendant tout un passage fort.
+ */
+export function clampHueToAnchor(hue: number, anchor: number, spread: number): number {
+  const limit = Math.max(1, spread + HUE_BUDGET_MARGIN_DEG);
+  const offset = angularDelta(anchor, hue);
+  return (anchor + limit * Math.tanh(offset / limit) + 360) % 360;
+}
+
 /**
  * Teinte réellement dessinée à l'instant `t`.
  *
@@ -346,10 +429,24 @@ export function drawTransition(
  * scène, la couleur faisait un bond de plusieurs dizaines de degrés en plein
  * spectacle. Fonction partagée avec l'affichage, pour que le HUD annonce la
  * teinte qui est vraiment à l'écran.
+ *
+ * `anchor` est l'ancre du morceau (voir `sceneAnchor`). Sans elle, la fonction
+ * se rabat sur la teinte de la scène : le résultat reste borné, mais c'est le
+ * rendu qui applique le budget exact.
  */
-export function sceneHue(scene: Scene, t: number, drop: number, variation: number, reduced: boolean): number {
+export function sceneHue(
+  scene: Scene,
+  t: number,
+  drop: number,
+  variation: number,
+  reduced: boolean,
+  anchor: number = scene.palette.hue,
+): number {
+  const spread = scene.palette.spread;
+  // Dérive périodique, d'amplitude une demi-largeur de palette : la couleur
+  // respire autour de l'ancre au lieu de s'en éloigner sans fin.
   const drift =
-    HUE_DRIFT_PER_SEC * t * (reduced ? 0.4 : 1) +
+    (0.5 * spread * Math.sin((2 * Math.PI * t) / HUE_DRIFT_PERIOD_SEC)) * (reduced ? 0.4 : 1) +
     Math.sin(t * 0.11) * HUE_BREATH_DEG * (reduced ? 0.5 : 1);
   // Les sauts sont bornés : un impact fait changer la lumière, il ne change pas
   // de morceau.
@@ -357,7 +454,8 @@ export function sceneHue(scene: Scene, t: number, drop: number, variation: numbe
     -HUE_IMPACT_LIMIT,
     Math.min(HUE_IMPACT_LIMIT, DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation),
   );
-  return (scene.palette.hue + drift + impact + 360) % 360;
+  const base = scene.palette.hue;
+  return clampHueToAnchor(base + drift + impact, anchor, spread);
 }
 
 /**
@@ -366,17 +464,17 @@ export function sceneHue(scene: Scene, t: number, drop: number, variation: numbe
  * Fonction pure du temps musical, donc déterministe : mêmes entrées ⇒ même
  * réponse, ce qui garde le spectacle identique après une pause ou un saut.
  *
- * Trois conditions :
- * 1. il doit naître sur l'attaque d'un évènement (pas pendant la décroissance) ;
- * 2. un impact de montée garde la priorité — il est rare, et c'est le moment que
- *    le spectacle doit montrer ;
- * 3. sinon, le temps fort doit tomber dans la cadence : un flash tous les
- *    `n` temps forts, `n` choisi pour que l'intervalle dépasse `FLASH_MIN_GAP`.
- *    À 130 BPM, un flash toutes les 0,46 s fatigue ; tous les 4 temps forts
- *    (≈ 2 s), le spectacle respire.
+ * La cadence est musicale, plus métronomique :
+ * 1. il faut naître sur l'attaque d'un évènement (pas pendant la décroissance) ;
+ * 2. un impact de montée est toujours admis — c'est le moment que le spectacle
+ *    doit montrer ;
+ * 3. pendant un drop, chaque temps fort peut flasher (la salle suit la musique) ;
+ * 4. hors drop, un seul temps fort par phrase porte un flash.
+ *
+ * Aucun état n'est conservé : `t` seul décide.
  */
 export function flashAdmitted(view: TrackView, t: number): boolean {
-  const beats = view.beatsIn(t - (FLASH_MIN_GAP + 1.0), t);
+  const beats = view.beatsIn(t - FLASH_ATTACK_SEC - 0.05, t);
   const lastBeat = beats.length > 0 ? (beats[beats.length - 1] ?? -Infinity) : -Infinity;
   const lastDrop = view.lastBuildEnd(t);
   const current = Math.max(lastBeat, lastDrop);
@@ -385,15 +483,17 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
   const age = t - current;
   if (age < -0.02 || age > FLASH_ATTACK_SEC) return false;
 
-  // Impact de montée : prioritaire.
+  // Impact de montée : toujours, et sans attendre la cadence.
   if (lastDrop >= lastBeat) return true;
 
-  // Temps fort : cadence espacée, calée sur l'index du temps fort pour rester
-  // stable quel que soit le moment où l'image est calculée.
-  const period = Math.max(view.beatPeriod, 0.05);
-  const every = Math.max(1, Math.ceil(FLASH_MIN_GAP / period));
-  if (every <= 1) return true;
-  return view.beatIndexAt(current) % every === 0;
+  // Pendant un drop, la musique donne la cadence : un flash par temps fort.
+  // La fenêtre couvre la retombée immédiate (~1,5 s) pendant laquelle la salle
+  // « bat » encore avec l'impact.
+  if (view.buildsEndingIn(t - 1.5, t).length > 0) return true;
+
+  // Hors drop : un seul temps fort par phrase, calé sur l'index du temps fort
+  // pour rester stable quel que soit le moment où l'image est calculée.
+  return view.beatIndexAt(current) % PHRASE_BEATS === 0;
 }
 
 /**
@@ -435,14 +535,17 @@ export function renderFrame(input: RenderInput): void {
   const buildNow = view.buildAt(t);
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
-  // le morceau « change de lumière » sans cesse. Le pulsage de secours sur les
-  // temps forts ne sert qu'aux morceaux sans montée, pour qu'un morceau fort
-  // d'un bout à l'autre ne paraisse pas mort entre deux scènes.
+  // le morceau « change de lumière » sans cesse.
+  // L'impulsion de secours sur les temps forts ne touche plus la couleur : elle
+  // ne sert qu'à l'intensité et à la taille, sinon un morceau sans montée faisait
+  // clignoter la teinte de 12° d'une image à l'autre. Le saut de couleur reste
+  // réservé au vrai drop (`buildIntensity`).
   const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
-  const drop = liveAudio !== undefined ? 0 : Math.max(view.buildIntensity(t), beatDriveValue * BEAT_DRIVE_WEIGHT);
+  const drop = liveAudio !== undefined ? 0 : view.buildIntensity(t);
   const variation = reduced ? 0 : variationStrength(scene, t);
   const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
-  const paletteHue = sceneHue(scene, t, drop, variation, reduced);
+  const anchor = sceneAnchor(scene, plan.track);
+  const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
   const palette: Palette = {
     name: scene.palette.name,
     hue: paletteHue,
@@ -516,7 +619,10 @@ export function renderFrame(input: RenderInput): void {
       ...base,
       palette: {
         ...palette,
-        hue: (palette.hue + 48) % 360,
+        // La variante garde son écart de 48°, ramené lui aussi dans le budget
+        // autour de l'ancre : le spectacle ne doit jamais sortir de l'identité
+        // colorée du morceau, même quand une autre famille surgit.
+        hue: clampHueToAnchor(palette.hue + 48, anchor, scene.palette.spread),
         saturation: Math.min(1, palette.saturation + 0.1),
       },
       alpha: base.alpha * variation * 0.8,
@@ -531,7 +637,7 @@ export function renderFrame(input: RenderInput): void {
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
-      palette: { ...palette, hue: (palette.hue + 25) % 360 },
+      palette: { ...palette, hue: clampHueToAnchor(palette.hue + 25, anchor, scene.palette.spread) },
       alpha: base.alpha * wash,
       intensity: base.intensity,
     };

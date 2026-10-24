@@ -3,7 +3,7 @@ import { shiftHue } from "../color";
 import { lampHue } from "./harmony";
 import { elementEnvelope } from "./tempo";
 import { BEAM_FINE_MAX, type FamilyDraw, type HazeTarget } from "./types";
-import { count, paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 /**
  * Petite scène en perspective pour la famille « double rideau ».
@@ -174,7 +174,9 @@ const PROFONDEUR_FIN_OUVERTE = 0.55;
  */
 const rideaux: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(15, 1, f.reduced);
   const parRangee = count(15, f.quality, f.reduced);
+  const active = activeSlots(slotCount, parRangee, f.seed);
   if (parRangee < 1) return;
 
   const cam: Camera = {
@@ -200,11 +202,11 @@ const rideaux: FamilyDraw = (ctx, f, view) => {
   for (let rangee = 0; rangee < 2; rangee += 1) {
     // +1 = plafond (vers le haut de l'écran), -1 = plancher.
     const sens = rangee === 0 ? 1 : -1;
-    for (let i = 0; i < parRangee; i += 1) {
-      const indice = rangee * parRangee + i;
+    for (const i of active) {
+      const indice = rangee * slotCount + i;
       const allumage = elementEnvelope(f, view, indice * 2 + 3, cycle, 0.8);
       if (allumage <= 0.01) continue;
-      const ratio = parRangee === 1 ? 0.5 : i / (parRangee - 1);
+      const ratio = slotCount === 1 ? 0.5 : i / (slotCount - 1);
       // Arc de la rangée : les extrémités reculent, donc leur faisceau est plus
       // petit et plus voilé, et la rangée bombe légèrement vers le fond.
       const arc = ARC_PROFONDEUR * Math.pow(Math.abs(ratio - 0.5) * 2, 1.7);

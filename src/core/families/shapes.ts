@@ -5,7 +5,7 @@ import { lampHue } from "./harmony";
 import { beatSwing, colorFlip, elementEnvelope } from "./tempo";
 import type { FamilyDraw } from "./types";
 import { GRAND_BALAYAGE_BEATS } from "./types";
-import { count, paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 /** Formes projetées par les gobos : cercle, anneau, losange, triangle. */
 const GOBOS = ["cercle", "anneau", "losange", "triangle"] as const;
@@ -131,16 +131,18 @@ const gobos: FamilyDraw = (ctx, f, view) => {
  */
 const pendule: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(9, 1, f.reduced);
   const tetes = count(9, f.quality, f.reduced);
+  const active = activeSlots(slotCount, tetes, f.seed);
   // Un faible débordement suffit : les têtes visent vers le bas, donc une tête
   // hors cadre n'éclairerait rien du tout.
-  const positions = rowPositions(tetes, w, w * 0.03);
+  const positions = rowPositions(slotCount, w, w * 0.03);
   const portique = h * 0.05;
   const portee = Math.hypot(w, h) * 1.05;
   const alpha = (0.06 + 0.28 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     const x = positions[i] ?? 0;
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     // Retard le long de la rangée : la vague traverse le portique en trois temps.
@@ -181,7 +183,9 @@ const pendule: FamilyDraw = (ctx, f, view) => {
  */
 const couronne: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(11, 1, f.reduced);
   const tetes = count(11, f.quality, f.reduced);
+  const active = activeSlots(slotCount, tetes, f.seed);
   const cx = w * 0.5;
   const cy = h * 0.68;
   const rx = w * 0.44;
@@ -192,8 +196,8 @@ const couronne: FamilyDraw = (ctx, f, view) => {
   if (alpha <= 0.002) return;
   const cycle = f.reduced ? 28 : f.energy > 0.55 ? 12 : 20;
 
-  for (let i = 0; i < tetes; i += 1) {
-    const part = tetes === 1 ? 0.5 : i / (tetes - 1);
+  for (const i of active) {
+    const part = slotCount === 1 ? 0.5 : i / (slotCount - 1);
     // Arc supérieur : la couronne se lit comme une tiare, pas comme un anneau.
     const autour = Math.PI + part * Math.PI + rotation;
     const x = cx + Math.cos(autour) * rx;
@@ -236,15 +240,17 @@ const couronne: FamilyDraw = (ctx, f, view) => {
  */
 const pluie: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(16, 1, f.reduced);
   const colonnes = count(16, f.quality, f.reduced);
-  const positions = rowPositions(colonnes, w, w * 0.05);
+  const active = activeSlots(slotCount, colonnes, f.seed);
+  const positions = rowPositions(slotCount, w, w * 0.05);
   // Plus nourrie qu'avant : ces colonnes sont le seul dessin de la scène, et
   // elles doivent tenir tête au halo du fond.
   const alpha = (0.09 + 0.34 * f.energy + 0.2 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
   const cycle = f.reduced ? 30 : f.energy > 0.55 ? 10 : 18;
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     const x = positions[i] ?? 0;
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const allumage = elementEnvelope(f, view, i * 7 + 2, cycle, 0.65);
@@ -282,8 +288,10 @@ const pluie: FamilyDraw = (ctx, f, view) => {
  */
 const portique: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(13, 1, f.reduced);
   const faisceaux = count(13, f.quality, f.reduced);
-  const positions = rowPositions(faisceaux, w, w * 0.08);
+  const active = activeSlots(slotCount, faisceaux, f.seed);
+  const positions = rowPositions(slotCount, w, w * 0.08);
   const portee = Math.hypot(w, h) * 1.15;
   // Ouverture : 0 = porte fermée (les rayons se rejoignent en haut), 1 = grands
   // rayons verticaux. Elle suit l'énergie, donc l'impact ouvre la porte.
@@ -291,7 +299,7 @@ const portique: FamilyDraw = (ctx, f, view) => {
   const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const x = positions[i] ?? 0;
     // Penché vers le centre : chaque rayon vise le haut de l'axe médian.
