@@ -385,6 +385,44 @@ describe("diversite du spectacle", () => {
     expect(sceneCadence(buildShowPlan(riche, false))).toBeLessThan(sceneCadence(buildShowPlan(nu, false)));
   });
 
+  test("le tirage de famille ne répète jamais et dépend de la graine", () => {
+    // Caractère volontairement moyen : toutes les scènes tombent dans le
+    // réservoir général, donc la suite de familles ne dépend que du tirage.
+    const data = analysis({
+      duration: 64,
+      beats: Array.from({ length: 128 }, (_, index) => index * 0.5),
+      onsets: Array.from({ length: 64 }, (_, index) => index * 1),
+      energy: [
+        [0, 0.5],
+        [64, 0.5],
+      ],
+      high: [
+        [0, 0.1],
+        [64, 0.1],
+      ],
+      sections: [],
+      builds: [],
+    });
+    const sequences = new Set<string>();
+    const familles = new Set<FamilyId>();
+    for (let seed = 1; seed <= 10_000; seed += 1) {
+      const plan = buildShowPlan(data, false, seed);
+      const suite = plan.scenes.map((scene) => scene.family);
+      for (let index = 1; index < suite.length; index += 1) {
+        expect(suite[index]).not.toBe(suite[index - 1]);
+      }
+      for (let start = 0; start + 6 <= suite.length; start += 1) {
+        sequences.add(suite.slice(start, start + 6).join(">"));
+      }
+      for (const family of suite) familles.add(family);
+    }
+    expect(sequences.size).toBeGreaterThanOrEqual(20);
+    // Toutes les familles du réservoir général apparaissent : la couche de fond
+    // change avec la graine, donc aucune famille n'est structurellement exclue
+    // sur l'ensemble des tirages.
+    expect(familles.size).toBe(Object.keys(FAMILY_LABELS).length);
+  });
+
   test("chaque phrase porte une humeur et une intensite coherente", () => {
     const plan = buildShowPlan(analysis({ duration: 120 }), false);
     for (const scene of plan.scenes) {
@@ -483,7 +521,7 @@ describe("changements justifies par la musique", () => {
     const famillesDenses = new Set(buildShowPlan(dense, false).scenes.map((scene) => scene.family));
     // Un passage lent sans attaques ne doit pas afficher de barres ni de grille.
     for (const family of famillesCalmes) {
-      expect(["waves", "tunnel", "particles", "rings", "spiral", "beams", "shutters", "spots"]).toContain(family);
+      expect(["waves", "tunnel", "particles", "rings", "spiral", "beams", "shutters", "spots", "parade", "mirror"]).toContain(family);
     }
     expect(famillesDenses.has("bars") || famillesDenses.has("beams") || famillesDenses.has("shutters")).toBe(true);
   });

@@ -357,24 +357,70 @@ export function barStarts(analysis: Analysis): number[] {
 }
 
 /**
- * Famille déduite du caractère musical, sans tirage au sort.
+ * Permutation déterministe d'un réservoir, dérivée de la graine.
+ *
+ * Fisher-Yates avec `hash01` : aucun `Math.random`, donc deux lectures du même
+ * morceau donnent exactement la même suite. On parcourt ensuite la permutation
+ * en séquence au lieu de prendre `list[tour % longueur]`, qui ne dépendait que
+ * du rang et ignorait complètement la graine.
+ */
+function permuteFamilies(list: FamilyId[], seed: number): FamilyId[] {
+  const out = [...list];
+  for (let index = out.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(hash01(seed + index * 7919.17) * (index + 1));
+    const current = out[index]!;
+    out[index] = out[other]!;
+    out[other] = current;
+  }
+  return out;
+}
+
+/**
+ * Famille tirée dans un réservoir pour le rang `turn`.
+ *
+ * La suite suit la permutation de la graine, en sautant les familles
+ * `excluded` (les scènes précédentes). Si le réservoir est entièrement exclu,
+ * on retombe sur le premier élément de la permutation : le plan reste défini.
+ */
+function pickFamily(
+  list: FamilyId[],
+  seed: number,
+  turn: number,
+  excluded: readonly FamilyId[] = [],
+): FamilyId {
+  const order = permuteFamilies(list, seed + list.length * 104_729);
+  const start = ((Math.floor(turn) % order.length) + order.length) % order.length;
+  // L'appelant place toujours la couche de fond en tête : elle ne doit jamais
+  // devenir la famille principale. Les scènes précédentes suivent, et
+  // l'avant-dernière n'est écartée que sur les réservoirs assez grands — sur
+  // une liste de trois ou quatre, trois exclusions tueraient le tirage.
+  const blocked = excluded.slice(0, order.length >= 5 ? 3 : 2);
+  for (let step = 0; step < order.length; step += 1) {
+    const candidate = order[(start + step) % order.length]!;
+    if (!blocked.includes(candidate)) return candidate;
+  }
+  return order[start] ?? list[0] ?? "beams";
+}
+
+/**
+ * Famille déduite du caractère musical.
  *
  * Le rôle de la scène choisit la famille de concert : ballyhoo des lyres en
  * refrain, vague des barres en montée. Les autres rôles gardent les réservoirs
- * historiques, où les trois familles concert restent disponibles. La couleur,
- * elle, vient toujours du morceau : aucun tirage au sort.
+ * historiques, où les trois familles concert restent disponibles. Le tirage
+ * dans un réservoir est déterministe (permutation de la graine) et exclut les
+ * familles des scènes précédentes : deux scènes voisines ne se ressemblent pas.
  */
 function familyFor(
   caractere: Caractere,
   reduced: boolean,
+  seed: number,
   turn: number,
   role: SceneRole,
+  excluded: readonly FamilyId[] = [],
 ): FamilyId {
   const { energy, density, brightness } = caractere;
-  // Le rang est un entier : sans arrondi, un `list[1.4]` vaut undefined et la
-  // famille retomberait toujours sur la première.
-  const index = Math.max(0, Math.floor(turn));
-  const pick = (list: FamilyId[]) => list[index % list.length] ?? list[0] ?? "beams";
+  const pick = (list: FamilyId[]) => pickFamily(list, seed, turn, excluded);
 
   if (reduced) {
     if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
@@ -384,7 +430,9 @@ function familyFor(
   // Orchestration par rôle : un refrain alterne lyres et barres LED, une
   // montée déploie franchement la vague des barres. Les autres rôles gardent
   // les réservoirs historiques, où les familles concert restent disponibles.
-  if (role === "refrain") return index % 2 === 0 ? "lyres-suspendues" : "barres-led";
+  if (role === "refrain") {
+    return Math.floor(turn) % 2 === 0 ? "lyres-suspendues" : "barres-led";
+  }
   if (role === "montee") return "barres-led";
   if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
   if (brightness > BRIGHTNESS_THRESHOLD) {
@@ -570,6 +618,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
   // famille et leur teinte à la première apparition et on les réutilise.
   const groupFamilies = new Map<string, FamilyId>();
   const groupHues = new Map<string, number>();
+  // Familles rendues par les deux scènes précédentes : le tirage les exclut
+  // pour qu'on ne voie jamais deux fois la même figure d'affilée.
+  let previousFamily: FamilyId | undefined;
+  let beforePreviousFamily: FamilyId | undefined;
 
   for (let index = 0; index < events.length - 1; index += 1) {
     const event = events[index];
@@ -607,14 +659,20 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     const forceConcert = !reduced && role === "drop";
     let family: FamilyId;
     const cachedFamily = grouped ? groupFamilies.get(group) : undefined;
+    const excluded: FamilyId[] = [];
+    if (previousFamily !== undefined) excluded.push(previousFamily);
+    if (beforePreviousFamily !== undefined) excluded.push(beforePreviousFamily);
     if (forceConcert) {
       family = "pont-concert";
     } else if (cachedFamily !== undefined) {
+      // Un groupe est un matériau musical qui revient : il garde sa famille.
       family = cachedFamily;
     } else {
+      // Le parcours de la permutation dépend du rang ; la graine fixe l'ordre.
+      // Un groupe tire une fois, puis sa famille est mémorisée.
       family = grouped
-        ? familyFor(caractere, reduced, groupSeed + hash01(groupSeed) * 0.9, role)
-        : familyFor(caractere, reduced, turn + hash01(seed + turn) * 0.9, role);
+        ? familyFor(caractere, reduced, groupSeed, Math.floor(hash01(groupSeed) * 997), role)
+        : familyFor(caractere, reduced, seed, turn, role, [fond, ...excluded]);
       if (grouped) groupFamilies.set(group, family);
     }
 
@@ -633,6 +691,11 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
       const pickSeed = grouped ? hashString(`${seed}|${group}|fond`) : seed * 17 + turn;
       principale = memeClasse[Math.floor(hash01(pickSeed) * memeClasse.length)] ?? "waves";
     }
+    // Ce que l'on vient réellement d'afficher : c'est cette famille, et pas
+    // celle du réservoir avant substitution du fond, que la scène suivante
+    // doit éviter.
+    beforePreviousFamily = previousFamily;
+    previousFamily = principale;
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
