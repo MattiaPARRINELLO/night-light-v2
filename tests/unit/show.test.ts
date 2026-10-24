@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, minHueStepEff, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -416,6 +416,45 @@ describe("diversite du spectacle", () => {
     });
     const nu = analysis({ duration: 180, beats: [], onsets: [], sections: [], builds: [] });
     expect(sceneCadence(buildShowPlan(riche, false))).toBeLessThan(sceneCadence(buildShowPlan(nu, false)));
+  });
+
+  test("le contrat de couleur tient sur 6 morceaux × 400 graines", () => {
+    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    const morceaux = [58, 74, 96, 118, 142, 170].map((tempo, index) =>
+      analysis({
+        duration: 64 + index * 8,
+        tempo,
+        meter: index % 2 === 0 ? 4 : 3,
+        beatPeriod: 60 / tempo,
+        beats: Array.from({ length: Math.floor((64 + index * 8) / (60 / tempo)) }, (_, beat) =>
+          Number((beat * (60 / tempo)).toFixed(3)),
+        ),
+        sections: [],
+        builds: index % 3 === 0 ? [{ start: 30, end: 34, strength: 0.8 }] : [],
+      }),
+    );
+    let paires = 0;
+    for (const morceau of morceaux) {
+      for (let seed = 1; seed <= 400; seed += 1) {
+        const plan = buildShowPlan(morceau, false, seed);
+        let precedent: number | undefined;
+        for (const scene of plan.scenes) {
+          const presDeLaBase = ecart(scene.palette.hue, plan.track.hue);
+          const presDuComplement = ecart(scene.palette.hue, plan.track.accent);
+          // Toutes les teintes restent dans le budget de l'un des deux pôles.
+          expect(Math.min(presDeLaBase, presDuComplement)).toBeLessThanOrEqual(plan.track.spread + 1e-6);
+          if (precedent !== undefined) {
+            paires += 1;
+            expect(ecart(scene.palette.hue, precedent)).toBeGreaterThanOrEqual(
+              minHueStepEff(plan.track.spread) - 1e-6,
+            );
+          }
+          precedent = scene.palette.hue;
+        }
+      }
+    }
+    // 6 pistes × 400 graines, plusieurs scènes chacune.
+    expect(paires).toBeGreaterThan(13_200);
   });
 
   test("à 170 BPM en 3/4, les scènes restent dans la fenêtre 5–9 s", () => {

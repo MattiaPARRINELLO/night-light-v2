@@ -286,6 +286,24 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
 const MIN_HUE_STEP = 34;
 /**
+ * Marge du budget de couleur partagée avec le rendu, en degrés.
+ *
+ * Le rendu peut dériver la teinte de la scène (impact, variation) : la marge
+ * garantit que cette dérive ne fait pas sortir de l'identité du morceau.
+ */
+export const HUE_BUDGET_MARGIN_DEG = 12;
+
+/**
+ * Écart minimal effectif entre deux scènes voisines.
+ *
+ * Sur un morceau à faible `spread`, exiger 34° forcerait à sortir du budget de
+ * couleur : l'écart s'efface alors à 90 % du spread. C'est l'écart qui gagne
+ * sur le clamp quand les deux s'opposent, en changeant d'ancre si besoin.
+ */
+export function minHueStepEff(spread: number): number {
+  return Math.min(MIN_HUE_STEP, spread * 0.9);
+}
+/**
  * Mesures par cycle « vers ». La métrique détectée décide du nombre de temps
  * par mesure : sans elle, un 3/4 se décalait d'un temps à chaque cycle et les
  * scènes tombaient à contre-temps.
@@ -648,6 +666,67 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+/** Écart signé le plus court entre deux teintes, dans ]-180, 180]. */
+function hueDelta(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180;
+}
+
+/** Ramène une teinte dans la fenêtre ±spread de son ancre. */
+function clampToAnchor(hue: number, anchor: number, spread: number): number {
+  const delta = hueDelta(anchor, hue);
+  const borne = Math.max(0, Math.min(spread, Math.abs(delta)));
+  return (anchor + (delta >= 0 ? borne : -borne) + 360) % 360;
+}
+
+/**
+ * Choisit une teinte qui respecte à la fois le budget de l'ancre et l'écart
+ * minimal avec la scène précédente.
+ *
+ * L'ordre est celui du contrat : l'écart gagne sur le clamp. Si décaler la
+ * teinte dans la fenêtre de l'ancre préféré ne suffit pas, on bascule sur
+ * l'autre pôle du morceau (ancre ↔ complémentaire) plutôt que de réduire
+ * l'écart.
+ */
+function hueWithGap(
+  anchor: number,
+  otherAnchor: number,
+  derive: number,
+  previousHue: number,
+  spread: number,
+): { hue: number; anchor: number } {
+  const step = minHueStepEff(spread);
+  const candidate = (anchor + derive + 360) % 360;
+  if (Math.abs(hueDelta(previousHue, candidate)) >= step) {
+    return { hue: clampToAnchor(candidate, anchor, spread), anchor };
+  }
+
+  // Même ancre : on pousse la teinte du côté qui s'éloigne de la précédente.
+  const direction = hueDelta(previousHue, candidate) >= 0 ? 1 : -1;
+  const pushed = clampToAnchor((candidate + direction * step + 360) % 360, anchor, spread);
+  if (Math.abs(hueDelta(previousHue, pushed)) >= step) {
+    return { hue: pushed, anchor };
+  }
+
+  // L'écart gagne : on change d'ancre (l'autre pôle du morceau).
+  const switched = (otherAnchor + derive + 360) % 360;
+  const switchedDirection = hueDelta(previousHue, switched) >= 0 ? 1 : -1;
+  const switchedPushed = clampToAnchor(
+    (switched + switchedDirection * step + 360) % 360,
+    otherAnchor,
+    spread,
+  );
+  if (Math.abs(hueDelta(previousHue, switchedPushed)) >= step) {
+    return { hue: switchedPushed, anchor: otherAnchor };
+  }
+
+  // Repli mesuré : on garde la solution qui offre le plus grand écart réel.
+  const same = clampToAnchor(candidate, anchor, spread);
+  const other = clampToAnchor(switched, otherAnchor, spread);
+  return Math.abs(hueDelta(previousHue, same)) >= Math.abs(hueDelta(previousHue, other))
+    ? { hue: same, anchor }
+    : { hue: other, anchor: otherAnchor };
+}
+
 /**
  * Compose le spectacle à partir de la structure du morceau.
  *
@@ -813,21 +892,16 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     const derive = grouped
       ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
       : (hash01(seed + turn * 977) - 0.5) * track.spread;
-    let hue = (ancre + derive + 360) % 360;
+    const autreAncre = ancre === track.hue ? track.accent : track.hue;
+    let hue: number;
     const cachedHue = grouped ? groupHues.get(group) : undefined;
     if (cachedHue !== undefined) {
+      // L'identité d'un groupe prime : deux refrains portent la même teinte.
       hue = cachedHue;
     } else {
-      const delta = ((hue - previousHue + 540) % 360) - 180;
-      if (Math.abs(delta) < MIN_HUE_STEP) {
-        hue = (hue + (delta >= 0 ? MIN_HUE_STEP : -MIN_HUE_STEP) + 360) % 360;
-      }
-      // ...mais il ne doit jamais faire sortir de l'identité du morceau : on
-      // ramène la teinte dans la fenêtre autour de son ancre si besoin.
-      const ecartAncre = ((hue - ancre + 540) % 360) - 180;
-      if (Math.abs(ecartAncre) > track.spread) {
-        hue = (ancre + (ecartAncre > 0 ? track.spread : -track.spread) + 360) % 360;
-      }
+      // Le couple (écart minimal, budget d'ancre) est résolu ensemble : voir
+      // `hueWithGap`. L'écart gagne sur le clamp, quitte à changer d'ancre.
+      hue = hueWithGap(ancre, autreAncre, derive, previousHue, track.spread).hue;
       if (grouped) groupHues.set(group, hue);
     }
     previousHue = hue;
