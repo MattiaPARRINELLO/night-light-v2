@@ -217,10 +217,76 @@ function fakeHaze(): { haze: HazeTarget; fine: FausseNappe; large: FausseNappe }
 }
 
 describe("rendu déterministe", () => {
+  /** Rend une image sur un contexte donné et renvoie les opérations produites. */
+  function renderInto(
+    ctx: CanvasRenderingContext2D,
+    operations: string[],
+    time: number,
+    quality = 1,
+    settings = DEFAULT_SETTINGS,
+  ): string {
+    const start = operations.length;
+    const data = analysis();
+    renderFrame({
+      ctx,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      time,
+      view: new TrackView(data),
+      plan: buildShowPlan(data, settings.reduced),
+      settings,
+      reducedMotion: false,
+      quality,
+      frame: Math.round(time * 60),
+    });
+    // Les dégradés sont des objets : le contexte factice ne les compare pas.
+    // La vignette, mémorisée par contexte, n'est créée qu'au premier rendu —
+    // on ignore donc les opérations de construction des dégradés, identiques
+    // par ailleurs d'une image à l'autre.
+    return operations
+      .slice(start)
+      .filter((operation) => !operation.startsWith("stop:") && !operation.startsWith("radial:"))
+      .join("|");
+  }
+
   test("deux images au même temps musical sont identiques", () => {
     const first = renderAt(33.25);
     const second = renderAt(33.25);
     expect(second.join("|")).toBe(first.join("|"));
+  });
+
+  test("deux rendus successifs sur le MÊME contexte sont identiques", () => {
+    // Couvre les caches de module : la vignette mémorisée par contexte ne doit
+    // pas changer la seconde image.
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 33.25);
+    const second = renderInto(ctx, operations, 33.25);
+    expect(second).toBe(first);
+  });
+
+  test("un seek arrière redonne exactement l'image d'avant", () => {
+    const { ctx, operations } = fakeContext();
+    renderInto(ctx, operations, 42.5);
+    const afterSeek = renderInto(ctx, operations, 12.25);
+    const { ctx: ctxNeuf, operations: operationsNeuve } = fakeContext();
+    const reference = renderInto(ctxNeuf, operationsNeuve, 12.25);
+    expect(afterSeek).toBe(reference);
+  });
+
+  test("à palier de qualité égal, deux rendus sont identiques", () => {
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 27.5, 0.6);
+    const second = renderInto(ctx, operations, 27.5, 0.6);
+    expect(second).toBe(first);
+  });
+
+  test("le mode réduit est déterministe aussi", () => {
+    const settings = { ...DEFAULT_SETTINGS, reduced: true };
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 31.5, 1, settings);
+    const second = renderInto(ctx, operations, 31.5, 1, settings);
+    expect(second).toBe(first);
   });
 
   test("deux temps différents donnent des images différentes", () => {
