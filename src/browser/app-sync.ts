@@ -441,6 +441,15 @@ export function installSync(Target: { prototype: App }): void {
       lecteur: playerTitle,
     });
     this.backToDrop();
+    // Le dashboard doit suivre le direct, pas rester sur l'ancien morceau : on
+    // lui donne tout de suite la nouvelle référence, et on efface les positions
+    // du show abandonné (elles n'ont plus de sens hors synchronisation).
+    this.debugSync.expectedTitle = playerTitle;
+    this.debugSync.playerTitle = playerTitle;
+    this.debugSync.playerMs = 0;
+    this.debugSync.showMs = 0;
+    this.debugSync.driftMs = 0;
+    this.debugSync.correlation = null;
     return true;
   };
 

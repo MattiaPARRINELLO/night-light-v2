@@ -237,6 +237,25 @@ try {
 
   // ---- deuxième morceau, pendant que le premier show tourne
   play("Second Morceau", 67.0);
+  // Le dashboard doit suivre le lecteur dès son annonce, sans attendre
+  // l'analyse : il restait sinon figé sur le morceau précédent pendant toute
+  // la résolution (mode, morceau attendu, morceau lu et titre du graphe).
+  const suiviFin = Date.now() + 6000;
+  let attenduSuivant = "";
+  let titreSuivant = "";
+  while (Date.now() < suiviFin) {
+    attenduSuivant = await text(dash, "sync-expected");
+    titreSuivant = await text(dash, "track-title");
+    if (attenduSuivant === "Second Morceau" && titreSuivant === "Second Morceau") break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  console.log(`suivi du lecteur : attendu=${attenduSuivant || "—"} · titre=${titreSuivant || "—"}`);
+  if (attenduSuivant !== "Second Morceau") {
+    failures.push(`le dashboard ne suit pas le morceau annoncé (attendu=${attenduSuivant || "—"})`);
+  }
+  if (titreSuivant !== "Second Morceau") {
+    failures.push(`le dashboard garde l'ancien morceau affiché (${titreSuivant || "—"})`);
+  }
   await dash.setInputFiles("#file-input", second);
   const deux = await attendShow(dash, "Second Morceau", show);
   console.log(`2e morceau  : ${deux.mode} · attendu=${deux.attendu} · positions ${deux.positions.map((p) => p.toFixed(1)).join(" → ")}`);

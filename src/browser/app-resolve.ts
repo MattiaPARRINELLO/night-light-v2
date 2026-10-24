@@ -273,6 +273,11 @@ export function installResolve(Target: { prototype: App }): void {
     this.nowPlayingLastEventAt = Date.now();
     this.stopNowPlayingPolling();
     this.updateNowPlayingUI();
+    // Le dashboard lit ces deux libellés : ils doivent décrire ce que le
+    // lecteur annonce maintenant, même hors synchronisation (direct, résolution
+    // du morceau suivant). Sans ça, il restait figé sur le morceau précédent.
+    if (data.title.trim() !== "") this.debugSync.playerTitle = data.title;
+    if (!data.ambiguous && data.title.trim() !== "") this.debugSync.expectedTitle = data.title;
     // Le lecteur annonce le morceau suivant bien avant que son analyse soit
     // prête : on quitte immédiatement l'ancien show au lieu de le laisser
     // tourner (et se recaler sur le début du nouveau morceau). Plusieurs
@@ -338,6 +343,8 @@ export function installResolve(Target: { prototype: App }): void {
         this.beginTrackTimings();
       }
       this.updateNowPlayingUI();
+      if (data.title.trim() !== "") this.debugSync.playerTitle = data.title;
+      if (!data.ambiguous && data.title.trim() !== "") this.debugSync.expectedTitle = data.title;
       if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
       dbgThrottled(
         "now-playing",
