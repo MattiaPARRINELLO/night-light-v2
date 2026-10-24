@@ -6,7 +6,7 @@ import { contrastHue, lampHue } from "./harmony";
 import { beatSwing, elementEnvelopeForEnergy } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
 import { GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
-import { count, paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 const spotOrigin = (i: number, w: number, h: number, seed: number) => {
   // Les projecteurs peuvent venir des quatre bords, coins compris : un show
@@ -151,11 +151,13 @@ const mirror: FamilyDraw = (ctx, f, view) => {
  */
 const parade: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(9, 1, f.reduced);
   const lamps = count(9, f.quality, f.reduced);
+  const active = activeSlots(slotCount, lamps, f.seed);
   if (lamps < 1) return;
   // La rangée déborde des deux bords (voir `rowPositions`) : c'est ce qui évite
   // le trou du côté vers lequel les faisceaux se penchent.
-  const positions = rowPositions(lamps, w, w * 0.14);
+  const positions = rowPositions(slotCount, w, w * 0.14);
   const reach = Math.hypot(w, h) * 1.35;
   // Un pas tous les deux temps forts : la rangée s'incline *avec* la musique.
   const sweep = beatSwing(f, view, f.reduced ? 0.3 : 0.7, GRAND_BALAYAGE_BEATS);
@@ -164,7 +166,7 @@ const parade: FamilyDraw = (ctx, f, view) => {
   const alpha = (0.05 + 0.24 * f.energy + 0.12 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     // Léger décalage par lampe : la rangée reste parallèle sans être rigide.
     const angle = tilt + (hash01(i * 311 + f.seed) - 0.5) * 0.07;
     const hue = lampHue(f, i);
@@ -328,14 +330,16 @@ export function drawCoreGlow(ctx: CanvasRenderingContext2D, f: FrameState): void
  */
 const curtain: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
+  const slotCount = count(15, 1, f.reduced);
   const rangs = count(15, f.quality, f.reduced);
+  const active = activeSlots(slotCount, rangs, f.seed);
   const length = Math.hypot(w, h) * 1.15;
-  const positions = rowPositions(rangs, w, w * 0.11);
+  const positions = rowPositions(slotCount, w, w * 0.11);
   const balance = beatSwing(f, view, f.reduced ? 0.08 : 0.26, GRAND_BALAYAGE_BEATS);
   const alpha = (0.05 + 0.26 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < positions.length; i += 1) {
+  for (const i of active) {
     const originX = positions[i] ?? 0;
     const ratio = positions.length === 1 ? 0.5 : i / (positions.length - 1);
     const angle = -Math.PI / 2 + (ratio - 0.5) * 0.55 + balance;
@@ -386,7 +390,9 @@ const burst: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const cx = w * 0.5;
   const cy = h * 0.52;
+  const slotCount = count(18, 1, f.reduced);
   const rayons = count(18, f.quality, f.reduced);
+  const active = activeSlots(slotCount, rayons, f.seed);
   const reach = Math.hypot(w, h) * 1.5;
   // La tête tourne par quarts de tour sur la mesure, avec un léger glissement
   // continu : ça tourne, mais ça tourne sur la musique.
@@ -394,8 +400,8 @@ const burst: FamilyDraw = (ctx, f, view) => {
   const alpha = (0.045 + 0.24 * f.energy + 0.15 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let i = 0; i < rayons; i += 1) {
-    const ratio = i / rayons;
+  for (const i of active) {
+    const ratio = i / slotCount;
     const angle = rotation + ratio * Math.PI * 2;
     // Chaque rayon prend sa teinte dans l'accord de la scène : la roue est
     // multicolore, aucun rayon ne répète son voisin.

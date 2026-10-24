@@ -241,6 +241,47 @@ describe("rendu déterministe", () => {
     expect(operations).toContain("fill");
   });
 
+  test("les positions des éléments sont stables quand la qualité change", () => {
+    // On rend la même famille à q = 1 et q = 0,6 : tout élément présent aux
+    // deux paliers doit tomber exactement à la même position. On compare les
+    // opérations qui portent des coordonnées ; celles du palier bas doivent
+    // former un sous-ensemble de celles du palier haut.
+    const trace = (family: FamilyId, quality: number) => {
+      const data = analysis();
+      const plan = buildShowPlan(data, false);
+      plan.scenes = plan.scenes.map((scene) => ({ ...scene, family }));
+      const { ctx, operations } = fakeContext();
+      renderFrame({
+        ctx,
+        width: 800,
+        height: 600,
+        dpr: 1,
+        time: 25,
+        view: new TrackView(data),
+        plan,
+        settings: DEFAULT_SETTINGS,
+        reducedMotion: false,
+        quality,
+        frame: 0,
+      });
+      return new Set(
+        operations.filter(
+          (operation) =>
+            operation.startsWith("moveTo:") ||
+            operation.startsWith("lineTo:") ||
+            operation.startsWith("arc:") ||
+            operation.startsWith("quadraticCurveTo:"),
+        ),
+      );
+    };
+
+    for (const family of Object.keys(FAMILY_LABELS) as FamilyId[]) {
+      const haut = trace(family, 1);
+      const bas = trace(family, 0.6);
+      for (const operation of bas) expect(haut.has(operation)).toBe(true);
+    }
+  });
+
   test("toutes les familles visuelles rendent sans erreur", () => {
     // La liste vient du barème des libellés : aucune famille ne peut être
     // oubliée quand on en ajoute une.
