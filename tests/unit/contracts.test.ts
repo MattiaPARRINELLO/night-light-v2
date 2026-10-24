@@ -78,10 +78,10 @@ function extendToTenMinutes(analysis: Analysis): Analysis {
 }
 
 describe("X1 — budget de teinte plan + rendu", () => {
-  // BUG DE PRODUCTION (agent B) : `sceneHue` ajoute `HUE_DRIFT_PER_SEC × t`
-  // (render.ts:351-353). Sur 10 minutes, la dérive atteint 240° : la teinte du
-  // morceau est perdue, très au-delà de spread + marge.
-  test.failing("la teinte rendue reste dans ±(spread + marge) de l'ancre sur 10 min simulées", () => {
+  // BUG D'ORIGINE : `sceneHue` ajoutait une dérive linéaire (`0,4 °/s × t`),
+  // soit 240° sur 10 min. La PR #29 la remplace par une sinusoïde bornée et un
+  // clamp vers l'ancre : le test n'est plus marqué `failing`.
+  test("la teinte rendue reste dans ±(spread + marge) de l'ancre sur 10 min simulées", () => {
     const margin = HUE_IMPACT_LIMIT + HUE_BREATH_DEG;
     const violations: string[] = [];
     let worst = { track: "", excursion: 0, at: 0, budget: 0 };
