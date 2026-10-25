@@ -1,12 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   beatDrive,
   beatStrength,
+  clampHueToAnchor,
   drawTransition,
   ENERGY_FLOOR,
   flashAdmitted,
+  flashAlphaAt,
+  FLASH_CEILING,
+  HUE_BUDGET_MARGIN_DEG,
   renderFrame,
+  sceneAnchor,
   sceneHue,
   transitionAlpha,
   visibleEnergy,
@@ -212,10 +220,76 @@ function fakeHaze(): { haze: HazeTarget; fine: FausseNappe; large: FausseNappe }
 }
 
 describe("rendu déterministe", () => {
+  /** Rend une image sur un contexte donné et renvoie les opérations produites. */
+  function renderInto(
+    ctx: CanvasRenderingContext2D,
+    operations: string[],
+    time: number,
+    quality = 1,
+    settings = DEFAULT_SETTINGS,
+  ): string {
+    const start = operations.length;
+    const data = analysis();
+    renderFrame({
+      ctx,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      time,
+      view: new TrackView(data),
+      plan: buildShowPlan(data, settings.reduced),
+      settings,
+      reducedMotion: false,
+      quality,
+      frame: Math.round(time * 60),
+    });
+    // Les dégradés sont des objets : le contexte factice ne les compare pas.
+    // La vignette, mémorisée par contexte, n'est créée qu'au premier rendu —
+    // on ignore donc les opérations de construction des dégradés, identiques
+    // par ailleurs d'une image à l'autre.
+    return operations
+      .slice(start)
+      .filter((operation) => !operation.startsWith("stop:") && !operation.startsWith("radial:"))
+      .join("|");
+  }
+
   test("deux images au même temps musical sont identiques", () => {
     const first = renderAt(33.25);
     const second = renderAt(33.25);
     expect(second.join("|")).toBe(first.join("|"));
+  });
+
+  test("deux rendus successifs sur le MÊME contexte sont identiques", () => {
+    // Couvre les caches de module : la vignette mémorisée par contexte ne doit
+    // pas changer la seconde image.
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 33.25);
+    const second = renderInto(ctx, operations, 33.25);
+    expect(second).toBe(first);
+  });
+
+  test("un seek arrière redonne exactement l'image d'avant", () => {
+    const { ctx, operations } = fakeContext();
+    renderInto(ctx, operations, 42.5);
+    const afterSeek = renderInto(ctx, operations, 12.25);
+    const { ctx: ctxNeuf, operations: operationsNeuve } = fakeContext();
+    const reference = renderInto(ctxNeuf, operationsNeuve, 12.25);
+    expect(afterSeek).toBe(reference);
+  });
+
+  test("à palier de qualité égal, deux rendus sont identiques", () => {
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 27.5, 0.6);
+    const second = renderInto(ctx, operations, 27.5, 0.6);
+    expect(second).toBe(first);
+  });
+
+  test("le mode réduit est déterministe aussi", () => {
+    const settings = { ...DEFAULT_SETTINGS, reduced: true };
+    const { ctx, operations } = fakeContext();
+    const first = renderInto(ctx, operations, 31.5, 1, settings);
+    const second = renderInto(ctx, operations, 31.5, 1, settings);
+    expect(second).toBe(first);
   });
 
   test("deux temps différents donnent des images différentes", () => {
@@ -234,6 +308,47 @@ describe("rendu déterministe", () => {
     expect(operations.length).toBeGreaterThan(20);
     expect(operations.some((operation) => operation.startsWith("fillRect:"))).toBe(true);
     expect(operations).toContain("fill");
+  });
+
+  test("les positions des éléments sont stables quand la qualité change", () => {
+    // On rend la même famille à q = 1 et q = 0,6 : tout élément présent aux
+    // deux paliers doit tomber exactement à la même position. On compare les
+    // opérations qui portent des coordonnées ; celles du palier bas doivent
+    // former un sous-ensemble de celles du palier haut.
+    const trace = (family: FamilyId, quality: number) => {
+      const data = analysis();
+      const plan = buildShowPlan(data, false);
+      plan.scenes = plan.scenes.map((scene) => ({ ...scene, family }));
+      const { ctx, operations } = fakeContext();
+      renderFrame({
+        ctx,
+        width: 800,
+        height: 600,
+        dpr: 1,
+        time: 25,
+        view: new TrackView(data),
+        plan,
+        settings: DEFAULT_SETTINGS,
+        reducedMotion: false,
+        quality,
+        frame: 0,
+      });
+      return new Set(
+        operations.filter(
+          (operation) =>
+            operation.startsWith("moveTo:") ||
+            operation.startsWith("lineTo:") ||
+            operation.startsWith("arc:") ||
+            operation.startsWith("quadraticCurveTo:"),
+        ),
+      );
+    };
+
+    for (const family of Object.keys(FAMILY_LABELS) as FamilyId[]) {
+      const haut = trace(family, 1);
+      const bas = trace(family, 0.6);
+      for (const operation of bas) expect(haut.has(operation)).toBe(true);
+    }
   });
 
   test("toutes les familles visuelles rendent sans erreur", () => {
@@ -341,12 +456,17 @@ describe("pulsage de secours sur les temps forts", () => {
     expect(beatDrive(view, 8.4, 1)).toBe(0);
   });
 
-  test("se taît dès que le morceau a assez de montées", () => {
+  test("s'efface progressivement quand les montées se multiplient", () => {
     const view = new TrackView(analysis());
-    // Jusqu'à deux montées, le morceau reste jugé peu dynamique ; à trois, les
-    // vrais drops suffisent à porter le spectacle.
+    // Jusqu'à deux montées, le morceau reste jugé peu dynamique ; au-delà, les
+    // vrais drops prennent le relais et l'impulsion s'efface sans rupture.
     expect(beatDrive(view, 8.02, 2)).toBeGreaterThan(0);
-    expect(beatDrive(view, 8.02, 3)).toBe(0);
+    const trois = beatDrive(view, 8.02, 3);
+    const quatre = beatDrive(view, 8.02, 4);
+    expect(trois).toBeGreaterThan(0);
+    expect(trois).toBeLessThan(beatDrive(view, 8.02, 2));
+    expect(quatre).toBeLessThan(trois);
+    expect(beatDrive(view, 8.02, 6)).toBe(0);
     expect(beatDrive(view, 8.02, 9)).toBe(0);
   });
 
@@ -357,33 +477,41 @@ describe("pulsage de secours sur les temps forts", () => {
     expect(beatDrive(view, 8.02, 1)).toBeCloseTo(attendu, 6);
   });
 
-  test("le pulsage de secours éclaire le rendu sur un morceau sans montée", () => {
-    // Même analyse, sauf les montées : sans le pulsage de secours, un morceau
-    // sans montée resterait éteint entre deux temps forts. Il pousse désormais la
-    // palette vers le blanc et fait sauter la teinte — l'image change, sans
-    // ajouter le moindre élément (la surcouche de projecteurs qu'il déclenchait
-    // autrefois a été retirée, elle faisait « vu-mètre »).
-    const trace = (data: Analysis) => renderAt(8.02, data);
-    const sansMontee = trace(analysis({ builds: [] }));
-    const monteesLointaines = trace(
-      analysis({
-        builds: [
-          { start: 20, end: 24, strength: 0.9 },
-          { start: 40, end: 44, strength: 0.9 },
-          { start: 50, end: 54, strength: 0.9 },
-        ],
-      }),
-    );
-    expect(sansMontee.join("|")).not.toBe(monteesLointaines.join("|"));
-    expect(sansMontee.length).toBe(monteesLointaines.length);
+  test("le pulsage de secours ne fait plus clignoter la teinte", () => {
+    // Piste sans aucune montée : `beatDrive` continue de porter l'intensité,
+    // mais la couleur ne reçoit plus que le vrai drop. Deux images successives
+    // ne doivent donc pas sauter de 12°.
+    const data = analysis({ builds: [] });
+    const plan = buildShowPlan(data, false);
+    const view = new TrackView(data);
+    const scene = plan.scenes[0]!;
+    const anchor = sceneAnchor(scene, plan.track);
+    let previous: number | undefined;
+    const gap = (a: number, b: number) => Math.abs(((b - a + 540) % 360) - 180);
+    for (let t = 0; t < scene.end - 0.1; t += 1 / 60) {
+      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false, anchor);
+      if (previous !== undefined) expect(gap(previous, hue)).toBeLessThan(2);
+      previous = hue;
+    }
+  });
+
+  test("une piste à trois montées n'a plus de rupture d'intensité", () => {
+    // L'ancien seuil dur (`builds > 2 → 0`) faisait perdre d'un coup toute
+    // l'impulsion à la troisième montée. L'atténuation est désormais continue :
+    // la valeur décroît, sans marche.
+    const view = new TrackView(analysis());
+    const valeurs = [2, 3, 4, 5, 6].map((builds) => beatDrive(view, 8.02, builds));
+    for (let i = 1; i < valeurs.length; i += 1) {
+      expect(valeurs[i]!).toBeLessThanOrEqual(valeurs[i - 1]!);
+      expect(valeurs[i - 1]! - valeurs[i]!).toBeLessThan(0.13);
+    }
   });
 });
 
-describe("moderation des flashs", () => {
-  test("les flashs de temps fort restent espacés d'au moins FLASH_MIN_GAP", () => {
-    // 0,5 s entre deux temps forts (120 BPM) : sans modération, deux flashs par
-    // seconde. La cadence doit retomber à un toutes les ~1,6 s au minimum. On
-    // compte les évènements, pas les images : un flash dure plusieurs images.
+describe("cadence musicale des flashs", () => {
+  test("hors drop, un seul temps fort par phrase porte un flash", () => {
+    // 0,5 s entre deux temps forts (120 BPM) : un flash par phrase de 8 temps,
+    // soit un toutes les 4 s. On compte les évènements, pas les images.
     const view = new TrackView(analysis());
     const events: number[] = [];
     for (let t = 0; t < 20; t += 1 / 60) {
@@ -391,9 +519,8 @@ describe("moderation des flashs", () => {
       if (flashAdmitted(view, t) && (precedent === undefined || t - precedent > 0.3)) events.push(t);
     }
     expect(events.length).toBeGreaterThanOrEqual(4);
-    expect(events.length).toBeLessThanOrEqual(13);
     for (let i = 1; i < events.length; i += 1) {
-      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(3.9);
     }
   });
 
@@ -403,17 +530,19 @@ describe("moderation des flashs", () => {
     expect(flashAdmitted(view, 8.05)).toBe(true);
   });
 
-  test("un drop garde sa priorité, même juste après un flash de temps fort", () => {
-    // La montée de l'analyse se termine à 22 s, pile sur un temps fort : le drop
-    // doit flasher malgré la modération des temps forts.
+  test("un drop flashe à chaque temps fort, sans attendre la phrase", () => {
+    // La montée se termine à 22 s. Pendant le drop, chaque temps fort porte un
+    // flash : la cadence suit la musique au lieu d'un métronome de 1,6 s.
     const view = new TrackView(analysis());
     expect(flashAdmitted(view, 22.02)).toBe(true);
+    expect(flashAdmitted(view, 22.52)).toBe(true);
+    expect(flashAdmitted(view, 23.02)).toBe(true);
     expect(flashAdmitted(view, 22.3)).toBe(false);
   });
 
-  test("la cadence s'espace toute seule sur un morceau rapide", () => {
-    // 180 BPM contre 60 BPM : dans les deux cas l'intervalle minimum est
-    // respecté, et le morceau rapide ne martèle pas davantage.
+  test("la cadence de phrase s'adapte au tempo", () => {
+    // 180 BPM : une phrase (8 temps) dure 2,67 s ; 60 BPM : 8 s. Dans les deux
+    // cas, un seul flash par phrase hors drop.
     const rapide = new TrackView(analysis({ tempo: 180, beatPeriod: 1 / 3, beats: buildBeats(1 / 3, 60) }));
     const lente = new TrackView(analysis({ tempo: 60, beatPeriod: 1.0, beats: buildBeats(1.0, 60) }));
     const evenements = (view: TrackView) => {
@@ -424,16 +553,25 @@ describe("moderation des flashs", () => {
       }
       return out;
     };
-    for (const view of [rapide, lente]) {
-      const events = evenements(view);
-      expect(events.length).toBeGreaterThan(3);
-      for (let i = 1; i < events.length; i += 1) {
-        expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
-      }
-    }
-    // 20 s de morceau : jamais plus d'un flash toutes les 1,6 s.
-    expect(evenements(rapide).length).toBeLessThanOrEqual(13);
-    expect(evenements(lente).length).toBeLessThanOrEqual(13);
+    expect(evenements(rapide).length).toBeGreaterThanOrEqual(6);
+    expect(evenements(lente).length).toBeGreaterThanOrEqual(2);
+    expect(evenements(rapide).length).toBeGreaterThan(evenements(lente).length);
+  });
+
+  test("le drop est plus lumineux qu'un temps fort ordinaire", () => {
+    // settings.flashes = 1 : la hiérarchie doit rester lisible.
+    const settings = { ...DEFAULT_SETTINGS, flashes: 1 };
+    const ordinaire = flashAlphaAt(1, 0.9, 0, 0, 0.9, false, settings);
+    const drop = flashAlphaAt(0, 0.9, 1, 1, 0.9, false, settings);
+    expect(drop).toBeGreaterThan(ordinaire * 1.3);
+    expect(drop).toBeLessThanOrEqual(FLASH_CEILING);
+    expect(ordinaire).toBeGreaterThan(0);
+  });
+
+  test("le budget utilisateur et le mode réduit restent souverains", () => {
+    const zero = { ...DEFAULT_SETTINGS, flashes: 0 };
+    expect(flashAlphaAt(1, 1, 1, 1, 1, false, zero)).toBe(0);
+    expect(flashAlphaAt(1, 1, 1, 1, 1, true, DEFAULT_SETTINGS)).toBe(0);
   });
 
   test("le lavage blanc ne vient jamais du pulsage de secours", () => {
@@ -533,6 +671,9 @@ function renderFamily(famille: FamilyId, over: Partial<FrameState> = {}): string
       beatIndex: 24,
       build: 0.5,
       buildStrength: 0.7,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0.4,
       intensity: 0.8,
       alpha: 1,
@@ -698,6 +839,9 @@ describe("vague des lyres", () => {
       beatIndex: 0,
       build: 0,
       buildStrength: 0,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0,
       intensity: 0.8,
       alpha: 1,
@@ -823,6 +967,9 @@ describe("mouvements cales sur le tempo", () => {
       beatIndex: 8,
       build: 0,
       buildStrength: 0,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0.2,
       intensity: 0.8,
       alpha: 1,
@@ -938,6 +1085,9 @@ describe("allumage et extinction des elements", () => {
       beatIndex: 8,
       build: 0,
       buildStrength: 0,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0.2,
       intensity: 0.8,
       alpha: 1,
@@ -1066,6 +1216,9 @@ describe("bascule de couleur des formes", () => {
       beatIndex: 8,
       build: 0,
       buildStrength: 0,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0.2,
       intensity: 0.8,
       alpha: 1,
@@ -1147,6 +1300,9 @@ describe("accords de couleurs", () => {
       beatIndex: 8,
       build: 0,
       buildStrength: 0,
+      drop: 0,
+      beatAge: Infinity,
+      dropAge: Infinity,
       surge: 0.2,
       intensity: 0.8,
       alpha: 1,
@@ -1572,9 +1728,10 @@ describe("flashs", () => {
     // Passage « intense » (40-60 s) : basse forte et énergie haute, donc les
     // temps forts portent un kick et méritent un flash. Le flash doit naître
     // juste après l'attaque, pas pendant la décroissance ni à contretemps.
-    expect(flashFramesAt(42.25)).toBe(0);
-    expect(flashFramesAt(42.05)).toBe(1);
+    // Hors drop, la cadence de phrase allume les temps forts 44 s et 48 s.
+    expect(flashFramesAt(44.25)).toBe(0);
     expect(flashFramesAt(44.05)).toBe(1);
+    expect(flashFramesAt(48.25)).toBe(0);
   });
 
   test("aucun flash dans un passage calme", () => {
@@ -1586,7 +1743,7 @@ describe("flashs", () => {
     }
   });
 
-  test("deux flashs restent toujours espacés d'au moins FLASH_MIN_GAP", () => {
+  test("hors drop, les flashs restent espacés d'une phrase", () => {
     // Evenements = début de chaque salve de flashs.
     const events: number[] = [];
     let flashing = false;
@@ -1595,10 +1752,9 @@ describe("flashs", () => {
       if (isFlash && !flashing) events.push(t);
       flashing = isFlash;
     }
-    expect(events.length).toBeGreaterThan(3);
-    expect(events.length).toBeLessThanOrEqual(14);
+    expect(events.length).toBeGreaterThan(2);
     for (let i = 1; i < events.length; i += 1) {
-      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(1.6);
+      expect(events[i]! - events[i - 1]!).toBeGreaterThanOrEqual(3.9);
     }
   });
 });
@@ -1609,6 +1765,31 @@ describe("pulse en accord avec la musique", () => {
     const view = new TrackView(analysis({ bass: [[0, 0.05], [30, 0.05], [60, 0.05]] }));
     expect(beatStrength(view, 8.02)).toBe(0);
     expect(beatStrength(view, 42.02)).toBe(0);
+  });
+
+  test("la porte sur les basses est douce, sans marche d'une image à l'autre", () => {
+    // La basse traverse le seuil pendant le morceau : le pulse doit monter
+    // progressivement, pas sauter de 0 à sa valeur pleine.
+    const data = analysis({ bass: [[0, 0.05], [8, 0.2], [60, 0.2]] });
+    const view = new TrackView(data);
+    let previous = beatStrength(view, 0);
+    let maxStep = 0;
+    for (let t = 1 / 60; t < 20; t += 1 / 60) {
+      // Le saut d'attaque sur un temps fort est l'évènement musical lui-même :
+      // on mesure la continuité ailleurs (franchissement du seuil de basses).
+      if (data.beats.some((beat) => t - beat >= 0 && t - beat < 1 / 60)) continue;
+      const value = beatStrength(view, t);
+      maxStep = Math.max(maxStep, Math.abs(value - previous));
+      previous = value;
+    }
+    expect(maxStep).toBeLessThan(0.25);
+  });
+
+  test("une piste sans basses ne déclenche aucun pulse", () => {
+    const view = new TrackView(analysis({ bass: [[0, 0.02], [60, 0.02]] }));
+    let max = 0;
+    for (let t = 0; t < 60; t += 1 / 60) max = Math.max(max, beatStrength(view, t));
+    expect(max).toBeLessThan(0.05);
   });
 
   test("un kick dans un passage intense pulse plus fort qu'en passage calme", () => {
@@ -1680,6 +1861,59 @@ describe("stabilite de la qualite", () => {
   });
 });
 
+describe("vérifications transverses", () => {
+  /** Évènements de flash (début de salve) pour un pas d'échantillonnage donné. */
+  function flashEvents(view: TrackView, step: number, until = 60): number[] {
+    const events: number[] = [];
+    let previous = false;
+    for (let t = 0; t <= until; t += step) {
+      const admitted = flashAdmitted(view, t);
+      if (admitted && !previous) events.push(Number(t.toFixed(3)));
+      previous = admitted;
+    }
+    return events;
+  }
+
+  test("les flashs admis sont les mêmes aux pas 1/60 et 1/30", () => {
+    const view = new TrackView(analysis());
+    const fin = flashEvents(view, 1 / 60);
+    const grossier = flashEvents(view, 1 / 30);
+    expect(grossier.length).toBe(fin.length);
+    for (let i = 0; i < fin.length; i += 1) {
+      expect(Math.abs(fin[i]! - grossier[i]!)).toBeLessThan(1 / 30 + 1e-9);
+    }
+  });
+
+  test("aucune image noire sur 1 000 instants du corpus", () => {
+    // Le plancher d'énergie (0,26) garantit une luminosité de fond minimale :
+    // le dégradé de fond a une composante HSL d'au moins ~0,05, et le halo
+    // central est toujours dessiné. On vérifie que chaque image produit bien
+    // son fond, son halo et sa poussière.
+    const data = analysis({ builds: [] });
+    for (let index = 0; index < 1000; index += 1) {
+      // Générateur déterministe : pas de Math.random dans le diagnostic.
+      const t = (hash01(index * 7919 + 13) * 60 + 0.001) % 60;
+      expect(visibleEnergy(new TrackView(data).energyAt(t))).toBeGreaterThanOrEqual(ENERGY_FLOOR);
+      const operations = renderAt(t, data);
+      expect(operations.some((operation) => operation.startsWith("fillRect:0.0,0.0,1280.0,720.0"))).toBe(true);
+      expect(operations.filter((operation) => operation.startsWith("radial:")).length).toBeGreaterThan(0);
+    }
+  });
+
+  test("ni render.ts ni les familles ne consultent l'horloge ou le hasard", () => {
+    const sources = [readFileSync(new URL("../../src/core/render.ts", import.meta.url), "utf8")];
+    const dossier = fileURLToPath(new URL("../../src/core/families/", import.meta.url));
+    for (const fichier of readdirSync(dossier)) {
+      if (fichier.endsWith(".ts")) sources.push(readFileSync(join(dossier, fichier), "utf8"));
+    }
+    for (const source of sources) {
+      expect(source.includes("Math.random")).toBe(false);
+      expect(source.includes("Date.now")).toBe(false);
+      expect(source.includes("performance.now")).toBe(false);
+    }
+  });
+});
+
 describe("couleur", () => {
   /** Écart angulaire entre deux teintes, 0..180. */
   function hueGap(a: number, b: number): number {
@@ -1711,9 +1945,34 @@ describe("couleur", () => {
     let previous = sceneHue(scene, 0, 0, 0, false);
     for (let t = 0.1; t < 60; t += 0.1) {
       const hue = sceneHue(scene, t, 0, 0, false);
-      // Dérive lente (0,4 °/s) + respiration : aucun saut d'un pas à l'autre.
+      // Dérive périodique + respiration : aucun saut d'un pas à l'autre.
       expect(hueGap(previous, hue)).toBeLessThan(2);
       previous = hue;
     }
+  });
+
+  test("sur toute la durée, la teinte ne quitte jamais le budget d'ancre", () => {
+    const data = analysis({ duration: 600 });
+    const plan = buildShowPlan(data, false, 41);
+    const view = new TrackView(data);
+    for (let t = 0; t < 600; t += 0.5) {
+      const scene =
+        plan.scenes.find((candidate) => t >= candidate.start && t < candidate.end) ?? plan.scenes[plan.scenes.length - 1]!;
+      const anchor = sceneAnchor(scene, plan.track);
+      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false, anchor);
+      const budget = scene.palette.spread + HUE_BUDGET_MARGIN_DEG;
+      expect(hueGap(anchor, hue)).toBeLessThanOrEqual(budget);
+    }
+  });
+
+  test("le plafonnement de teinte est doux : pas de palier au bord du budget", () => {
+    const spread = 40;
+    const limit = spread + HUE_BUDGET_MARGIN_DEG;
+    // Juste sous la limite, la teinte est presque inchangée ; au-delà, elle se
+    // rapproche sans jamais s'y coller exactement.
+    expect(clampHueToAnchor(150 + spread, 150, spread)).toBeLessThan(150 + spread);
+    const tresLoin = clampHueToAnchor(150 + 170, 150, spread);
+    expect(hueGap(150, tresLoin)).toBeLessThan(limit);
+    expect(hueGap(150, tresLoin)).toBeGreaterThan(limit * 0.95);
   });
 });

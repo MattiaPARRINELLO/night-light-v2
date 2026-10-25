@@ -25,6 +25,12 @@ export interface FrameState {
   build: number;
   /** Force de la montée courante, 0..1. */
   buildStrength: number;
+  /** Impact d'une montée déjà retombée, 0..1 (0 avant l'impact). */
+  drop: number;
+  /** Secondes écoulées depuis le dernier temps fort (Infinity si aucun). */
+  beatAge: number;
+  /** Secondes écoulées depuis le dernier impact (Infinity si aucun). */
+  dropAge: number;
   /** Vitesse de montée de l'énergie, 0..1 (0 quand ça descend). */
   surge: number;
   /** Intensité effective = scène * réglage utilisateur. */

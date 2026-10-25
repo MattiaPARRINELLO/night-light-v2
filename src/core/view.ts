@@ -175,6 +175,12 @@ export class TrackView {
     return peak;
   }
 
+  /** Dernier temps fort à ou avant `t`, `-Infinity` s'il n'y en a aucun. */
+  lastBeatAt(t: number): number {
+    const beats = this.beatsIn(t - 10, t);
+    return beats.length > 0 ? (beats[beats.length - 1] ?? -Infinity) : -Infinity;
+  }
+
   /** Battement du morceau (phase 0..1 dans la mesure), utile pour les motifs. */
   beatPhase(t: number): number {
     if (this.beats.length > 0) {
@@ -235,6 +241,22 @@ export class TrackView {
       const age = t - build.end;
       const anticipation = age < 0 ? 0.35 * (1 + age / DROP_ANTICIPATION_SEC) : 1;
       const value = (age < 0 ? anticipation : Math.exp(-age / 0.42) * anticipation) * build.strength;
+      if (value > peak) peak = value;
+    }
+    return clamp01(peak);
+  }
+
+  /**
+   * Intensité de l'impact d'une montée **après** sa retombée, 0 avant l'impact.
+   *
+   * `buildIntensity` anticipe de 0,3 s (le spectacle se tend avant la reprise) ;
+   * pour le flash global, la latence doit rester nulle : il naît sur l'impact,
+   * pas avant. Cette variante ne regarde que les montées déjà terminées.
+   */
+  dropImpact(t: number): number {
+    let peak = 0;
+    for (const build of this.buildsEndingIn(t - DROP_SPAN_SEC, t)) {
+      const value = Math.exp(-(t - build.end) / 0.42) * build.strength;
       if (value > peak) peak = value;
     }
     return clamp01(peak);

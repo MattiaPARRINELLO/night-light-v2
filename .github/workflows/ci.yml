@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   core:
-    name: types, tests front & serveur, build
+    name: lint, types, tests front & serveur, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,21 +20,36 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache des paquets bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
       - name: Dépendances front
         run: bun install --frozen-lockfile
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Environnement Python
+        run: uv sync
+
+      - name: Outils système (ffmpeg)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Lint (oxlint + ruff)
+        run: bun run lint
 
       - name: Types (tsc)
         run: bun run typecheck
 
       - name: Tests front
         run: bun test tests/
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.12"
-
-      - name: Outils système (ffmpeg)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Tests serveur
         run: uv run pytest tests/ -q
@@ -52,12 +67,21 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Cache des paquets bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
       - name: Dépendances front
         run: bun install --frozen-lockfile
 
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
+          enable-cache: true
 
       - name: Préparer l'environnement Python
         run: uv sync

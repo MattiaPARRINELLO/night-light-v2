@@ -5,7 +5,7 @@ import { contrastHue, lampHue } from "./harmony";
 import { beatSwing, elementEnvelope } from "./tempo";
 import type { FamilyDraw } from "./types";
 import { GRAND_BALAYAGE_BEATS } from "./types";
-import { count, paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 /**
  * Demi-ouverture de l'éventail, en radians : l'écart maximal d'un rayon à la
@@ -20,7 +20,10 @@ const EVENTAIL_BALAYAGE = 0.3;
 const beams: FamilyDraw = (ctx, f, view) => {
   const { width: w, height: h } = f;
   const originX = w * 0.5;
-  const rays = count(f.energy > 0.55 ? 20 : 13, f.quality, f.reduced);
+  const baseRays = f.energy > 0.55 ? 20 : 13;
+  const slots = count(baseRays, 1, f.reduced);
+  const rays = count(baseRays, f.quality, f.reduced);
+  const active = activeSlots(slots, rays, f.seed);
   if (rays < 1) return;
   const spread = EVENTAIL_DEMI_OUVERTURE / (f.reduced ? 1.15 : 1);
   // Un pas tous les deux temps forts : l'éventail se réoriente sur la musique,
@@ -55,10 +58,10 @@ const beams: FamilyDraw = (ctx, f, view) => {
     const base = sens < 0 ? -Math.PI / 2 : Math.PI / 2;
     // Jumeaux en miroir : ce que l'un penche d'un côté, l'autre le penche de
     // l'autre — les deux éventails s'ouvrent et se referment ensemble.
-    const teinteDecalage = sens < 0 ? 0 : rays;
+    const teinteDecalage = sens < 0 ? 0 : slots;
 
-    for (let i = 0; i < rays; i += 1) {
-      const ratio = rays === 1 ? 0.5 : i / (rays - 1);
+    for (const i of active) {
+      const ratio = slots === 1 ? 0.5 : i / (slots - 1);
       const wobble = Math.sin(f.t * (0.7 + hash01(i * 31 + f.seed) * 0.9) + i * 1.7) * 0.025;
       const angle = base + (ratio - 0.5) * spread - sens * sweep + wobble;
       const hue = lampHue(f, i + teinteDecalage);
@@ -99,13 +102,15 @@ const tunnel: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const cx = w * 0.5;
   const cy = h * 0.48;
+  const ringSlots = count(26, 1, f.reduced);
   const rings = count(26, f.quality, f.reduced);
+  const activeRings = activeSlots(ringSlots, rings, f.seed);
   const speed = f.reduced ? 0.16 : 0.42;
   const maxRadius = Math.hypot(w, h) * 0.62;
   ctx.lineCap = "round";
 
-  for (let i = 0; i < rings; i += 1) {
-    const depth = (i / rings + f.t * speed) % 1;
+  for (const i of activeRings) {
+    const depth = (i / ringSlots + f.t * speed) % 1;
     const radius = Math.pow(depth, 2.4) * maxRadius + 6;
     const fade = clamp01(depth * 1.35) * (1 - depth * 0.65);
     // Les anneaux du tunnel portent l'accord de la scène au lieu d'un dégradé
@@ -122,10 +127,12 @@ const tunnel: FamilyDraw = (ctx, f) => {
   }
 
   // Traînée radiale : rayons qui balayent le tunnel.
+  const spokeSlots = count(16, 1, f.reduced);
   const spokes = count(16, f.quality, f.reduced);
+  const activeSpokes = activeSlots(spokeSlots, spokes, f.seed);
   const turn = f.t * (f.reduced ? 0.1 : 0.3);
-  for (let i = 0; i < spokes; i += 1) {
-    const angle = turn + (i / spokes) * Math.PI * 2;
+  for (const i of activeSpokes) {
+    const angle = turn + (i / spokeSlots) * Math.PI * 2;
     const hue = lampHue(f, i);
     const alpha = (0.05 + 0.2 * f.mid) * f.alpha;
     const gradient = ctx.createLinearGradient(
@@ -194,11 +201,13 @@ const particles: FamilyDraw = (ctx, f, view) => {
 
 const waves: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
+  const lineSlots = count(6, 1, f.reduced);
   const lines = count(6, f.quality, f.reduced);
+  const activeLines = activeSlots(lineSlots, lines, f.seed);
   const speed = f.reduced ? 0.25 : 0.7;
 
-  for (let i = 0; i < lines; i += 1) {
-    const ratio = lines === 1 ? 0.5 : i / (lines - 1);
+  for (const i of activeLines) {
+    const ratio = lineSlots === 1 ? 0.5 : i / (lineSlots - 1);
     const baseY = h * mix(0.78, 0.3, ratio) + Math.sin(f.t * 0.35 + i) * h * 0.015;
     const amp = h * (0.018 + 0.07 * f.mid + 0.05 * f.bass) * (0.5 + ratio);
     const hue = lampHue(f, i);
@@ -223,7 +232,7 @@ const waves: FamilyDraw = (ctx, f) => {
     ctx.stroke();
 
     // Remplissage sous la courbe principale.
-    if (i === lines - 1) {
+    if (i === activeLines[activeLines.length - 1]) {
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
       ctx.closePath();
@@ -239,17 +248,21 @@ const waves: FamilyDraw = (ctx, f) => {
 const grid: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const horizon = h * 0.62;
+  const columnSlots = count(15, 1, f.reduced);
   const columns = count(15, f.quality, f.reduced);
+  const activeColumns = activeSlots(columnSlots, columns, f.seed);
   const speed = f.reduced ? 0.12 : 0.35;
+  const depthSlots = count(14, 1, f.reduced);
   const depthLines = count(14, f.quality, f.reduced);
+  const activeDepth = activeSlots(depthSlots, depthLines, f.seed + 1);
   // Deux membres de l'accord : les colonnes et les lignes de fuite ne partagent
   // donc pas la même teinte, et la grille n'est plus d'une seule couleur.
   const hue = lampHue(f, 0);
   const hueFuite = lampHue(f, 1);
 
   ctx.lineWidth = 1.1;
-  for (let i = 0; i < columns; i += 1) {
-    const ratio = columns === 1 ? 0.5 : i / (columns - 1);
+  for (const i of activeColumns) {
+    const ratio = columnSlots === 1 ? 0.5 : i / (columnSlots - 1);
     const x = (ratio - 0.5) * 2;
     const alpha = (0.05 + 0.18 * f.energy) * f.alpha * (1 - Math.abs(x) * 0.35);
     ctx.strokeStyle = paint(hue, f.palette.saturation, f.palette.lightness, alpha);
@@ -259,8 +272,8 @@ const grid: FamilyDraw = (ctx, f) => {
     ctx.stroke();
   }
 
-  for (let i = 0; i < depthLines; i += 1) {
-    const z = (i / depthLines + ((f.t * speed) % (1 / depthLines)) * depthLines) % 1;
+  for (const i of activeDepth) {
+    const z = (i / depthSlots + ((f.t * speed) % (1 / depthSlots)) * depthSlots) % 1;
     const y = horizon + Math.pow(z, 2.2) * (h - horizon) * 1.25;
     if (y > h * 1.05) continue;
     const alpha = (0.05 + 0.22 * f.energy) * clamp01(z * 1.4) * f.alpha;
@@ -306,9 +319,11 @@ const rings: FamilyDraw = (ctx, f, view) => {
   }
 
   // Anneaux pulsés par les basses, concentriques et alternés.
+  const pulseSlots = count(7, 1, f.reduced);
   const pulses = count(7, f.quality, f.reduced);
-  for (let i = 0; i < pulses; i += 1) {
-    const phase = (f.t * 0.8 + i / pulses) % 1;
+  const activePulses = activeSlots(pulseSlots, pulses, f.seed);
+  for (const i of activePulses) {
+    const phase = (f.t * 0.8 + i / pulseSlots) % 1;
     const radius = 12 + phase * maxRadius * 0.7;
     const alpha = (1 - phase) * (0.05 + 0.3 * f.bass) * f.alpha;
     ctx.strokeStyle = paint(lampHue(f, i), f.palette.saturation, 0.68, alpha);
@@ -321,12 +336,14 @@ const rings: FamilyDraw = (ctx, f, view) => {
 
 const shutters: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
+  const slatSlots = count(16, 1, f.reduced);
   const slats = count(16, f.quality, f.reduced);
-  const gap = w / slats;
+  const activeSlats = activeSlots(slatSlots, slats, f.seed);
+  const gap = w / slatSlots;
   const speed = f.reduced ? 0.35 : 1.1;
   const baseY = h * 0.5;
 
-  for (let i = 0; i < slats; i += 1) {
+  for (const i of activeSlats) {
     const phase = f.t * speed * (0.6 + hash01(i * 71 + f.seed) * 0.8) + i * 0.7;
     const open = 0.5 + 0.5 * Math.sin(phase);
     const height = h * (0.06 + 0.5 * open) * (0.4 + f.energy * 1.2) + f.beat * h * 0.06;
@@ -344,11 +361,13 @@ const shutters: FamilyDraw = (ctx, f) => {
 
 const bars: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
+  const columnSlots = count(28, 1, f.reduced);
   const columns = count(28, f.quality, f.reduced);
-  const gap = w / columns;
+  const activeColumns = activeSlots(columnSlots, columns, f.seed);
+  const gap = w / columnSlots;
   const floor = h * 0.88;
 
-  for (let i = 0; i < columns; i += 1) {
+  for (const i of activeColumns) {
     const band = hash01(i * 911 + f.seed);
     const level =
       0.12 +
@@ -376,16 +395,20 @@ const spiral: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const cx = w * 0.5;
   const cy = h * 0.5;
+  const armSlots = count(5, 1, f.reduced);
   const arms = count(5, f.quality, f.reduced);
+  const activeArms = activeSlots(armSlots, arms, f.seed);
+  const perArmSlots = count(26, 1, f.reduced);
   const perArm = count(26, f.quality, f.reduced);
+  const activeSteps = activeSlots(perArmSlots, perArm, f.seed + 1);
   const maxRadius = Math.min(w, h) * 0.46;
   const turn = f.t * (f.reduced ? 0.12 : 0.32);
 
-  for (let arm = 0; arm < arms; arm += 1) {
-    const armOffset = (arm / arms) * Math.PI * 2;
+  for (const arm of activeArms) {
+    const armOffset = (arm / armSlots) * Math.PI * 2;
     const hue = lampHue(f, arm);
-    for (let step = 0; step < perArm; step += 1) {
-      const ratio = step / perArm;
+    for (const step of activeSteps) {
+      const ratio = step / perArmSlots;
       const angle = armOffset + turn * (1 + ratio * 1.6) + ratio * Math.PI * 1.4;
       const radius = ratio * maxRadius * (1 + f.build * 0.3);
       const size = (1 + (1 - ratio) * 5) * (0.5 + f.bass * 0.9 + f.beat * 0.4);

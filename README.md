@@ -131,7 +131,7 @@ Réellement calculé par librosa sur les échantillons décodés (22 050 Hz, STF
 | attaques | `onset_detect`, corrigé du retard de groupe de la STFT |
 | basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée ; `midLow` (150–600 Hz) et `midHigh` (600–2500 Hz) subdivisent le médium |
 | énergie globale | RMS + bandes, normalisation logarithmique (reste lisible dans les passages modérés) |
-| section | une seule section, de 0 à la fin, étiquetée calme/montée/intense/descente/silence d'après l'énergie ; plus de découpage couplet/refrain |
+| section | une seule section, de 0 à la fin, étiquetée `calme`, `intense` ou `silence` d'après l'énergie (le schéma accepte aussi `montee`/`descente`, que le serveur ne produit pas) ; plus de découpage couplet/refrain |
 | montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée ; un cut de 150–450 ms avant l'impact est enjambé pour caler le drop sur le premier onset qui suit le silence |
 
 Toutes les courbes sont envoyées en points `[secondes, 0..1]` à 20 Hz — compacts et
@@ -157,7 +157,9 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Vingt-huit familles visuelles tournantes. Les projecteurs se déclinent en figures de
+Vingt-neuf familles visuelles tournantes. Le tirage suit la graine du morceau par une
+permutation déterministe : deux morceaux différents ne déroulent pas les mêmes familles,
+et les deux scènes précédentes sont exclues pour éviter les répétitions. Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
 vortex, lyres, lyres suspendues, barres LED, pont concert. Les autres jouent sur la
@@ -218,9 +220,8 @@ Trois règles, toutes vérifiées par des tests :
 - **chaque élément s'allume et s'éteint progressivement** (`elementEnvelope`) : montée
   lissée, maintien, extinction lissée, jamais de saut. Le cycle se compte en temps forts et
   chaque élément a son décalage, donc ils s'allument l'un après l'autre ;
-- **la couche de fond est commune à tout le morceau** (`plan.backdrop`) : c'est l'élément qui
-  reste à l'écran quand tout le reste change. Avec le fond, le halo et la poussière — qui ne
-  dépendent plus du fondu de scène — l'écran ne passe jamais par le noir entre deux scènes.
+- **le fond, le halo et la poussière sont permanents** (couche `permanent` du rendu) : ils ne
+  dépendent pas du fondu de scène, donc l'écran ne passe jamais par le noir entre deux scènes.
 
 L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
 contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
@@ -274,20 +275,30 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
 Le passage du direct au show programmé (et le retour) n'est pas une coupure : l'image s'ouvre
 depuis le noir avec un front lumineux qui balaie l'écran, sur environ 1,5 s.
 
-Deux couches sont visibles en permanence : la famille de la phrase et une couche de fond
-discrète, de sorte qu'une image montre toujours deux mondes superposés.
+Le fond, le halo et la poussière sont dessinés en permanence sous la famille de la phrase :
+une image montre toujours deux mondes superposés, même quand la scène change.
 
 **Réactions aux moments forts** :
 
-- **drop** : quand une montée se résout sur l'impact, saut de teinte (70°), wash complet de
-  seize projecteurs et lavage blanc pendant ~2,5 s ;
+La dérive de teinte est une sinusoïde bornée (période 90 s) et la teinte rendue est
+ramenée dans la fenêtre du morceau : elle ne sort jamais du budget de couleur, même après
+plusieurs minutes. La brillance d'une scène est la **moyenne** de la courbe aiguë, plus une
+somme saturée : les réservoirs de familles sont réellement distincts.
+
+- **drop** : quand une montée se résout sur l'impact, saut de teinte borné à 26°
+  (`DROP_HUE_JUMP`), wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage
+  blanc bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
+  lyres, geste des barres, motif des blinders, pôle de teinte — donc deux impacts ne se
+  ressemblent pas ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
   spectacle pulse sur les temps forts ;
 - **temps forts** : flashs cadencés, pulsations du noyau lumineux, ondes des anneaux.
 
-Tout cela est plafonné : un flash ne dépasse jamais 40 % d'opacité, deux flashs sont
-séparés d'au moins 0,14 s, et le mode réduit supprime les flashs, le wash de drop
-et les variations.
+Tout cela reste dosé : un flash ne dépasse jamais 80 % d'opacité (`FLASH_CEILING`), et la
+cadence suit la musique — un flash par temps fort pendant un drop, un seul par phrase hors
+drop. Un impact de montée garde la priorité. Le flash naît sur son déclencheur (latence
+nulle) puis monte en 40 ms sur un temps fort, 120 ms sur un drop. Le mode réduit supprime
+les flashs, le wash de drop et les variations.
 
 **Synchronisation** : chaque image est rendue à partir de `audio.currentTime`. Aucun état
 n'accumule de dérive, donc la position du spectacle est toujours juste, y compris après
@@ -296,17 +307,48 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 **Confort visuel** :
 
 - mode « intensité réduite » (moins d'éléments, mouvements ralentis, aucun flash) ;
-- curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et un espacement
-  minimal entre deux flashs ;
+- curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
+  musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
 - deux teintes voisines sont toujours séparées d'au moins ~34°, pour éviter les alternances
   de couleur agressives ;
 - les flashs sont suffisamment espacés pour ne pas former de stroboscope ; ce n'est pas une
   garantie, et le mieux reste de les couper si tu y es sensible.
 
+## Développement
+
+L'ordre est important : sans `node_modules`, `bun run typecheck` échoue avec
+`TS2688` (types `bun`, `node` et `vite` introuvables). Ce n'est pas une erreur
+de code, c'est une précondition.
+
+```bash
+bun install             # 1. dépendances front (obligatoire avant typecheck)
+uv sync                 # 2. environnement Python (.venv via uv)
+bun run typecheck       # 3. types (tsc)
+bun run lint            # 4. oxlint (front) + ruff (serveur)
+bun run test            # 5. types + tests front + tests serveur
+```
+
+Pour lancer uniquement l'API d'analyse :
+
+```bash
+uv run uvicorn server.main:app --host 127.0.0.1 --port 8787
+```
+
+`bun scripts/check.sh` (ou `bun run check`) enchaîne installation, typecheck,
+lint et tests, et s'arrête au premier problème. La mesure de référence
+(nombre de tests, durée, versions d'outils) est dans
+[`docs/baseline.md`](docs/baseline.md).
+
+Pour le détail des tests, du corpus de référence et du harnais de métriques,
+voir [`docs/testing.md`](docs/testing.md). L'état réel de chaque règle d'effet
+(ACTIF / CODE MORT / PARTIEL / DIVERGENT), avec sa preuve `fichier:ligne`, est
+dans [`docs/scene-effects-spec.md`](docs/scene-effects-spec.md).
+
 ## Vérifier
 
 ```bash
+bun run check           # tout : install, typecheck, lint, tests (arrêt au premier échec)
 bun run lint            # oxlint (front) + ruff (serveur)
 bun run typecheck       # types (tsc)
 bun run test            # types + tests front + tests serveur
@@ -366,7 +408,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families/           les vingt-huit familles d'effets
+    families/           les vingt-neuf familles d'effets
       concert-rig.ts    structure, lyres, barres LED et blinders
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
