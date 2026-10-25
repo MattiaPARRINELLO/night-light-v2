@@ -34,6 +34,11 @@ ANALYZER_VERSION = "4"
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
 
+# Métrique : un pic d'autocorrélation ternaire doit dépasser ce seuil, et
+# devancer le pic binaire de cette marge, pour renverser la préférence 4/4.
+TERNARY_MIN_PEAK = 0.02
+TERNARY_MARGIN = 0.02
+
 
 class AnalysisError(Exception):
     """Erreur d'analyse, traduite en message compréhensible par l'API."""
@@ -284,43 +289,66 @@ def estimate_meter(
 ) -> int:
     """Estime la métrique dominante : 3 (ternaire) ou 4 (binaire).
 
-    On mesure la périodicité de l'accentuation des temps forts, par
-    autocorrélation : en 3/4, l'accent revient toutes les 3 pulsations (et 6) ;
-    en 4/4, toutes les 4 (et 8). Sans répétition nette, on garde 4 : c'est
-    l'hypothèse la plus courante, et se tromper vers le ternaire casserait la
-    grille visuelle d'une écrasante majorité de morceaux.
+    On mesure la périodicité de l'enveloppe d'attaques à l'échelle de la
+    mesure : le lag d'une mesure vaut ``m`` pulsations. Un vrai 3/4 produit un
+    pic d'autocorrélation à 3 (et 6) pulsations, un 4/4 à 4 (et 8).
+
+    Trois précautions, chacune corrige une erreur observée sur le corpus réel :
+
+    1. **Fenêtres glissantes.** L'autocorrélation globale est détruite par la
+       dérive du tempo (un morceau de 13 min cumule plusieurs secondes de
+       décalage). On médiane des fenêtres de 8 s, insensibles à la dérive.
+    2. **Pic local, pas valeur brute.** L'autocorrélation décroît naturellement
+       avec le lag : comparer 3 à 4 avantagerait toujours 3. On mesure l'excédent
+       du lag par rapport à la moyenne de ses deux voisins.
+    3. **Préférence binaire forte.** Sans pic ternaire net, on garde 4 : un 4/4
+       lu en 3/4 décale toute la dramaturgie, l'inverse est moins visible.
     """
-    if tempo <= 0 or onset_env.size == 0 or len(beats) < 8:
+    if tempo <= 0 or onset_env.size == 0:
         return 4
-    frames = librosa.time_to_frames(np.asarray(beats, dtype=float), sr=sr, hop_length=hop_length)
-    frames = frames[(frames >= 0) & (frames < onset_env.size)]
-    if frames.size < 8:
+    beat_frames = (60.0 / tempo) * (sr / float(hop_length))
+    if not np.isfinite(beat_frames) or beat_frames < 2.0:
         return 4
+    # On ne garde que les lags utiles (1 à 8 mesures) et on borne à la taille
+    # de l'enveloppe : un morceau court ne doit pas produire de pic fantôme.
+    lags = {m: int(round(m * beat_frames)) for m in range(1, 9)}
+    if lags[8] >= onset_env.size // 2:
+        # Pas assez de recul pour juger 8 pulsations ; on juge sur 3 et 4 seuls.
+        lags = {m: lag for m, lag in lags.items() if m <= 4}
+        if lags[4] >= onset_env.size // 2:
+            return 4
 
-    # Accent d'un temps = maximum local de l'enveloppe : la densité d'attaques
-    # (charleys, ghost notes) ne doit pas décider de la métrique.
-    accents = np.asarray(
-        [
-            float(np.max(onset_env[max(0, frame - 1) : min(onset_env.size, frame + 2)]))
-            for frame in frames
-        ]
-    )
-    accents = accents - float(np.mean(accents))
-    total = float(np.sum(accents**2))
-    if total <= 1e-9:
-        return 4
+    envelope = np.asarray(onset_env, dtype=float)
+    envelope = envelope - float(np.mean(envelope))
+    window = int(min(max(beat_frames * 8.0, 64.0), max(envelope.size, 1)))
+    step = max(1, window // 2)
+    autocorrelations: dict[int, list[float]] = {m: [] for m in lags}
+    for start in range(0, max(1, envelope.size - window) + 1, step):
+        chunk = envelope[start : start + window]
+        total = float(np.sum(chunk**2))
+        if total <= 1e-9:
+            continue
+        for meter, lag in lags.items():
+            if lag <= 0 or lag >= chunk.size:
+                continue
+            autocorrelations[meter].append(float(np.dot(chunk[:-lag], chunk[lag:])) / total)
+    values = {
+        meter: float(np.median(samples)) if samples else 0.0
+        for meter, samples in autocorrelations.items()
+    }
 
-    def lag_score(lag: int) -> float:
-        if accents.size <= lag:
+    def peak(meter: int) -> float:
+        """Excédent du lag de mesure par rapport à ses deux voisins."""
+        previous = values.get(meter - 1)
+        following = values.get(meter + 1)
+        neighbours = [value for value in (previous, following) if value is not None]
+        if not neighbours:
             return 0.0
-        return float(np.dot(accents[:-lag], accents[lag:])) / total
+        return values.get(meter, 0.0) - float(np.mean(neighbours))
 
-    ternary = max(lag_score(3), lag_score(6))
-    binary = max(lag_score(4), lag_score(8))
-    # Marge volontaire : sans écart net ni accent ternaire franc, l'écart est du
-    # bruit de mesure et on reste sur 4/4. Se tromper vers le ternaire casserait
-    # la grille d'une écrasante majorité de morceaux.
-    if ternary >= 0.45 and ternary > binary * 1.25:
+    ternary = max(peak(3), peak(6))
+    binary = max(peak(4), peak(8))
+    if ternary >= TERNARY_MIN_PEAK and ternary >= binary + TERNARY_MARGIN:
         return 3
     return 4
 
