@@ -1,5 +1,10 @@
 # Rapport — filet de sécurité commun (tâches D0 à D9)
 
+> **Rapport historique** (instantané de la tâche D0–D9, PR #31). Les compteurs
+> et les échecs attendus ci-dessous datent de cet instantané : P7, P9 et X1 ont
+> été corrigés depuis. L'état courant des tests en échec est dans la section 8
+> de [`integration-report.md`](integration-report.md).
+
 Worktree `chore/test-harness-baseline`, base `6bf8d2c`. Aucun fichier interdit
 n'a été modifié : `git diff --stat 6bf8d2c -- src/core/{show,view,render,harmony}.ts
 src/core/families` est vide (vérifié en fin de parcours).

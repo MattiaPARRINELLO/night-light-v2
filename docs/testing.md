@@ -29,7 +29,11 @@ La mesure de référence (nombre de tests, durée, versions) est dans
 Les tests marqués `test.failing` documentent un bug de production **connu** :
 ils réussissent tant que le bug est là et échouent dès qu'il est corrigé (il
 faut alors retirer le marqueur). Chacun référence le `fichier:ligne` fautif et
-la valeur mesurée. La liste courante est dans le rapport de la tâche D4/D5/D6.
+la valeur mesurée. La liste courante (et la justification de chaque écart
+assumé) est dans la section 8 de
+[`integration-report.md`](integration-report.md) ; le rapport
+[`test-harness-report.md`](test-harness-report.md) est l'instantané de la tâche
+D0–D9 et ne doit plus servir de référence.
 
 ## Corpus de référence
 
@@ -93,3 +97,16 @@ si une toile devient disponible :
 
 Aucun fichier `tests/golden/` n'est créé tant que ces conditions ne sont pas
 réunies.
+
+## Outillage manuel (hors CI)
+
+Trois scripts servent à instrumenter à la main ; aucun ne tourne en CI.
+
+| script | usage |
+| --- | --- |
+| `uv run python bench/bench_analysis.py <fichier>` | chronomètre chaque étape de l'analyse librosa (chargement, onset, beat_track, STFT, analyse complète) et affiche tempo, sections, montées |
+| `uv run python scripts/analyze_corpus.py --corpus tests/fixtures/corpus --out /tmp/analyses.json` | analyse tout le corpus dans un JSON au contrat du front (`measure.ts` l'appelle lui-même sur un fichier temporaire) |
+| `uv run python scripts/bench_chronology.py <fichier…>` | mesure la chronologie réelle résolution + analyse (cache audio et cache d'analyse compris), sans dépendre de Deezer |
+
+`bench/` ne fait pas partie de la suite de tests : c'est un profileur ponctuel,
+à lancer sur un fichier précis quand une analyse paraît lente.

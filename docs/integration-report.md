@@ -301,10 +301,16 @@ fix/integration`), sans le worktree d'origine :
 
 ## 10. Risques résiduels et non-vérifié
 
-- **Playwright** (#29) est en échec côté CI ; aucun parcours navigateur n'a été
-  exécuté ici. Le rendu est couvert par les tests unitaires et la trace
-  d'opérations, pas par une rasterisation réelle : la « pureté au pixel près »
-  est vérifiée au niveau de la **trace d'opérations** (aucun état, aucun aléa).
+- **Playwright** : le job CI était en échec, mais pas à cause de #29. Le
+  diagnostic est établi : cinq scripts e2e (`browser_check`, `fallback_check`,
+  `family_check`, `scene_fade_check`, `shots`) calculaient la racine du dépôt
+  avec un `dirname` de moins, donc lançaient `.venv/bin/uvicorn` depuis
+  `tests/` (ENOENT) ; les quatre autres étaient corrects. Corrigé sur la branche
+  `fix/playwright-ci-github` (`022781a` racine partagée et lancement de l'API,
+  `c5ab64e` journal de l'API remonté à l'échec) : CI verte au run `40196481673`.
+  Aucun parcours navigateur n'avait été exécuté au moment de l'intégration : le
+  rendu reste couvert par les tests unitaires et la trace d'opérations, pas par
+  une rasterisation réelle.
 - **`scene.backdrop` / `plan.backdrop`** restent du code mort ; `reason` reste
   inutilisé par le rendu. À supprimer ou à consommer dans une PR dédiée.
 - **Famille de drop unique** (`pont-concert`) : la diversité passe par la
