@@ -184,6 +184,8 @@ try {
   await page.close();
 } catch (error) {
   failures.push(`exception : ${error && error.stack ? error.stack : String(error)}`);
+  const apiLog = api.output();
+  if (apiLog !== "") failures.push(`journal de l'API :\n${apiLog}`);
 } finally {
   await browser.close().catch(() => {});
   try {

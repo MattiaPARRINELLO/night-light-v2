@@ -15,7 +15,8 @@ const HOST = "127.0.0.1";
 export function spawnApi(root, port, env = {}) {
   const local = join(root, ".venv", "bin", "uvicorn");
   const useLocal = existsSync(local);
-  return spawn(
+  const debug = Boolean(process.env.CHECK_DEBUG);
+  const child = spawn(
     useLocal ? local : "uv",
     [
       ...(useLocal ? [] : ["run", "uvicorn"]),
@@ -27,9 +28,24 @@ export function spawnApi(root, port, env = {}) {
     ],
     {
       cwd: root,
-      stdio: process.env.CHECK_DEBUG ? "inherit" : "ignore",
+      stdio: debug ? "inherit" : ["ignore", "pipe", "pipe"],
       env: { ...process.env, PORT: String(port), ...env },
       detached: true,
     },
   );
+
+  // Garde les dernières lignes de l'API quand elle refuse de démarrer : sans
+  // ça, un échec en intégration ne dit rien d'autre que « health injoignable ».
+  const tail = [];
+  const collect = (chunk) => {
+    for (const line of chunk.toString().split("\n")) {
+      if (line.trim() !== "") tail.push(line);
+    }
+    if (tail.length > 40) tail.splice(0, tail.length - 40);
+  };
+  child.stdout?.on("data", collect);
+  child.stderr?.on("data", collect);
+  child.output = () => tail.join("\n");
+
+  return child;
 }
