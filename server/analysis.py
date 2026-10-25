@@ -29,10 +29,15 @@ HOP = 512
 NFFT = 2048
 # Version du résultat d'analyse. À incrémenter dès que l'algorithme change :
 # le cache d'analyse est indexé dessus, donc les entrées périmées sont ignorées.
-ANALYZER_VERSION = "3"
+ANALYZER_VERSION = "4"
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
+
+# Métrique : un pic d'autocorrélation ternaire doit dépasser ce seuil, et
+# devancer le pic binaire de cette marge, pour renverser la préférence 4/4.
+TERNARY_MIN_PEAK = 0.02
+TERNARY_MARGIN = 0.02
 
 
 class AnalysisError(Exception):
@@ -284,43 +289,66 @@ def estimate_meter(
 ) -> int:
     """Estime la métrique dominante : 3 (ternaire) ou 4 (binaire).
 
-    On mesure la périodicité de l'accentuation des temps forts, par
-    autocorrélation : en 3/4, l'accent revient toutes les 3 pulsations (et 6) ;
-    en 4/4, toutes les 4 (et 8). Sans répétition nette, on garde 4 : c'est
-    l'hypothèse la plus courante, et se tromper vers le ternaire casserait la
-    grille visuelle d'une écrasante majorité de morceaux.
+    On mesure la périodicité de l'enveloppe d'attaques à l'échelle de la
+    mesure : le lag d'une mesure vaut ``m`` pulsations. Un vrai 3/4 produit un
+    pic d'autocorrélation à 3 (et 6) pulsations, un 4/4 à 4 (et 8).
+
+    Trois précautions, chacune corrige une erreur observée sur le corpus réel :
+
+    1. **Fenêtres glissantes.** L'autocorrélation globale est détruite par la
+       dérive du tempo (un morceau de 13 min cumule plusieurs secondes de
+       décalage). On médiane des fenêtres de 8 s, insensibles à la dérive.
+    2. **Pic local, pas valeur brute.** L'autocorrélation décroît naturellement
+       avec le lag : comparer 3 à 4 avantagerait toujours 3. On mesure l'excédent
+       du lag par rapport à la moyenne de ses deux voisins.
+    3. **Préférence binaire forte.** Sans pic ternaire net, on garde 4 : un 4/4
+       lu en 3/4 décale toute la dramaturgie, l'inverse est moins visible.
     """
-    if tempo <= 0 or onset_env.size == 0 or len(beats) < 8:
+    if tempo <= 0 or onset_env.size == 0:
         return 4
-    frames = librosa.time_to_frames(np.asarray(beats, dtype=float), sr=sr, hop_length=hop_length)
-    frames = frames[(frames >= 0) & (frames < onset_env.size)]
-    if frames.size < 8:
+    beat_frames = (60.0 / tempo) * (sr / float(hop_length))
+    if not np.isfinite(beat_frames) or beat_frames < 2.0:
         return 4
+    # On ne garde que les lags utiles (1 à 8 mesures) et on borne à la taille
+    # de l'enveloppe : un morceau court ne doit pas produire de pic fantôme.
+    lags = {m: int(round(m * beat_frames)) for m in range(1, 9)}
+    if lags[8] >= onset_env.size // 2:
+        # Pas assez de recul pour juger 8 pulsations ; on juge sur 3 et 4 seuls.
+        lags = {m: lag for m, lag in lags.items() if m <= 4}
+        if lags[4] >= onset_env.size // 2:
+            return 4
 
-    # Accent d'un temps = maximum local de l'enveloppe : la densité d'attaques
-    # (charleys, ghost notes) ne doit pas décider de la métrique.
-    accents = np.asarray(
-        [
-            float(np.max(onset_env[max(0, frame - 1) : min(onset_env.size, frame + 2)]))
-            for frame in frames
-        ]
-    )
-    accents = accents - float(np.mean(accents))
-    total = float(np.sum(accents**2))
-    if total <= 1e-9:
-        return 4
+    envelope = np.asarray(onset_env, dtype=float)
+    envelope = envelope - float(np.mean(envelope))
+    window = int(min(max(beat_frames * 8.0, 64.0), max(envelope.size, 1)))
+    step = max(1, window // 2)
+    autocorrelations: dict[int, list[float]] = {m: [] for m in lags}
+    for start in range(0, max(1, envelope.size - window) + 1, step):
+        chunk = envelope[start : start + window]
+        total = float(np.sum(chunk**2))
+        if total <= 1e-9:
+            continue
+        for meter, lag in lags.items():
+            if lag <= 0 or lag >= chunk.size:
+                continue
+            autocorrelations[meter].append(float(np.dot(chunk[:-lag], chunk[lag:])) / total)
+    values = {
+        meter: float(np.median(samples)) if samples else 0.0
+        for meter, samples in autocorrelations.items()
+    }
 
-    def lag_score(lag: int) -> float:
-        if accents.size <= lag:
+    def peak(meter: int) -> float:
+        """Excédent du lag de mesure par rapport à ses deux voisins."""
+        previous = values.get(meter - 1)
+        following = values.get(meter + 1)
+        neighbours = [value for value in (previous, following) if value is not None]
+        if not neighbours:
             return 0.0
-        return float(np.dot(accents[:-lag], accents[lag:])) / total
+        return values.get(meter, 0.0) - float(np.mean(neighbours))
 
-    ternary = max(lag_score(3), lag_score(6))
-    binary = max(lag_score(4), lag_score(8))
-    # Marge volontaire : sans écart net ni accent ternaire franc, l'écart est du
-    # bruit de mesure et on reste sur 4/4. Se tromper vers le ternaire casserait
-    # la grille d'une écrasante majorité de morceaux.
-    if ternary >= 0.45 and ternary > binary * 1.25:
+    ternary = max(peak(3), peak(6))
+    binary = max(peak(4), peak(8))
+    if ternary >= TERNARY_MIN_PEAK and ternary >= binary + TERNARY_MARGIN:
         return 3
     return 4
 
@@ -520,18 +548,77 @@ def _impact_after_gap(
     return None
 
 
+# ------------------------------------------------------------- seuils d'impact
+#
+# Un impact n'est pas « une énergie qui monte » : c'est un changement durable
+# d'état. Les seuils ci-dessous ont été calibrés sur le corpus réel (voir
+# tools/build_diagnostic.py) pour supprimer les fausses montées — notamment les
+# nuances d'un piano seul — sans relever globalement les seuils historiques.
+BUILD_MIN_SPAN = 2.0
+BUILD_MAX_SPAN = 30.0
+BUILD_MIN_STRENGTH = 0.30
+# Énergie gagnée entre le début de la montée et le plateau qui la suit.
+BUILD_MIN_RISE = 0.20
+# Plateau rapporté au niveau de référence (20 s avant la montée) : le gain doit
+# être relatif à la dynamique du morceau, pas seulement absolu.
+BUILD_MIN_RATIO = 1.35
+BUILD_MIN_LIFT = 0.12
+# Niveau minimal du plateau : une montée qui retombe n'est pas un impact.
+BUILD_MIN_AFTER = 0.45
+# Arrivée des basses : sans elle, une nuance instrumentale (piano, cordes) est
+# prise pour un impact. C'est le critère qui supprime les faux impacts calmes.
+BUILD_MIN_BASS_GAIN = 0.12
+# Branche « retour de basse » : un climax orchestral peut déjà être au maximum
+# d'énergie avant l'impact ; la basse qui double et s'installe en est la preuve.
+BUILD_BASS_ONLY_GAIN = 0.20
+BUILD_BASS_ONLY_RATIO = 2.0
+# Un contraste d'énergie écrasant (orchestre qui éclate, sans contenu basse
+# mesurable) suffit à prouver l'impact sans arrivée de basses.
+BUILD_STRONG_RATIO = 2.5
+BUILD_STRONG_LIFT = 0.30
+# Rampe longue et régulière : le pic de pente tombe tôt, l'impact est l'arrivée
+# sur le plateau (c'est le cas de la piste synthétique à 90 BPM).
+BUILD_LONG_RUN = 4.0
+BUILD_SHORT_MERGE_GAP = 1.5
+
+
+def _window_mean(times: np.ndarray, values: np.ndarray, start: float, end: float) -> float:
+    """Moyenne d'une courbe sur [start, end), interpolée si la fenêtre est vide."""
+    window = (times >= start) & (times < end)
+    if not window.any():
+        return float(np.interp(start, times, values))
+    return float(np.mean(values[window]))
+
+
 def detect_builds(
     energy_points: list[list[float]],
     duration: float,
     onsets: list[float] | None = None,
+    bass_points: list[list[float]] | None = None,
 ) -> list[dict]:
-    """Montées d'énergie suivies d'un impact."""
+    """Montées d'énergie suivies d'un impact réel.
+
+    Le pipeline conserve la détection historique des segments montants (pente
+    lissée, recalage sur l'attaque, cut éventuel) — c'est elle qui place
+    correctement les impacts existants. La correction porte sur la
+    **recevabilité** : un segment montant n'est retenu que si le plateau qui le
+    suit change durablement l'état du morceau (gain relatif, énergie tenue,
+    arrivée des basses ou contraste écrasant).
+    """
     if len(energy_points) < 8:
         return []
     times = np.array([point[0] for point in energy_points], dtype=float)
     values = sanitize_curve(np.array([point[1] for point in energy_points], dtype=float))
     if not np.all(np.isfinite(times)) or times.size < 2:
         return []
+    if bass_points:
+        bass_times = np.array([point[0] for point in bass_points], dtype=float)
+        bass_values = sanitize_curve(np.array([point[1] for point in bass_points], dtype=float))
+    else:
+        bass_times = times
+        bass_values = np.zeros_like(values)
+    has_bass = bool(bass_points)
+
     rate = 1.0 / max(float(np.median(np.diff(times))) if times.size > 1 else 0.05, 1e-3)
     smooth = _smooth(values, min(2.0, max(0.5, duration / 6.0)), rate)
     if values.size < 3:
@@ -541,7 +628,8 @@ def detect_builds(
     derivative = np.convolve(gradient, np.ones(window) / window, mode="same")
     rising = derivative > 0.01
 
-    builds: list[dict] = []
+    # 1. Segments montants, avec le placement historique de l'impact.
+    candidates: list[dict] = []
     index = 0
     while index < len(rising):
         if not rising[index]:
@@ -552,14 +640,9 @@ def detect_builds(
         while end_index < len(rising) and rising[end_index]:
             end_index += 1
         start = float(times[start_index])
-        end = float(times[min(end_index, len(times) - 1)])
+        run_end = float(times[min(end_index, len(times) - 1)])
         peak_slice = values[start_index : min(start_index + int(6 * rate), len(values))]
         strength = float(np.max(peak_slice)) if peak_slice.size > 0 else 0.0
-        start_level = float(values[start_index])
-        # L'impact audible est le saut d'énergie le plus raide de la montée. Le
-        # `derivative` est lissé sur plusieurs secondes, donc sa fin de montée
-        # tombe après l'impact : sans ce recalcul, le spectacle fête le drop 1 à
-        # 2 s après le son.
         pic = slice(start_index, min(end_index + 1, len(gradient)))
         if pic.stop > pic.start:
             after_gap = _impact_after_gap(
@@ -578,23 +661,107 @@ def detect_builds(
                     int(np.argmax(gradient[pic])) + pic.start,
                     len(times) - 1,
                 )
-                end = float(times[crest_index])
-                # Et on recale sur l'attaque réelle : c'est elle que l'oreille entend.
-                end = _snap_to_onset(end, onsets)
-        # Une vraie montée gagne nettement en niveau, pas seulement quelques %.
+                # On recale sur l'attaque réelle : c'est elle que l'oreille entend.
+                end = _snap_to_onset(float(times[crest_index]), onsets)
+                if end - start < BUILD_MIN_SPAN and run_end - start >= BUILD_LONG_RUN:
+                    # Rampe régulière : le maximum de pente tombe tôt. L'impact
+                    # est l'arrivée sur le plateau, pas le point le plus raide.
+                    plateau_peak = float(
+                        np.max(
+                            smooth[
+                                start_index : min(start_index + int(max(6 * rate, 1)), smooth.size)
+                            ]
+                        )
+                    )
+                    floor = float(smooth[start_index])
+                    target = floor + 0.9 * max(plateau_peak - floor, 0.0)
+                    reached = np.nonzero(
+                        smooth[start_index : min(end_index + 1, smooth.size)] >= target
+                    )[0]
+                    if reached.size:
+                        plateau_index = min(start_index + int(reached[-1]), len(times) - 1)
+                        end = _snap_to_onset(float(times[plateau_index]), onsets)
+        else:
+            end = run_end
         strength = float(np.nan_to_num(strength, nan=0.0, posinf=1.0, neginf=0.0))
         if not np.isfinite(start) or not np.isfinite(end):
             index = end_index + 1
             continue
-        if 2.0 <= end - start <= 30.0 and strength > 0.3 and strength - start_level > 0.18:
-            builds.append(
-                {
-                    "start": round(start, 3),
-                    "end": round(min(end, duration), 3),
-                    "strength": round(float(np.clip(strength, 0.0, 1.0)), 3),
-                }
-            )
+        candidates.append(
+            {
+                "start": start,
+                "end": end,
+                "start_index": start_index,
+                "strength": strength,
+            }
+        )
         index = end_index + 1
+
+    # 2. Un climax peut être haché en plusieurs montées courtes (cuivres, tous
+    #    les pupitres) : on recolle deux montées courtes séparées de moins de
+    #    1,5 s. On ne recolle jamais une montée déjà valide, pour ne pas déplacer
+    #    les impacts existants.
+    coalesced: list[dict] = []
+    for candidate in candidates:
+        if (
+            coalesced
+            and candidate["start"] - coalesced[-1]["end"] <= BUILD_SHORT_MERGE_GAP
+            and coalesced[-1]["end"] - coalesced[-1]["start"] < BUILD_MIN_SPAN
+            and candidate["end"] - candidate["start"] < BUILD_MIN_SPAN
+        ):
+            coalesced[-1]["end"] = max(coalesced[-1]["end"], candidate["end"])
+            coalesced[-1]["strength"] = max(coalesced[-1]["strength"], candidate["strength"])
+        else:
+            coalesced.append(dict(candidate))
+
+    # 3. Recevabilité : le plateau doit changer durablement l'état du morceau.
+    builds: list[dict] = []
+    for candidate in coalesced:
+        start = float(candidate["start"])
+        end = float(candidate["end"])
+        span = end - start
+        if not (BUILD_MIN_SPAN <= span <= BUILD_MAX_SPAN):
+            continue
+        if candidate["strength"] <= BUILD_MIN_STRENGTH:
+            continue
+        start_index = int(candidate["start_index"])
+        base = _window_mean(times, smooth, max(0.0, start - 24.0), max(0.0, start - 4.0))
+        after = _window_mean(times, smooth, end, min(duration, end + 8.0))
+        rise = after - float(smooth[start_index])
+        ratio = after / max(base, 0.05)
+        lift = after - base
+        before_bass = _window_mean(bass_times, bass_values, max(0.0, start - 4.0), start)
+        after_bass = _window_mean(bass_times, bass_values, end, min(duration, end + 8.0))
+        bass_gain = after_bass - before_bass
+        energy_arrival = (
+            rise >= BUILD_MIN_RISE
+            and ratio >= BUILD_MIN_RATIO
+            and lift >= BUILD_MIN_LIFT
+            and after >= BUILD_MIN_AFTER
+            and (bass_gain >= BUILD_MIN_BASS_GAIN or not has_bass)
+        )
+        bass_arrival = has_bass and (
+            bass_gain >= BUILD_BASS_ONLY_GAIN
+            and after_bass >= BUILD_BASS_ONLY_RATIO * max(before_bass, 0.02)
+            and after >= BUILD_MIN_AFTER
+        )
+        # Contraste d'énergie sans ambiguïté : la basse n'est pas nécessaire.
+        strong_arrival = (
+            rise >= BUILD_MIN_RISE
+            and ratio >= BUILD_STRONG_RATIO
+            and lift >= BUILD_STRONG_LIFT
+            and after >= BUILD_MIN_AFTER
+        )
+        if not (energy_arrival or bass_arrival or strong_arrival):
+            continue
+        builds.append(
+            {
+                "start": round(start, 3),
+                "end": round(min(end, duration), 3),
+                "strength": round(float(np.clip(candidate["strength"], 0.0, 1.0)), 3),
+                "source": "rise",
+            }
+        )
 
     # Fusionne les montées qui se chevauchent.
     merged: list[dict] = []
@@ -792,7 +959,7 @@ def analyze_file(
     phase_timings["curvesSec"] = round(time.monotonic() - curves_started, 3)
     progress(phases[3], 0.5, "détection des montées")
     builds_started = time.monotonic()
-    builds = detect_builds(energy_points, full_duration, onsets)
+    builds = detect_builds(energy_points, full_duration, onsets, bass_points)
     phase_timings["buildsSec"] = round(time.monotonic() - builds_started, 3)
     check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")

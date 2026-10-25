@@ -332,7 +332,7 @@ describe("rôles du plan de spectacle", () => {
       ],
       builds: [{ start: 95, end: 100, strength: 1 }],
     });
-    const plan = buildShowPlan(data, false);
+    const plan = buildShowPlan(data, false, undefined, { dramaturgy: true });
     const roles = new Set(plan.scenes.map((scene) => scene.role));
     expect(roles.has("intro")).toBe(true);
     expect(roles.has("couplet")).toBe(true);

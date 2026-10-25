@@ -5,93 +5,44 @@
  * Ce module ne modifie **aucun** comportement du produit. Il recalcule le
  * caractère de chaque scène et la branche de décision qui a produit sa famille.
  *
- * Deux fonctions internes de `src/core/show.ts` ne sont pas exportées :
- * `familyFor` et `moodFor`, ainsi que le seuil `MOOD_BRIGHTNESS_THRESHOLD`
- * (0,09) et les réservoirs `CALM_FAMILIES` / `RHYTHMIC_FAMILIES` /
- * `ENERGETIC_FAMILIES`. Leur logique est donc **recopiée ici** (avec les
- * constantes exportées quand elles existent) et signalée au rapport comme dette
- * d'instrumentation. Toute évolution de `show.ts` doit être répercutée ici.
+ * Il n'y a **aucune recopie** de l'arbre de décision : `familyBranchFor`,
+ * `moodBranchFor`, les seuils et les réservoirs sont importés de
+ * `src/core/show.ts`, qui les exporte pour l'instrumentation. Une évolution de
+ * `show.ts` se répercute donc mécaniquement sur les mesures.
  */
 
 import {
-  BRIGHTNESS_THRESHOLD,
   buildShowPlan,
-  CALM_ENERGY_THRESHOLD,
   caractereAt,
-  DENSITY_THRESHOLD,
-  ENERGY_THRESHOLD,
+  FAMILY_BRANCHES,
+  FAMILY_BRANCH_RESERVOIRS,
   FAMILY_LABELS,
+  familyBranchFor,
+  MOOD_BRANCHES,
   MOOD_LABELS,
+  MOOD_OF_BRANCH,
+  moodBranchFor,
+  moodThresholdsFor,
   SCENE_REASON_LABELS,
   SCENE_ROLE_LABELS,
+  type FamilyBranch,
   type FamilyId,
   type Mood,
+  type MoodBranch,
+  type MoodThresholds,
   type SceneReason,
   type SceneRole,
 } from "../../src/core/show";
 import type { Analysis, Section } from "../../src/types";
 import type { PlanTrack } from "./plan_corpus";
 
-// --- Recopie assumée de l'état interne de show.ts -------------------------
-
-/** Seuil de `moodFor` (non exporté par `show.ts`). */
-const MOOD_BRIGHTNESS_THRESHOLD = 0.09;
-
-const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral", "pluie"];
-const RHYTHMIC_FAMILIES: FamilyId[] = [
-  "bars", "beams", "grid", "shutters", "tunnel", "spots", "mirror", "parade", "crossfire",
-  "curtain", "burst", "gobos", "pendule", "couronne", "pluie", "portique", "etoile", "vortex",
-  "lyre", "mandala", "treillis", "rideaux", "lyres-suspendues", "barres-led", "pont-concert",
-];
-const ENERGETIC_FAMILIES: FamilyId[] = [
-  "beams", "spots", "spiral", "shutters", "bars", "grid", "mirror", "parade", "crossfire",
-  "curtain", "burst", "gobos", "pendule", "couronne", "pluie", "portique", "etoile", "vortex",
-  "lyre", "mandala", "treillis", "rideaux", "lyres-suspendues", "barres-led", "pont-concert",
-];
-const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
-const CONCERT_FAMILIES: FamilyId[] = ["lyres-suspendues", "barres-led", "pont-concert"];
-
 // --- Branches de décision ---------------------------------------------------
 
-export const FAMILY_BRANCHES = [
-  "reduit-calme",
-  "reduit-rythmique",
-  "refrain",
-  "montee",
-  "drop",
-  "calme",
-  "brillance",
-  "densite",
-  "energie",
-  "general",
-] as const;
-export type FamilyBranch = (typeof FAMILY_BRANCHES)[number];
-
-export const MOOD_BRANCHES = [
-  "build-explosif",
-  "refrain-explosif",
-  "silence-sombre",
-  "montee-pulse",
-  "energie-explosif",
-  "calme",
-  "brillance-aerien",
-  "pulse",
-] as const;
-export type MoodBranch = (typeof MOOD_BRANCHES)[number];
+export { FAMILY_BRANCHES, MOOD_BRANCHES };
+export type { FamilyBranch, MoodBranch };
 
 /** Réservoir associé à une branche de `familyFor`. */
-const RESERVOIR: Record<FamilyBranch, readonly FamilyId[]> = {
-  "reduit-calme": CALM_FAMILIES,
-  "reduit-rythmique": ["beams", "waves", "rings", "particles"],
-  refrain: ["lyres-suspendues", "barres-led"],
-  montee: ["barres-led"],
-  drop: CONCERT_FAMILIES,
-  calme: CALM_FAMILIES,
-  brillance: ["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"],
-  densite: RHYTHMIC_FAMILIES,
-  energie: ENERGETIC_FAMILIES,
-  general: ALL_FAMILIES,
-};
+const RESERVOIR = FAMILY_BRANCH_RESERVOIRS;
 
 export type ReservoirKind = "calme" | "non-calme" | "mixte" | "concert";
 
@@ -122,23 +73,11 @@ function localSectionAt(analysis: Analysis, start: number): Section | null {
 /** Branche de `familyFor` telle qu'elle serait prise pour cette scène. */
 export function familyBranchOf(
   role: SceneRole,
-  reason: SceneReason,
   caractere: { energy: number; density: number; brightness: number },
   reduced: boolean,
+  calm?: boolean,
 ): FamilyBranch {
-  if (reduced) {
-    if (caractere.energy < CALM_ENERGY_THRESHOLD) return "reduit-calme";
-    if (caractere.density < 0.6) return "reduit-calme";
-    return "reduit-rythmique";
-  }
-  if (role === "refrain") return "refrain";
-  if (role === "montee") return "montee";
-  if (role === "drop" && reason === "build") return "drop";
-  if (caractere.energy < CALM_ENERGY_THRESHOLD) return "calme";
-  if (caractere.brightness > BRIGHTNESS_THRESHOLD) return "brillance";
-  if (caractere.density > DENSITY_THRESHOLD) return "densite";
-  if (caractere.energy > ENERGY_THRESHOLD) return "energie";
-  return "general";
+  return familyBranchFor(caractere, reduced, role, !reduced && role === "drop", calm);
 }
 
 /** Branche de `moodFor`, overrides du site d'appel compris. */
@@ -147,16 +86,9 @@ export function moodBranchOf(
   section: Section | null,
   caractere: { energy: number; brightness: number },
   reduced: boolean,
+  thresholds?: MoodThresholds,
 ): MoodBranch {
-  if (reason === "build") return "build-explosif";
-  if (!reduced && section?.kind === "refrain") return "refrain-explosif";
-  const label = section?.label ?? "intense";
-  if (label === "silence") return "silence-sombre";
-  if (label === "montee") return "montee-pulse";
-  if (caractere.energy > ENERGY_THRESHOLD) return "energie-explosif";
-  if (caractere.energy < 0.3) return "calme";
-  if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "brillance-aerien";
-  return "pulse";
+  return moodBranchFor(reason, section, { ...caractere, density: 0 }, reduced, thresholds);
 }
 
 // --- Statistiques -----------------------------------------------------------
@@ -210,6 +142,8 @@ export interface SceneMeasure {
   reason: SceneReason;
   role: SceneRole;
   mood: Mood;
+  /** Humeur avant le lissage d'hystérésis (celle que décrit `moodBranch`). */
+  baseMood: Mood;
   family: FamilyId;
   variant: FamilyId;
   backdrop: FamilyId;
@@ -251,21 +185,37 @@ export interface Incoherence {
   detail: string;
 }
 
+export interface SceneDistributions {
+  scenes: number;
+  roles: Record<string, number>;
+  moods: Record<string, number>;
+  families: Record<string, number>;
+  reasons: Record<string, number>;
+  familyBranches: Record<string, number>;
+  moodBranches: Record<string, number>;
+  reservoirs: Record<string, number>;
+  sceneSpans: Stats;
+}
+
 export interface PlanMeasureReport {
   tracks: TrackMeasure[];
   scenes: SceneMeasure[];
-  distributions: {
-    roles: Record<string, number>;
-    moods: Record<string, number>;
-    families: Record<string, number>;
-    reasons: Record<string, number>;
-    familyBranches: Record<string, number>;
-    moodBranches: Record<string, number>;
-    reservoirs: Record<string, number>;
-    sceneSpans: Stats;
+  distributions: SceneDistributions & {
     dropsPerTrack: Record<string, number>;
   };
+  /**
+   * Mêmes distributions, scènes de drop exclues.
+   *
+   * Les drops actuels sont majoritairement des faux positifs : l'humeur se
+   * calibre sur cette colonne, pas sur « toutes scènes ».
+   */
+  withoutDrops: SceneDistributions;
   characters: {
+    energy: Stats;
+    density: Stats;
+    brightness: Stats;
+  };
+  charactersWithoutDrops: {
     energy: Stats;
     density: Stats;
     brightness: Stats;
@@ -317,11 +267,19 @@ function familyProvenance(
 
 function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
   const plan = buildShowPlan(track.analysis, reduced);
-  return plan.scenes.map((scene) => {
-    const section = localSectionAt(track.analysis, scene.start);
-    const caractere = caractereAt(track.analysis, scene.start, scene.end);
-    const familyBranch = familyBranchOf(scene.role, scene.reason, caractere, reduced);
-    const moodBranch = moodBranchOf(scene.reason, section, caractere, reduced);
+  const measured = plan.scenes.map((scene) => ({
+    scene,
+    section: localSectionAt(track.analysis, scene.start),
+    caractere: caractereAt(track.analysis, scene.start, scene.end),
+  }));
+  // Mêmes seuils que la production : la distribution d'énergie des scènes du
+  // morceau, dans le même mode (normal ou réduit).
+  const thresholds = moodThresholdsFor(measured.map((entry) => entry.caractere.energy));
+  return measured.map(({ scene, section, caractere }) => {
+    // La famille suit l'humeur finale du plan : une scène lissée en « calme »
+    // reste dans un réservoir calme, donc l'audit humeur/réservoir ne ment pas.
+    const familyBranch = familyBranchOf(scene.role, caractere, reduced, scene.mood === "calme");
+    const moodBranch = moodBranchOf(scene.reason, section, caractere, reduced, thresholds);
     const grouped = section?.group !== undefined && section.group !== "";
     return {
       track: track.name,
@@ -331,6 +289,7 @@ function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
       reason: scene.reason,
       role: scene.role,
       mood: scene.mood,
+      baseMood: MOOD_OF_BRANCH[moodBranch],
       family: scene.family,
       variant: scene.variant,
       backdrop: scene.backdrop,
@@ -354,6 +313,28 @@ function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
 
 function deadOf<T extends string>(all: readonly T[], reached: ReadonlySet<string>): T[] {
   return all.filter((value) => !reached.has(value));
+}
+
+function distributionsOf(rows: readonly SceneMeasure[]): SceneDistributions {
+  return {
+    scenes: rows.length,
+    roles: countBy(rows.map((scene) => scene.role)),
+    moods: countBy(rows.map((scene) => scene.mood)),
+    families: countBy(rows.map((scene) => scene.family)),
+    reasons: countBy(rows.map((scene) => scene.reason)),
+    familyBranches: countBy(rows.map((scene) => scene.familyBranch)),
+    moodBranches: countBy(rows.map((scene) => scene.moodBranch)),
+    reservoirs: countBy(rows.map((scene) => scene.reservoir)),
+    sceneSpans: stats(rows.map((scene) => scene.end - scene.start)),
+  };
+}
+
+function charactersOf(rows: readonly SceneMeasure[]): PlanMeasureReport["characters"] {
+  return {
+    energy: stats(rows.map((scene) => scene.energy)),
+    density: stats(rows.map((scene) => scene.density)),
+    brightness: stats(rows.map((scene) => scene.brightness)),
+  };
 }
 
 export function buildReport(tracks: ReadonlyArray<PlanTrack>): PlanMeasureReport {
@@ -418,26 +399,18 @@ export function buildReport(tracks: ReadonlyArray<PlanTrack>): PlanMeasureReport
   }
 
   const scenesReduced = reducedScenes;
+  const scenesWithoutDrops = scenes.filter((scene) => scene.role !== "drop");
 
   return {
     tracks: trackMeasures,
     scenes,
     distributions: {
-      roles: countBy(scenes.map((scene) => scene.role)),
-      moods: countBy(scenes.map((scene) => scene.mood)),
-      families: countBy(scenes.map((scene) => scene.family)),
-      reasons: countBy(scenes.map((scene) => scene.reason)),
-      familyBranches: countBy(scenes.map((scene) => scene.familyBranch)),
-      moodBranches: countBy(scenes.map((scene) => scene.moodBranch)),
-      reservoirs: countBy(scenes.map((scene) => scene.reservoir)),
-      sceneSpans: stats(scenes.map((scene) => scene.end - scene.start)),
+      ...distributionsOf(scenes),
       dropsPerTrack: Object.fromEntries(trackMeasures.map((track) => [track.name, track.drops])),
     },
-    characters: {
-      energy: stats(scenes.map((scene) => scene.energy)),
-      density: stats(scenes.map((scene) => scene.density)),
-      brightness: stats(scenes.map((scene) => scene.brightness)),
-    },
+    withoutDrops: distributionsOf(scenesWithoutDrops),
+    characters: charactersOf(scenes),
+    charactersWithoutDrops: charactersOf(scenesWithoutDrops),
     deadBranches: {
       roles: deadOf(Object.keys(SCENE_ROLE_LABELS) as SceneRole[], reachedRoles),
       moods: deadOf(Object.keys(MOOD_LABELS) as Mood[], reachedMoods),
@@ -511,10 +484,23 @@ export function formatReport(report: PlanMeasureReport): string {
       .join(" · ")}`,
   );
 
+  const sansDrops = report.withoutDrops;
+  lines.push(`\n=== Hors scènes de drop (n=${sansDrops.scenes}) ===`);
+  lines.push(`humeurs         : ${formatCounts(sansDrops.moods, sansDrops.scenes)}`);
+  lines.push(`familles        : ${formatCounts(sansDrops.families, sansDrops.scenes)}`);
+  lines.push(`raisons         : ${formatCounts(sansDrops.reasons, sansDrops.scenes)}`);
+  lines.push(`branches famille: ${formatCounts(sansDrops.familyBranches, sansDrops.scenes)}`);
+  lines.push(`branches humeur : ${formatCounts(sansDrops.moodBranches, sansDrops.scenes)}`);
+  lines.push(`durées de scène : ${formatStats(sansDrops.sceneSpans)}`);
+
   lines.push("\n=== Caractères mesurés par scène ===");
   lines.push(`énergie   : ${formatStats(report.characters.energy)}`);
   lines.push(`densité   : ${formatStats(report.characters.density)}`);
   lines.push(`brillance : ${formatStats(report.characters.brightness)}`);
+  lines.push("\n=== Caractères hors scènes de drop ===");
+  lines.push(`énergie   : ${formatStats(report.charactersWithoutDrops.energy)}`);
+  lines.push(`densité   : ${formatStats(report.charactersWithoutDrops.density)}`);
+  lines.push(`brillance : ${formatStats(report.charactersWithoutDrops.brightness)}`);
 
   lines.push("\n=== Branches mortes (plan normal + réduit) ===");
   lines.push(`rôles           : ${formatList(report.deadBranches.roles)}`);
@@ -618,10 +604,46 @@ export function diffReports(before: PlanMeasureReport, after: PlanMeasureReport)
   );
   lines.push(...diffStats("durées", before.distributions.sceneSpans, after.distributions.sceneSpans));
 
+  if (before.withoutDrops !== undefined && after.withoutDrops !== undefined) {
+    lines.push("\n=== Distributions hors scènes de drop ===");
+    lines.push(...diffCounts("humeurs", before.withoutDrops.moods, after.withoutDrops.moods));
+    lines.push(...diffCounts("familles", before.withoutDrops.families, after.withoutDrops.families));
+    lines.push(...diffCounts("raisons", before.withoutDrops.reasons, after.withoutDrops.reasons));
+    lines.push(
+      ...diffCounts(
+        "branches famille",
+        before.withoutDrops.familyBranches,
+        after.withoutDrops.familyBranches,
+      ),
+    );
+    lines.push(
+      ...diffCounts("branches humeur", before.withoutDrops.moodBranches, after.withoutDrops.moodBranches),
+    );
+    lines.push(
+      ...diffStats("durées", before.withoutDrops.sceneSpans, after.withoutDrops.sceneSpans),
+    );
+  }
+
   lines.push("\n=== Caractères ===");
   lines.push(...diffStats("énergie", before.characters.energy, after.characters.energy));
   lines.push(...diffStats("densité", before.characters.density, after.characters.density));
   lines.push(...diffStats("brillance", before.characters.brightness, after.characters.brightness));
+  if (before.charactersWithoutDrops !== undefined && after.charactersWithoutDrops !== undefined) {
+    lines.push("\n=== Caractères hors scènes de drop ===");
+    lines.push(
+      ...diffStats("énergie", before.charactersWithoutDrops.energy, after.charactersWithoutDrops.energy),
+    );
+    lines.push(
+      ...diffStats("densité", before.charactersWithoutDrops.density, after.charactersWithoutDrops.density),
+    );
+    lines.push(
+      ...diffStats(
+        "brillance",
+        before.charactersWithoutDrops.brightness,
+        after.charactersWithoutDrops.brightness,
+      ),
+    );
+  }
 
   lines.push("\n=== Scènes modifiées ===");
   let changes = 0;
