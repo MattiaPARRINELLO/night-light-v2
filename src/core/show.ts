@@ -960,7 +960,8 @@ function cycleChangesCharacter(analysis: Analysis, time: number, lastKept: numbe
  * Un changement de famille + palette n'arrive QUE sur l'un d'eux : rien ne se
  * déclenche « au hasard » au milieu d'un passage. Les frontières de section et
  * d'impact sont toujours conservées ; une frontière de cycle ne l'est que si le
- * caractère change (ou si la scène atteindrait `MAX_SCENE_SPAN`).
+ * caractère change. Le plafond `MAX_SCENE_SPAN` est ensuite tenu par une
+ * coupure sur le temps fort (`beat`), jamais par un cycle arbitraire.
  */
 function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: SceneReason; weight: number }> {
   const duration = Math.max(analysis.duration, 0.001);
