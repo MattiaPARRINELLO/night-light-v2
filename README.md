@@ -341,9 +341,20 @@ lint et tests, et s'arrête au premier problème. La mesure de référence
 [`docs/baseline.md`](docs/baseline.md).
 
 Pour le détail des tests, du corpus de référence et du harnais de métriques,
-voir [`docs/testing.md`](docs/testing.md). L'état réel de chaque règle d'effet
-(ACTIF / CODE MORT / PARTIEL / DIVERGENT), avec sa preuve `fichier:ligne`, est
-dans [`docs/scene-effects-spec.md`](docs/scene-effects-spec.md).
+voir [`docs/testing.md`](docs/testing.md).
+
+### Documentation
+
+| document | contenu |
+| --- | --- |
+| [`docs/baseline.md`](docs/baseline.md) | environnement reproductible et mesures de référence |
+| [`docs/testing.md`](docs/testing.md) | tests, corpus de référence, harnais de métriques |
+| [`docs/metrics/README.md`](docs/metrics/README.md) | champs des JSON de mesure (`plan`, `render`, `timing`) |
+| [`docs/scene-effects-spec.md`](docs/scene-effects-spec.md) | spec des effets, avec statut (ACTIF / CODE MORT / PARTIEL / DIVERGENT) et preuve `fichier:ligne` |
+| [`docs/scene-effects-audit.md`](docs/scene-effects-audit.md) | audit de l'état **avant fusion**, scène par scène et règle par règle (historique) |
+| [`docs/deezer-queue.md`](docs/deezer-queue.md) | contrat du userscript de file Deezer |
+| [`docs/test-harness-report.md`](docs/test-harness-report.md) | rapport du harnais de tests D0–D9 (historique) |
+| [`docs/integration-report.md`](docs/integration-report.md) | rapport d'intégration des PR #29, #30 et #31 |
 
 ## Vérifier
 
@@ -408,8 +419,9 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
-    families/           les vingt-neuf familles d'effets
+    families/           les vingt-neuf familles d'effets (une par fichier)
       concert-rig.ts    structure, lyres, barres LED et blinders
+      index.ts          agrégation de la table des familles
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
     api.ts              client HTTP de l'API
@@ -421,20 +433,36 @@ src/
     control.ts          protocole show ↔ dashboard (BroadcastChannel)
   browser/
     app.ts              orchestration (dépôt, analyse, show, raccourcis)
+    app-drop.ts         dépôt du fichier et écran d'analyse
+    app-resolve.ts      récupération d'un morceau par titre (Deezer)
+    app-live.ts         mode live : lecteur externe et file multi-source
+    app-sync.ts         calage sur la position du lecteur, repli en live
+    app-show.ts         lancement du show, bascule vers le rendu analysé
+    app-control.ts      réglages poussés depuis le dashboard, overlay de debug
+    app-loop.ts         boucle de rendu, qualité adaptative, HUD
     audio.ts            lecture et position musicale
+    format.ts           formatage court partagé (overlay, rendu)
     ui.ts               accès DOM
-  styles/               base, dépôt, commandes
+  styles/               base, dépôt, HUD
 server/
   config.py             réglages lus dans l'environnement
   sniff.py              détection du format réel par octets
   analysis.py           moteur librosa (décodage, courbes, rythme, section, montées)
+  analysis_cache.py     cache persistant des analyses (clé morceau + version d'analyseur)
+  audio_capture.py      capture audio système locale (PipeWire/PulseAudio)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
+  mpris.py              détection des lecteurs via MPRIS / playerctl
+  playback_position.py  position de lecture des lecteurs externes
+  queue/                file multi-source : modèles, sélection, préchargement, Deezer
   retrieve/             récupération d'un morceau : provider Deezer (streamrip), cache, validation
 tests/                  tests front & serveur (unit/), vérification navigateur (e2e/),
                         faux lecteur et fixtures (support/)
-scripts/                démarrage dev et lancement des tests
-src/dashboard/          tableau de bord (page + styles)
+scripts/                démarrage dev, lancement des tests, mesures et outillage d'analyse
+bench/                  chronométrage manuel d'une analyse, hors API
+userscripts/            file Deezer (script navigateur)
+src/dashboard/          tableau de bord (page, graphiques, styles)
+docs/                   spec et audit des effets, harnais de tests, mesures, rapports
 ```
 
 ## Variables d'environnement
