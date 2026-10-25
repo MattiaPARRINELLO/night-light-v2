@@ -1,0 +1,75 @@
+{
+  "backdrop": "particles",
+  "coverage": null,
+  "duration": 30,
+  "scenes": [
+    {
+      "backdrop": "particles",
+      "drop": null,
+      "end": 7.802,
+      "family": "spiral",
+      "hue": 171.268,
+      "index": 0,
+      "intensity": 0.955,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "spiral"
+    },
+    {
+      "backdrop": "particles",
+      "drop": null,
+      "end": 15.07,
+      "family": "crossfire",
+      "hue": 3.006,
+      "index": 1,
+      "intensity": 0.37,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 7.802,
+      "variant": "crossfire"
+    },
+    {
+      "backdrop": "particles",
+      "drop": {
+        "barres": "rideau",
+        "blinders": "chenillard",
+        "hue": "contraste",
+        "lyres": "eventail"
+      },
+      "end": 23.313,
+      "family": "pont-concert",
+      "hue": 39.495,
+      "index": 2,
+      "intensity": 0.947,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 15.07,
+      "variant": "particles"
+    },
+    {
+      "backdrop": "particles",
+      "drop": null,
+      "end": 30,
+      "family": "tunnel",
+      "hue": 336.472,
+      "index": 3,
+      "intensity": 0.374,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "finale",
+      "start": 23.313,
+      "variant": "tunnel"
+    }
+  ],
+  "seed": 3246289602,
+  "track": {
+    "accent": 176,
+    "hue": 6,
+    "name": "corail-turquoise",
+    "spread": 36
+  }
+}

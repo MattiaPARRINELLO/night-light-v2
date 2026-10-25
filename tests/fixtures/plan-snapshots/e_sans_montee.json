@@ -1,0 +1,75 @@
+{
+  "backdrop": "spiral",
+  "coverage": null,
+  "duration": 30,
+  "scenes": [
+    {
+      "backdrop": "spiral",
+      "drop": null,
+      "end": 8.081,
+      "family": "rideaux",
+      "hue": 167.97,
+      "index": 0,
+      "intensity": 0.922,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "pluie"
+    },
+    {
+      "backdrop": "spiral",
+      "drop": null,
+      "end": 16.068,
+      "family": "mirror",
+      "hue": 330,
+      "index": 1,
+      "intensity": 0.921,
+      "mood": "explosif",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 8.081,
+      "variant": "mirror"
+    },
+    {
+      "backdrop": "spiral",
+      "drop": null,
+      "end": 22.059,
+      "family": "shutters",
+      "hue": 29.958,
+      "index": 2,
+      "intensity": 0.403,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 16.068,
+      "variant": "shutters"
+    },
+    {
+      "backdrop": "spiral",
+      "drop": {
+        "barres": "onde",
+        "blinders": "un-sur-deux",
+        "hue": "accent",
+        "lyres": "eventail"
+      },
+      "end": 30,
+      "family": "pont-concert",
+      "hue": 187.529,
+      "index": 3,
+      "intensity": 0.914,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 22.059,
+      "variant": "pont-concert"
+    }
+  ],
+  "seed": 2030079753,
+  "track": {
+    "accent": 176,
+    "hue": 6,
+    "name": "corail-turquoise",
+    "spread": 36
+  }
+}

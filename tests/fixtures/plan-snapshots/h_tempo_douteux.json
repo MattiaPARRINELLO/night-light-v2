@@ -1,0 +1,42 @@
+{
+  "backdrop": "spiral",
+  "coverage": null,
+  "duration": 20,
+  "scenes": [
+    {
+      "backdrop": "spiral",
+      "drop": null,
+      "end": 9.474,
+      "family": "barres-led",
+      "hue": 356.965,
+      "index": 0,
+      "intensity": 0.953,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "pluie"
+    },
+    {
+      "backdrop": "spiral",
+      "drop": null,
+      "end": 20,
+      "family": "rings",
+      "hue": 198.015,
+      "index": 1,
+      "intensity": 0.255,
+      "mood": "calme",
+      "reason": "cycle",
+      "role": "finale",
+      "start": 9.474,
+      "variant": "rings"
+    }
+  ],
+  "seed": 367073812,
+  "track": {
+    "accent": 336,
+    "hue": 186,
+    "name": "cyan-rose",
+    "spread": 42
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "backdrop": "pluie",
+  "coverage": null,
+  "duration": 45,
+  "scenes": [
+    {
+      "backdrop": "pluie",
+      "drop": null,
+      "end": 6.084,
+      "family": "particles",
+      "hue": 149.739,
+      "index": 0,
+      "intensity": 0.257,
+      "mood": "calme",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "particles"
+    },
+    {
+      "backdrop": "pluie",
+      "drop": {
+        "barres": "alterne",
+        "blinders": "tous",
+        "hue": "contraste",
+        "lyres": "eventail"
+      },
+      "end": 15.07,
+      "family": "pont-concert",
+      "hue": 194,
+      "index": 1,
+      "intensity": 0.94,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 6.084,
+      "variant": "rings"
+    },
+    {
+      "backdrop": "pluie",
+      "drop": null,
+      "end": 22.593,
+      "family": "parade",
+      "hue": 155.077,
+      "index": 2,
+      "intensity": 0.403,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 15.07,
+      "variant": "parade"
+    },
+    {
+      "backdrop": "pluie",
+      "drop": null,
+      "end": 30.07,
+      "family": "etoile",
+      "hue": 194,
+      "index": 3,
+      "intensity": 0.399,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 22.593,
+      "variant": "etoile"
+    },
+    {
+      "backdrop": "pluie",
+      "drop": null,
+      "end": 37.593,
+      "family": "rings",
+      "hue": 306.543,
+      "index": 4,
+      "intensity": 0.921,
+      "mood": "explosif",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 30.07,
+      "variant": "rings"
+    },
+    {
+      "backdrop": "pluie",
+      "drop": null,
+      "end": 45,
+      "family": "lyre",
+      "hue": 141.383,
+      "index": 5,
+      "intensity": 0.404,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "finale",
+      "start": 37.593,
+      "variant": "lyre"
+    }
+  ],
+  "seed": 495454203,
+  "track": {
+    "accent": 320,
+    "hue": 152,
+    "name": "émeraude-magenta",
+    "spread": 42
+  }
+}

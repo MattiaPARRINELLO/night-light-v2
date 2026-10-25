@@ -1,0 +1,103 @@
+{
+  "backdrop": "tunnel",
+  "coverage": null,
+  "duration": 40,
+  "scenes": [
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 5.968,
+      "family": "burst",
+      "hue": 350.248,
+      "index": 0,
+      "intensity": 0.959,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "burst"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 11.865,
+      "family": "portique",
+      "hue": 294,
+      "index": 1,
+      "intensity": 0.942,
+      "mood": "explosif",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 5.968,
+      "variant": "portique"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 17.833,
+      "family": "pluie",
+      "hue": 188.865,
+      "index": 2,
+      "intensity": 0.372,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 11.865,
+      "variant": "pluie"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 23.684,
+      "family": "particles",
+      "hue": 228,
+      "index": 3,
+      "intensity": 0.248,
+      "mood": "calme",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 17.833,
+      "variant": "particles"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 30.07,
+      "family": "rideaux",
+      "hue": 168.784,
+      "index": 4,
+      "intensity": 0.394,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 23.684,
+      "variant": "rideaux"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": {
+        "barres": "rideau",
+        "blinders": "tous",
+        "hue": "accent",
+        "lyres": "eventail"
+      },
+      "end": 40,
+      "family": "pont-concert",
+      "hue": 350.409,
+      "index": 5,
+      "intensity": 0.96,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 30.07,
+      "variant": "pont-concert"
+    }
+  ],
+  "seed": 2907490696,
+  "track": {
+    "accent": 336,
+    "hue": 186,
+    "name": "cyan-rose",
+    "spread": 42
+  }
+}

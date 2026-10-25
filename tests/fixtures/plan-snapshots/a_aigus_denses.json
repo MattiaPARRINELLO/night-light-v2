@@ -1,0 +1,75 @@
+{
+  "backdrop": "tunnel",
+  "coverage": null,
+  "duration": 30,
+  "scenes": [
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 7.57,
+      "family": "lyres-suspendues",
+      "hue": 20.044,
+      "index": 0,
+      "intensity": 0.391,
+      "mood": "aerien",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "lyres-suspendues"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 17.299,
+      "family": "bars",
+      "hue": 84.422,
+      "index": 1,
+      "intensity": 0.388,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 7.57,
+      "variant": "particles"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": {
+        "barres": "rideau",
+        "blinders": "un-sur-deux",
+        "hue": "contraste",
+        "lyres": "convergence"
+      },
+      "end": 22.57,
+      "family": "pont-concert",
+      "hue": 33.699,
+      "index": 2,
+      "intensity": 0.908,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 17.299,
+      "variant": "pont-concert"
+    },
+    {
+      "backdrop": "tunnel",
+      "drop": null,
+      "end": 30,
+      "family": "curtain",
+      "hue": 86.195,
+      "index": 3,
+      "intensity": 0.39,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "finale",
+      "start": 22.57,
+      "variant": "curtain"
+    }
+  ],
+  "seed": 326895730,
+  "track": {
+    "accent": 222,
+    "hue": 48,
+    "name": "jaune-bleu",
+    "spread": 40
+  }
+}

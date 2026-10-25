@@ -1,0 +1,61 @@
+{
+  "backdrop": "particles",
+  "coverage": null,
+  "duration": 30,
+  "scenes": [
+    {
+      "backdrop": "particles",
+      "drop": null,
+      "end": 9.404,
+      "family": "spiral",
+      "hue": 160.43,
+      "index": 0,
+      "intensity": 0.953,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "pendule"
+    },
+    {
+      "backdrop": "particles",
+      "drop": null,
+      "end": 18.924,
+      "family": "etoile",
+      "hue": 355.897,
+      "index": 1,
+      "intensity": 0.398,
+      "mood": "aerien",
+      "reason": "cycle",
+      "role": "couplet",
+      "start": 9.404,
+      "variant": "rings"
+    },
+    {
+      "backdrop": "particles",
+      "drop": {
+        "barres": "rideau",
+        "blinders": "un-sur-deux",
+        "hue": "contraste",
+        "lyres": "convergence"
+      },
+      "end": 30,
+      "family": "pont-concert",
+      "hue": 42,
+      "index": 2,
+      "intensity": 0.895,
+      "mood": "explosif",
+      "reason": "build",
+      "role": "drop",
+      "start": 18.924,
+      "variant": "pont-concert"
+    }
+  ],
+  "seed": 851224153,
+  "track": {
+    "accent": 176,
+    "hue": 6,
+    "name": "corail-turquoise",
+    "spread": 36
+  }
+}

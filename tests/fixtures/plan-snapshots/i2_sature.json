@@ -1,0 +1,42 @@
+{
+  "backdrop": "waves",
+  "coverage": null,
+  "duration": 20,
+  "scenes": [
+    {
+      "backdrop": "waves",
+      "drop": null,
+      "end": 8.081,
+      "family": "mandala",
+      "hue": 207.84,
+      "index": 0,
+      "intensity": 0.92,
+      "mood": "explosif",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "pluie"
+    },
+    {
+      "backdrop": "waves",
+      "drop": null,
+      "end": 20,
+      "family": "crossfire",
+      "hue": 247.728,
+      "index": 1,
+      "intensity": 0.922,
+      "mood": "explosif",
+      "reason": "cycle",
+      "role": "finale",
+      "start": 8.081,
+      "variant": "crossfire"
+    }
+  ],
+  "seed": 2582236230,
+  "track": {
+    "accent": 214,
+    "hue": 34,
+    "name": "ambre-azur",
+    "spread": 38
+  }
+}

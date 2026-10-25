@@ -1,0 +1,28 @@
+{
+  "backdrop": "pluie",
+  "coverage": null,
+  "duration": 4,
+  "scenes": [
+    {
+      "backdrop": "waves",
+      "drop": null,
+      "end": 4,
+      "family": "beams",
+      "hue": 152,
+      "index": 0,
+      "intensity": 0.6,
+      "mood": "pulse",
+      "reason": "ouverture",
+      "role": "intro",
+      "start": 0,
+      "variant": "tunnel"
+    }
+  ],
+  "seed": 3607283904,
+  "track": {
+    "accent": 320,
+    "hue": 152,
+    "name": "émeraude-magenta",
+    "spread": 42
+  }
+}
