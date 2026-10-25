@@ -67,22 +67,22 @@ export function roundTo(value: number, decimals = SNAPSHOT_DECIMALS): number {
 }
 
 /** Sérialise une valeur JSON avec des clés triées et des flottants arrondis. */
-export function stableValue(value: unknown): unknown {
+export function stableValue(value: unknown, decimals = SNAPSHOT_DECIMALS): unknown {
   if (typeof value === "number") {
-    return Number.isFinite(value) ? roundTo(value) : null;
+    return Number.isFinite(value) ? roundTo(value, decimals) : null;
   }
-  if (Array.isArray(value)) return value.map(stableValue);
+  if (Array.isArray(value)) return value.map((item) => stableValue(item, decimals));
   if (value !== null && typeof value === "object") {
     const source = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
-    for (const key of Object.keys(source).sort()) out[key] = stableValue(source[key]);
+    for (const key of Object.keys(source).sort()) out[key] = stableValue(source[key], decimals);
     return out;
   }
   return value;
 }
 
-export function stableStringify(value: unknown): string {
-  return `${JSON.stringify(stableValue(value), null, 2)}\n`;
+export function stableStringify(value: unknown, decimals = SNAPSHOT_DECIMALS): string {
+  return `${JSON.stringify(stableValue(value, decimals), null, 2)}\n`;
 }
 
 function serializeScene(scene: ShowPlan["scenes"][number]): SnapshotScene {
