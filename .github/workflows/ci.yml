@@ -48,6 +48,9 @@ jobs:
       - name: Types (tsc)
         run: bun run typecheck
 
+      - name: Navigateur Chromium (pureté du rendu)
+        run: bunx playwright install --with-deps chromium
+
       - name: Tests front
         run: bun test tests/
 
