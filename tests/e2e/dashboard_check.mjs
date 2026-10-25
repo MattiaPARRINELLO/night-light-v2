@@ -10,11 +10,13 @@
  * l'écran de show suit la deuxième : mode, position, et pixels qui bougent.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { spawnApi } from "./api_process.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8818;
@@ -63,17 +65,10 @@ const play = (name, position) =>
 const premier = prepare("Premier Morceau");
 const second = prepare("Second Morceau");
 
-const api = spawn(".venv/bin/uvicorn", ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)], {
-  cwd: root,
-  stdio: "ignore",
-  env: {
-    ...process.env,
-    SESSION_DIR: join(workspace, "night-light-sessions"),
-    PORT: String(API_PORT),
-    PATH: `${binDir}:${process.env.PATH}`,
-    FAKE_PLAYER_STATE: statePath,
-  },
-  detached: true,
+const api = spawnApi(root, API_PORT, {
+  SESSION_DIR: join(workspace, "night-light-sessions"),
+  PATH: `${binDir}:${process.env.PATH}`,
+  FAKE_PLAYER_STATE: statePath,
 });
 
 async function waitForApi(url, timeout = 60000) {
