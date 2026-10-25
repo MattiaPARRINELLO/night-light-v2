@@ -89,9 +89,24 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 - **Éventail du plafond** : l'éventail de faisceaux peut désormais partir du haut
   de l'écran, en miroir de celui du bas. Les deux s'allument ensemble ou l'un
   sans l'autre, au fil du morceau.
+- **Harnais de tests et CI** : corpus de référence déterministe (10 pistes, hash
+  stable), tests de propriétés du plan et du rendu, contrats croisés, mesures
+  A/B versionnées (`docs/metrics/`) et job CI « parcours navigateur » Playwright.
+- **Signatures de drop** : chaque drop tire sa signature (lyres, barres LED,
+  blinders, teinte) de la graine, au lieu de rejouer un geste unique.
 
 ### Modifié
 
+- **Sélection de scène déterministe** : la graine compte réellement dans le
+  tirage des familles (le `Math.floor` du tirage annulait la fraction), et les
+  drops, les variations et la teinte sortent de la même graine.
+- **Brillance recalibrée** : la brillance est une moyenne de la courbe aiguë et
+  son seuil passe de 0,62 à 0,30, ce qui rend de nouveau la branche « aérien »
+  atteignable.
+- **Teinte bornée au morceau** : la dérive de teinte est limitée à un budget
+  (90° sur 10 min) au lieu de dériver sans limite (240° mesurés).
+- **Cadence musicale des flashs** : les flashs suivent les temps forts pendant
+  un drop et une phrase hors drop, au lieu d'un écart minimal fixe.
 - **`ANALYZE_TIMEOUT_SEC` est désormais appliqué** : l'analyse tourne dans un
   process dédié et une limite dure tue le worker, avec une erreur `timeout`
   explicite au lieu d'un blocage silencieux.
@@ -107,6 +122,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **CI navigateur** : cinq scripts e2e (`browser_check`, `fallback_check`,
+  `family_check`, `scene_fade_check`, `shots`) calculaient la racine du dépôt un
+  niveau trop bas, donc ne trouvaient pas `.venv/bin/uvicorn` ; la racine est
+  désormais partagée et le journal de l'API est remonté quand elle ne démarre
+  pas.
 - **Drop après un cut** : la fin d'une montée peut désormais enjamber un silence
   franc de 150 à 450 ms et se caler sur le premier onset énergique qui suit le
   creux, au lieu de rester sur le dernier bruit du riser.
