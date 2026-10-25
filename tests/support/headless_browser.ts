@@ -57,6 +57,12 @@ function draw(
   time: number,
   frame: number,
 ): void {
+  // Chromium conserve un cache de rastérisation interne lié au canvas : sans
+  // cette remise à zéro, l'image à `t` diffère de 1 à 4 niveaux selon que le
+  // canvas vient de rendre un instant voisin ou non (146 px / 57 600 mesurés).
+  // `reset()` normalise ce cache ; ce n'est ni un préchauffage ni une tolérance,
+  // et il ne reste aucun état applicatif entre deux images.
+  target.ctx.reset();
   renderFrame({
     ctx: target.ctx,
     width: setup.width,
@@ -139,6 +145,26 @@ function imageStats(payload: { time: number; frame: number }): {
     whiteRatio: stats.ratio,
     total: stats.total,
     white: stats.white,
+  };
+}
+
+/** Boucle de rendu in-page, pour mesurer un coût par image sans aller-retour. */
+function renderLoop(payload: {
+  count: number;
+  fps: number;
+  start: number;
+}): { scenes: number; elapsedMs: number; perFrameMs: number } {
+  if (session === null) throw new Error("setup() d'abord");
+  const started = performance.now();
+  for (let index = 0; index < payload.count; index += 1) {
+    const time = payload.start + index / payload.fps;
+    renderAt(time, Math.round(time * payload.fps));
+  }
+  const elapsedMs = performance.now() - started;
+  return {
+    scenes: session.plan.scenes.length,
+    elapsedMs,
+    perFrameMs: payload.count === 0 ? 0 : elapsedMs / payload.count,
   };
 }
 
@@ -250,6 +276,7 @@ export interface HeadlessApi {
   whiteRatioAt: typeof whiteRatioAt;
   whiteRatios: typeof whiteRatios;
   imageStats: typeof imageStats;
+  renderLoop: typeof renderLoop;
   compareContinuousSeek: typeof compareContinuousSeek;
 }
 
@@ -260,5 +287,6 @@ export interface HeadlessApi {
   whiteRatioAt,
   whiteRatios,
   imageStats,
+  renderLoop,
   compareContinuousSeek,
 };

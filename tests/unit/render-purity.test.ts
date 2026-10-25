@@ -2,19 +2,17 @@
  * Pureté du rendu : l'image à `t` ne dépend que de `t`, du plan et de l'analyse.
  *
  * Pour trois morceaux du corpus, on rend en continu `0 → t` sur un canvas, puis
- * on rend `t` seul sur un canvas neuf (seek), et on compare les pixels.
+ * on rend `t` seul sur un canvas neuf (seek). Les pixels doivent être
+ * strictement identiques (0 pixel, delta 0), sans préchauffage.
  *
- * Deux mesures :
- * - **à froid**, telle que la production la vit au premier rendu d'un canvas.
- *   Le premier usage du cache de dégradés de Skia décale 1 à 4 niveaux sur du
- *   fond sombre (146 à 148 pixels sur 57 600, soit 0,26 %, jamais dans les
- *   blancs). C'est un artefact du moteur de canvas, pas un état accumulé :
- *   tolérance documentée `CANVAS_TOLERANCE_RATIO` / `CANVAS_TOLERANCE_DELTA` ;
- * - **après chauffe identique** des deux canvas, la comparaison doit être
- *   **exactement** nulle : c'est le contrat de pureté strict.
+ * Le harnais remet le contexte à zéro avant chaque image : Chromium conserve
+ * sinon un cache de rastérisation interne au canvas qui décale 1 à 4 niveaux
+ * selon l'historique (146 px / 57 600 mesurés, cause documentée dans
+ * `tests/metrics/README.md`). Ce reset neutralise le moteur, pas le rendu :
+ * aucun état applicatif ne subsiste entre deux images.
  *
  * Le rendu passe par Chromium headless (vrai canvas 2D), pas par un faux
- * contexte : une différence au-delà de la tolérance serait une vraie régression.
+ * contexte : une différence de pixels serait une vraie régression.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -24,12 +22,6 @@ import { DEFAULT_SETTINGS } from "../../src/types";
 import { loadCorpusAnalyses, type PlanTrack } from "../support/plan_corpus";
 import { createHeadlessRenderer, type HeadlessRenderer } from "../support/headless_render";
 
-/**
- * Tolérance du premier rendu sur un canvas neuf : 0,5 % des pixels et
- * 4 niveaux par canal. Mesuré sur le corpus : 0,26 % et 4 niveaux.
- */
-const CANVAS_TOLERANCE_RATIO = 0.005;
-const CANVAS_TOLERANCE_DELTA = 4;
 const WIDTH = 320;
 const HEIGHT = 180;
 const FPS = 10;
@@ -77,7 +69,7 @@ afterAll(async () => {
 
 describe("pureté du rendu", () => {
   test(
-    "rendu continu puis seek : écart dans la tolérance canvas à froid",
+    "rendu continu puis seek : pixels strictement identiques, sans préchauffage",
     async () => {
       for (const track of selected) {
         for (const time of measureTimes(track)) {
@@ -88,35 +80,6 @@ describe("pureté du rendu", () => {
           });
           expect(result.totalPixels).toBe(WIDTH * HEIGHT * 1);
           expect(result.scenes).toBeGreaterThan(0);
-          const ratio = result.diffPixels / result.totalPixels;
-          expect({
-            track: track.name,
-            time: result.time,
-            withinRatio: ratio <= CANVAS_TOLERANCE_RATIO,
-            withinDelta: result.maxDelta <= CANVAS_TOLERANCE_DELTA,
-          }).toEqual({
-            track: track.name,
-            time: result.time,
-            withinRatio: true,
-            withinDelta: true,
-          });
-        }
-      }
-    },
-    240_000,
-  );
-
-  test(
-    "après chauffe identique des canvas, continu et seek sont identiques au pixel",
-    async () => {
-      for (const track of selected) {
-        for (const time of measureTimes(track)) {
-          const result = await renderer.compareContinuousSeek({
-            ...setupOf(track),
-            time,
-            fps: FPS,
-            warmup: true,
-          });
           expect({
             track: track.name,
             time: result.time,
