@@ -1,0 +1,1190 @@
+{
+  "method": {
+    "energyGap": [
+      0.55,
+      0.68
+    ],
+    "real": "tests/support/real_corpus.json (10 morceaux Deezer, analyses hors git)",
+    "saturation": {
+      "fps": 10,
+      "height": 180,
+      "luminance": 0.92,
+      "saturation": 0.15,
+      "width": 320
+    },
+    "synthetic": "tests/support/make_corpus.py (6 pistes de 60 s)"
+  },
+  "real": {
+    "brightness": {
+      "count": 520,
+      "max": 0.902846,
+      "mean": 0.248968,
+      "median": 0.204106,
+      "min": 0,
+      "p10": 0,
+      "p25": 0.036918,
+      "p75": 0.40524,
+      "p90": 0.60766
+    },
+    "cycleShare": 0.838462,
+    "deadFamilies": [],
+    "deadFamilyBranches": [
+      "montee",
+      "refrain"
+    ],
+    "deadMoodBranches": [
+      "montee-pulse",
+      "refrain-explosif",
+      "silence-sombre"
+    ],
+    "deadMoods": [
+      "sombre"
+    ],
+    "deadReasons": [
+      "beat",
+      "finale",
+      "section"
+    ],
+    "deadRoles": [
+      "montee",
+      "refrain"
+    ],
+    "density": {
+      "count": 520,
+      "max": 8.180301,
+      "mean": 2.478913,
+      "median": 2.409343,
+      "min": 0,
+      "p10": 0.187231,
+      "p25": 1.254355,
+      "p75": 3.463785,
+      "p90": 4.519538
+    },
+    "distinctFamilies": 29,
+    "drops": 75,
+    "dropsPerTrack": [
+      {
+        "drops": 5,
+        "name": "One More Time",
+        "profile": "électro à drops marqués"
+      },
+      {
+        "drops": 8,
+        "name": "Bolero",
+        "profile": "très dynamique (classique)"
+      },
+      {
+        "drops": 7,
+        "name": "They Don't Care About Us",
+        "profile": "pop couplet/refrain classique"
+      },
+      {
+        "drops": 12,
+        "name": "The Blue Danube, Op. 314",
+        "profile": "morceau en 3/4"
+      },
+      {
+        "drops": 7,
+        "name": "La Vie en Rose",
+        "profile": "valse / 3/4 chanté"
+      },
+      {
+        "drops": 10,
+        "name": "Gymnopédie No. 1",
+        "profile": "acoustique calme"
+      },
+      {
+        "drops": 5,
+        "name": "Latch",
+        "profile": "house linéaire"
+      },
+      {
+        "drops": 7,
+        "name": "Your Hand in Mine",
+        "profile": "très dynamique (post-rock)"
+      },
+      {
+        "drops": 12,
+        "name": "Shine On You Crazy Diamond (Pts. 1-5)",
+        "profile": "longue intro (> 45 s)"
+      },
+      {
+        "drops": 2,
+        "name": "TRINITYVILLE",
+        "profile": "rap masterisé sans montée"
+      }
+    ],
+    "energy": {
+      "count": 520,
+      "max": 0.969304,
+      "mean": 0.619281,
+      "median": 0.703504,
+      "min": 0.049709,
+      "p10": 0.092753,
+      "p25": 0.457615,
+      "p75": 0.85176,
+      "p90": 0.913253
+    },
+    "energyGap": {
+      "above": 273,
+      "below": 168,
+      "high": 0.68,
+      "inside": 79,
+      "low": 0.55,
+      "shareInside": 0.151923
+    },
+    "explosiveShare": 0.661538,
+    "meter": {
+      "detected3": 4,
+      "detected4": 6,
+      "expected3": 4,
+      "expected4": 6,
+      "matches": 4,
+      "mismatches": [
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "Bolero"
+        },
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "La Vie en Rose"
+        },
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "Gymnopédie No. 1"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Latch"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Your Hand in Mine"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Shine On You Crazy Diamond (Pts. 1-5)"
+        }
+      ]
+    },
+    "scenes": 520,
+    "tracks": 10,
+    "usedFamilies": [
+      "barres-led",
+      "bars",
+      "beams",
+      "burst",
+      "couronne",
+      "crossfire",
+      "curtain",
+      "etoile",
+      "gobos",
+      "grid",
+      "lyre",
+      "lyres-suspendues",
+      "mandala",
+      "mirror",
+      "parade",
+      "particles",
+      "pendule",
+      "pluie",
+      "pont-concert",
+      "portique",
+      "rideaux",
+      "rings",
+      "shutters",
+      "spiral",
+      "spots",
+      "treillis",
+      "tunnel",
+      "vortex",
+      "waves"
+    ],
+    "zeroDropTracks": []
+  },
+  "saturationReal": {
+    "drops": 75,
+    "max": 0.294809,
+    "maxAt": 377.882,
+    "maxTrack": "Your Hand in Mine",
+    "mean": 0.00398,
+    "p90": 0.003054,
+    "perDrop": [
+      {
+        "end": 39.219,
+        "max": 0.282517,
+        "maxAt": 30.541,
+        "mean": 0.003378,
+        "p90": 0.000573,
+        "profile": "électro à drops marqués",
+        "samples": 88,
+        "start": 30.441,
+        "track": "One More Time"
+      },
+      {
+        "end": 54.846,
+        "max": 0.289063,
+        "maxAt": 46.05,
+        "mean": 0.008459,
+        "p90": 0.007823,
+        "profile": "électro à drops marqués",
+        "samples": 89,
+        "start": 45.95,
+        "track": "One More Time"
+      },
+      {
+        "end": 174.939,
+        "max": 0.279722,
+        "maxAt": 166.541,
+        "mean": 0.004223,
+        "p90": 0.000038,
+        "profile": "électro à drops marqués",
+        "samples": 85,
+        "start": 166.441,
+        "track": "One More Time"
+      },
+      {
+        "end": 186.456,
+        "max": 0.175017,
+        "maxAt": 175.039,
+        "mean": 0.001699,
+        "p90": 0.000703,
+        "profile": "électro à drops marqués",
+        "samples": 116,
+        "start": 174.939,
+        "track": "One More Time"
+      },
+      {
+        "end": 256.511,
+        "max": 0.290694,
+        "maxAt": 244.5,
+        "mean": 0.003875,
+        "p90": 0.002356,
+        "profile": "électro à drops marqués",
+        "samples": 122,
+        "start": 244.4,
+        "track": "One More Time"
+      },
+      {
+        "end": 21.943,
+        "max": 0.108507,
+        "maxAt": 10.27,
+        "mean": 0.000948,
+        "p90": 0.000005,
+        "profile": "très dynamique (classique)",
+        "samples": 118,
+        "start": 10.17,
+        "track": "Bolero"
+      },
+      {
+        "end": 54.52,
+        "max": 0.221389,
+        "maxAt": 47.887,
+        "mean": 0.003859,
+        "p90": 0,
+        "profile": "très dynamique (classique)",
+        "samples": 68,
+        "start": 47.787,
+        "track": "Bolero"
+      },
+      {
+        "end": 65.62,
+        "max": 0.289149,
+        "maxAt": 54.62,
+        "mean": 0.00287,
+        "p90": 0.000868,
+        "profile": "très dynamique (classique)",
+        "samples": 111,
+        "start": 54.52,
+        "track": "Bolero"
+      },
+      {
+        "end": 92.067,
+        "max": 0.287014,
+        "maxAt": 80.441,
+        "mean": 0.002759,
+        "p90": 0.000656,
+        "profile": "très dynamique (classique)",
+        "samples": 118,
+        "start": 80.341,
+        "track": "Bolero"
+      },
+      {
+        "end": 103.816,
+        "max": 0.227969,
+        "maxAt": 92.167,
+        "mean": 0.002932,
+        "p90": 0.000005,
+        "profile": "très dynamique (classique)",
+        "samples": 118,
+        "start": 92.067,
+        "track": "Bolero"
+      },
+      {
+        "end": 109.203,
+        "max": 0.263194,
+        "maxAt": 103.916,
+        "mean": 0.005398,
+        "p90": 0.002038,
+        "profile": "très dynamique (classique)",
+        "samples": 54,
+        "start": 103.816,
+        "track": "Bolero"
+      },
+      {
+        "end": 138.112,
+        "max": 0.241042,
+        "maxAt": 126.951,
+        "mean": 0.002166,
+        "p90": 0.000014,
+        "profile": "très dynamique (classique)",
+        "samples": 113,
+        "start": 126.851,
+        "track": "Bolero"
+      },
+      {
+        "end": 231.201,
+        "max": 0.289601,
+        "maxAt": 223.778,
+        "mean": 0.008678,
+        "p90": 0.000816,
+        "profile": "très dynamique (classique)",
+        "samples": 76,
+        "start": 223.678,
+        "track": "Bolero"
+      },
+      {
+        "end": 21.478,
+        "max": 0.290955,
+        "maxAt": 12.894,
+        "mean": 0.003658,
+        "p90": 0.000761,
+        "profile": "pop couplet/refrain classique",
+        "samples": 87,
+        "start": 12.794,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 32.694,
+        "max": 0.289097,
+        "maxAt": 21.578,
+        "mean": 0.006114,
+        "p90": 0.0004,
+        "profile": "pop couplet/refrain classique",
+        "samples": 113,
+        "start": 21.478,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 74.675,
+        "max": 0.24125,
+        "maxAt": 65.975,
+        "mean": 0.003023,
+        "p90": 0.000832,
+        "profile": "pop couplet/refrain classique",
+        "samples": 88,
+        "start": 65.875,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 81.85,
+        "max": 0.29342,
+        "maxAt": 74.775,
+        "mean": 0.01097,
+        "p90": 0.007816,
+        "profile": "pop couplet/refrain classique",
+        "samples": 72,
+        "start": 74.675,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 106.487,
+        "max": 0.265382,
+        "maxAt": 100.619,
+        "mean": 0.006034,
+        "p90": 0.00275,
+        "profile": "pop couplet/refrain classique",
+        "samples": 60,
+        "start": 100.519,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 122.532,
+        "max": 0.273038,
+        "maxAt": 111.927,
+        "mean": 0.006637,
+        "p90": 0.002655,
+        "profile": "pop couplet/refrain classique",
+        "samples": 108,
+        "start": 111.827,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 179.003,
+        "max": 0.280226,
+        "maxAt": 167.284,
+        "mean": 0.003842,
+        "p90": 0.00217,
+        "profile": "pop couplet/refrain classique",
+        "samples": 119,
+        "start": 167.184,
+        "track": "They Don't Care About Us"
+      },
+      {
+        "end": 25.95,
+        "max": 0,
+        "maxAt": 14.1,
+        "mean": 0,
+        "p90": 0,
+        "profile": "morceau en 3/4",
+        "samples": 119,
+        "start": 14.1,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 36.432,
+        "max": 0.228698,
+        "maxAt": 26.05,
+        "mean": 0.002599,
+        "p90": 0.000365,
+        "profile": "morceau en 3/4",
+        "samples": 105,
+        "start": 25.95,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 72.26,
+        "max": 0.119861,
+        "maxAt": 64.55,
+        "mean": 0.001747,
+        "p90": 0.000931,
+        "profile": "morceau en 3/4",
+        "samples": 79,
+        "start": 64.45,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 86.65,
+        "max": 0.000573,
+        "maxAt": 81.05,
+        "mean": 0.000031,
+        "p90": 0,
+        "profile": "morceau en 3/4",
+        "samples": 57,
+        "start": 80.95,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 93.6,
+        "max": 0.102483,
+        "maxAt": 86.75,
+        "mean": 0.003254,
+        "p90": 0.004887,
+        "profile": "morceau en 3/4",
+        "samples": 70,
+        "start": 86.65,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 134.676,
+        "max": 0.293681,
+        "maxAt": 127.369,
+        "mean": 0.007753,
+        "p90": 0.009437,
+        "profile": "morceau en 3/4",
+        "samples": 75,
+        "start": 127.269,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 145.473,
+        "max": 0.29316,
+        "maxAt": 134.776,
+        "mean": 0.00342,
+        "p90": 0.001358,
+        "profile": "morceau en 3/4",
+        "samples": 108,
+        "start": 134.676,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 204.684,
+        "max": 0.294705,
+        "maxAt": 198.259,
+        "mean": 0.006907,
+        "p90": 0.00796,
+        "profile": "morceau en 3/4",
+        "samples": 66,
+        "start": 198.159,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 291.689,
+        "max": 0.048194,
+        "maxAt": 282.85,
+        "mean": 0.000707,
+        "p90": 0,
+        "profile": "morceau en 3/4",
+        "samples": 90,
+        "start": 282.75,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 370.126,
+        "max": 0.288108,
+        "maxAt": 363.446,
+        "mean": 0.00755,
+        "p90": 0.009365,
+        "profile": "morceau en 3/4",
+        "samples": 68,
+        "start": 363.346,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 406.396,
+        "max": 0.255625,
+        "maxAt": 394.95,
+        "mean": 0.002503,
+        "p90": 0.000165,
+        "profile": "morceau en 3/4",
+        "samples": 116,
+        "start": 394.85,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 434.77,
+        "max": 0.000174,
+        "maxAt": 424.15,
+        "mean": 0.000002,
+        "p90": 0,
+        "profile": "morceau en 3/4",
+        "samples": 107,
+        "start": 424.15,
+        "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 24.079,
+        "max": 0.00125,
+        "maxAt": 16.377,
+        "mean": 0.000056,
+        "p90": 0.000129,
+        "profile": "valse / 3/4 chanté",
+        "samples": 79,
+        "start": 16.277,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 29.745,
+        "max": 0.281406,
+        "maxAt": 24.179,
+        "mean": 0.005525,
+        "p90": 0.001962,
+        "profile": "valse / 3/4 chanté",
+        "samples": 57,
+        "start": 24.079,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 60.07,
+        "max": 0.291267,
+        "maxAt": 48.305,
+        "mean": 0.003701,
+        "p90": 0.005219,
+        "profile": "valse / 3/4 chanté",
+        "samples": 119,
+        "start": 48.205,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 66.804,
+        "max": 0.291059,
+        "maxAt": 60.17,
+        "mean": 0.010495,
+        "p90": 0.015162,
+        "profile": "valse / 3/4 chanté",
+        "samples": 68,
+        "start": 60.07,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 81.757,
+        "max": 0.287795,
+        "maxAt": 73.196,
+        "mean": 0.005276,
+        "p90": 0.00924,
+        "profile": "valse / 3/4 chanté",
+        "samples": 87,
+        "start": 73.096,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 99.149,
+        "max": 0.294427,
+        "maxAt": 88.731,
+        "mean": 0.009135,
+        "p90": 0.006754,
+        "profile": "valse / 3/4 chanté",
+        "samples": 106,
+        "start": 88.631,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 110.69,
+        "max": 0.256128,
+        "maxAt": 99.249,
+        "mean": 0.003064,
+        "p90": 0.001623,
+        "profile": "valse / 3/4 chanté",
+        "samples": 116,
+        "start": 99.149,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 31.045,
+        "max": 0.2925,
+        "maxAt": 14.682,
+        "mean": 0.002225,
+        "p90": 0.000337,
+        "profile": "acoustique calme",
+        "samples": 165,
+        "start": 14.582,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 46.556,
+        "max": 0.290868,
+        "maxAt": 40.828,
+        "mean": 0.010761,
+        "p90": 0.010347,
+        "profile": "acoustique calme",
+        "samples": 59,
+        "start": 40.728,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 75.906,
+        "max": 0.287083,
+        "maxAt": 61.494,
+        "mean": 0.003561,
+        "p90": 0.005495,
+        "profile": "acoustique calme",
+        "samples": 146,
+        "start": 61.394,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 96.223,
+        "max": 0.292569,
+        "maxAt": 76.006,
+        "mean": 0.001836,
+        "p90": 0.000372,
+        "profile": "acoustique calme",
+        "samples": 204,
+        "start": 75.906,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 108.855,
+        "max": 0.29441,
+        "maxAt": 96.323,
+        "mean": 0.00401,
+        "p90": 0.002337,
+        "profile": "acoustique calme",
+        "samples": 127,
+        "start": 96.223,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 139.389,
+        "max": 0.285503,
+        "maxAt": 132.709,
+        "mean": 0.00461,
+        "p90": 0.001573,
+        "profile": "acoustique calme",
+        "samples": 68,
+        "start": 132.609,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 170.458,
+        "max": 0.292135,
+        "maxAt": 155.906,
+        "mean": 0.003968,
+        "p90": 0.007004,
+        "profile": "acoustique calme",
+        "samples": 147,
+        "start": 155.806,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 191.007,
+        "max": 0.281615,
+        "maxAt": 176.572,
+        "mean": 0.002878,
+        "p90": 0.002648,
+        "profile": "acoustique calme",
+        "samples": 146,
+        "start": 176.472,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 201.665,
+        "max": 0.281354,
+        "maxAt": 191.107,
+        "mean": 0.003327,
+        "p90": 0.001614,
+        "profile": "acoustique calme",
+        "samples": 107,
+        "start": 191.007,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 217.153,
+        "max": 0.294549,
+        "maxAt": 211.402,
+        "mean": 0.007932,
+        "p90": 0.009757,
+        "profile": "acoustique calme",
+        "samples": 59,
+        "start": 211.302,
+        "track": "Gymnopédie No. 1"
+      },
+      {
+        "end": 12.005,
+        "max": 0.277135,
+        "maxAt": 3.629,
+        "mean": 0.007125,
+        "p90": 0.003386,
+        "profile": "house linéaire",
+        "samples": 85,
+        "start": 3.529,
+        "track": "Latch"
+      },
+      {
+        "end": 41.517,
+        "max": 0.272604,
+        "maxAt": 34.21,
+        "mean": 0.006357,
+        "p90": 0.009875,
+        "profile": "house linéaire",
+        "samples": 75,
+        "start": 34.11,
+        "track": "Latch"
+      },
+      {
+        "end": 71.03,
+        "max": 0.288472,
+        "maxAt": 63.8,
+        "mean": 0.008911,
+        "p90": 0.01529,
+        "profile": "house linéaire",
+        "samples": 74,
+        "start": 63.7,
+        "track": "Latch"
+      },
+      {
+        "end": 124.134,
+        "max": 0.293628,
+        "maxAt": 117.338,
+        "mean": 0.00993,
+        "p90": 0.008976,
+        "profile": "house linéaire",
+        "samples": 69,
+        "start": 117.238,
+        "track": "Latch"
+      },
+      {
+        "end": 165.419,
+        "max": 0.288438,
+        "maxAt": 158.35,
+        "mean": 0.008252,
+        "p90": 0.010262,
+        "profile": "house linéaire",
+        "samples": 72,
+        "start": 158.25,
+        "track": "Latch"
+      },
+      {
+        "end": 45.279,
+        "max": 0,
+        "maxAt": 39.753,
+        "mean": 0,
+        "p90": 0,
+        "profile": "très dynamique (post-rock)",
+        "samples": 56,
+        "start": 39.753,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 58.445,
+        "max": 0.055747,
+        "maxAt": 51.439,
+        "mean": 0.000852,
+        "p90": 0.00005,
+        "profile": "très dynamique (post-rock)",
+        "samples": 72,
+        "start": 51.339,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 141.944,
+        "max": 0.249583,
+        "maxAt": 132.965,
+        "mean": 0.003678,
+        "p90": 0.001458,
+        "profile": "très dynamique (post-rock)",
+        "samples": 91,
+        "start": 132.865,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 377.882,
+        "max": 0.005226,
+        "maxAt": 367.44,
+        "mean": 0.000285,
+        "p90": 0.000738,
+        "profile": "très dynamique (post-rock)",
+        "samples": 106,
+        "start": 367.34,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 384.871,
+        "max": 0.294809,
+        "maxAt": 377.882,
+        "mean": 0.013546,
+        "p90": 0.0127,
+        "profile": "très dynamique (post-rock)",
+        "samples": 70,
+        "start": 377.882,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 403.284,
+        "max": 0.000139,
+        "maxAt": 397.293,
+        "mean": 0.000002,
+        "p90": 0,
+        "profile": "très dynamique (post-rock)",
+        "samples": 60,
+        "start": 397.293,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 446.45,
+        "max": 0.294809,
+        "maxAt": 439.553,
+        "mean": 0.016451,
+        "p90": 0.026342,
+        "profile": "très dynamique (post-rock)",
+        "samples": 108,
+        "start": 435.653,
+        "track": "Your Hand in Mine"
+      },
+      {
+        "end": 81.641,
+        "max": 0,
+        "maxAt": 75.95,
+        "mean": 0,
+        "p90": 0,
+        "profile": "longue intro (> 45 s)",
+        "samples": 57,
+        "start": 75.95,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 113.429,
+        "max": 0,
+        "maxAt": 103.25,
+        "mean": 0,
+        "p90": 0,
+        "profile": "longue intro (> 45 s)",
+        "samples": 102,
+        "start": 103.25,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 135.93,
+        "max": 0.062622,
+        "maxAt": 129.435,
+        "mean": 0.001006,
+        "p90": 0.000035,
+        "profile": "longue intro (> 45 s)",
+        "samples": 66,
+        "start": 129.335,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 145.009,
+        "max": 0.170694,
+        "maxAt": 136.03,
+        "mean": 0.001974,
+        "p90": 0.000087,
+        "profile": "longue intro (> 45 s)",
+        "samples": 91,
+        "start": 135.93,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 246.991,
+        "max": 0.000122,
+        "maxAt": 234.807,
+        "mean": 0.000004,
+        "p90": 0,
+        "profile": "longue intro (> 45 s)",
+        "samples": 123,
+        "start": 234.707,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 258.856,
+        "max": 0.000191,
+        "maxAt": 246.991,
+        "mean": 0.000002,
+        "p90": 0,
+        "profile": "longue intro (> 45 s)",
+        "samples": 119,
+        "start": 246.991,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 264.684,
+        "max": 0.000903,
+        "maxAt": 258.856,
+        "mean": 0.000031,
+        "p90": 0,
+        "profile": "longue intro (> 45 s)",
+        "samples": 59,
+        "start": 258.856,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 270.884,
+        "max": 0.001441,
+        "maxAt": 268.684,
+        "mean": 0.000279,
+        "p90": 0.000993,
+        "profile": "longue intro (> 45 s)",
+        "samples": 62,
+        "start": 264.684,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 403.563,
+        "max": 0.142118,
+        "maxAt": 397.138,
+        "mean": 0.003078,
+        "p90": 0.001589,
+        "profile": "longue intro (> 45 s)",
+        "samples": 66,
+        "start": 397.038,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 537.588,
+        "max": 0.274653,
+        "maxAt": 527.936,
+        "mean": 0.005036,
+        "p90": 0.001157,
+        "profile": "longue intro (> 45 s)",
+        "samples": 98,
+        "start": 527.836,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 553.494,
+        "max": 0.251823,
+        "maxAt": 547.905,
+        "mean": 0.005253,
+        "p90": 0.001743,
+        "profile": "longue intro (> 45 s)",
+        "samples": 57,
+        "start": 547.805,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 621.621,
+        "max": 0.291424,
+        "maxAt": 614.779,
+        "mean": 0.005734,
+        "p90": 0.00432,
+        "profile": "longue intro (> 45 s)",
+        "samples": 70,
+        "start": 614.679,
+        "track": "Shine On You Crazy Diamond (Pts. 1-5)"
+      },
+      {
+        "end": 22.57,
+        "max": 0.248802,
+        "maxAt": 15.239,
+        "mean": 0.004528,
+        "p90": 0.003326,
+        "profile": "rap masterisé sans montée",
+        "samples": 75,
+        "start": 15.139,
+        "track": "TRINITYVILLE"
+      },
+      {
+        "end": 44.698,
+        "max": 0.294635,
+        "maxAt": 33.235,
+        "mean": 0.004289,
+        "p90": 0.00191,
+        "profile": "rap masterisé sans montée",
+        "samples": 116,
+        "start": 33.135,
+        "track": "TRINITYVILLE"
+      }
+    ],
+    "samples": 6942
+  },
+  "synthetic": {
+    "brightness": {
+      "count": 43,
+      "max": 0.709684,
+      "mean": 0.18446,
+      "median": 0.187875,
+      "min": 0,
+      "p10": 0.045276,
+      "p25": 0.057483,
+      "p75": 0.266846,
+      "p90": 0.310354
+    },
+    "cycleShare": 0.744186,
+    "deadFamilies": [
+      "barres-led",
+      "bars",
+      "couronne",
+      "curtain",
+      "etoile",
+      "grid",
+      "lyres-suspendues",
+      "mandala",
+      "shutters"
+    ],
+    "deadFamilyBranches": [
+      "montee",
+      "refrain"
+    ],
+    "deadMoodBranches": [
+      "montee-pulse",
+      "refrain-explosif",
+      "silence-sombre"
+    ],
+    "deadMoods": [
+      "sombre"
+    ],
+    "deadReasons": [
+      "beat",
+      "finale",
+      "section"
+    ],
+    "deadRoles": [
+      "montee",
+      "refrain"
+    ],
+    "density": {
+      "count": 43,
+      "max": 6.60767,
+      "mean": 4.431899,
+      "median": 5.066667,
+      "min": 0.065351,
+      "p10": 2.389058,
+      "p25": 3.595757,
+      "p75": 5.245892,
+      "p90": 6.372117
+    },
+    "distinctFamilies": 20,
+    "drops": 5,
+    "dropsPerTrack": [
+      {
+        "drops": 1,
+        "name": "128bpm-low",
+        "profile": null
+      },
+      {
+        "drops": 1,
+        "name": "128bpm",
+        "profile": null
+      },
+      {
+        "drops": 1,
+        "name": "170bpm",
+        "profile": null
+      },
+      {
+        "drops": 1,
+        "name": "60bpm",
+        "profile": null
+      },
+      {
+        "drops": 0,
+        "name": "90bpm",
+        "profile": null
+      },
+      {
+        "drops": 1,
+        "name": "rich",
+        "profile": null
+      }
+    ],
+    "energy": {
+      "count": 43,
+      "max": 0.891361,
+      "mean": 0.575223,
+      "median": 0.722192,
+      "min": 0.169706,
+      "p10": 0.197105,
+      "p25": 0.239394,
+      "p75": 0.836932,
+      "p90": 0.857067
+    },
+    "energyGap": {
+      "above": 24,
+      "below": 19,
+      "high": 0.68,
+      "inside": 0,
+      "low": 0.55,
+      "shareInside": 0
+    },
+    "explosiveShare": 0.55814,
+    "meter": null,
+    "scenes": 43,
+    "tracks": 6,
+    "usedFamilies": [
+      "beams",
+      "burst",
+      "crossfire",
+      "gobos",
+      "lyre",
+      "mirror",
+      "parade",
+      "particles",
+      "pendule",
+      "pluie",
+      "pont-concert",
+      "portique",
+      "rideaux",
+      "rings",
+      "spiral",
+      "spots",
+      "treillis",
+      "tunnel",
+      "vortex",
+      "waves"
+    ],
+    "zeroDropTracks": [
+      {
+        "name": "90bpm",
+        "profile": null
+      }
+    ]
+  },
+  "version": 1
+}

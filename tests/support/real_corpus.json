@@ -1,0 +1,82 @@
+[
+  {
+    "artiste": "Daft Punk",
+    "durée": 320.4,
+    "id": 3135553,
+    "meter_attendu": 4,
+    "profil": "électro à drops marqués",
+    "titre": "One More Time"
+  },
+  {
+    "artiste": "Maurice Ravel",
+    "durée": 486.5,
+    "id": 6058080,
+    "meter_attendu": 3,
+    "profil": "très dynamique (classique)",
+    "titre": "Bolero"
+  },
+  {
+    "artiste": "Michael Jackson",
+    "durée": 217.3,
+    "id": 14552221,
+    "meter_attendu": 4,
+    "profil": "pop couplet/refrain classique",
+    "titre": "They Don't Care About Us"
+  },
+  {
+    "artiste": "Johann Strauss II",
+    "durée": 503.8,
+    "id": 63812742,
+    "meter_attendu": 3,
+    "profil": "morceau en 3/4",
+    "titre": "The Blue Danube, Op. 314"
+  },
+  {
+    "artiste": "Edith Piaf",
+    "durée": 194.6,
+    "id": 73693857,
+    "meter_attendu": 3,
+    "profil": "valse / 3/4 chanté",
+    "titre": "La Vie en Rose"
+  },
+  {
+    "artiste": "Erik Satie",
+    "durée": 237.8,
+    "id": 75009998,
+    "meter_attendu": 3,
+    "profil": "acoustique calme",
+    "titre": "Gymnopédie No. 1"
+  },
+  {
+    "artiste": "Disclosure",
+    "durée": 255.6,
+    "id": 75526535,
+    "meter_attendu": 4,
+    "profil": "house linéaire",
+    "titre": "Latch"
+  },
+  {
+    "artiste": "Explosions in the Sky",
+    "durée": 497.5,
+    "id": 98755430,
+    "meter_attendu": 4,
+    "profil": "très dynamique (post-rock)",
+    "titre": "Your Hand in Mine"
+  },
+  {
+    "artiste": "Pink Floyd",
+    "durée": 811.1,
+    "id": 116914036,
+    "meter_attendu": 4,
+    "profil": "longue intro (> 45 s)",
+    "titre": "Shine On You Crazy Diamond (Pts. 1-5)"
+  },
+  {
+    "artiste": "Laylow",
+    "durée": 207.4,
+    "id": 857616032,
+    "meter_attendu": 4,
+    "profil": "rap masterisé sans montée",
+    "titre": "TRINITYVILLE"
+  }
+]
