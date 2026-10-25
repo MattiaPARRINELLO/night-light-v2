@@ -57,11 +57,10 @@ function draw(
   time: number,
   frame: number,
 ): void {
-  // Chromium conserve un cache de rastérisation interne lié au canvas : sans
-  // cette remise à zéro, l'image à `t` diffère de 1 à 4 niveaux selon que le
-  // canvas vient de rendre un instant voisin ou non (146 px / 57 600 mesurés).
-  // `reset()` normalise ce cache ; ce n'est ni un préchauffage ni une tolérance,
-  // et il ne reste aucun état applicatif entre deux images.
+  // Neutralise le cache de rastérisation Skia interne au canvas. Il ne masque
+  // aucun état applicatif : sans reset, le résidu mesuré est de 146 px / 57 600
+  // (delta max 4 niveaux), dû au seul moteur, et la production ne fait
+  // volontairement pas ce reset (le seek applicatif peut donc garder ce résidu).
   target.ctx.reset();
   renderFrame({
     ctx: target.ctx,

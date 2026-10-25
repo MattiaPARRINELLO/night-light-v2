@@ -68,6 +68,9 @@ afterAll(async () => {
 });
 
 describe("pureté du rendu", () => {
+  // `ctx.reset()` (dans le harnais) neutralise le cache de rastérisation Skia
+  // du canvas ; il ne masque aucun état applicatif. Résidu sans reset : 146 px
+  // / 57 600, delta max 4 niveaux (mesuré). La production ne reset volontairement pas.
   test(
     "rendu continu puis seek : pixels strictement identiques, sans préchauffage",
     async () => {
