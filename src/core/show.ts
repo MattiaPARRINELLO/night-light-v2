@@ -204,9 +204,9 @@ export const MOOD_LABELS: Record<Mood, string> = {
 };
 
 /** Familles posées, pour les passages sans percussion marquée. */
-const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral", "pluie"];
+export const CALM_FAMILIES: FamilyId[] = ["waves", "tunnel", "particles", "rings", "spiral", "pluie"];
 /** Familles qui suivent le rythme, pour les passages cadencés. */
-const RHYTHMIC_FAMILIES: FamilyId[] = [
+export const RHYTHMIC_FAMILIES: FamilyId[] = [
   "bars",
   "beams",
   "grid",
@@ -233,7 +233,7 @@ const RHYTHMIC_FAMILIES: FamilyId[] = [
   "barres-led",
   "pont-concert",
 ];
-const ENERGETIC_FAMILIES: FamilyId[] = [
+export const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
   "spots",
   "spiral",
@@ -260,8 +260,57 @@ const ENERGETIC_FAMILIES: FamilyId[] = [
   "barres-led",
   "pont-concert",
 ];
+/** Familles du plateau de concert (impact, refrain, montée). */
+export const CONCERT_FAMILIES: FamilyId[] = ["lyres-suspendues", "barres-led", "pont-concert"];
+/** Familles de la branche « brillance » : passages clairs dans le spectre. */
+export const BRIGHT_FAMILIES: FamilyId[] = [
+  "particles",
+  "spots",
+  "spiral",
+  "rings",
+  "beams",
+  "mirror",
+  "parade",
+];
+/** Réservoir du mode réduit rythmé. */
+export const REDUCED_RHYTHMIC_FAMILIES: FamilyId[] = ["beams", "waves", "rings", "particles"];
 
-const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
+export const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
+
+/**
+ * Branche de l'arbre de décision de `familyFor`.
+ *
+ * Le nom de la branche est une donnée d'instrumentation : il est exporté pour
+ * que le rapport de mesure (`tests/support/plan_report.ts`) lise exactement le
+ * même arbre que la production, sans recopie de seuils.
+ */
+export const FAMILY_BRANCHES = [
+  "reduit-calme",
+  "reduit-rythmique",
+  "refrain",
+  "montee",
+  "drop",
+  "calme",
+  "brillance",
+  "densite",
+  "energie",
+  "general",
+] as const;
+export type FamilyBranch = (typeof FAMILY_BRANCHES)[number];
+
+/** Réservoir associé à chaque branche. */
+export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]> = {
+  "reduit-calme": CALM_FAMILIES,
+  "reduit-rythmique": REDUCED_RHYTHMIC_FAMILIES,
+  refrain: ["lyres-suspendues", "barres-led"],
+  montee: ["barres-led"],
+  drop: CONCERT_FAMILIES,
+  calme: CALM_FAMILIES,
+  brillance: BRIGHT_FAMILIES,
+  densite: RHYTHMIC_FAMILIES,
+  energie: ENERGETIC_FAMILIES,
+  general: ALL_FAMILIES,
+};
 
 /**
  * Palettes de morceau.
@@ -339,6 +388,10 @@ export const BRIGHTNESS_THRESHOLD = 0.3;
 export const DENSITY_THRESHOLD = 5.2;
 export const ENERGY_THRESHOLD = 0.62;
 export const CALM_ENERGY_THRESHOLD = 0.22;
+/** Densité sous laquelle le mode réduit reste dans les familles calmes. */
+export const REDUCED_DENSITY_THRESHOLD = 0.6;
+/** Énergie sous laquelle une scène est franchement calme (humeur). */
+export const MOOD_CALM_ENERGY_THRESHOLD = 0.3;
 
 /** Métrique validée : 3 ou 4, avec 4 comme hypothèse par défaut. */
 export function meterOf(analysis: Analysis): 3 | 4 {
@@ -413,7 +466,7 @@ export function barStarts(analysis: Analysis): number[] {
  * en séquence au lieu de prendre `list[tour % longueur]`, qui ne dépendait que
  * du rang et ignorait complètement la graine.
  */
-function permuteFamilies(list: FamilyId[], seed: number): FamilyId[] {
+function permuteFamilies(list: readonly FamilyId[], seed: number): FamilyId[] {
   const out = [...list];
   for (let index = out.length - 1; index > 0; index -= 1) {
     const other = Math.floor(hash01(seed + index * 7919.17) * (index + 1));
@@ -432,7 +485,7 @@ function permuteFamilies(list: FamilyId[], seed: number): FamilyId[] {
  * on retombe sur le premier élément de la permutation : le plan reste défini.
  */
 function pickFamily(
-  list: FamilyId[],
+  list: readonly FamilyId[],
   seed: number,
   turn: number,
   excluded: readonly FamilyId[] = [],
@@ -452,6 +505,38 @@ function pickFamily(
 }
 
 /**
+ * Branche de `familyFor` pour un caractère, un rôle et un mode donnés.
+ *
+ * `concertDrop` dit qu'un impact déploie le plateau : c'est une décision du
+ * plan (`role === "drop"` hors mode réduit), pas du caractère de la scène.
+ * Aucun seuil n'est recopié ailleurs : le rapport de mesure appelle cette
+ * fonction, donc il ne peut pas diverger de la production.
+ */
+export function familyBranchFor(
+  caractere: Caractere,
+  reduced: boolean,
+  role: SceneRole,
+  concertDrop = false,
+): FamilyBranch {
+  const { energy, density, brightness } = caractere;
+  if (reduced) {
+    if (energy < CALM_ENERGY_THRESHOLD) return "reduit-calme";
+    if (density < REDUCED_DENSITY_THRESHOLD) return "reduit-calme";
+    return "reduit-rythmique";
+  }
+  if (concertDrop) return "drop";
+  // Orchestration par rôle : un refrain alterne lyres et barres LED, une
+  // montée déploie franchement la vague des barres.
+  if (role === "refrain") return "refrain";
+  if (role === "montee") return "montee";
+  if (energy < CALM_ENERGY_THRESHOLD) return "calme";
+  if (brightness > BRIGHTNESS_THRESHOLD) return "brillance";
+  if (density > DENSITY_THRESHOLD) return "densite";
+  if (energy > ENERGY_THRESHOLD) return "energie";
+  return "general";
+}
+
+/**
  * Famille déduite du caractère musical.
  *
  * Le rôle de la scène choisit la famille de concert : ballyhoo des lyres en
@@ -460,7 +545,7 @@ function pickFamily(
  * dans un réservoir est déterministe (permutation de la graine) et exclut les
  * familles des scènes précédentes : deux scènes voisines ne se ressemblent pas.
  */
-function familyFor(
+export function familyFor(
   caractere: Caractere,
   reduced: boolean,
   seed: number,
@@ -468,28 +553,12 @@ function familyFor(
   role: SceneRole,
   excluded: readonly FamilyId[] = [],
 ): FamilyId {
-  const { energy, density, brightness } = caractere;
-  const pick = (list: FamilyId[]) => pickFamily(list, seed, turn, excluded);
-
-  if (reduced) {
-    if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
-    if (density < 0.6) return pick(CALM_FAMILIES);
-    return pick(["beams", "waves", "rings", "particles"] as FamilyId[]);
-  }
-  // Orchestration par rôle : un refrain alterne lyres et barres LED, une
-  // montée déploie franchement la vague des barres. Les autres rôles gardent
-  // les réservoirs historiques, où les familles concert restent disponibles.
-  if (role === "refrain") {
+  const branch = familyBranchFor(caractere, reduced, role);
+  if (branch === "refrain") {
     return Math.floor(turn) % 2 === 0 ? "lyres-suspendues" : "barres-led";
   }
-  if (role === "montee") return "barres-led";
-  if (energy < CALM_ENERGY_THRESHOLD) return pick(CALM_FAMILIES);
-  if (brightness > BRIGHTNESS_THRESHOLD) {
-    return pick(["particles", "spots", "spiral", "rings", "beams", "mirror", "parade"] as FamilyId[]);
-  }
-  if (density > DENSITY_THRESHOLD) return pick(RHYTHMIC_FAMILIES);
-  if (energy > ENERGY_THRESHOLD) return pick(ENERGETIC_FAMILIES);
-  return pick(ALL_FAMILIES);
+  if (branch === "montee") return "barres-led";
+  return pickFamily(FAMILY_BRANCH_RESERVOIRS[branch], seed, turn, excluded);
 }
 
 /**
@@ -585,16 +654,73 @@ function paletteLightness(mood: Mood): number {
  * minoritaire (~7 %), sans empiéter sur « calme » (énergie < 0,3) ni sur
  * « explosif » (énergie > 0,62). Alternative mesurée : 0,08 (~9 %).
  */
-const MOOD_BRIGHTNESS_THRESHOLD = 0.09;
+export const MOOD_BRIGHTNESS_THRESHOLD = 0.09;
 
-function moodFor(caractere: Caractere, label: string): Mood {
+/**
+ * Branche de `moodFor` (overrides du site d'appel compris).
+ *
+ * Exportée pour l'instrumentation, comme `familyBranchFor` : le rapport
+ * recompte l'humeur avec le même arbre que la production.
+ */
+export const MOOD_BRANCHES = [
+  "build-explosif",
+  "refrain-explosif",
+  "silence-sombre",
+  "montee-pulse",
+  "energie-explosif",
+  "calme",
+  "brillance-aerien",
+  "pulse",
+] as const;
+export type MoodBranch = (typeof MOOD_BRANCHES)[number];
+
+/** Humeur produite par chaque branche. */
+export const MOOD_OF_BRANCH: Record<MoodBranch, Mood> = {
+  "build-explosif": "explosif",
+  "refrain-explosif": "explosif",
+  "silence-sombre": "sombre",
+  "montee-pulse": "pulse",
+  "energie-explosif": "explosif",
+  calme: "calme",
+  "brillance-aerien": "aerien",
+  pulse: "pulse",
+};
+
+export function moodBranchFor(
+  reason: SceneReason,
+  section: Section | null,
+  caractere: Caractere,
+  reduced: boolean,
+): MoodBranch {
+  if (reason === "build") return "build-explosif";
+  if (!reduced && section?.kind === "refrain") return "refrain-explosif";
+  const label = section?.label ?? "intense";
+  if (label === "silence") return "silence-sombre";
+  if (label === "montee") return "montee-pulse";
+  if (caractere.energy > ENERGY_THRESHOLD) return "energie-explosif";
+  if (caractere.energy < MOOD_CALM_ENERGY_THRESHOLD) return "calme";
+  if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "brillance-aerien";
+  return "pulse";
+}
+
+/** Humeur d'une scène : overrides (impact, refrain) puis caractère musical. */
+export function moodForScene(
+  reason: SceneReason,
+  section: Section | null,
+  caractere: Caractere,
+  reduced: boolean,
+): Mood {
+  return MOOD_OF_BRANCH[moodBranchFor(reason, section, caractere, reduced)];
+}
+
+export function moodFor(caractere: Caractere, label: string): Mood {
   if (label === "silence") return "sombre";
   if (label === "montee") return "pulse";
   if (caractere.energy > ENERGY_THRESHOLD) return "explosif";
   // Un passage vraiment calme reste sombre : c'est le creux qui rend l'impact
   // lisible, et ça repose la salle entre deux montées. L'aérien est réservé aux
   // passages modérés mais clairs dans le spectre.
-  if (caractere.energy < 0.3) return "calme";
+  if (caractere.energy < MOOD_CALM_ENERGY_THRESHOLD) return "calme";
   if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "aerien";
   return "pulse";
 }
@@ -787,14 +913,11 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     // elle ne doit jamais figer le rôle ni l'humeur d'une scène locale. On s'en
     // remet alors au caractère de l'intervalle et aux événements détectés.
     const section = localSectionAt(analysis, start);
-    const label = section?.label ?? "intense";
     const group = section?.group !== undefined && section.group !== "" ? section.group : "";
     const grouped = group !== "";
     // Un refrain réclame de l'énergie : c'est là qu'on veut que la salle
     // s'allume. On lui impose l'humeur explosive, comme un impact de montée.
-    const refrain = section?.kind === "refrain";
-    const mood =
-      event.reason === "build" || (refrain && !reduced) ? "explosif" : moodFor(caractere, label);
+    const mood = moodForScene(event.reason, section, caractere, reduced);
     const turn = scenes.length;
     const role = roleFor(section, event.reason, turn);
     // Identité stable d'un groupe : sert de graine partout où il faut retrouver
@@ -877,7 +1000,10 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
-    const fort = refrain || mood === "explosif" || (mood === "pulse" && caractere.energy > 0.6);
+    const fort =
+      section?.kind === "refrain" ||
+      mood === "explosif" ||
+      (mood === "pulse" && caractere.energy > 0.6);
     // La signature de drop choisit le pôle de teinte : tantôt la
     // complémentaire du morceau, tantôt le pôle opposé (l'ancre de base). Les
     // deux restent dans le budget de couleur autour de l'ancre de scène.
