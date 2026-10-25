@@ -108,3 +108,60 @@ export function realCorpusFromEnv(): PlanTrack[] {
 export function trackExtension(name: string): string {
   return extname(name) || ".json";
 }
+
+// --- Corpus réel (manifeste versionné, audio et analyses hors git) ----------
+
+export interface RealCorpusEntry {
+  id: number;
+  titre: string;
+  artiste: string;
+  profil: string;
+  durée: number;
+}
+
+export interface RealPlanTrack extends PlanTrack {
+  id: number;
+  titre: string;
+  artiste: string;
+  profile: string;
+  expectedDuration: number;
+}
+
+export const REAL_MANIFEST = join(ROOT, "tests/support/real_corpus.json");
+export const REAL_ANALYSIS_DIR = join(ROOT, "tests/fixtures/analyses");
+
+/**
+ * Charge les analyses du corpus réel décrit par `tests/support/real_corpus.json`.
+ *
+ * Les fichiers audio et d'analyse ne sont pas versionnés : lancer d'abord
+ * `uv run python tools/real_corpus.py`. Une analyse manquante est une erreur
+ * explicite, jamais un corpus silencieusement partiel.
+ */
+export function loadRealCorpus(
+  manifestPath = REAL_MANIFEST,
+  analysisDir = REAL_ANALYSIS_DIR,
+): RealPlanTrack[] {
+  if (!existsSync(manifestPath)) throw new Error(`manifeste réel absent : ${manifestPath}`);
+  const entries = JSON.parse(readFileSync(manifestPath, "utf8")) as RealCorpusEntry[];
+  const tracks: RealPlanTrack[] = [];
+  for (const entry of entries) {
+    const analysisPath = join(analysisDir, `real-${entry.id}.json`);
+    if (!existsSync(analysisPath)) {
+      throw new Error(
+        `analyse réelle absente pour ${entry.titre} : ${analysisPath}\n` +
+          "lancer : uv run python tools/real_corpus.py",
+      );
+    }
+    tracks.push({
+      name: entry.titre,
+      analysis: JSON.parse(readFileSync(analysisPath, "utf8")) as Analysis,
+      source: "real",
+      id: entry.id,
+      titre: entry.titre,
+      artiste: entry.artiste,
+      profile: entry.profil,
+      expectedDuration: entry.durée,
+    });
+  }
+  return tracks;
+}
