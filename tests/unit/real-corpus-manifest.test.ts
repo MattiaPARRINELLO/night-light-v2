@@ -14,6 +14,7 @@ interface Entry {
   artiste: string;
   profil: string;
   durée: number;
+  meter_attendu: 3 | 4;
 }
 
 const MANIFEST = join(import.meta.dir, "../support/real_corpus.json");
@@ -26,13 +27,21 @@ describe("manifeste du corpus réel", () => {
     const ids = new Set(entries.map((entry) => entry.id));
     expect(ids.size).toBe(entries.length);
     for (const entry of entries) {
-      expect(Object.keys(entry).sort()).toEqual(["artiste", "durée", "id", "profil", "titre"]);
+      expect(Object.keys(entry).sort()).toEqual([
+        "artiste",
+        "durée",
+        "id",
+        "meter_attendu",
+        "profil",
+        "titre",
+      ]);
       expect(Number.isInteger(entry.id)).toBe(true);
       expect(entry.id).toBeGreaterThan(0);
       expect(entry.titre.length).toBeGreaterThan(0);
       expect(entry.artiste.length).toBeGreaterThan(0);
       expect(entry.durée).toBeGreaterThan(0);
       expect(entry.profil.length).toBeGreaterThan(0);
+      expect([3, 4]).toContain(entry.meter_attendu);
     }
   });
 

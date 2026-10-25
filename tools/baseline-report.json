@@ -16,17 +16,17 @@
   },
   "real": {
     "brightness": {
-      "count": 538,
+      "count": 520,
       "max": 0.902846,
-      "mean": 0.251486,
-      "median": 0.228098,
+      "mean": 0.248968,
+      "median": 0.204106,
       "min": 0,
       "p10": 0,
-      "p25": 0.034845,
-      "p75": 0.406167,
-      "p90": 0.603127
+      "p25": 0.036918,
+      "p75": 0.40524,
+      "p90": 0.60766
     },
-    "cycleShare": 0.85316,
+    "cycleShare": 0.838462,
     "deadFamilies": [],
     "deadFamilyBranches": [
       "montee",
@@ -50,18 +50,18 @@
       "refrain"
     ],
     "density": {
-      "count": 538,
+      "count": 520,
       "max": 8.180301,
-      "mean": 2.555082,
-      "median": 2.47737,
+      "mean": 2.478913,
+      "median": 2.409343,
       "min": 0,
       "p10": 0.187231,
-      "p25": 1.254618,
-      "p75": 3.77488,
-      "p90": 4.611879
+      "p25": 1.254355,
+      "p75": 3.463785,
+      "p90": 4.519538
     },
     "distinctFamilies": 29,
-    "drops": 70,
+    "drops": 75,
     "dropsPerTrack": [
       {
         "drops": 5,
@@ -82,6 +82,11 @@
         "drops": 12,
         "name": "The Blue Danube, Op. 314",
         "profile": "morceau en 3/4"
+      },
+      {
+        "drops": 7,
+        "name": "La Vie en Rose",
+        "profile": "valse / 3/4 chanté"
       },
       {
         "drops": 10,
@@ -107,34 +112,68 @@
         "drops": 2,
         "name": "TRINITYVILLE",
         "profile": "rap masterisé sans montée"
-      },
-      {
-        "drops": 2,
-        "name": "Démons",
-        "profile": "pop couplet/refrain classique"
       }
     ],
     "energy": {
-      "count": 538,
+      "count": 520,
       "max": 0.969304,
-      "mean": 0.621067,
-      "median": 0.719511,
+      "mean": 0.619281,
+      "median": 0.703504,
       "min": 0.049709,
-      "p10": 0.083401,
-      "p25": 0.454124,
-      "p75": 0.856664,
-      "p90": 0.911362
+      "p10": 0.092753,
+      "p25": 0.457615,
+      "p75": 0.85176,
+      "p90": 0.913253
     },
     "energyGap": {
-      "above": 295,
-      "below": 173,
+      "above": 273,
+      "below": 168,
       "high": 0.68,
-      "inside": 70,
+      "inside": 79,
       "low": 0.55,
-      "shareInside": 0.130112
+      "shareInside": 0.151923
     },
-    "explosiveShare": 0.663569,
-    "scenes": 538,
+    "explosiveShare": 0.661538,
+    "meter": {
+      "detected3": 4,
+      "detected4": 6,
+      "expected3": 4,
+      "expected4": 6,
+      "matches": 4,
+      "mismatches": [
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "Bolero"
+        },
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "La Vie en Rose"
+        },
+        {
+          "detected": 4,
+          "expected": 3,
+          "name": "Gymnopédie No. 1"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Latch"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Your Hand in Mine"
+        },
+        {
+          "detected": 3,
+          "expected": 4,
+          "name": "Shine On You Crazy Diamond (Pts. 1-5)"
+        }
+      ]
+    },
+    "scenes": 520,
     "tracks": 10,
     "usedFamilies": [
       "barres-led",
@@ -170,12 +209,12 @@
     "zeroDropTracks": []
   },
   "saturationReal": {
-    "drops": 70,
+    "drops": 75,
     "max": 0.294809,
     "maxAt": 377.882,
     "maxTrack": "Your Hand in Mine",
-    "mean": 0.003985,
-    "p90": 0.002812,
+    "mean": 0.00398,
+    "p90": 0.003054,
     "perDrop": [
       {
         "end": 39.219,
@@ -528,6 +567,83 @@
         "samples": 107,
         "start": 424.15,
         "track": "The Blue Danube, Op. 314"
+      },
+      {
+        "end": 24.079,
+        "max": 0.00125,
+        "maxAt": 16.377,
+        "mean": 0.000056,
+        "p90": 0.000129,
+        "profile": "valse / 3/4 chanté",
+        "samples": 79,
+        "start": 16.277,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 29.745,
+        "max": 0.281406,
+        "maxAt": 24.179,
+        "mean": 0.005525,
+        "p90": 0.001962,
+        "profile": "valse / 3/4 chanté",
+        "samples": 57,
+        "start": 24.079,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 60.07,
+        "max": 0.291267,
+        "maxAt": 48.305,
+        "mean": 0.003701,
+        "p90": 0.005219,
+        "profile": "valse / 3/4 chanté",
+        "samples": 119,
+        "start": 48.205,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 66.804,
+        "max": 0.291059,
+        "maxAt": 60.17,
+        "mean": 0.010495,
+        "p90": 0.015162,
+        "profile": "valse / 3/4 chanté",
+        "samples": 68,
+        "start": 60.07,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 81.757,
+        "max": 0.287795,
+        "maxAt": 73.196,
+        "mean": 0.005276,
+        "p90": 0.00924,
+        "profile": "valse / 3/4 chanté",
+        "samples": 87,
+        "start": 73.096,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 99.149,
+        "max": 0.294427,
+        "maxAt": 88.731,
+        "mean": 0.009135,
+        "p90": 0.006754,
+        "profile": "valse / 3/4 chanté",
+        "samples": 106,
+        "start": 88.631,
+        "track": "La Vie en Rose"
+      },
+      {
+        "end": 110.69,
+        "max": 0.256128,
+        "maxAt": 99.249,
+        "mean": 0.003064,
+        "p90": 0.001623,
+        "profile": "valse / 3/4 chanté",
+        "samples": 116,
+        "start": 99.149,
+        "track": "La Vie en Rose"
       },
       {
         "end": 31.045,
@@ -924,31 +1040,9 @@
         "samples": 116,
         "start": 33.135,
         "track": "TRINITYVILLE"
-      },
-      {
-        "end": 17.624,
-        "max": 0.29033,
-        "maxAt": 7.159,
-        "mean": 0.004468,
-        "p90": 0.001849,
-        "profile": "pop couplet/refrain classique",
-        "samples": 106,
-        "start": 7.059,
-        "track": "Démons"
-      },
-      {
-        "end": 139.807,
-        "max": 0.294063,
-        "maxAt": 133.993,
-        "mean": 0.015738,
-        "p90": 0.014045,
-        "profile": "pop couplet/refrain classique",
-        "samples": 61,
-        "start": 133.793,
-        "track": "Démons"
       }
     ],
-    "samples": 6477
+    "samples": 6942
   },
   "synthetic": {
     "brightness": {
@@ -1060,6 +1154,7 @@
       "shareInside": 0
     },
     "explosiveShare": 0.55814,
+    "meter": null,
     "scenes": 43,
     "tracks": 6,
     "usedFamilies": [

@@ -117,6 +117,8 @@ export interface RealCorpusEntry {
   artiste: string;
   profil: string;
   durée: number;
+  /** Métrique musicalement correcte : 3 ou 4. */
+  meter_attendu: 3 | 4;
 }
 
 export interface RealPlanTrack extends PlanTrack {
@@ -125,6 +127,7 @@ export interface RealPlanTrack extends PlanTrack {
   artiste: string;
   profile: string;
   expectedDuration: number;
+  expectedMeter: 3 | 4;
 }
 
 export const REAL_MANIFEST = join(ROOT, "tests/support/real_corpus.json");
@@ -161,6 +164,7 @@ export function loadRealCorpus(
       artiste: entry.artiste,
       profile: entry.profil,
       expectedDuration: entry.durée,
+      expectedMeter: entry.meter_attendu,
     });
   }
   return tracks;

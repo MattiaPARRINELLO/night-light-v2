@@ -96,6 +96,7 @@ def write_manifest(path: Path, entries: list[dict]) -> None:
                 "artiste": str(entry["artiste"]),
                 "durée": round(float(entry["durée"]), 1),
                 "id": int(entry["id"]),
+                "meter_attendu": int(entry.get("meter_attendu", 4)),
                 "profil": str(entry["profil"]),
                 "titre": str(entry["titre"]),
             }
@@ -133,6 +134,9 @@ def main() -> int:
         title = str(entry["titre"])
         artist = str(entry["artiste"])
         profile = str(entry["profil"])
+        expected_meter = int(entry.get("meter_attendu", 4))
+        if expected_meter not in (3, 4):
+            raise SystemExit(f"meter_attendu invalide pour {title}: {expected_meter}")
         # Durée 0 dans la requête : c'est la clé de cache historique du projet.
         query = TrackQuery(title=title, artist=artist, duration_sec=0.0)
         cached = cache.get_entry_for_query(query)
@@ -184,6 +188,7 @@ def main() -> int:
                 "titre": title,
                 "artiste": artist,
                 "profil": profile,
+                "meter_attendu": expected_meter,
                 "durée": round(duration, 1),
                 "analysis": analysis_path.name,
                 "source": "cache" if from_cache else "téléchargé",

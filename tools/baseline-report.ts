@@ -14,7 +14,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, SCENE_ROLE_LABELS } from "../src/core/show";
@@ -49,6 +49,14 @@ export interface CorpusSummary {
   deadMoodBranches: string[];
   dropsPerTrack: Array<{ name: string; profile: string | null; drops: number }>;
   zeroDropTracks: Array<{ name: string; profile: string | null }>;
+  meter: {
+    expected3: number;
+    expected4: number;
+    detected3: number;
+    detected4: number;
+    matches: number;
+    mismatches: Array<{ name: string; expected: number; detected: number }>;
+  } | null;
 }
 
 export interface DropSaturationRow {
@@ -87,7 +95,11 @@ export interface BaselineReport {
   saturationReal: SaturationSummary;
 }
 
-function summarize(report: PlanMeasureReport, profiles: Map<string, string>): CorpusSummary {
+function summarize(
+  report: PlanMeasureReport,
+  profiles: Map<string, string>,
+  meters: Map<string, { expected: 3 | 4; detected: 3 | 4 }>,
+): CorpusSummary {
   const scenes = report.scenes;
   const total = scenes.length || 1;
   const energies = scenes.map((scene) => scene.energy);
@@ -128,6 +140,24 @@ function summarize(report: PlanMeasureReport, profiles: Map<string, string>): Co
     zeroDropTracks: dropsPerTrack
       .filter((track) => track.drops === 0)
       .map((track) => ({ name: track.name, profile: track.profile })),
+    meter: meters.size === 0
+      ? null
+      : {
+          expected3: [...meters.values()].filter((entry) => entry.expected === 3).length,
+          expected4: [...meters.values()].filter((entry) => entry.expected === 4).length,
+          detected3: [...meters.values()].filter((entry) => entry.detected === 3).length,
+          detected4: [...meters.values()].filter((entry) => entry.detected === 4).length,
+          matches: [...meters.values()].filter((entry) => entry.expected === entry.detected).length,
+          mismatches: report.tracks
+            .filter((track) => {
+              const meter = meters.get(track.name);
+              return meter !== undefined && meter.expected !== meter.detected;
+            })
+            .map((track) => {
+              const meter = meters.get(track.name)!;
+              return { name: track.name, expected: meter.expected, detected: meter.detected };
+            }),
+        },
   };
 }
 
@@ -179,6 +209,14 @@ async function measureSaturation(tracks: ReadonlyArray<RealPlanTrack>): Promise<
     maxAt: maxRow?.maxAt ?? null,
     perDrop,
   };
+}
+
+/** Version exacte de Playwright, lue dans package.json (documentation). */
+function pinnedPlaywright(): string {
+  const pkg = JSON.parse(readFileSync(join(OUT_DIR, "..", "package.json"), "utf8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  return pkg.devDependencies?.playwright ?? "inconnue";
 }
 
 function pct(value: number, digits = 1): string {
@@ -295,7 +333,26 @@ export function markdown(report: BaselineReport): string {
     }
   }
   lines.push("");
-  lines.push("## 4. Saturation des drops (corpus réel)");
+  lines.push("## 4. Métrique (corpus réel)");
+  lines.push("");
+  if (real.meter === null) {
+    lines.push("Aucune métrique attendue dans le manifeste.");
+  } else {
+    lines.push(
+      `Attendu : ${real.meter.expected3} morceau(x) en 3/4, ${real.meter.expected4} en 4/4. ` +
+        `Détecté : ${real.meter.detected3} en 3/4, ${real.meter.detected4} en 4/4. ` +
+        `**${real.meter.matches}/${real.tracks} concordent.**`,
+    );
+    lines.push("");
+    lines.push("| morceau | attendu | détecté |");
+    lines.push("| --- | --- | --- |");
+    for (const track of real.meter.mismatches) {
+      lines.push(`| ${track.name} | ${track.expected}/4 | ${track.detected}/4 |`);
+    }
+    if (real.meter.mismatches.length === 0) lines.push("| — | — | — |");
+  }
+  lines.push("");
+  lines.push("## 5. Saturation des drops (corpus réel)");
   lines.push("");
   lines.push(
     `Échantillonnage 10 Hz, 320×180, luminance > ${report.method.saturation.luminance} et ` +
@@ -313,6 +370,23 @@ export function markdown(report: BaselineReport): string {
         `${pct(drop.mean, 2)} | ${pct(drop.p90, 2)} | ${pct(drop.max, 2)} | ${drop.maxAt.toFixed(2)} s |`,
     );
   }
+  lines.push("");
+  lines.push("## Reproduire");
+  lines.push("");
+  lines.push("1. `bun install` (Playwright épinglé **" + pinnedPlaywright() + "**).");
+  lines.push(
+    "2. `bunx playwright install chromium` — installe le Chromium correspondant à cette version exacte.",
+  );
+  lines.push(
+    "3. `uv run python tools/real_corpus.py` — télécharge les morceaux manquants " +
+      "et produit leurs analyses (requiert l'accès Deezer).",
+  );
+  lines.push("4. `bun tools/baseline-report.ts` — écrit ce fichier et le JSON machine.");
+  lines.push("");
+  lines.push(
+    "Le SHA-256 affiché en fin d'exécution doit être identique sur deux exécutions. " +
+      "La saturation dépend du Chromium épinglé : une autre version peut décaler les pixels de 1 à 4 niveaux.",
+  );
   lines.push("");
   lines.push("## Notes de méthode");
   lines.push("");
@@ -348,6 +422,12 @@ async function main(): Promise<number> {
 
   const syntheticReport = buildReport(syntheticTracks as PlanTrack[]);
   const realReport = buildReport(realTracks as PlanTrack[]);
+  const meters = new Map<string, { expected: 3 | 4; detected: 3 | 4 }>(
+    realTracks.map((track) => [
+      track.titre,
+      { expected: track.expectedMeter, detected: track.analysis.meter === 3 ? 3 : 4 },
+    ]),
+  );
   const saturation = await measureSaturation(realTracks);
 
   const report: BaselineReport = {
@@ -358,8 +438,8 @@ async function main(): Promise<number> {
       energyGap: [ENERGY_GAP_LOW, ENERGY_GAP_HIGH],
       saturation: { fps: 10, luminance: 0.92, saturation: 0.15, width: 320, height: 180 },
     },
-    synthetic: summarize(syntheticReport, new Map()),
-    real: summarize(realReport, manifestProfiles(realTracks)),
+    synthetic: summarize(syntheticReport, new Map(), new Map()),
+    real: summarize(realReport, manifestProfiles(realTracks), meters),
     saturationReal: saturation,
   };
 
