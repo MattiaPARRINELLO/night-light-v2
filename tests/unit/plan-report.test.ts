@@ -66,7 +66,7 @@ describe("instrumentation du plan", () => {
     for (const caractere of GRID) {
       for (const label of ["intense", "calme", "montee"] as const) {
         const section = { start: 0, end: 1, label, energy: caractere.energy };
-        expect(MOOD_OF_BRANCH[moodBranchFor("cycle", section, caractere, false)]).toBe(
+        expect(MOOD_OF_BRANCH[moodBranchFor("cycle", section, caractere, false, undefined, true)]).toBe(
           moodFor(caractere, label),
         );
       }
@@ -80,12 +80,27 @@ describe("instrumentation du plan", () => {
     ]);
     expect(report.scenes.length).toBeGreaterThan(10);
     for (const scene of report.scenes) {
-      // L'humeur annoncée par la branche est celle du plan : aucune divergence.
-      expect(MOOD_OF_BRANCH[scene.moodBranch]).toBe(scene.mood);
+      // La branche rend l'humeur de base ; le plan peut l'avoir lissée.
+      expect(MOOD_OF_BRANCH[scene.moodBranch]).toBe(scene.baseMood);
       // La famille vient du réservoir de la branche (sauf groupe/fond, compté
       // séparément comme « provenance non directe »).
       if (scene.provenance === "direct") {
         expect(FAMILY_BRANCH_RESERVOIRS[scene.familyBranch]).toContain(scene.family);
+      }
+      // Cohérence stricte humeur finale / réservoir.
+      if (scene.mood === "calme") expect(scene.reservoir).not.toBe("non-calme");
+      if (scene.mood !== "calme") expect(scene.reservoir).not.toBe("calme");
+    }
+    // L'hystérésis ne peut changer l'humeur que vers celle de la scène
+    // précédente, et seulement pour un écart d'énergie inférieur à la marge.
+    for (const track of report.tracks) {
+      const rows = report.scenes.filter((scene) => scene.track === track.name);
+      for (let index = 1; index < rows.length; index += 1) {
+        const current = rows[index]!;
+        const previous = rows[index - 1]!;
+        if (current.mood === current.baseMood) continue;
+        expect(current.mood).toBe(previous.mood);
+        expect(Math.abs(current.energy - previous.energy)).toBeLessThan(0.051);
       }
     }
     // Et le plan lui-même reste cohérent avec le rapport.

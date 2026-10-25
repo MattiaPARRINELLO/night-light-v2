@@ -20,13 +20,16 @@ import {
   familyBranchFor,
   MOOD_BRANCHES,
   MOOD_LABELS,
+  MOOD_OF_BRANCH,
   moodBranchFor,
+  moodThresholdsFor,
   SCENE_REASON_LABELS,
   SCENE_ROLE_LABELS,
   type FamilyBranch,
   type FamilyId,
   type Mood,
   type MoodBranch,
+  type MoodThresholds,
   type SceneReason,
   type SceneRole,
 } from "../../src/core/show";
@@ -72,8 +75,9 @@ export function familyBranchOf(
   role: SceneRole,
   caractere: { energy: number; density: number; brightness: number },
   reduced: boolean,
+  calm?: boolean,
 ): FamilyBranch {
-  return familyBranchFor(caractere, reduced, role, !reduced && role === "drop");
+  return familyBranchFor(caractere, reduced, role, !reduced && role === "drop", calm);
 }
 
 /** Branche de `moodFor`, overrides du site d'appel compris. */
@@ -82,8 +86,9 @@ export function moodBranchOf(
   section: Section | null,
   caractere: { energy: number; brightness: number },
   reduced: boolean,
+  thresholds?: MoodThresholds,
 ): MoodBranch {
-  return moodBranchFor(reason, section, { ...caractere, density: 0 }, reduced);
+  return moodBranchFor(reason, section, { ...caractere, density: 0 }, reduced, thresholds);
 }
 
 // --- Statistiques -----------------------------------------------------------
@@ -137,6 +142,8 @@ export interface SceneMeasure {
   reason: SceneReason;
   role: SceneRole;
   mood: Mood;
+  /** Humeur avant le lissage d'hystérésis (celle que décrit `moodBranch`). */
+  baseMood: Mood;
   family: FamilyId;
   variant: FamilyId;
   backdrop: FamilyId;
@@ -260,11 +267,19 @@ function familyProvenance(
 
 function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
   const plan = buildShowPlan(track.analysis, reduced);
-  return plan.scenes.map((scene) => {
-    const section = localSectionAt(track.analysis, scene.start);
-    const caractere = caractereAt(track.analysis, scene.start, scene.end);
-    const familyBranch = familyBranchOf(scene.role, caractere, reduced);
-    const moodBranch = moodBranchOf(scene.reason, section, caractere, reduced);
+  const measured = plan.scenes.map((scene) => ({
+    scene,
+    section: localSectionAt(track.analysis, scene.start),
+    caractere: caractereAt(track.analysis, scene.start, scene.end),
+  }));
+  // Mêmes seuils que la production : la distribution d'énergie des scènes du
+  // morceau, dans le même mode (normal ou réduit).
+  const thresholds = moodThresholdsFor(measured.map((entry) => entry.caractere.energy));
+  return measured.map(({ scene, section, caractere }) => {
+    // La famille suit l'humeur finale du plan : une scène lissée en « calme »
+    // reste dans un réservoir calme, donc l'audit humeur/réservoir ne ment pas.
+    const familyBranch = familyBranchOf(scene.role, caractere, reduced, scene.mood === "calme");
+    const moodBranch = moodBranchOf(scene.reason, section, caractere, reduced, thresholds);
     const grouped = section?.group !== undefined && section.group !== "";
     return {
       track: track.name,
@@ -274,6 +289,7 @@ function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
       reason: scene.reason,
       role: scene.role,
       mood: scene.mood,
+      baseMood: MOOD_OF_BRANCH[moodBranch],
       family: scene.family,
       variant: scene.variant,
       backdrop: scene.backdrop,

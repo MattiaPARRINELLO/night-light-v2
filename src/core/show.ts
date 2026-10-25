@@ -103,6 +103,13 @@ export interface Scene {
   reason: SceneReason;
 }
 
+/**
+ * Ce qui a produit une frontière de scène.
+ *
+ * `beat` n'est pas un vestige : c'est la coupure de sécurité sur le temps fort
+ * quand aucun événement musical (section, impact, cycle retenu) ne tombe dans
+ * `MAX_SCENE_SPAN`. `finale` marque la dernière scène non terminée par un drop.
+ */
 export type SceneReason = "section" | "build" | "cycle" | "beat" | "ouverture" | "finale";
 
 export const SCENE_REASON_LABELS: Record<SceneReason, string> = {
@@ -434,6 +441,29 @@ export function caractereAt(analysis: Analysis, start: number, end: number): Car
 }
 
 /**
+ * Une frontière de cycle n'est retenue que si le caractère change vraiment.
+ *
+ * Sans ce filtre, 85 % des frontières réelles étaient des retours de cycle :
+ * la lumière changeait au métronome, pas au rythme de la musique. Les écarts
+ * sont calibrés sur le corpus réel (voir le rapport de la vague 1).
+ */
+export const CYCLE_ENERGY_DELTA = 0.3;
+export const CYCLE_DENSITY_DELTA = 3.0;
+export const CYCLE_BRIGHTNESS_DELTA = 0.22;
+/** Fenêtre de comparaison de part et d'autre d'une frontière de cycle. */
+export const CYCLE_COMPARE_WINDOW = 4;
+/**
+ * Durée maximale d'une scène, en secondes.
+ *
+ * Même quand le caractère ne change pas, une scène ne doit pas durer une
+ * minute sur un morceau qui évolue : au-delà de 12 s, on coupe sur le temps
+ * fort le plus proche (raison `beat`) ou sur le cycle suivant s'il est déjà
+ * retenu. 12 s est la valeur qui tient la médiane réelle dans la fenêtre
+ * 8–20 s tout en laissant une nappe respirer deux mesures.
+ */
+export const MAX_SCENE_SPAN = 12;
+
+/**
  * Barres de mesure : temps forts tous les `cycleBeats`, et temps forts seuls
  * en dernier recours. C'est la grille rythmique sur laquelle le spectacle
  * pourra accrocher ses changements.
@@ -489,6 +519,7 @@ function pickFamily(
   seed: number,
   turn: number,
   excluded: readonly FamilyId[] = [],
+  used?: ReadonlyMap<FamilyId, number>,
 ): FamilyId {
   const order = permuteFamilies(list, seed + list.length * 104_729);
   const start = ((Math.floor(turn) % order.length) + order.length) % order.length;
@@ -497,11 +528,26 @@ function pickFamily(
   // l'avant-dernière n'est écartée que sur les réservoirs assez grands — sur
   // une liste de trois ou quatre, trois exclusions tueraient le tirage.
   const blocked = excluded.slice(0, order.length >= 5 ? 3 : 2);
+  const candidates: FamilyId[] = [];
   for (let step = 0; step < order.length; step += 1) {
     const candidate = order[(start + step) % order.length]!;
-    if (!blocked.includes(candidate)) return candidate;
+    if (!blocked.includes(candidate)) candidates.push(candidate);
   }
-  return order[start] ?? list[0] ?? "beams";
+  if (candidates.length === 0) return order[start] ?? list[0] ?? "beams";
+  if (used === undefined) return candidates[0]!;
+  // Couverture : à égalité de rareté, l'ordre de la permutation décide. Un
+  // morceau découpé en moins de scènes doit quand même passer par toutes les
+  // familles de son réservoir avant d'en répéter une.
+  let best = candidates[0]!;
+  let bestCount = used.get(best) ?? 0;
+  for (const candidate of candidates.slice(1)) {
+    const count = used.get(candidate) ?? 0;
+    if (count < bestCount) {
+      best = candidate;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /**
@@ -517,6 +563,7 @@ export function familyBranchFor(
   reduced: boolean,
   role: SceneRole,
   concertDrop = false,
+  calm?: boolean,
 ): FamilyBranch {
   const { energy, density, brightness } = caractere;
   if (reduced) {
@@ -529,7 +576,9 @@ export function familyBranchFor(
   // montée déploie franchement la vague des barres.
   if (role === "refrain") return "refrain";
   if (role === "montee") return "montee";
-  if (energy < CALM_ENERGY_THRESHOLD) return "calme";
+  // L'humeur finale fait foi : une scène lissée en « calme » par l'hystérésis
+  // reste dans un réservoir calme, même si son énergie frôle le seuil.
+  if (calm ?? energy < CALM_ENERGY_THRESHOLD) return "calme";
   if (brightness > BRIGHTNESS_THRESHOLD) return "brillance";
   if (density > DENSITY_THRESHOLD) return "densite";
   if (energy > ENERGY_THRESHOLD) return "energie";
@@ -552,13 +601,15 @@ export function familyFor(
   turn: number,
   role: SceneRole,
   excluded: readonly FamilyId[] = [],
+  calm?: boolean,
+  used?: ReadonlyMap<FamilyId, number>,
 ): FamilyId {
-  const branch = familyBranchFor(caractere, reduced, role);
+  const branch = familyBranchFor(caractere, reduced, role, false, calm);
   if (branch === "refrain") {
     return Math.floor(turn) % 2 === 0 ? "lyres-suspendues" : "barres-led";
   }
   if (branch === "montee") return "barres-led";
-  return pickFamily(FAMILY_BRANCH_RESERVOIRS[branch], seed, turn, excluded);
+  return pickFamily(FAMILY_BRANCH_RESERVOIRS[branch], seed, turn, excluded, used);
 }
 
 /**
@@ -569,16 +620,23 @@ export function familyFor(
  * identifiées par le serveur (intro, couplet, refrain, outro) gardent ensuite
  * leur rôle du début à la fin.
  */
-function roleFor(section: Section | null, reason: SceneReason, index: number): SceneRole {
+function roleFor(
+  section: Section | null,
+  reason: SceneReason,
+  index: number,
+  dramaturgy: boolean,
+): SceneRole {
   if (reason === "build") return "drop";
-  if (section?.kind === "intro") return "intro";
-  if (section?.kind === "refrain") return "refrain";
-  if (section?.kind === "couplet") return "couplet";
-  if (section?.kind === "outro") return "finale";
-  if (section?.kind === "pont") return "montee";
+  if (dramaturgy) {
+    if (section?.kind === "intro") return "intro";
+    if (section?.kind === "refrain") return "refrain";
+    if (section?.kind === "couplet") return "couplet";
+    if (section?.kind === "outro") return "finale";
+    if (section?.kind === "pont") return "montee";
+    if (section?.label === "montee") return "montee";
+    if (section?.label === "descente" || section?.label === "silence") return "finale";
+  }
   if (reason === "ouverture" || index === 0) return "intro";
-  if (section?.label === "montee") return "montee";
-  if (section?.label === "descente" || section?.label === "silence") return "finale";
   return "couplet";
 }
 
@@ -648,13 +706,84 @@ function paletteLightness(mood: Mood): number {
 /**
  * Seuil de brillance de l'humeur aérienne.
  *
- * Même cause que `BRIGHTNESS_THRESHOLD` : l'ancien 0,68 était une valeur de
- * somme saturée. Sur l'échelle réelle (médiane ≈ 0,19), 0,68 ne laissait plus
- * qu'une scène du corpus devenir aérienne. 0,09 restaure une humeur « aérien »
- * minoritaire (~7 %), sans empiéter sur « calme » (énergie < 0,3) ni sur
- * « explosif » (énergie > 0,62). Alternative mesurée : 0,08 (~9 %).
+ * Recalibré sur le corpus réel **hors scènes de drop** (chantier humeur) : la
+ * médiane de brillance y vaut 0,244 et le p70 0,392. 0,40 réserve « aérien »
+ * aux passages réellement clairs (~2 % des scènes) ; plus bas, les scènes
+ * modérément lumineuses basculeraient en aérien et « pulse » disparaîtrait.
+ * L'ancien 0,09 (calibré sur une échelle faussée) rendait aérien presque tout
+ * ce qui n'était ni calme ni explosif.
  */
-export const MOOD_BRIGHTNESS_THRESHOLD = 0.09;
+export const MOOD_BRIGHTNESS_THRESHOLD = 0.4;
+
+/**
+ * Plancher absolu de l'humeur explosive.
+ *
+ * L'énergie relative au morceau (quantile) suffit à répartir les humeurs, mais
+ * un morceau entièrement calme ne doit pas devenir explosif à son pic : en
+ * dessous de ce plancher, aucune scène n'est explosive, quel que soit son rang.
+ * 0,62 est l'ancien seuil absolu, conservé comme garde-fou.
+ */
+export const MOOD_EXPLOSIVE_FLOOR = 0.62;
+/** Quantile d'énergie du morceau au-dessus duquel une scène est explosive. */
+export const MOOD_EXPLOSIVE_QUANTILE = 0.68;
+/**
+ * Plafond absolu de l'humeur calme.
+ *
+ * Le rang dans le morceau décide du calme (une scène plus douce que les autres
+ * l'est), mais une scène reste « calme » seulement sous ce plafond : un morceau
+ * fort de bout en bout n'a pas de passage calme simplement parce qu'il est le
+ * moins fort du lot.
+ */
+export const MOOD_CALM_ENERGY_CEILING = 0.62;
+/** Quantile d'énergie du morceau sous lequel une scène est calme. */
+export const MOOD_CALM_QUANTILE = 0.4;
+/**
+ * Écart d'énergie sous lequel deux scènes voisines gardent la même humeur.
+ *
+ * Sans cette marge, deux scènes quasi identiques (écart de bruit sur la mesure
+ * d'énergie) pouvaient basculer d'humeur de part et d'autre d'un seuil. Le
+ * lissage ne s'applique qu'aux humeurs déduites du caractère : un impact de
+ * montée ou un refrain forcé n'est jamais absorbé.
+ */
+export const MOOD_HYSTERESIS_ENERGY_GAP = 0.05;
+
+/** Seuils d'énergie effectifs d'un morceau, résolus par ses scènes. */
+export interface MoodThresholds {
+  explosive: number;
+  calm: number;
+}
+
+/** Bornes absolues historiques : utilisées seules par `moodFor`. */
+export const DEFAULT_MOOD_THRESHOLDS: MoodThresholds = {
+  explosive: ENERGY_THRESHOLD,
+  calm: MOOD_CALM_ENERGY_THRESHOLD,
+};
+
+/** Percentile par interpolation linéaire (même définition que le rapport). */
+function quantile(values: readonly number[], ratio: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const position = (sorted.length - 1) * ratio;
+  const low = Math.floor(position);
+  const high = Math.ceil(position);
+  const a = sorted[low] ?? 0;
+  const b = sorted[high] ?? a;
+  return a + (b - a) * (position - low);
+}
+
+/**
+ * Seuils d'humeur d'un morceau, à partir de l'énergie de ses scènes.
+ *
+ * Fonction pure et déterministe : la même liste d'énergies donne les mêmes
+ * bornes. Le rapport de mesure l'appelle avec les mêmes intervalles que le plan
+ * (les scènes produites), donc il ne peut pas diverger des humeurs réelles.
+ */
+export function moodThresholdsFor(energies: readonly number[]): MoodThresholds {
+  return {
+    explosive: Math.max(MOOD_EXPLOSIVE_FLOOR, quantile(energies, MOOD_EXPLOSIVE_QUANTILE)),
+    calm: Math.min(MOOD_CALM_ENERGY_CEILING, quantile(energies, MOOD_CALM_QUANTILE)),
+  };
+}
 
 /**
  * Branche de `moodFor` (overrides du site d'appel compris).
@@ -691,14 +820,16 @@ export function moodBranchFor(
   section: Section | null,
   caractere: Caractere,
   reduced: boolean,
+  thresholds: MoodThresholds = DEFAULT_MOOD_THRESHOLDS,
+  dramaturgy = false,
 ): MoodBranch {
   if (reason === "build") return "build-explosif";
-  if (!reduced && section?.kind === "refrain") return "refrain-explosif";
+  if (dramaturgy && !reduced && section?.kind === "refrain") return "refrain-explosif";
   const label = section?.label ?? "intense";
-  if (label === "silence") return "silence-sombre";
-  if (label === "montee") return "montee-pulse";
-  if (caractere.energy > ENERGY_THRESHOLD) return "energie-explosif";
-  if (caractere.energy < MOOD_CALM_ENERGY_THRESHOLD) return "calme";
+  if (dramaturgy && label === "silence") return "silence-sombre";
+  if (dramaturgy && label === "montee") return "montee-pulse";
+  if (caractere.energy > thresholds.explosive) return "energie-explosif";
+  if (caractere.energy <= thresholds.calm) return "calme";
   if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "brillance-aerien";
   return "pulse";
 }
@@ -709,10 +840,62 @@ export function moodForScene(
   section: Section | null,
   caractere: Caractere,
   reduced: boolean,
+  thresholds: MoodThresholds = DEFAULT_MOOD_THRESHOLDS,
+  dramaturgy = false,
 ): Mood {
-  return MOOD_OF_BRANCH[moodBranchFor(reason, section, caractere, reduced)];
+  return MOOD_OF_BRANCH[moodBranchFor(reason, section, caractere, reduced, thresholds, dramaturgy)];
 }
 
+/** Segment mesuré avant décision d'humeur (instrumentation et production). */
+export interface MoodSegment {
+  reason: SceneReason;
+  section: Section | null;
+  caractere: Caractere;
+}
+
+/**
+ * Humeurs de tous les segments d'un morceau, lissage d'hystérésis compris.
+ *
+ * Fonction partagée par le plan et le rapport : les deux appliquent exactement
+ * la même séquence, donc aucune divergence possible. Les humeurs forcées
+ * (impact de montée, refrain hors mode réduit) ne sont ni absorbées ni
+ * propagées.
+ */
+export function resolveMoods(
+  segments: readonly MoodSegment[],
+  reduced: boolean,
+  thresholds: MoodThresholds,
+  dramaturgy = false,
+): Mood[] {
+  const base = segments.map((segment) =>
+    moodForScene(segment.reason, segment.section, segment.caractere, reduced, thresholds, dramaturgy),
+  );
+  const moods = [...base];
+  const adjusted = Array.from({ length: base.length }, () => false);
+  const forced = (segment: MoodSegment) =>
+    segment.reason === "build" ||
+    (dramaturgy && !reduced && segment.section?.kind === "refrain");
+  for (let index = 1; index < segments.length; index += 1) {
+    const current = segments[index]!;
+    const previous = segments[index - 1]!;
+    if (forced(current) || forced(previous)) continue;
+    if (base[index] === base[index - 1]) continue;
+    // Le lissage ne se propage pas : une scène déjà alignée sur sa voisine ne
+    // fige pas la suivante. Sans cette garde, une rampe douce (écart < 0,05 à
+    // chaque pas) resterait sur la même humeur du début à la fin.
+    if (adjusted[index - 1] === true) continue;
+    if (
+      Math.abs(current.caractere.energy - previous.caractere.energy) <
+      MOOD_HYSTERESIS_ENERGY_GAP
+    ) {
+      moods[index] = moods[index - 1]!;
+      adjusted[index] = true;
+    }
+  }
+  return moods;
+}
+
+/** Humeur absolue historique : sans le rang dans le morceau. */
 export function moodFor(caractere: Caractere, label: string): Mood {
   if (label === "silence") return "sombre";
   if (label === "montee") return "pulse";
@@ -741,36 +924,103 @@ function moodIntensity(mood: Mood, energy: number): number {
 }
 
 /**
+ * Le caractère change-t-il assez autour de `time` pour justifier une scène ?
+ *
+ * On compare une fenêtre avant et une fenêtre après la frontière. Le moindre
+ * des trois écarts (énergie, densité, brillance) suffit : une nappe qui devient
+ * soudain dense change de scène même si son énergie moyenne bouge peu.
+ */
+function cycleChangesCharacter(analysis: Analysis, time: number, lastKept: number): boolean {
+  const beforeStart = Math.max(lastKept, time - CYCLE_COMPARE_WINDOW);
+  const afterEnd = Math.min(analysis.duration, time + CYCLE_COMPARE_WINDOW);
+  if (time - beforeStart < 1 || afterEnd - time < 1) return true;
+  // Pas assez de mesures pour juger : on conserve la frontière plutôt que de
+  // fusionner à l'aveugle. C'est ce qui garde la grille de secours utilisable
+  // sur une analyse pauvre (courbes absentes ou très échantillonnées).
+  const enough = (start: number, end: number) => {
+    let energy = 0;
+    let high = 0;
+    for (const [sample] of analysis.energy) if (sample >= start && sample <= end) energy += 1;
+    for (const [sample] of analysis.high) if (sample >= start && sample <= end) high += 1;
+    return energy >= 2 && high >= 2;
+  };
+  if (!enough(beforeStart, time) || !enough(time, afterEnd)) return true;
+  const before = caractereAt(analysis, beforeStart, time);
+  const after = caractereAt(analysis, time, afterEnd);
+  return (
+    Math.abs(after.energy - before.energy) >= CYCLE_ENERGY_DELTA ||
+    Math.abs(after.density - before.density) >= CYCLE_DENSITY_DELTA ||
+    Math.abs(after.brightness - before.brightness) >= CYCLE_BRIGHTNESS_DELTA
+  );
+}
+
+/**
  * Événements qui justifient un changement complet d'ambiance, triés dans le temps.
  *
  * Un changement de famille + palette n'arrive QUE sur l'un d'eux : rien ne se
- * déclenche « au hasard » au milieu d'un passage.
+ * déclenche « au hasard » au milieu d'un passage. Les frontières de section et
+ * d'impact sont toujours conservées ; une frontière de cycle ne l'est que si le
+ * caractère change (ou si la scène atteindrait `MAX_SCENE_SPAN`).
  */
 function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: SceneReason; weight: number }> {
   const duration = Math.max(analysis.duration, 0.001);
-  const events: Array<{ time: number; reason: SceneReason; weight: number }> = [
+  const fixed: Array<{ time: number; reason: SceneReason; weight: number }> = [
     { time: 0, reason: "ouverture", weight: 1 },
     { time: duration, reason: "finale", weight: 0 },
   ];
 
   for (const section of analysis.sections) {
-    events.push({ time: section.start, reason: "section", weight: section.label === "silence" ? 0.4 : 1 });
+    fixed.push({ time: section.start, reason: "section", weight: section.label === "silence" ? 0.4 : 1 });
   }
 
   // Fin de chaque montée : c'est l'impact, l'événement le plus spectaculaire.
   for (const build of analysis.builds) {
-    events.push({ time: build.end, reason: "build", weight: build.strength });
+    fixed.push({ time: build.end, reason: "build", weight: build.strength });
   }
 
+  const cycles: Array<{ time: number; reason: SceneReason; weight: number }> = [];
   for (const bar of barStarts(analysis)) {
-    if (bar > 0.01 && bar < duration - 0.01) events.push({ time: bar, reason: "cycle", weight: 0.5 });
+    if (bar > 0.01 && bar < duration - 0.01) cycles.push({ time: bar, reason: "cycle", weight: 0.5 });
   }
 
-  events.sort((left, right) => left.time - right.time);
+  fixed.sort((left, right) => left.time - right.time);
+  cycles.sort((left, right) => left.time - right.time);
+
+  // Fusion des événements fixes entre eux, puis insertion des cycles retenus
+  // dans l'ordre : c'est `lastKept` qui mesure la durée de la scène courante.
+  const keptFixed: typeof fixed = [];
+  for (const event of fixed) {
+    const previous = keptFixed[keptFixed.length - 1];
+    if (previous !== undefined && event.time - previous.time < MIN_SCENE_SPAN) {
+      const score = (candidate: { weight: number; reason: SceneReason }) =>
+        candidate.weight * (candidate.reason === "build" ? 1.25 : 1);
+      if (score(event) > score(previous)) keptFixed[keptFixed.length - 1] = event;
+      continue;
+    }
+    keptFixed.push(event);
+  }
+
+  const events: typeof fixed = [];
+  let lastKept = Number.NEGATIVE_INFINITY;
+  let cycleIndex = 0;
+  for (const event of keptFixed) {
+    // Les cycles tombés avant cet événement fixe sont évalués dans l'ordre.
+    while (cycleIndex < cycles.length && cycles[cycleIndex]!.time < event.time) {
+      const cycle = cycles[cycleIndex]!;
+      cycleIndex += 1;
+      if (cycle.time - lastKept < MIN_SCENE_SPAN) continue;
+      if (cycleChangesCharacter(analysis, cycle.time, lastKept)) {
+        events.push(cycle);
+        lastKept = cycle.time;
+      }
+    }
+    events.push(event);
+    lastKept = event.time;
+  }
 
   // Deux événements à moins de MIN_SCENE_SPAN secondes d'écart n'en font qu'un :
   // on garde le plus marquant, sinon une scène durerait une fraction de seconde.
-  const merged: typeof events = [];
+  const merged: typeof fixed = [];
   for (const event of events) {
     const previous = merged[merged.length - 1];
     if (previous !== undefined && event.time - previous.time < MIN_SCENE_SPAN) {
@@ -785,7 +1035,29 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
     }
     merged.push(event);
   }
-  return merged;
+
+  // Garde-fou de durée : si aucun événement ne tombe dans la limite (trous de
+  // détection, section globale), on coupe sur le temps fort le plus proche. La
+  // raison est `beat` : c'est une nouvelle mesure, pas un retour de cycle, et
+  // c'est ce qui empêche une scène de durer une minute.
+  const capped: typeof fixed = [];
+  let previousTime = Number.NEGATIVE_INFINITY;
+  for (const event of merged) {
+    let anchor = previousTime;
+    while (event.time - anchor > MAX_SCENE_SPAN + MIN_SCENE_SPAN) {
+      const target = anchor + MAX_SCENE_SPAN;
+      let time = target;
+      for (const beat of analysis.beats) {
+        if (beat > anchor + MIN_SCENE_SPAN && beat <= target) time = beat;
+      }
+      if (!(time > anchor + MIN_SCENE_SPAN)) break;
+      capped.push({ time, reason: "beat", weight: 0.5 });
+      anchor = time;
+    }
+    capped.push(event);
+    previousTime = event.time;
+  }
+  return capped;
 }
 
 function round3(value: number): number {
@@ -853,6 +1125,20 @@ function hueWithGap(
     : { hue: other, anchor: otherAnchor };
 }
 
+/** Options du plan de spectacle. */
+export interface ShowPlanOptions {
+  /**
+   * Réveille la dramaturgie portée par les sections (intro, couplet, refrain,
+   * montée, pont, outro) et les labels `montee` / `silence`.
+   *
+   * Désactivée par défaut : l'analyseur ne produit qu'une section globale, et
+   * une étiquette globale ne doit jamais figer le rôle d'une scène locale. Le
+   * code reste vivant, testé avec une analyse synthétique à sections, pour le
+   * jour où le serveur rendra un vrai découpage.
+   */
+  dramaturgy?: boolean;
+}
+
 /**
  * Compose le spectacle à partir de la structure du morceau.
  *
@@ -863,8 +1149,13 @@ function hueWithGap(
  *
  * Fonction pure : même analyse + même mode ⇒ même plan.
  */
-export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride?: number): ShowPlan {
-  const seed =
+export function buildShowPlan(
+  analysis: Analysis,
+  reduced: boolean,
+  seedOverride?: number,
+  options: ShowPlanOptions = {},
+): ShowPlan {
+  const dramaturgy = options.dramaturgy === true;  const seed =
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
@@ -882,22 +1173,14 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
   const backdropFamilies = CALM_FAMILIES.filter((family) => family !== "rings");
   const fond = backdropFamilies[Math.floor(hash01(seed * 31 + 7) * backdropFamilies.length)] ?? "waves";
 
-  const scenes: Scene[] = [];
-  let previousHue = -999;
-  // Mémoire par groupe de structure : deux sections du même matériau musical
-  // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
-  // famille et leur teinte à la première apparition et on les réutilise.
-  const groupFamilies = new Map<string, FamilyId>();
-  const groupHues = new Map<string, number>();
-  // Familles rendues par les deux scènes précédentes : le tirage les exclut
-  // pour qu'on ne voie jamais deux fois la même figure d'affilée.
-  let previousFamily: FamilyId | undefined;
-  let beforePreviousFamily: FamilyId | undefined;
-  // Rang des drops et signatures déjà jouées : deux drops d'un même morceau,
-  // a fortiori rapprochés, ne rejouent pas la même combinaison.
-  let dropRank = 0;
-  const usedDropSignatures = new Set<string>();
-
+  const segments: Array<{
+    event: (typeof events)[number];
+    start: number;
+    end: number;
+    caractere: Caractere;
+    section: Section | null;
+    group: string;
+  }> = [];
   for (let index = 0; index < events.length - 1; index += 1) {
     const event = events[index];
     const next = events[index + 1];
@@ -907,19 +1190,57 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     const target = clamp01(next.time / duration) * duration;
     const end = target > start ? target : Math.min(start + MIN_SCENE_SPAN, duration);
     if (end <= start) continue;
-
-    const caractere = caractereAt(analysis, start, end);
     // Une section qui couvre tout le morceau est une étiquette **globale** :
     // elle ne doit jamais figer le rôle ni l'humeur d'une scène locale. On s'en
     // remet alors au caractère de l'intervalle et aux événements détectés.
     const section = localSectionAt(analysis, start);
     const group = section?.group !== undefined && section.group !== "" ? section.group : "";
+    segments.push({ event, start, end, caractere: caractereAt(analysis, start, end), section, group });
+  }
+
+  // L'humeur se calibre sur la distribution d'énergie **du morceau** : le rang
+  // d'une scène décide, pas un seuil absolu tombé au milieu d'une zone peuplée.
+  // Le plancher absolu empêche un morceau calme de devenir explosif à son pic.
+  const thresholds = moodThresholdsFor(segments.map((segment) => segment.caractere.energy));
+  const moods = resolveMoods(
+    segments.map((segment) => ({
+      reason: segment.event.reason,
+      section: segment.section,
+      caractere: segment.caractere,
+    })),
+    reduced,
+    thresholds,
+    dramaturgy,
+  );
+
+  const scenes: Scene[] = [];
+  let previousHue = -999;
+  // Mémoire par groupe de structure : deux sections du même matériau musical
+  // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
+  // famille et leur teinte à la première apparition et on les réutilise.
+  const groupFamilies = new Map<string, FamilyId>();
+  const groupHues = new Map<string, number>();
+  // Familles déjà affichées et leur nombre d'apparitions : le tirage privilégie
+  // la plus rare, pour que toutes les familles sortent même sur un plan court.
+  const familyUse = new Map<FamilyId, number>();
+  // Familles rendues par les deux scènes précédentes : le tirage les exclut
+  // pour qu'on ne voie jamais deux fois la même figure d'affilée.
+  let previousFamily: FamilyId | undefined;
+  let beforePreviousFamily: FamilyId | undefined;
+  // Rang des drops et signatures déjà jouées : deux drops d'un même morceau,
+  // a fortiori rapprochés, ne rejouent pas la même combinaison.
+  let dropRank = 0;
+  const usedDropSignatures = new Set<string>();
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]!;
+    const { event, start, end, caractere, section, group } = segment;
     const grouped = group !== "";
     // Un refrain réclame de l'énergie : c'est là qu'on veut que la salle
     // s'allume. On lui impose l'humeur explosive, comme un impact de montée.
-    const mood = moodForScene(event.reason, section, caractere, reduced);
+    const mood = moods[index]!;
     const turn = scenes.length;
-    const role = roleFor(section, event.reason, turn);
+    const role = roleFor(section, event.reason, turn, dramaturgy);
     // Identité stable d'un groupe : sert de graine partout où il faut retrouver
     // la même famille ou la même teinte d'une occurrence à l'autre.
     const groupSeed = grouped ? hashString(`${seed}|${group}`) : 0;
@@ -967,8 +1288,26 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
       // Le parcours de la permutation dépend du rang ; la graine fixe l'ordre.
       // Un groupe tire une fois, puis sa famille est mémorisée.
       family = grouped
-        ? familyFor(caractere, reduced, groupSeed, Math.floor(hash01(groupSeed) * 997), role)
-        : familyFor(caractere, reduced, seed, turn, role, [fond, ...excluded]);
+        ? familyFor(
+            caractere,
+            reduced,
+            groupSeed,
+            Math.floor(hash01(groupSeed) * 997),
+            role,
+            [],
+            mood === "calme",
+            familyUse,
+          )
+        : familyFor(
+            caractere,
+            reduced,
+            seed,
+            turn,
+            role,
+            [fond, ...excluded],
+            mood === "calme",
+            familyUse,
+          );
       if (grouped) groupFamilies.set(group, family);
     }
 
@@ -997,6 +1336,7 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
     // doit éviter.
     beforePreviousFamily = previousFamily;
     previousFamily = principale;
+    familyUse.set(principale, (familyUse.get(principale) ?? 0) + 1);
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
@@ -1084,11 +1424,16 @@ export function buildShowPlan(analysis: Analysis, reduced: boolean, seedOverride
 
   // La dernière scène se termine toujours avec le morceau et prend le rôle de
   // finale — sauf si le morceau se termine sur un impact, qui doit rester un
-  // drop jusqu'à la dernière image.
+  // drop jusqu'à la dernière image. La scène porte aussi la raison `finale` :
+  // l'événement de fin n'est plus une frontière absorbée, c'est un état lisible
+  // dans le plan.
   const last = scenes[scenes.length - 1];
   if (last !== undefined) {
     last.end = round3(duration);
-    if (scenes.length > 1 && last.role !== "drop") last.role = "finale";
+    if (scenes.length > 1 && last.role !== "drop") {
+      last.role = "finale";
+      last.reason = "finale";
+    }
   }
 
   return {
