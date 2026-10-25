@@ -6,11 +6,13 @@
  *   bun tests/e2e/crossfade_check.mjs
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { spawnApi } from "./api_process.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8848;
@@ -27,21 +29,10 @@ spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, "12.0"
 });
 if (!existsSync(track)) throw new Error("impossible de générer la piste de test");
 
-const api = spawn(
-  ".venv/bin/uvicorn",
-  ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)],
-  {
-    cwd: root,
-    stdio: "ignore",
-    env: {
-      ...process.env,
-      SESSION_DIR: join(workspace, "night-light-sessions"),
-      PORT: String(API_PORT),
-      CACHE_DIR: join(workspace, "night-light-cache"),
-    },
-    detached: true,
-  },
-);
+const api = spawnApi(root, API_PORT, {
+  SESSION_DIR: join(workspace, "night-light-sessions"),
+  CACHE_DIR: join(workspace, "night-light-cache"),
+});
 
 async function waitForApi(url, timeout = 60000) {
   const end = Date.now() + timeout;

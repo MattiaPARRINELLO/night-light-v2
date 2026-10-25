@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /** Capture le spectacle à plusieurs instants d'un même morceau. */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+import { spawnApi } from "./api_process.mjs";
+
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8793;
 const API = `http://127.0.0.1:${API_PORT}`;
 const output = process.argv[2] ?? join(root, "dist-shot");
@@ -24,11 +26,8 @@ spawnSync("uv", ["run", "python", "tests/support/make_fixture.py", track, rich ?
   encoding: "utf8",
 });
 
-const api = spawn(".venv/bin/uvicorn", ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)], {
-  cwd: root,
-  stdio: "ignore",
-  env: { ...process.env, SESSION_DIR: join(workspace, "night-light-sessions") },
-  detached: true,
+const api = spawnApi(root, API_PORT, {
+  SESSION_DIR: join(workspace, "night-light-sessions"),
 });
 
 async function waitFor(url, timeout = 60000) {

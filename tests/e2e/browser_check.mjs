@@ -10,13 +10,15 @@
  * unitaires ne peuvent pas voir.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+import { spawnApi } from "./api_process.mjs";
+
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8791;
 const API = `http://127.0.0.1:${API_PORT}`;
 
@@ -35,16 +37,7 @@ function buildTrack(workspace) {
 }
 
 function startApi(sessionDir) {
-  return spawn(
-    ".venv/bin/uvicorn",
-    ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)],
-    {
-      cwd: root,
-      stdio: process.env.CHECK_DEBUG ? "inherit" : "ignore",
-      env: { ...process.env, SESSION_DIR: sessionDir, PORT: String(API_PORT) },
-      detached: true,
-    },
-  );
+  return spawnApi(root, API_PORT, { SESSION_DIR: sessionDir });
 }
 
 async function waitForUrl(url, timeout = 60000) {
@@ -191,6 +184,8 @@ try {
   await page.close();
 } catch (error) {
   failures.push(`exception : ${error && error.stack ? error.stack : String(error)}`);
+  const apiLog = api.output();
+  if (apiLog !== "") failures.push(`journal de l'API :\n${apiLog}`);
 } finally {
   await browser.close().catch(() => {});
   try {

@@ -13,11 +13,13 @@
  * était mélangée avec `performance.now()` et ramenait le show à 0 en boucle.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { spawnApi } from "./api_process.mjs";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8797;
@@ -86,22 +88,11 @@ const fake = buildFakePlayer(join(workspace, "bin"), join(workspace, "player-sta
 // Artiste vide : évite la résolution automatique Deezer au démarrage du test.
 fake.state({ status: "Playing", title: TITLE, artist: "", album: "", length_us: 12_000_000, position: 4.0 });
 
-const api = spawn(
-  ".venv/bin/uvicorn",
-  ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)],
-  {
-    cwd: root,
-    stdio: "ignore",
-    env: {
-      ...process.env,
-      SESSION_DIR: join(workspace, "night-light-sessions"),
-      PORT: String(API_PORT),
-      PATH: fake.path,
-      FAKE_PLAYER_STATE: join(workspace, "player-state.json"),
-    },
-    detached: true,
-  },
-);
+const api = spawnApi(root, API_PORT, {
+  SESSION_DIR: join(workspace, "night-light-sessions"),
+  PATH: fake.path,
+  FAKE_PLAYER_STATE: join(workspace, "player-state.json"),
+});
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 

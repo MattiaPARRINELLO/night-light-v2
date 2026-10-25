@@ -2,13 +2,15 @@
  * Un changement de scène ne doit pas faire passer l'écran par le noir : les
  * deux scènes se croisent, et le fond commun reste visible tout du long.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+import { spawnApi } from "./api_process.mjs";
+
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const API_PORT = 8836;
 const API = `http://127.0.0.1:${API_PORT}`;
 const FAKE_SOURCE = join(root, "tests", "support", "fake_playerctl.py");
@@ -29,10 +31,10 @@ chmodSync(wrapper, 0o755);
 const statePath = join(workspace, "player-state.json");
 writeFileSync(statePath, JSON.stringify({ status: "Playing", title: "Riche", artist: "", album: "", length_us: 60_000_000, position: 30.0, updated_at: Date.now() / 1000 }));
 
-const api = spawn(".venv/bin/uvicorn", ["server.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)], {
-  cwd: root, stdio: "ignore",
-  env: { ...process.env, SESSION_DIR: join(workspace, "night-light-sessions"), PORT: String(API_PORT), PATH: `${binDir}:${process.env.PATH}`, FAKE_PLAYER_STATE: statePath },
-  detached: true,
+const api = spawnApi(root, API_PORT, {
+  SESSION_DIR: join(workspace, "night-light-sessions"),
+  PATH: `${binDir}:${process.env.PATH}`,
+  FAKE_PLAYER_STATE: statePath,
 });
 
 async function waitForApi(url, timeout = 60000) {
