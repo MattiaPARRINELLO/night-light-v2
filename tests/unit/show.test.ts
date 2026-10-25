@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, minHueStepEff, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, minHueStepEff, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -145,7 +145,11 @@ describe("show plan", () => {
         { start: 80, end: 120, label: "calme", energy: 0.2, kind: "couplet", group: "A" },
       ],
     });
-    expect(buildShowPlan(local, false).scenes.some((scene) => scene.role === "refrain")).toBe(true);
+    expect(
+      buildShowPlan(local, false, undefined, { dramaturgy: true }).scenes.some(
+        (scene) => scene.role === "refrain",
+      ),
+    ).toBe(true);
   });
 
   test("un plan sans section reste utilisable", () => {
@@ -255,9 +259,13 @@ describe("bords et entrées dégénérées", () => {
     const dense = buildShowPlan(
       analysis({
         ...base,
-        energy: plat(0.5),
+        // Contour d'énergie réel (et non deux points isolés) : la seconde
+        // moitié dépasse le quantile calme du morceau.
+        energy: Array.from({ length: 65 }, (_, index) => [index, 0.2 + (0.7 * index) / 64] as [number, number]),
         high: plat(0.05),
-        onsets: Array.from({ length: 512 }, (_, index) => index * 0.125),
+        // 700 attaques sur 64 s ≈ 10,9/s, franchement au-dessus du seuil de
+        // densité : le cas teste bien la branche rythmique.
+        onsets: Array.from({ length: 700 }, (_, index) => index * 0.09),
       }),
       false,
     );
@@ -793,16 +801,22 @@ describe("changements justifies par la musique", () => {
     const dense = analysis({
       duration: 120,
       beats: Array.from({ length: 300 }, (_, i) => i * 0.4),
-      onsets: Array.from({ length: 400 }, (_, i) => i * 0.3),
+      // Contour d'énergie réel : la fin dépasse le quantile calme du morceau.
+      energy: Array.from({ length: 121 }, (_, index) => [index, 0.2 + (0.7 * index) / 120] as [number, number]),
+      high: Array.from({ length: 121 }, (_, index) => [index, 0.05] as [number, number]),
+      // 800 attaques sur 120 s ≈ 6,7/s, au-dessus du seuil de densité.
+      onsets: Array.from({ length: 800 }, (_, i) => i * 0.15),
       sections: [{ start: 0, end: 120, label: "intense", energy: 0.9 }],
     });
     const famillesCalmes = new Set(buildShowPlan(calme, false).scenes.map((scene) => scene.family));
     const famillesDenses = new Set(buildShowPlan(dense, false).scenes.map((scene) => scene.family));
     // Un passage lent sans attaques ne doit pas afficher de barres ni de grille.
     for (const family of famillesCalmes) {
-      expect(["waves", "tunnel", "particles", "rings", "spiral", "beams", "shutters", "spots", "parade", "mirror"]).toContain(family);
+      expect(["waves", "tunnel", "particles", "rings", "spiral", "pluie", "beams", "shutters", "spots", "parade", "mirror"]).toContain(family);
     }
-    expect(famillesDenses.has("bars") || famillesDenses.has("beams") || famillesDenses.has("shutters")).toBe(true);
+    // Le passage dense doit atteindre le réservoir rythmique : c'est la branche
+    // qui compte, pas une figure particulière du réservoir.
+    expect([...famillesDenses].some((family) => RHYTHMIC_FAMILIES.includes(family))).toBe(true);
   });
 
   test("caractereAt mesure l'energie, la densite et la brillance", () => {
@@ -896,8 +910,27 @@ describe("répétition des passages (couplet / refrain)", () => {
     expect(refrains[0]!.palette.hue).not.toBe(couplets[0]!.palette.hue);
   });
 
+  test("la dramaturgie des sections ne s'active que sur demande explicite", () => {
+    const sections = [
+      { start: 0, end: 30, label: "calme" as const, energy: 0.2, kind: "couplet" as const },
+      { start: 30, end: 60, label: "intense" as const, energy: 0.9, kind: "refrain" as const },
+      { start: 60, end: 90, label: "montee" as const, energy: 0.6, kind: "pont" as const },
+    ];
+    const data = analysis({ duration: 90, sections });
+    const parDefaut = buildShowPlan(data, false);
+    const dramatise = buildShowPlan(data, false, undefined, { dramaturgy: true });
+    // Par défaut, seule la structure locale est ignorée : aucun rôle refrain ni
+    // montée, même avec des sections explicites.
+    expect(parDefaut.scenes.some((scene) => scene.role === "refrain")).toBe(false);
+    expect(parDefaut.scenes.some((scene) => scene.role === "montee")).toBe(false);
+    // L'option réveille la dramaturgie dormante pour le jour où le serveur
+    // produira un vrai découpage.
+    expect(dramatise.scenes.some((scene) => scene.role === "refrain")).toBe(true);
+    expect(dramatise.scenes.some((scene) => scene.role === "montee")).toBe(true);
+  });
+
   test("le refrain s'allume : humeur explosive et complémentaire", () => {
-    const plan = buildShowPlan(morceau(), false);
+    const plan = buildShowPlan(morceau(), false, undefined, { dramaturgy: true });
     const refrains = [...scenesIn(plan, 20, 40), ...scenesIn(plan, 60, 80)];
     const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     for (const scene of refrains) {
@@ -908,7 +941,7 @@ describe("répétition des passages (couplet / refrain)", () => {
 
   test("un refrain peu énergique est tout de même poussé (hors mode réduit)", () => {
     const timide = morceau(0.4);
-    const normal = scenesIn(buildShowPlan(timide, false), 20, 40);
+    const normal = scenesIn(buildShowPlan(timide, false, undefined, { dramaturgy: true }), 20, 40);
     expect(normal.length).toBeGreaterThan(0);
     for (const scene of normal) expect(scene.mood).toBe("explosif");
     // En mode réduit, on ne force pas : l'énergie mesurée reprend la main.
