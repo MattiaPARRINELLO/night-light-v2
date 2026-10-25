@@ -1,0 +1,53 @@
+=== Corpus ===
+piste        scènes  drops  durée   scènes min / médiane / p90
+128bpm-low        8      1   60.0 s  7.43 / 7.50 / 7.52 s
+128bpm            8      1   60.0 s  7.43 / 7.50 / 7.52 s
+170bpm            7      1   60.0 s  5.80 / 8.48 / 9.91 s
+60bpm             6      1   60.0 s  7.99 / 9.54 / 12.47 s
+90bpm             7      0   60.0 s  7.99 / 8.01 / 9.62 s
+rich              7      1   60.0 s  6.80 / 7.50 / 10.86 s
+
+=== Distributions (plan normal, n=43) ===
+rôles           : couplet 26 (60.5 %) · finale 6 (14.0 %) · intro 6 (14.0 %) · drop 5 (11.6 %)
+humeurs         : explosif 24 (55.8 %) · calme 14 (32.6 %) · aerien 3 (7.0 %) · pulse 2 (4.7 %)
+familles        : pont-concert 5 (11.6 %) · pendule 4 (9.3 %) · rings 4 (9.3 %) · vortex 4 (9.3 %) · spots 3 (7.0 %) · tunnel 3 (7.0 %) · burst 2 (4.7 %) · crossfire 2 (4.7 %) · pluie 2 (4.7 %) · spiral 2 (4.7 %) · treillis 2 (4.7 %) · waves 2 (4.7 %) · beams 1 (2.3 %) · gobos 1 (2.3 %) · lyre 1 (2.3 %) · mirror 1 (2.3 %) · parade 1 (2.3 %) · particles 1 (2.3 %) · portique 1 (2.3 %) · rideaux 1 (2.3 %)
+raisons         : cycle 32 (74.4 %) · ouverture 6 (14.0 %) · build 5 (11.6 %)
+branches famille: energie 11 (25.6 %) · calme 9 (20.9 %) · general 9 (20.9 %) · brillance 5 (11.6 %) · drop 5 (11.6 %) · densite 4 (9.3 %)
+branches humeur : energie-explosif 19 (44.2 %) · calme 14 (32.6 %) · build-explosif 5 (11.6 %) · brillance-aerien 3 (7.0 %) · pulse 2 (4.7 %)
+réservoirs      : non-calme 20 (46.5 %) · calme 9 (20.9 %) · mixte 9 (20.9 %) · concert 5 (11.6 %)
+durées de scène : n=43 · min 5.80 · p10 7.50 · p25 7.50 · médiane 7.57 · p75 8.28 · p90 11.10 · max 15.30
+drops/morceau   : 128bpm-low 1 · 128bpm 1 · 170bpm 1 · 60bpm 1 · 90bpm 0 · rich 1
+
+=== Caractères mesurés par scène ===
+énergie   : n=43 · min 0.17 · p10 0.20 · p25 0.24 · médiane 0.72 · p75 0.84 · p90 0.86 · max 0.89
+densité   : n=43 · min 0.07 · p10 2.39 · p25 3.60 · médiane 5.07 · p75 5.25 · p90 6.37 · max 6.61
+brillance : n=43 · min 0.00 · p10 0.05 · p25 0.06 · médiane 0.19 · p75 0.27 · p90 0.31 · max 0.71
+
+=== Branches mortes (plan normal + réduit) ===
+rôles           : refrain, montee
+humeurs         : sombre
+familles        : grid, shutters, bars, curtain, couronne, etoile, mandala, lyres-suspendues, barres-led
+raisons         : section, beat, finale
+familyFor       : refrain, montee
+moodFor         : refrain-explosif, silence-sombre, montee-pulse
+
+=== Incohérences humeur / réservoir ===
+humeur calme, réservoir non calme : 0
+humeur non calme, réservoir calme : 0
+réservoir mixte (information) : 9
+  - 128bpm-low #3 22.57→30.07 aerien / general → burst (réservoir mixte)
+  - 128bpm #3 22.57→30.07 aerien / general → burst (réservoir mixte)
+  - 60bpm #0 0.00→8.08 calme / general → spots (réservoir mixte)
+  - 60bpm #1 8.08→16.07 calme / general → pluie (réservoir mixte)
+  - 60bpm #2 16.07→27.07 pulse / general → tunnel (réservoir mixte)
+  - 90bpm #0 0.00→8.08 calme / general → pendule (réservoir mixte)
+  - 90bpm #1 8.08→16.07 calme / general → beams (réservoir mixte)
+  - 90bpm #2 16.07→24.08 calme / general → portique (réservoir mixte)
+  - 90bpm #3 24.08→32.07 aerien / general → mirror (réservoir mixte)
+provenance non directe (groupe/fond) : 0
+
+=== Mode réduit (n=43) ===
+rôles           : couplet 26 (60.5 %) · finale 6 (14.0 %) · intro 6 (14.0 %) · drop 5 (11.6 %)
+humeurs         : explosif 24 (55.8 %) · calme 14 (32.6 %) · aerien 3 (7.0 %) · pulse 2 (4.7 %)
+familles        : rings 13 (30.2 %) · beams 10 (23.3 %) · particles 9 (20.9 %) · waves 7 (16.3 %) · tunnel 2 (4.7 %) · pluie 1 (2.3 %) · spiral 1 (2.3 %)
+branches famille: reduit-rythmique 34 (79.1 %) · reduit-calme 9 (20.9 %)
