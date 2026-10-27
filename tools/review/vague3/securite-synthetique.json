@@ -1,0 +1,91 @@
+{
+  "corpus": "/tmp/opencode/synth-cache.json",
+  "fps": 30,
+  "tracks": [
+    {
+      "track": "128bpm-low",
+      "tempo": 129.199,
+      "drops": 1,
+      "normalMax": 0,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.006145833333333333,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "128bpm",
+      "tempo": 129.199,
+      "drops": 1,
+      "normalMax": 0,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.006145833333333333,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "170bpm",
+      "tempo": 172.266,
+      "drops": 1,
+      "normalMax": 3,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.018802083333333334,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "60bpm",
+      "tempo": 117.454,
+      "drops": 1,
+      "normalMax": 0,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.060885416666666664,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "90bpm",
+      "tempo": 89.103,
+      "drops": 1,
+      "normalMax": 0,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.03847222222222222,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "rich",
+      "tempo": 129.199,
+      "drops": 1,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.12670138888888888,
+      "whiteFlashReduced": 0
+    }
+  ],
+  "families": [
+    {
+      "family": "lyres-suspendues",
+      "drops": 6,
+      "maxPeak": 0.17972222222222223,
+      "minWidth": 0.4666666666666667,
+      "medianWidth": 0.4666666666666667,
+      "maxWidth": 0.4666666666666667,
+      "maxFlashes15": 0
+    }
+  ],
+  "spearman": 0.7084472691787521,
+  "global": {
+    "drops": 6,
+    "normalMax": 3,
+    "reducedMax": 0,
+    "maxWhiteReduced": 0.12670138888888888,
+    "widthMin": 0.4666666666666667,
+    "widthMedian": 0.4666666666666667,
+    "widthMax": 0.4666666666666667,
+    "dropsOver025": 0,
+    "distinctPeaks3": 5,
+    "maxPeakPerTrack": {
+      "rich": 0.17972222222222223,
+      "90bpm": 0.14291666666666666,
+      "170bpm": 0.13973958333333333,
+      "60bpm": 0.13789930555555555,
+      "128bpm-low": 0.126875,
+      "128bpm": 0.126875
+    }
+  }
+}
