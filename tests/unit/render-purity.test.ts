@@ -11,6 +11,12 @@
  * `tests/metrics/README.md`). Ce reset neutralise le moteur, pas le rendu :
  * aucun état applicatif ne subsiste entre deux images.
  *
+ * `renderFrame` remet lui aussi le contexte à zéro sur la première image qui
+ * suit un seek, mais cette remise à zéro côté production ne suffit pas à faire
+ * passer la comparaison continue ↔ seek : le canvas continu garde, lui, son
+ * historique. Le harnais conserve donc son reset (mesuré : 672 px / delta 9
+ * sans lui).
+ *
  * Le rendu passe par Chromium headless (vrai canvas 2D), pas par un faux
  * contexte : une différence de pixels serait une vraie régression.
  */
@@ -69,8 +75,10 @@ afterAll(async () => {
 
 describe("pureté du rendu", () => {
   // `ctx.reset()` (dans le harnais) neutralise le cache de rastérisation Skia
-  // du canvas ; il ne masque aucun état applicatif. Résidu sans reset : 146 px
-  // / 57 600, delta max 4 niveaux (mesuré). La production ne reset volontairement pas.
+  // du canvas ; il ne masque aucun état applicatif. Résidu sans reset : 672 px
+  // / 57 600, delta max 9 niveaux (mesuré après l'ajout du reset de seek côté
+  // production). Le harnais garde son reset parce que le canvas continu, lui,
+  // n'en reçoit pas.
   test(
     "rendu continu puis seek : pixels strictement identiques, sans préchauffage",
     async () => {

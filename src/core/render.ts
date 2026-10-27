@@ -86,6 +86,17 @@ export const FLASH_ATTACK_DROP_SEC = 0.12;
  */
 const PHRASE_BEATS = 8;
 /**
+ * Période de temps fort sous laquelle la cadence des flashs est divisée par
+ * deux pendant un drop, en secondes.
+ *
+ * 0,4 s = 150 BPM. Au-dessus, un flash par temps fort plus le flash d'impact
+ * dépassait trois transitions par seconde sur une fenêtre glissante d'une
+ * seconde (WCAG 2.3.1).
+ */
+const HIGH_TEMPO_BEAT_SEC = 0.4;
+/** Distance minimale entre un temps fort et un impact pour ne pas doubler le flash. */
+const DROP_FLASH_GUARD_SEC = 0.34;
+/**
  * Glissement continu de la teinte, en degrés par seconde.
  *
  * Volontairement très lent : il fait vivre la couleur sans la faire dériver hors
@@ -95,6 +106,25 @@ const PHRASE_BEATS = 8;
 export const HUE_DRIFT_PER_SEC = 0.4;
 /** Respiration de la teinte autour de celle de la scène, en degrés. */
 const HUE_BREATH_DEG = 14;
+/**
+ * Lavage blanc d'impact : un disque lumineux dont le **rayon** suit la force du
+ * drop (et non une opacité plein écran plafonnée).
+ *
+ * L'ancien plafond fixe à 0,5 donnait le même pic de saturation (~29 %) à tous
+ * les drops forts, de la Gymnopédie à l'électro. Ici la surface blanche dépend
+ * de `drop.strength`, donc un drop faible n'atteint jamais le pic d'un drop
+ * fort, et la mesure de saturation n'est plus écrasée par un seuil.
+ */
+const WHITE_WASH_ALPHA = 1;
+/** Rayon du disque, en fraction de `min(width, height)`, à force nulle puis pleine. */
+const WHITE_WASH_RADIUS_MIN = 0.12;
+const WHITE_WASH_RADIUS_SPAN = 0.3;
+/** Plateau du disque avant extinction, puis constante de temps de la traîne. */
+const WHITE_WASH_HOLD_SEC = 0.28;
+const WHITE_WASH_TAIL_SEC = 0.35;
+/** Montée du disque : un impact naît sur le temps, jamais avant. */
+const WHITE_WASH_ATTACK_SEC = 0.08;
+
 /**
  * Marge de teinte au-delà du `spread` de la palette, en degrés.
  *
@@ -515,17 +545,59 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
   const age = t - current;
   if (age < -0.02 || age > window) return false;
 
-  // Impact de montée : toujours, et sans attendre la cadence.
+  // Impact de montée : toujours, et sans attendre la cadence. Sa durée visuelle
+  // est tenue par `impactFlash` dans le rendu, pas par cette porte de cadence.
   if (lastDrop >= lastBeat) return true;
 
+  // Une fin de montée proche (avant ou après) réserve le flash : deux blancs à
+  // moins de `DROP_FLASH_GUARD_SEC` produiraient deux transitions que l'œil lit
+  // comme un double flash. On garde l'impact, on tait le temps fort voisin.
+  const nearDrop = view.buildsEndingIn(current - DROP_FLASH_GUARD_SEC, current + DROP_FLASH_GUARD_SEC).length > 0;
+
   // Pendant un drop, la musique donne la cadence : un flash par temps fort.
-  // La fenêtre couvre la retombée immédiate (~1,5 s) pendant laquelle la salle
-  // « bat » encore avec l'impact.
-  if (view.buildsEndingIn(t - 1.5, t).length > 0) return true;
+  // Au-dessus de 150 BPM (période < 0,4 s), un temps fort sur deux : à 170 BPM,
+  // un flash par temps fort donnait 2,8/s, et l'impact portait la fenêtre à
+  // 4/s — au-delà des 3 flashs/s de WCAG 2.3.1.
+  if (view.buildsEndingIn(t - 1.5, t).length > 0) {
+    if (nearDrop) return false;
+    return view.beatPeriod < HIGH_TEMPO_BEAT_SEC ? view.beatIndexAt(current) % 2 === 0 : true;
+  }
 
   // Hors drop : un seul temps fort par phrase, calé sur l'index du temps fort
   // pour rester stable quel que soit le moment où l'image est calculée.
+  if (nearDrop) return false;
   return view.beatIndexAt(current) % PHRASE_BEATS === 0;
+}
+
+/**
+ * Dernier instant rendu par contexte, pour distinguer une image continue d'un
+ * saut de lecture.
+ */
+const lastRenderAt = new WeakMap<CanvasRenderingContext2D, number>();
+/**
+ * Écart temporel au-delà duquel on considère qu'on a sauté dans le morceau.
+ *
+ * 0,5 s couvre largement une image perdue (même à 2 fps) sans jamais confondre
+ * une lecture continue avec un seek.
+ */
+const SEEK_GAP_SEC = 0.5;
+
+/**
+ * Remet le contexte à zéro après un saut de lecture, jamais entre deux images
+ * continues.
+ *
+ * Chromium garde un cache de rastérisation interne au canvas : l'image rendue
+ * juste après un seek diffère de 1 à 4 niveaux (146 px / 57 600) de la même
+ * image rendue dans un flux continu. `reset()` ne touche pas au rendu, il
+ * neutralise ce cache moteur sur la seule image concernée.
+ */
+function resetAfterSeek(ctx: CanvasRenderingContext2D, time: number): void {
+  const previous = lastRenderAt.get(ctx);
+  const seek = previous === undefined || time < previous - 1e-6 || time - previous > SEEK_GAP_SEC;
+  lastRenderAt.set(ctx, time);
+  if (!seek) return;
+  // Les contextes factices des tests unitaires n'implémentent pas `reset`.
+  (ctx as CanvasRenderingContext2D & { reset?: () => void }).reset?.();
 }
 
 /**
@@ -536,6 +608,7 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
 export function renderFrame(input: RenderInput): void {
   const { ctx, width, height, dpr, view, plan, settings, reducedMotion, frame } = input;
   const t = input.time;
+  resetAfterSeek(ctx, t);
   const liveAudio = input.liveAudio;
   const isLive = liveAudio !== undefined;
   const reduced = settings.reduced || reducedMotion;
@@ -685,19 +758,38 @@ export function renderFrame(input: RenderInput): void {
     drawWash(ctx, washState);
   }
 
+  // Force de la montée qui a ouvert l'impact courant : c'est elle qui dose le
+  // lavage blanc et la tenue du flash d'impact. Zéro hors impact.
+  const impactBuilds = Number.isFinite(lastImpact)
+    ? view.buildsEndingIn(lastImpact - 0.001, lastImpact + 0.001)
+    : [];
+  const impactStrength = impactBuilds.reduce((max, build) => Math.max(max, build.strength), 0);
+  const impactAge = Number.isFinite(dropAge) ? Math.max(0, dropAge) : Infinity;
+
   // Lavage blanc d'impact : bref et réservé aux vrais drops, jamais en mode
   // réduit. Il n'y a plus de sur-couche de projecteurs ici — la rangée de barres
   // qui s'allumait en bas à chaque montée faisait « vu-mètre » et jurait avec le
   // reste ; l'impact se lit désormais par le lavage, le wash et la lumière de la
   // scène, qui porte déjà la couleur du morceau.
-  if (drop > 0.02 && !reduced) {
-    const ceiling = FLASH_CEILING * Math.min(settings.flashes, 1.5);
-    // Seul un vrai drop de l'analyse ouvre le lavage blanc : le pulsage de
-    // secours sur les temps forts éclaire la scène, il ne blanchit pas l'écran.
-    // Sinon un morceau sans montée clignoterait à chaque temps fort.
-    const realDrop = isLive ? 0 : view.buildIntensity(t);
-    if (ceiling > 0 && realDrop > 0.35) {
-      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, ceiling * realDrop).toFixed(3)})`;
+  if (!reduced && impactStrength > 0.35 && impactAge <= WHITE_WASH_HOLD_SEC + WHITE_WASH_TAIL_SEC * 3) {
+    const attack = clamp01(impactAge / WHITE_WASH_ATTACK_SEC);
+    const tail =
+      impactAge <= WHITE_WASH_HOLD_SEC
+        ? 1
+        : Math.exp(-(impactAge - WHITE_WASH_HOLD_SEC) / WHITE_WASH_TAIL_SEC);
+    // L'aire du disque suit `tail` (rayon en racine), donc le pic de saturation
+    // décroît régulièrement au lieu de rester collé à un plafond.
+    const radius =
+      Math.min(width, height) * (WHITE_WASH_RADIUS_MIN + WHITE_WASH_RADIUS_SPAN * impactStrength) * Math.sqrt(tail);
+    const alpha = WHITE_WASH_ALPHA * Math.min(settings.flashes, 1) * attack;
+    if (radius > 1 && alpha > 0.002) {
+      const cx = width * 0.5;
+      const cy = height * 0.5;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
+      glow.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
+      glow.addColorStop(0.72, `rgba(255,255,255,${(alpha * 0.93).toFixed(3)})`);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -751,7 +843,13 @@ export function renderFrame(input: RenderInput): void {
 
   drawDust(ctx, permanent);
 
-  const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
+  // Pendant le lavage d'impact, le plein écran est éteint : le disque blanc
+  // porte seul l'impact. Sans cela, deux blancs se superposaient — le disque et
+  // le flash global — et le pic mesuré ne durait que le temps de l'attaque du
+  // flash, ce qui rendait l'impact illisible.
+  const washImpactActive =
+    !reduced && impactStrength > 0.35 && impactAge <= WHITE_WASH_HOLD_SEC + WHITE_WASH_TAIL_SEC * 3;
+  const flash = washImpactActive ? 0 : Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
   if (flash > 0.002 && flashAdmitted(view, t)) {
     ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
