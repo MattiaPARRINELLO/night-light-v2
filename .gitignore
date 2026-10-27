@@ -26,3 +26,6 @@ tools/review/vague2-rendu/*.json
 tools/review/vague2-rendu/*.log
 tools/review/vague2-rendu/before-captures/
 tools/review/vague2-rendu/after-captures/
+
+# Revue vague 2 : captures lourdes (~6,9 Mo), régénérées par la commande du rapport.
+tools/review/vague2/captures/
