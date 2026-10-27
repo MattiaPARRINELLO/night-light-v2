@@ -23,6 +23,7 @@ import numpy as np
 import soundfile as sf
 
 from .config import Settings
+from .structure import detect_structure
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -950,7 +951,19 @@ def analyze_file(
     # forts.
     curves_started = time.monotonic()
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, full_duration)
-    sections = detect_sections(energy, frame_times, full_duration)
+    # --- vague3:structure ---
+    sections = detect_structure(
+        duration=full_duration,
+        beats=beats,
+        meter=meter,
+        spectrum=spectrum,
+        sample_rate=sample_rate,
+        hop_length=HOP,
+        frame_times=frame_times,
+        energy_points=energy_points,
+        audio=y,
+    )
+    # --- /vague3:structure ---
     bass_points = curve_to_points(frame_times, bass, settings.curve_rate_hz, full_duration)
     mid_points = curve_to_points(frame_times, mid, settings.curve_rate_hz, full_duration)
     mid_low_points = curve_to_points(frame_times, mid_low, settings.curve_rate_hz, full_duration)
