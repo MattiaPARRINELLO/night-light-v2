@@ -27,8 +27,6 @@ produit par `analysis.py`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import librosa
 import numpy as np
 
@@ -64,15 +62,6 @@ REFRAIN_MIN_ENERGY_MARGIN = 0.03
 # Un silence musical tombe sous 2 % de la puissance courante du morceau.
 SILENCE_RELATIVE = 0.02
 SILENCE_ABSOLUTE = 1e-4
-
-
-@dataclass(frozen=True)
-class SectionDraft:
-    start: float
-    end: float
-    group: int = -1
-    kind: str = "couplet"
-    confidence: float = 0.0
 
 
 def _bar_grid(beats: list[float], beats_per_bar: int, duration: float) -> np.ndarray:
