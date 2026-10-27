@@ -20,3 +20,9 @@ tests/fixtures/long/
 
 # Le projet utilise bun (bun.lock) : le lock npm n'est qu'un artefact.
 package-lock.json
+
+# Revue de la vague 2 : JSON et captures lourds (> 500 Ko au total).
+tools/review/vague2-rendu/*.json
+tools/review/vague2-rendu/*.log
+tools/review/vague2-rendu/before-captures/
+tools/review/vague2-rendu/after-captures/
