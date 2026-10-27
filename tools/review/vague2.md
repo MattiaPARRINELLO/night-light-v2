@@ -124,7 +124,7 @@ seule » et la seconde ligne « intégré » portent sur le corpus du manifeste
 | largeur d'impact médiane | 0,15–0,6 s | 0,133 | — | 0,467 | **0,467** | ✅ |
 | largeur d'impact min | ≥ 0,08 s | 0,067 | — | 0,333 | **0,300 audio / 0,333 manifeste** | ✅ |
 | pont-concert | ≤ 40 % des drops réels | 96,3 % | 33,3 % | — (plan inchangé) | **33,3 % audio / 13,3 % manifeste** | ✅ |
-| familles de drop présentes | ≥ 2 | 2 | 3 | 2 | **3** | ✅ |
+| familles de drop présentes | ≥ 2 | 2 | 3 | 3 (manifeste) | **3** | ✅ |
 | climax en pont-concert (≥ 2 drops) | 100 % | — | 100 % (0 violation) | — | **100 %** (0 violation) | ✅ |
 | drops consécutifs à signature identique | 0 | 0 | 0 | — | **0** | ✅ |
 | paires avec ≥ 2 composantes différentes | ≥ 80 % | — | 18/18 = 100 % | — | **18/18 audio, 65/65 manifeste** | ✅ |
