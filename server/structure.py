@@ -624,21 +624,20 @@ def detect_structure(
     energy_values = np.array([point[1] for point in energy_points], dtype=float)
     raw_rms = librosa.feature.rms(y=audio, hop_length=hop_length)[0]
     if raw_rms.size != frame_times.size:
-        raw_rms = np.interp(
-            frame_times,
-            librosa.frames_to_time(np.arange(raw_rms.size), sr=sample_rate, hop_length=hop_length),
-            raw_rms,
+        # Analyse fenêtrée : `frame_times` est déjà décalé de l'offset du
+        # morceau, pas la grille locale du RMS. On les remet sur la même base.
+        offset = float(frame_times[0]) if frame_times.size else 0.0
+        raw_times = (
+            librosa.frames_to_time(np.arange(raw_rms.size), sr=sample_rate, hop_length=hop_length)
+            + offset
         )
+        raw_rms = np.interp(frame_times, raw_times, raw_rms)
     silences = _silence_spans(raw_rms, frame_times, duration)
 
     spans = _split_on_silences(_segments(grid, boundary_indices, duration), silences)
     # Un silence ne doit pas être absorbé par la fusion des sections courtes.
     spans = _merge_short_spans(spans, silences, duration)
 
-    # Deux passes : le regroupement peut révéler que deux sections voisines
-    # jouent le même matériau (un couplet coupé par une frontière de phrase) ;
-    # on les recolle alors et on recalcule les descripteurs sur la section
-    # élargie, sinon la cohérence du groupe reste sous-estimée.
     # Une seule passe de regroupement : recoller deux sections voisines du même
     # groupe effacerait la frontière d'un refrain qui démarre sur le même
     # matériau harmonique que le couplet précédent (cas de « They Don't Care
