@@ -18,6 +18,9 @@ import {
   FAMILY_BRANCH_RESERVOIRS,
   FAMILY_LABELS,
   familyBranchFor,
+  groupKeyOf,
+  hasStructuredAnalysis,
+  isReliableSection,
   MOOD_BRANCHES,
   MOOD_LABELS,
   MOOD_OF_BRANCH,
@@ -49,7 +52,9 @@ export type ReservoirKind = "calme" | "non-calme" | "mixte" | "concert";
 /** Nature du réservoir d'une branche, pour l'audit humeur/réservoir. */
 export function reservoirKind(branch: FamilyBranch): ReservoirKind {
   if (branch === "calme" || branch === "reduit-calme") return "calme";
-  if (branch === "drop" || branch === "refrain" || branch === "montee") return "concert";
+  if (branch === "drop" || branch === "refrain" || branch === "montee" || branch === "pont") {
+    return "concert";
+  }
   if (branch === "general" || branch === "reduit-rythmique") return "mixte";
   return "non-calme";
 }
@@ -76,8 +81,9 @@ export function familyBranchOf(
   caractere: { energy: number; density: number; brightness: number },
   reduced: boolean,
   calm?: boolean,
+  pont = false,
 ): FamilyBranch {
-  return familyBranchFor(caractere, reduced, role, !reduced && role === "drop", calm);
+  return familyBranchFor(caractere, reduced, role, !reduced && role === "drop", calm, pont);
 }
 
 /** Branche de `moodFor`, overrides du site d'appel compris. */
@@ -87,8 +93,9 @@ export function moodBranchOf(
   caractere: { energy: number; brightness: number },
   reduced: boolean,
   thresholds?: MoodThresholds,
+  dramaturgy = false,
 ): MoodBranch {
-  return moodBranchFor(reason, section, { ...caractere, density: 0 }, reduced, thresholds);
+  return moodBranchFor(reason, section, { ...caractere, density: 0 }, reduced, thresholds, dramaturgy);
 }
 
 // --- Statistiques -----------------------------------------------------------
@@ -163,7 +170,7 @@ export interface SceneMeasure {
 
 export interface TrackMeasure {
   name: string;
-  source: "corpus" | "real";
+  source: "corpus" | "real" | "fixture";
   duration: number;
   seed: number;
   scenes: number;
@@ -267,6 +274,7 @@ function familyProvenance(
 
 function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
   const plan = buildShowPlan(track.analysis, reduced);
+  const dramaturgy = hasStructuredAnalysis(track.analysis);
   const measured = plan.scenes.map((scene) => ({
     scene,
     section: localSectionAt(track.analysis, scene.start),
@@ -278,9 +286,24 @@ function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
   return measured.map(({ scene, section, caractere }) => {
     // La famille suit l'humeur finale du plan : une scène lissée en « calme »
     // reste dans un réservoir calme, donc l'audit humeur/réservoir ne ment pas.
-    const familyBranch = familyBranchOf(scene.role, caractere, reduced, scene.mood === "calme");
-    const moodBranch = moodBranchOf(scene.reason, section, caractere, reduced, thresholds);
-    const grouped = section?.group !== undefined && section.group !== "";
+    const pont =
+      !reduced && scene.role === "montee" && isReliableSection(section) && section?.kind === "pont";
+    const familyBranch = familyBranchOf(
+      scene.role,
+      caractere,
+      reduced,
+      scene.mood === "calme" || scene.mood === "sombre",
+      pont,
+    );
+    const moodBranch = moodBranchOf(
+      scene.reason,
+      section,
+      caractere,
+      reduced,
+      thresholds,
+      dramaturgy,
+    );
+    const grouped = groupKeyOf(section) !== "";
     return {
       track: track.name,
       index: scene.index,

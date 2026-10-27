@@ -1,26 +1,26 @@
 /**
  * Schéma de l'analyse produite par le serveur (`POST /api/analyze`).
  *
- * Version 2, étendue sans rupture :
- * - `meter` (3 ou 4, optionnel) : métrique dominante estimée, 4 par défaut.
- * - `midLow` / `midHigh` (optionnels) : subdivision du médium (150–600 Hz et
- *   600–2500 Hz) ; `mid` reste la bande 150–2000 Hz pour la rétrocompatibilité.
- * Un client qui ignore ces champs continue de fonctionner tel quel.
+ * Contrat v3.1, rétrocompatible : tous les champs ajoutés sont optionnels et
+ * un consommateur qui les ignore continue de fonctionner tel quel.
+ *
+ * - `meterConfidence`, `events`, `sections[].kind/group/confidence` (vague 3) ;
+ * - `midLow` / `midHigh` (optionnels) : subdivision du médium.
  */
 export const ANALYSIS_SCHEMA = 2 as const;
 
 export type SectionLabel = "calme" | "montee" | "intense" | "descente" | "silence";
 
 /**
- * Rôle d'une section dans la structure du morceau. Le découpage automatique
- * (couplet/refrain) n'existe plus : l'analyse ne produit qu'une section
- * `section`, et seuls les rôles hérités restent dans le schéma.
+ * Rôle d'une section dans la structure du morceau. `silence` fait partie des
+ * rôles du contrat v3 ; les valeurs héritées restent acceptées.
  */
 export type SectionKind =
   | "intro"
   | "couplet"
   | "refrain"
   | "pont"
+  | "silence"
   | "outro"
   | "exposition"
   | "developpement"
@@ -46,6 +46,21 @@ export interface Section {
   kind?: SectionKind;
   /** Rang de cette occurrence dans son groupe (1 = première). 0 si sans groupe. */
   occurrence?: number;
+  /**
+   * Confiance du découpage v3, 0..1. Absente = section historique fiable.
+   * Sous 0,5, le plan ignore le rôle (refrain, pont, silence) : une mauvaise
+   * détection ne dégrade jamais le spectacle.
+   */
+  confidence?: number;
+}
+
+/** Événement musical ponctuel du contrat v3. */
+export interface AnalysisEvent {
+  /** Instant de l'événement, en secondes. */
+  t: number;
+  kind: "bass-return";
+  /** Force de l'événement, 0..1. */
+  strength: number;
 }
 
 export interface Build {
@@ -65,9 +80,12 @@ export interface Analysis {
   tempo: number;
   /**
    * Métrique dominante estimée : 3 (ternaire) ou 4 (binaire). Optionnel pour
-   * rester compatible avec un serveur antérieur ; absent = 4.
+   * rester compatible avec un serveur antérieur ; absent = 4. C'est la valeur
+   * utilisée ; `meterConfidence` n'est qu'une information de confiance.
    */
   meter?: 3 | 4;
+  /** Confiance de la métrique détectée, 0..1 (v3.1, optionnel). */
+  meterConfidence?: number;
   /** Nombre de temps détectés. */
   beatCount: number;
   /** Seconds per beat, dérivé du tempo. */
@@ -92,6 +110,11 @@ export interface Analysis {
   sections: Section[];
   /** Montées d'énergie détectées, avec l'impact qui les conclut. */
   builds: Build[];
+  /**
+   * Événements ponctuels du contrat v3 (bass-return). Absent = aucun.
+   * Un consommateur v2 les ignore.
+   */
+  events?: AnalysisEvent[];
   /**
    * Fenêtre réellement analysée pour une analyse rapide, en secondes.
    * Absent = analyse complète.
