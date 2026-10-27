@@ -1139,11 +1139,16 @@ function sceneBoundaries(analysis: Analysis): BoundaryEvent[] {
   ];
 
   for (const section of analysis.sections) {
-    const silence = isSilenceSection(section);
+    // Le plancher de 1,5 s ne s'applique qu'à un silence **V3.1** explicitement
+    // typé : une analyse historique (label `silence`, sans `kind: "silence"`)
+    // garde la fusion à 5 s de la vague 2, sinon son plan change octet pour
+    // octet. Le poids 0,4 reste, lui, attaché au label historique.
+    const silence = isReliableSection(section) && section?.kind === "silence";
+    const legacySilence = section.label === "silence";
     fixed.push({
       time: section.start,
       reason: "section",
-      weight: silence ? 0.4 : 1,
+      weight: legacySilence || silence ? 0.4 : 1,
       ...(silence ? { silence: true } : {}),
     });
   }
