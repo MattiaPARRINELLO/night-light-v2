@@ -1,0 +1,149 @@
+{
+  "corpus": "manifest",
+  "fps": 30,
+  "tracks": [
+    {
+      "track": "One More Time",
+      "tempo": 123.047,
+      "drops": 5,
+      "normalMax": 2,
+      "reducedMax": 3,
+      "maxWhiteReduced": 0.17175347222222223,
+      "whiteFlashReduced": 1
+    },
+    {
+      "track": "Bolero",
+      "tempo": 135.999,
+      "drops": 8,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.16177083333333334,
+      "whiteFlashReduced": 1
+    },
+    {
+      "track": "They Don't Care About Us",
+      "tempo": 117.454,
+      "drops": 7,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.12810763888888888,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "The Blue Danube, Op. 314",
+      "tempo": 99.384,
+      "drops": 12,
+      "normalMax": 3,
+      "reducedMax": 2,
+      "maxWhiteReduced": 0.11175347222222222,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "La Vie en Rose",
+      "tempo": 129.199,
+      "drops": 7,
+      "normalMax": 0,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.013559027777777777,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "Gymnopédie No. 1",
+      "tempo": 61.523,
+      "drops": 10,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.03244791666666667,
+      "whiteFlashReduced": 0
+    },
+    {
+      "track": "Latch",
+      "tempo": 123.047,
+      "drops": 5,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.13184027777777776,
+      "whiteFlashReduced": 3
+    },
+    {
+      "track": "Your Hand in Mine",
+      "tempo": 117.454,
+      "drops": 7,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.14461805555555557,
+      "whiteFlashReduced": 1
+    },
+    {
+      "track": "Shine On You Crazy Diamond (Pts. 1-5)",
+      "tempo": 135.999,
+      "drops": 12,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.16022569444444446,
+      "whiteFlashReduced": 1
+    },
+    {
+      "track": "TRINITYVILLE",
+      "tempo": 129.199,
+      "drops": 2,
+      "normalMax": 1,
+      "reducedMax": 0,
+      "maxWhiteReduced": 0.037135416666666664,
+      "whiteFlashReduced": 0
+    }
+  ],
+  "families": [
+    {
+      "family": "barres-led",
+      "drops": 29,
+      "maxPeak": 0.18654513888888888,
+      "minWidth": 0.3333333333333333,
+      "medianWidth": 0.4666666666666667,
+      "maxWidth": 0.9666666666666667,
+      "maxFlashes15": 0
+    },
+    {
+      "family": "lyres-suspendues",
+      "drops": 36,
+      "maxPeak": 0.18265625,
+      "minWidth": 0.43333333333333335,
+      "medianWidth": 0.4666666666666667,
+      "maxWidth": 0.5666666666666667,
+      "maxFlashes15": 0
+    },
+    {
+      "family": "pont-concert",
+      "drops": 10,
+      "maxPeak": 0.20366319444444445,
+      "minWidth": 0.4,
+      "medianWidth": 0.5,
+      "maxWidth": 0.9333333333333333,
+      "maxFlashes15": 0
+    }
+  ],
+  "spearman": 0.9015489593236269,
+  "global": {
+    "drops": 75,
+    "normalMax": 3,
+    "reducedMax": 3,
+    "maxWhiteReduced": 0.17175347222222223,
+    "widthMin": 0.3333333333333333,
+    "widthMedian": 0.4666666666666667,
+    "widthMax": 0.9666666666666667,
+    "dropsOver025": 0,
+    "distinctPeaks3": 52,
+    "maxPeakPerTrack": {
+      "Your Hand in Mine": 0.20366319444444445,
+      "Gymnopédie No. 1": 0.18654513888888888,
+      "Latch": 0.18621527777777777,
+      "The Blue Danube, Op. 314": 0.1828125,
+      "They Don't Care About Us": 0.18265625,
+      "La Vie en Rose": 0.18166666666666667,
+      "TRINITYVILLE": 0.1815277777777778,
+      "One More Time": 0.1770138888888889,
+      "Shine On You Crazy Diamond (Pts. 1-5)": 0.17612847222222222,
+      "Bolero": 0.17083333333333334
+    }
+  }
+}

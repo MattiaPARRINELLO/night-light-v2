@@ -64,13 +64,14 @@ après seek, sur trois morceaux, dans Chromium headless (vrai canvas), et exige
 
 Sans remise à zéro du contexte entre deux images, Chromium conserve un cache de
 rastérisation interne au canvas : l'image à `t` diffère alors de 1 à 4 niveaux
-(146 px / 57 600, 0,25 %, uniquement des pixels sombres) selon que le canvas
-vient de rendre un instant voisin. Le harnais appelle `ctx.reset()` avant chaque
-image pour neutraliser ce cache moteur ; ce n'est ni une tolérance ni un
-préchauffage, et aucun état applicatif ne subsiste entre deux images (vérifié
-par une remise à zéro du contexte avant comparaison). La production, elle, ne
-fait pas ce reset : un seek dans l'application peut donc conserver ce résidu
-moteur de 1 à 4 niveaux, invisible à l'œil.
+selon que le canvas vient de rendre un instant voisin. Le harnais appelle
+`ctx.reset()` avant chaque image pour neutraliser ce cache moteur. La
+production, elle, remet le contexte à zéro **uniquement sur la première image
+qui suit un seek** (écart de temps > 0,5 s). Cette remise à zéro coûte 0,1 ms
+en 320×180 et moins de 0,1 ms en 1280×720 (médiane headless, dans le bruit).
+Elle ne suffit pas à faire passer la comparaison continue ↔ seek sans le reset
+du harnais : le canvas continu garde son propre historique (672 px / delta 9
+mesurés sans le reset du harnais). Le harnais garde donc son reset.
 
 La vignette (`vignetteFor`) a été mesurée dans les deux variantes : recréer le
 dégradé à chaque image ne supprime pas ce résidu et coûte +1,0 ms/image en
@@ -81,11 +82,20 @@ dégradé à chaque image ne supprime pas ce résidu et coûte +1,0 ms/image en
 
 ```bash
 bun tools/saturation-report.ts --out tests/metrics/saturation.json
+bun tools/saturation-report.ts --real <dir> --width --flashes --out <json>
 ```
 
 Part de pixels proches du blanc : luminance Rec. 709 > 0,92 **et** saturation
 HSV < 0,15. Échantillonnage à 10 Hz sur chaque scène de rôle `drop`, image
-réelle 320×180. Sert de juge à la vague 2.
+réelle 320×180.
+
+`--width` ajoute, à 30 Hz, la largeur d'impact de chaque drop (durée cumulée où
+la saturation dépasse 50 % de son pic) et la corrélation de Spearman entre la
+force de la montée et le pic. `--flashes` ajoute, sur tout le morceau et dans
+les deux modes, le nombre maximal de flashs par fenêtre glissante d'une seconde
+(transitions rapides de luminance moyenne > 10 %), la part de blanc maximale et
+les flashs de part de blanc (transitions > 0,05), qui distinguent un flash
+plein écran d'un simple pulse coloré.
 
 ## Dette d'instrumentation
 

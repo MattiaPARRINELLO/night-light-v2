@@ -695,12 +695,25 @@ describe("diversite du spectacle", () => {
       // La signature est complète sur chaque drop.
       for (const drop of drops) expect(drop.drop).toBeDefined();
       const signatures = drops.map(
-        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
+        (drop) =>
+          `${drop.drop!.lyres}/${drop.drop!.barres}/${drop.drop!.blinders}/${drop.drop!.hue}`,
       );
       expect(new Set(signatures).size).toBe(signatures.length);
-      // Les impacts forts déploient le pont, les plus doux alternent lyres et
-      // barres LED.
-      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBeGreaterThanOrEqual(2);
+      // Deux drops consécutifs diffèrent sur au moins deux composantes : on ne
+      // rejoue pas le même geste en changeant un seul paramètre.
+      for (let index = 1; index < drops.length; index += 1) {
+        const previous = drops[index - 1]!.drop!;
+        const current = drops[index]!.drop!;
+        const distance =
+          (previous.lyres !== current.lyres ? 1 : 0) +
+          (previous.barres !== current.barres ? 1 : 0) +
+          (previous.blinders !== current.blinders ? 1 : 0) +
+          (previous.hue !== current.hue ? 1 : 0);
+        expect(distance).toBeGreaterThanOrEqual(2);
+      }
+      // Le pont concert est réservé au climax du morceau (dernier drop à la
+      // force maximale) ; les autres impacts alternent lyres et barres LED.
+      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBe(1);
       expect(
         drops.some((scene) => scene.family === "lyres-suspendues" || scene.family === "barres-led"),
       ).toBe(true);
