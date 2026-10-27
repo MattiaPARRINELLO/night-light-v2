@@ -23,6 +23,7 @@ import numpy as np
 import soundfile as sf
 
 from .config import Settings
+from .meter import analyse_meter_and_events
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -74,6 +75,8 @@ class AnalysisResult:
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
+    meter_confidence: float = 0.6
+    events: list[dict] = field(default_factory=list)
     coverage: tuple[float, float] | None = None
     phase_timings: dict[str, float] = field(default_factory=dict)
 
@@ -961,6 +964,16 @@ def analyze_file(
     builds_started = time.monotonic()
     builds = detect_builds(energy_points, full_duration, onsets, bass_points)
     phase_timings["buildsSec"] = round(time.monotonic() - builds_started, 3)
+    # --- vague3:metrique ---
+    meter, meter_confidence, events = analyse_meter_and_events(
+        spectrum=spectrum,
+        frequencies=frequencies,
+        frame_times=frame_times,
+        beats=beats,
+        builds=builds,
+        duration=full_duration,
+    )
+    # --- /vague3:metrique ---
     check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")
     progress(phases[4], 1.0, "données du spectacle prêtes")
@@ -970,6 +983,8 @@ def analyze_file(
         duration=round(full_duration, 3),
         tempo=round(tempo, 3),
         meter=meter,
+        meter_confidence=meter_confidence,
+        events=events,
         beats=beats,
         onsets=onsets,
         energy=energy_points,
