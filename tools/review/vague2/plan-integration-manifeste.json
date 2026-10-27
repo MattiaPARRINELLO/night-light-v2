@@ -1,0 +1,539 @@
+{
+ "corpus": "audio",
+ "tracks": 16,
+ "dropsTotal": 81,
+ "familyCount": {
+  "lyres-suspendues": 42,
+  "pont-concert": 10,
+  "barres-led": 29
+ },
+ "pairs": {
+  "2": 30,
+  "3": 24,
+  "4": 11
+ },
+ "climaxViolations": [],
+ "distributions": {
+  "scenes": 358,
+  "roles": {
+   "couplet": 246,
+   "drop": 81,
+   "finale": 16,
+   "intro": 15
+  },
+  "moods": {
+   "aerien": 5,
+   "calme": 103,
+   "explosif": 178,
+   "pulse": 72
+  },
+  "families": {
+   "barres-led": 29,
+   "bars": 3,
+   "beams": 20,
+   "burst": 4,
+   "couronne": 4,
+   "crossfire": 6,
+   "curtain": 2,
+   "etoile": 3,
+   "gobos": 3,
+   "grid": 1,
+   "lyre": 6,
+   "lyres-suspendues": 42,
+   "mandala": 4,
+   "mirror": 22,
+   "parade": 21,
+   "particles": 17,
+   "pendule": 3,
+   "pluie": 18,
+   "pont-concert": 12,
+   "portique": 2,
+   "rideaux": 4,
+   "rings": 33,
+   "shutters": 3,
+   "spiral": 26,
+   "spots": 21,
+   "treillis": 6,
+   "tunnel": 25,
+   "waves": 18
+  },
+  "reasons": {
+   "beat": 200,
+   "build": 81,
+   "cycle": 46,
+   "finale": 16,
+   "ouverture": 15
+  },
+  "familyBranches": {
+   "brillance": 108,
+   "calme": 103,
+   "densite": 6,
+   "drop": 81,
+   "energie": 47,
+   "general": 13
+  },
+  "moodBranches": {
+   "brillance-aerien": 6,
+   "build-explosif": 81,
+   "calme": 107,
+   "energie-explosif": 98,
+   "pulse": 66
+  },
+  "reservoirs": {
+   "calme": 103,
+   "concert": 81,
+   "mixte": 13,
+   "non-calme": 161
+  },
+  "sceneSpans": {
+   "count": 358,
+   "min": 5.480000000000018,
+   "p10": 7.470099999999985,
+   "p25": 11.494,
+   "median": 11.725999999999999,
+   "p75": 11.912000000000004,
+   "p90": 14.240899999999998,
+   "max": 16.927999999999997,
+   "mean": 11.420103351955305
+  },
+  "dropsPerTrack": {
+   "128bpm-low": 1,
+   "128bpm": 1,
+   "170bpm": 1,
+   "60bpm": 1,
+   "90bpm": 1,
+   "rich": 1,
+   "One More Time": 5,
+   "Bolero": 8,
+   "They Don't Care About Us": 7,
+   "The Blue Danube, Op. 314": 12,
+   "La Vie en Rose": 7,
+   "Gymnopédie No. 1": 10,
+   "Latch": 5,
+   "Your Hand in Mine": 7,
+   "Shine On You Crazy Diamond (Pts. 1-5)": 12,
+   "TRINITYVILLE": 2
+  }
+ },
+ "perTrack": [
+  {
+   "track": "128bpm-low",
+   "drops": 1,
+   "strengths": [
+    0.82
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/alterne/un-sur-deux/contraste"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "128bpm",
+   "drops": 1,
+   "strengths": [
+    0.82
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/alterne/un-sur-deux/contraste"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "170bpm",
+   "drops": 1,
+   "strengths": [
+    0.82
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/rideau/chenillard/accent"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "60bpm",
+   "drops": 1,
+   "strengths": [
+    0.86
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "croisee/rideau/un-sur-deux/accent"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "90bpm",
+   "drops": 1,
+   "strengths": [
+    0.85
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/onde/un-sur-deux/accent"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "rich",
+   "drops": 1,
+   "strengths": [
+    0.97
+   ],
+   "families": [
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "croisee/onde/chenillard/contraste"
+   ],
+   "pont": 0
+  },
+  {
+   "track": "One More Time",
+   "drops": 5,
+   "strengths": [
+    0.9,
+    1,
+    0.87,
+    0.81,
+    0.92
+   ],
+   "families": [
+    "lyres-suspendues",
+    "pont-concert",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/onde/un-sur-deux/accent",
+    "croisee/onde/un-sur-deux/contraste",
+    "eventail/rideau/chenillard/accent",
+    "croisee/alterne/un-sur-deux/contraste",
+    "croisee/rideau/tous/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "Bolero",
+   "drops": 8,
+   "strengths": [
+    0.77,
+    0.79,
+    0.96,
+    0.91,
+    0.84,
+    0.85,
+    0.84,
+    0.9
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "pont-concert",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led"
+   ],
+   "signature": [
+    "convergence/alterne/un-sur-deux/accent",
+    "eventail/rideau/tous/accent",
+    "convergence/onde/chenillard/accent",
+    "eventail/onde/un-sur-deux/accent",
+    "eventail/alterne/un-sur-deux/contraste",
+    "convergence/onde/tous/contraste",
+    "eventail/onde/chenillard/contraste",
+    "eventail/alterne/tous/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "They Don't Care About Us",
+   "drops": 7,
+   "strengths": [
+    0.97,
+    1,
+    0.98,
+    1,
+    1,
+    1,
+    0.93
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "pont-concert",
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "eventail/rideau/tous/accent",
+    "convergence/onde/chenillard/accent",
+    "convergence/onde/tous/contraste",
+    "eventail/rideau/chenillard/contraste",
+    "convergence/onde/tous/accent",
+    "croisee/rideau/tous/accent",
+    "eventail/alterne/tous/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "The Blue Danube, Op. 314",
+   "drops": 12,
+   "strengths": [
+    0.55,
+    0.82,
+    0.81,
+    0.52,
+    0.81,
+    0.97,
+    1,
+    1,
+    0.78,
+    0.91,
+    0.91,
+    0.69
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "pont-concert",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led"
+   ],
+   "signature": [
+    "convergence/rideau/chenillard/accent",
+    "convergence/alterne/un-sur-deux/accent",
+    "convergence/onde/un-sur-deux/contraste",
+    "eventail/alterne/tous/contraste",
+    "croisee/rideau/tous/contraste",
+    "croisee/onde/chenillard/contraste",
+    "eventail/alterne/tous/accent",
+    "croisee/rideau/chenillard/contraste",
+    "convergence/alterne/chenillard/contraste",
+    "croisee/alterne/un-sur-deux/contraste",
+    "convergence/onde/un-sur-deux/accent",
+    "eventail/onde/tous/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "La Vie en Rose",
+   "drops": 7,
+   "strengths": [
+    0.78,
+    0.95,
+    1,
+    0.98,
+    1,
+    0.97,
+    0.89
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "pont-concert",
+    "barres-led",
+    "lyres-suspendues"
+   ],
+   "signature": [
+    "convergence/rideau/un-sur-deux/accent",
+    "convergence/rideau/chenillard/contraste",
+    "convergence/onde/chenillard/accent",
+    "croisee/onde/tous/contraste",
+    "eventail/alterne/chenillard/contraste",
+    "eventail/rideau/un-sur-deux/accent",
+    "convergence/alterne/tous/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "Gymnopédie No. 1",
+   "drops": 10,
+   "strengths": [
+    0.99,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "pont-concert"
+   ],
+   "signature": [
+    "eventail/alterne/tous/contraste",
+    "croisee/alterne/chenillard/accent",
+    "convergence/rideau/un-sur-deux/accent",
+    "eventail/onde/chenillard/contraste",
+    "croisee/onde/chenillard/accent",
+    "convergence/alterne/chenillard/accent",
+    "convergence/rideau/un-sur-deux/contraste",
+    "convergence/alterne/tous/accent",
+    "convergence/onde/chenillard/accent",
+    "croisee/alterne/chenillard/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "Latch",
+   "drops": 5,
+   "strengths": [
+    0.95,
+    0.97,
+    0.99,
+    0.99,
+    1
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "pont-concert"
+   ],
+   "signature": [
+    "croisee/onde/un-sur-deux/accent",
+    "eventail/alterne/tous/accent",
+    "croisee/alterne/chenillard/accent",
+    "eventail/onde/tous/contraste",
+    "convergence/onde/un-sur-deux/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "Your Hand in Mine",
+   "drops": 7,
+   "strengths": [
+    0.48,
+    0.79,
+    0.85,
+    0.69,
+    1,
+    0.62,
+    1
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "pont-concert"
+   ],
+   "signature": [
+    "convergence/onde/tous/contraste",
+    "convergence/alterne/chenillard/contraste",
+    "croisee/alterne/chenillard/accent",
+    "convergence/alterne/tous/accent",
+    "croisee/rideau/chenillard/accent",
+    "eventail/onde/tous/contraste",
+    "croisee/onde/chenillard/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "Shine On You Crazy Diamond (Pts. 1-5)",
+   "drops": 12,
+   "strengths": [
+    0.45,
+    0.58,
+    0.76,
+    0.84,
+    0.63,
+    0.47,
+    0.64,
+    0.77,
+    0.84,
+    0.98,
+    0.94,
+    1
+   ],
+   "families": [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-suspendues",
+    "pont-concert"
+   ],
+   "signature": [
+    "eventail/rideau/un-sur-deux/accent",
+    "eventail/alterne/un-sur-deux/contraste",
+    "convergence/onde/un-sur-deux/contraste",
+    "convergence/alterne/tous/contraste",
+    "croisee/rideau/un-sur-deux/contraste",
+    "eventail/alterne/chenillard/accent",
+    "eventail/onde/chenillard/contraste",
+    "convergence/rideau/un-sur-deux/accent",
+    "croisee/alterne/tous/accent",
+    "eventail/onde/tous/accent",
+    "convergence/alterne/un-sur-deux/accent",
+    "eventail/rideau/un-sur-deux/contraste"
+   ],
+   "pont": 1
+  },
+  {
+   "track": "TRINITYVILLE",
+   "drops": 2,
+   "strengths": [
+    0.91,
+    1
+   ],
+   "families": [
+    "lyres-suspendues",
+    "pont-concert"
+   ],
+   "signature": [
+    "croisee/onde/tous/accent",
+    "convergence/rideau/tous/contraste"
+   ],
+   "pont": 1
+  }
+ ]
+}

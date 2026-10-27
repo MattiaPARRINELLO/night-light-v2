@@ -1,0 +1,60 @@
+{
+ "purity": [
+  {
+   "track": "60bpm",
+   "time": 10.587,
+   "diffPixels": 0,
+   "maxDelta": 0,
+   "totalPixels": 57600
+  },
+  {
+   "track": "60bpm",
+   "time": 11.837,
+   "diffPixels": 0,
+   "maxDelta": 0,
+   "totalPixels": 57600
+  },
+  {
+   "track": "128bpm",
+   "time": 10.796,
+   "diffPixels": 672,
+   "maxDelta": 9,
+   "totalPixels": 57600
+  },
+  {
+   "track": "128bpm",
+   "time": 12.046,
+   "diffPixels": 151,
+   "maxDelta": 4,
+   "totalPixels": 57600
+  },
+  {
+   "track": "rich",
+   "time": 14.302,
+   "diffPixels": 0,
+   "maxDelta": 0,
+   "totalPixels": 57600
+  },
+  {
+   "track": "rich",
+   "time": 15.552,
+   "diffPixels": 0,
+   "maxDelta": 0,
+   "totalPixels": 57600
+  }
+ ],
+ "cost": [
+  {
+   "resolution": "320x180",
+   "continuousMedianMs": 0.20000000018626451,
+   "seekMedianMs": 0.09999999962747097,
+   "deltaMs": -0.10000000055879354
+  },
+  {
+   "resolution": "1280x720",
+   "continuousMedianMs": 0.20000000018626451,
+   "seekMedianMs": 0.09999999962747097,
+   "deltaMs": -0.10000000055879354
+  }
+ ]
+}
