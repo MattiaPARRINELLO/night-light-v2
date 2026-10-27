@@ -109,11 +109,21 @@ export interface Scene {
  * `beat` n'est pas un vestige : c'est la coupure de sécurité sur le temps fort
  * quand aucun événement musical (section, impact, cycle retenu) ne tombe dans
  * `MAX_SCENE_SPAN`. `finale` marque la dernière scène non terminée par un drop.
+ * `bass-return` est le retour des basses du contrat v3 : une frontière admise,
+ * qui ne crée jamais de drop.
  */
-export type SceneReason = "section" | "build" | "cycle" | "beat" | "ouverture" | "finale";
+export type SceneReason =
+  | "section"
+  | "bass-return"
+  | "build"
+  | "cycle"
+  | "beat"
+  | "ouverture"
+  | "finale";
 
 export const SCENE_REASON_LABELS: Record<SceneReason, string> = {
   section: "nouveau passage",
+  "bass-return": "retour des basses",
   build: "impact de la montée",
   cycle: "retour du cycle",
   beat: "nouvelle mesure",
@@ -269,6 +279,25 @@ export const ENERGETIC_FAMILIES: FamilyId[] = [
 ];
 /** Familles du plateau de concert (impact, refrain, montée). */
 export const CONCERT_FAMILIES: FamilyId[] = ["lyres-suspendues", "barres-led", "pont-concert"];
+/**
+ * Réservoir du pont : volontairement **hors** du réservoir des refrains.
+ *
+ * Un pont est une rupture : il ne doit jamais reprendre les lyres suspendues ni
+ * les barres LED d'un refrain, sinon le spectateur croit au retour du refrain.
+ * Les familles choisies sont franchement différentes (vortex, rosace, treillis,
+ * formes projetées…) tout en restant dans le vocabulaire du spectacle.
+ */
+export const PONT_FAMILIES: FamilyId[] = [
+  "vortex",
+  "spiral",
+  "mandala",
+  "treillis",
+  "gobos",
+  "mirror",
+  "pendule",
+  "couronne",
+  "rideaux",
+];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [
   "particles",
@@ -296,6 +325,7 @@ export const FAMILY_BRANCHES = [
   "reduit-rythmique",
   "refrain",
   "montee",
+  "pont",
   "drop",
   "calme",
   "brillance",
@@ -311,6 +341,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
   "reduit-rythmique": REDUCED_RHYTHMIC_FAMILIES,
   refrain: ["lyres-suspendues", "barres-led"],
   montee: ["barres-led"],
+  pont: PONT_FAMILIES,
   drop: CONCERT_FAMILIES,
   calme: CALM_FAMILIES,
   brillance: BRIGHT_FAMILIES,
@@ -400,7 +431,11 @@ export const REDUCED_DENSITY_THRESHOLD = 0.6;
 /** Énergie sous laquelle une scène est franchement calme (humeur). */
 export const MOOD_CALM_ENERGY_THRESHOLD = 0.3;
 
-/** Métrique validée : 3 ou 4, avec 4 comme hypothèse par défaut. */
+/** Métrique validée : 3 ou 4, avec 4 comme hypothèse par défaut.
+ *
+ * `meter` reste la valeur utilisée (contrat v3.1) ; `meterConfidence` est une
+ * information de confiance que le plan n'utilise pas pour changer la métrique.
+ */
 export function meterOf(analysis: Analysis): 3 | 4 {
   return analysis.meter === 3 ? 3 : 4;
 }
@@ -564,6 +599,7 @@ export function familyBranchFor(
   role: SceneRole,
   concertDrop = false,
   calm?: boolean,
+  pont = false,
 ): FamilyBranch {
   const { energy, density, brightness } = caractere;
   if (reduced) {
@@ -573,7 +609,9 @@ export function familyBranchFor(
   }
   if (concertDrop) return "drop";
   // Orchestration par rôle : un refrain alterne lyres et barres LED, une
-  // montée déploie franchement la vague des barres.
+  // montée déploie franchement la vague des barres. Un pont est une rupture :
+  // il puise hors du réservoir des refrains.
+  if (pont) return "pont";
   if (role === "refrain") return "refrain";
   if (role === "montee") return "montee";
   // L'humeur finale fait foi : une scène lissée en « calme » par l'hystérésis
@@ -603,8 +641,9 @@ export function familyFor(
   excluded: readonly FamilyId[] = [],
   calm?: boolean,
   used?: ReadonlyMap<FamilyId, number>,
+  pont = false,
 ): FamilyId {
-  const branch = familyBranchFor(caractere, reduced, role, false, calm);
+  const branch = familyBranchFor(caractere, reduced, role, false, calm, pont);
   if (branch === "refrain") {
     return Math.floor(turn) % 2 === 0 ? "lyres-suspendues" : "barres-led";
   }
@@ -613,12 +652,60 @@ export function familyFor(
 }
 
 /**
+ * Confiance minimale d'une section pour que le plan lui fasse confiance.
+ *
+ * En dessous, la section est traitée comme avant la v3 : aucun rôle refrain ou
+ * pont, aucune humeur forcée. Une mauvaise détection ne dégrade donc rien.
+ */
+export const MIN_SECTION_CONFIDENCE = 0.5;
+
+/** Confiance d'une section (1 pour une section historique sans `confidence`). */
+export function sectionConfidence(section: Section | null): number {
+  if (section === null) return 0;
+  return section.confidence ?? 1;
+}
+
+export function isReliableSection(section: Section | null): boolean {
+  return section !== null && sectionConfidence(section) >= MIN_SECTION_CONFIDENCE;
+}
+
+/** Section de silence fiable (kind v3 ou label historique). */
+export function isSilenceSection(section: Section | null): boolean {
+  if (!isReliableSection(section) || section === null) return false;
+  return section.kind === "silence" || section.label === "silence";
+}
+
+/** Clé stable d'un groupe de matériau (`group` peut être une chaîne ou un entier). */
+export function groupKeyOf(section: Section | null): string {
+  const group = section?.group;
+  if (group === undefined || group === null || group === "") return "";
+  return String(group);
+}
+
+/**
+ * L'analyse porte-t-elle un découpage v3 exploitable ?
+ *
+ * On se fie à la présence de `confidence`, d'un `kind` structurel ou d'un
+ * `group` non vide. Les analyses historiques (une section globale
+ * `kind: "section"`, aucun champ v3) gardent exactement le plan de la vague 2.
+ */
+export function hasStructuredAnalysis(analysis: Analysis): boolean {
+  return analysis.sections.some(
+    (section) =>
+      section.confidence !== undefined ||
+      (section.kind !== undefined && section.kind !== "section") ||
+      (section.group !== undefined && section.group !== ""),
+  );
+}
+
+/**
  * Rôle dramaturgique d'une scène.
  *
  * La fin d'une montée est toujours un `drop`, même si elle tombe au milieu d'un
  * refrain : c'est l'impact qui commande la lumière à cet instant. Les sections
- * identifiées par le serveur (intro, couplet, refrain, outro) gardent ensuite
- * leur rôle du début à la fin.
+ * identifiées par le serveur (intro, couplet, refrain, pont, silence, outro)
+ * gardent ensuite leur rôle du début à la fin, **si** leur confiance atteint
+ * `MIN_SECTION_CONFIDENCE`.
  */
 function roleFor(
   section: Section | null,
@@ -627,14 +714,15 @@ function roleFor(
   dramaturgy: boolean,
 ): SceneRole {
   if (reason === "build") return "drop";
-  if (dramaturgy) {
-    if (section?.kind === "intro") return "intro";
-    if (section?.kind === "refrain") return "refrain";
-    if (section?.kind === "couplet") return "couplet";
-    if (section?.kind === "outro") return "finale";
-    if (section?.kind === "pont") return "montee";
-    if (section?.label === "montee") return "montee";
-    if (section?.label === "descente" || section?.label === "silence") return "finale";
+  if (dramaturgy && isReliableSection(section) && section !== null) {
+    if (section.kind === "intro") return "intro";
+    if (section.kind === "refrain") return "refrain";
+    if (section.kind === "couplet") return "couplet";
+    if (section.kind === "outro") return "finale";
+    if (section.kind === "pont") return "montee";
+    if (section.kind === "silence") return "finale";
+    if (section.label === "montee") return "montee";
+    if (section.label === "descente" || section.label === "silence") return "finale";
   }
   if (reason === "ouverture" || index === 0) return "intro";
   return "couplet";
@@ -854,10 +942,10 @@ export function moodBranchFor(
   dramaturgy = false,
 ): MoodBranch {
   if (reason === "build") return "build-explosif";
-  if (dramaturgy && !reduced && section?.kind === "refrain") return "refrain-explosif";
-  const label = section?.label ?? "intense";
-  if (dramaturgy && label === "silence") return "silence-sombre";
-  if (dramaturgy && label === "montee") return "montee-pulse";
+  const sain = dramaturgy && isReliableSection(section);
+  if (sain && !reduced && section?.kind === "refrain") return "refrain-explosif";
+  if (sain && isSilenceSection(section)) return "silence-sombre";
+  if (sain && section?.label === "montee") return "montee-pulse";
   if (caractere.energy > thresholds.explosive) return "energie-explosif";
   if (caractere.energy <= thresholds.calm) return "calme";
   if (caractere.brightness > MOOD_BRIGHTNESS_THRESHOLD) return "brillance-aerien";
@@ -904,7 +992,11 @@ export function resolveMoods(
   const adjusted = Array.from({ length: base.length }, () => false);
   const forced = (segment: MoodSegment) =>
     segment.reason === "build" ||
-    (dramaturgy && !reduced && segment.section?.kind === "refrain");
+    (dramaturgy && isSilenceSection(segment.section)) ||
+    (dramaturgy &&
+      !reduced &&
+      isReliableSection(segment.section) &&
+      segment.section?.kind === "refrain");
   for (let index = 1; index < segments.length; index += 1) {
     const current = segments[index]!;
     const previous = segments[index - 1]!;
@@ -985,23 +1077,75 @@ function cycleChangesCharacter(analysis: Analysis, time: number, lastKept: numbe
 }
 
 /**
+ * Espacement minimal entre deux bass-return (contrat v3).
+ *
+ * Deux retours de basses trop rapprochés ne se lisent pas comme deux
+ * événements : le second paraît redondant et fait clignoter le plan.
+ */
+export const MIN_BASS_RETURN_SPACING = 8;
+/** Distance minimale entre un bass-return et la fin d'une montée (contrat v3). */
+export const BASS_RETURN_BUILD_CLEARANCE = 2;
+/**
+ * Bonus de fusion d'un bass-return, volontairement inférieur à celui d'un
+ * impact (`build` × 1,25). À 5 s d'une frontière, un impact reste prioritaire.
+ */
+export const BASS_RETURN_MERGE_BONUS = 1.15;
+/** Durée minimale d'une scène de silence (contrat v3). */
+export const MIN_SILENCE_SPAN = 1.5;
+
+/** Événement interne de frontière, avec son drapeau silence. */
+interface BoundaryEvent {
+  time: number;
+  reason: SceneReason;
+  weight: number;
+  silence?: boolean;
+}
+
+/** Score de fusion : l'impact d'abord, le bass-return ensuite, le reste après. */
+function boundaryScore(candidate: Pick<BoundaryEvent, "weight" | "reason">): number {
+  if (candidate.reason === "build") return candidate.weight * 1.25;
+  if (candidate.reason === "bass-return") return candidate.weight * BASS_RETURN_MERGE_BONUS;
+  return candidate.weight;
+}
+
+/**
+ * Écart minimal entre deux frontières, silence compris.
+ *
+ * Une section de silence peut durer 1,5 s : la fusion à 5 s ne doit pas
+ * l'avaler. Dès qu'un des deux événements est un silence, le plancher du
+ * contrat s'applique.
+ */
+function boundaryMinGap(previous: BoundaryEvent, event: BoundaryEvent): number {
+  return previous.silence === true || event.silence === true ? MIN_SILENCE_SPAN : MIN_SCENE_SPAN;
+}
+
+/**
  * Événements qui justifient un changement complet d'ambiance, triés dans le temps.
  *
  * Un changement de famille + palette n'arrive QUE sur l'un d'eux : rien ne se
- * déclenche « au hasard » au milieu d'un passage. Les frontières de section et
- * d'impact sont toujours conservées ; une frontière de cycle ne l'est que si le
- * caractère change. Le plafond `MAX_SCENE_SPAN` est ensuite tenu par une
- * coupure sur le temps fort (`beat`), jamais par un cycle arbitraire.
+ * déclenche « au hasard » au milieu d'un passage. Les frontières de section,
+ * d'impact et de bass-return sont conservées ; une frontière de cycle ne l'est
+ * que si le caractère change. Le plafond `MAX_SCENE_SPAN` est ensuite tenu par
+ * une coupure sur le temps fort (`beat`), jamais par un cycle arbitraire.
+ *
+ * Le bass-return ne crée jamais de `drop` : son rôle est décidé par la section
+ * locale, comme n'importe quelle autre frontière.
  */
-function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: SceneReason; weight: number }> {
+function sceneBoundaries(analysis: Analysis): BoundaryEvent[] {
   const duration = Math.max(analysis.duration, 0.001);
-  const fixed: Array<{ time: number; reason: SceneReason; weight: number }> = [
+  const fixed: BoundaryEvent[] = [
     { time: 0, reason: "ouverture", weight: 1 },
     { time: duration, reason: "finale", weight: 0 },
   ];
 
   for (const section of analysis.sections) {
-    fixed.push({ time: section.start, reason: "section", weight: section.label === "silence" ? 0.4 : 1 });
+    const silence = isSilenceSection(section);
+    fixed.push({
+      time: section.start,
+      reason: "section",
+      weight: silence ? 0.4 : 1,
+      ...(silence ? { silence: true } : {}),
+    });
   }
 
   // Fin de chaque montée : c'est l'impact, l'événement le plus spectaculaire.
@@ -1009,7 +1153,23 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
     fixed.push({ time: build.end, reason: "build", weight: build.strength });
   }
 
-  const cycles: Array<{ time: number; reason: SceneReason; weight: number }> = [];
+  // Retours de basses du contrat v3 : frontières admises, poids = force. On
+  // applique les gardes du contrat même si l'analyse les a déjà respectées :
+  // un producteur fautif ne doit pas pouvoir fabriquer un plan incohérent.
+  const buildEnds = analysis.builds.map((build) => build.end);
+  let lastBassReturn = Number.NEGATIVE_INFINITY;
+  const bassReturns = [...(analysis.events ?? [])]
+    .filter((event) => event.kind === "bass-return")
+    .filter((event) => Number.isFinite(event.t) && event.t > 0.01 && event.t < duration - 0.01)
+    .sort((left, right) => left.t - right.t);
+  for (const event of bassReturns) {
+    if (event.t - lastBassReturn < MIN_BASS_RETURN_SPACING) continue;
+    if (buildEnds.some((end) => Math.abs(event.t - end) < BASS_RETURN_BUILD_CLEARANCE)) continue;
+    fixed.push({ time: event.t, reason: "bass-return", weight: clamp01(event.strength) });
+    lastBassReturn = event.t;
+  }
+
+  const cycles: BoundaryEvent[] = [];
   for (const bar of barStarts(analysis)) {
     if (bar > 0.01 && bar < duration - 0.01) cycles.push({ time: bar, reason: "cycle", weight: 0.5 });
   }
@@ -1019,19 +1179,17 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
 
   // Fusion des événements fixes entre eux, puis insertion des cycles retenus
   // dans l'ordre : c'est `lastKept` qui mesure la durée de la scène courante.
-  const keptFixed: typeof fixed = [];
+  const keptFixed: BoundaryEvent[] = [];
   for (const event of fixed) {
     const previous = keptFixed[keptFixed.length - 1];
-    if (previous !== undefined && event.time - previous.time < MIN_SCENE_SPAN) {
-      const score = (candidate: { weight: number; reason: SceneReason }) =>
-        candidate.weight * (candidate.reason === "build" ? 1.25 : 1);
-      if (score(event) > score(previous)) keptFixed[keptFixed.length - 1] = event;
+    if (previous !== undefined && event.time - previous.time < boundaryMinGap(previous, event)) {
+      if (boundaryScore(event) > boundaryScore(previous)) keptFixed[keptFixed.length - 1] = event;
       continue;
     }
     keptFixed.push(event);
   }
 
-  const events: typeof fixed = [];
+  const events: BoundaryEvent[] = [];
   let lastKept = Number.NEGATIVE_INFINITY;
   let cycleIndex = 0;
   for (const event of keptFixed) {
@@ -1049,19 +1207,15 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
     lastKept = event.time;
   }
 
-  // Deux événements à moins de MIN_SCENE_SPAN secondes d'écart n'en font qu'un :
-  // on garde le plus marquant, sinon une scène durerait une fraction de seconde.
-  const merged: typeof fixed = [];
+  // Deux événements trop rapprochés n'en font qu'un : on garde le plus
+  // marquant, sinon une scène durerait une fraction de seconde. Les impacts de
+  // montée l'emportent toujours ; un bass-return l'emporte sur une section
+  // ordinaire, mais jamais sur un impact.
+  const merged: BoundaryEvent[] = [];
   for (const event of events) {
     const previous = merged[merged.length - 1];
-    if (previous !== undefined && event.time - previous.time < MIN_SCENE_SPAN) {
-      // Les impacts de montée l'emportent : c'est le moment qu'on remarque le
-      // plus dans un morceau, il mérite son changement d'ambiance.
-      const score = (candidate: { weight: number; reason: SceneReason }) =>
-        candidate.weight * (candidate.reason === "build" ? 1.25 : 1);
-      if (score(event) > score(previous)) {
-        merged[merged.length - 1] = { time: event.time, reason: event.reason, weight: event.weight };
-      }
+    if (previous !== undefined && event.time - previous.time < boundaryMinGap(previous, event)) {
+      if (boundaryScore(event) > boundaryScore(previous)) merged[merged.length - 1] = event;
       continue;
     }
     merged.push(event);
@@ -1071,7 +1225,7 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
   // détection, section globale), on coupe sur le temps fort le plus proche. La
   // raison est `beat` : c'est une nouvelle mesure, pas un retour de cycle, et
   // c'est ce qui empêche une scène de durer une minute.
-  const capped: typeof fixed = [];
+  const capped: BoundaryEvent[] = [];
   let previousTime = Number.NEGATIVE_INFINITY;
   for (const event of merged) {
     let anchor = previousTime;
@@ -1186,7 +1340,8 @@ export function buildShowPlan(
   seedOverride?: number,
   options: ShowPlanOptions = {},
 ): ShowPlan {
-  const dramaturgy = options.dramaturgy === true;  const seed =
+  const dramaturgy = options.dramaturgy ?? hasStructuredAnalysis(analysis);
+  const seed =
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
@@ -1224,8 +1379,8 @@ export function buildShowPlan(
     // Une section qui couvre tout le morceau est une étiquette **globale** :
     // elle ne doit jamais figer le rôle ni l'humeur d'une scène locale. On s'en
     // remet alors au caractère de l'intervalle et aux événements détectés.
-    const section = localSectionAt(analysis, start);
-    const group = section?.group !== undefined && section.group !== "" ? section.group : "";
+    const section = localSectionAt(analysis, round3(start));
+    const group = groupKeyOf(section);
     segments.push({ event, start, end, caractere: caractereAt(analysis, start, end), section, group });
   }
 
@@ -1258,11 +1413,20 @@ export function buildShowPlan(
 
   const scenes: Scene[] = [];
   let previousHue = -999;
+  // Dernière teinte de refrain : un pont doit s'en éloigner, pas seulement de
+  // la scène qui le précède.
+  let lastRefrainHue: number | undefined;
   // Mémoire par groupe de structure : deux sections du même matériau musical
   // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
   // famille et leur teinte à la première apparition et on les réutilise.
   const groupFamilies = new Map<string, FamilyId>();
   const groupHues = new Map<string, number>();
+  // Occurrences de refrain déjà vues par groupe, et intensité maximale
+  // atteinte : un même refrain doit s'intensifier au fil des retours, sans
+  // jamais redescendre. Deux scènes d'une même occurrence ne comptent qu'une.
+  const groupRefrainOccurrences = new Map<string, number>();
+  const groupRefrainSections = new Map<string, number>();
+  const groupRefrainIntensity = new Map<string, number>();
   // Familles déjà affichées et leur nombre d'apparitions : le tirage privilégie
   // la plus rare, pour que toutes les familles sortent même sur un plan court.
   const familyUse = new Map<FamilyId, number>();
@@ -1287,6 +1451,13 @@ export function buildShowPlan(
     const mood = moods[index]!;
     const turn = scenes.length;
     const role = roleFor(section, event.reason, turn, dramaturgy);
+    // Un pont fiable est une rupture : il ne puise pas dans le réservoir des
+    // refrains. En mode réduit, seuls les réservoirs réduits comptent.
+    const pontSection =
+      dramaturgy &&
+      !reduced &&
+      isReliableSection(section) &&
+      section?.kind === "pont";
     // Identité stable d'un groupe : sert de graine partout où il faut retrouver
     // la même famille ou la même teinte d'une occurrence à l'autre.
     const groupSeed = grouped ? hashString(`${seed}|${group}`) : 0;
@@ -1369,8 +1540,9 @@ export function buildShowPlan(
             Math.floor(hash01(groupSeed) * 997),
             role,
             [],
-            mood === "calme",
+            mood === "calme" || mood === "sombre",
             familyUse,
+            pontSection,
           )
         : familyFor(
             caractere,
@@ -1379,8 +1551,9 @@ export function buildShowPlan(
             turn,
             role,
             [fond, ...excluded],
-            mood === "calme",
+            mood === "calme" || mood === "sombre",
             familyUse,
+            pontSection,
           );
       if (grouped) groupFamilies.set(group, family);
     }
@@ -1415,14 +1588,21 @@ export function buildShowPlan(
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
     const fort =
-      section?.kind === "refrain" ||
+      role === "refrain" ||
       mood === "explosif" ||
       (mood === "pulse" && caractere.energy > 0.6);
     // La signature de drop choisit le pôle de teinte : tantôt la
     // complémentaire du morceau, tantôt le pôle opposé (l'ancre de base). Les
     // deux restent dans le budget de couleur autour de l'ancre de scène.
-    const ancre =
-      signature?.hue === "contraste"
+    // Un pont prend l'ancre la plus éloignée du dernier refrain (ou, à défaut,
+    // de la scène précédente) : la rupture doit se voir, sans sortir de
+    // l'identité du morceau.
+    const ancreReference = lastRefrainHue ?? previousHue;
+    const ancre = pontSection
+      ? Math.abs(hueDelta(ancreReference, track.accent)) <= Math.abs(hueDelta(ancreReference, track.hue))
+        ? track.hue
+        : track.accent
+      : signature?.hue === "contraste"
         ? fort
           ? track.hue
           : track.accent
@@ -1438,6 +1618,21 @@ export function buildShowPlan(
     if (cachedHue !== undefined) {
       // L'identité d'un groupe prime : deux refrains portent la même teinte.
       hue = cachedHue;
+    } else if (role === "refrain") {
+      // Un refrain reste sur la complémentaire du morceau : c'est le repère
+      // coloré qui permet de reconnaître son retour, même quand la scène
+      // précédente est proche en teinte. On pousse la dérive dans la fenêtre de
+      // l'ancre au lieu de changer d'ancre, pour ne jamais sortir du
+      // complémentaire.
+      const desired = (track.accent + derive + 360) % 360;
+      let candidate = clampToAnchor(desired, track.accent, track.spread);
+      const step = minHueStepEff(track.spread);
+      if (Math.abs(hueDelta(previousHue, candidate)) < step) {
+        const direction = hueDelta(previousHue, candidate) >= 0 ? 1 : -1;
+        candidate = clampToAnchor((desired + direction * step + 360) % 360, track.accent, track.spread);
+      }
+      hue = candidate;
+      if (grouped) groupHues.set(group, hue);
     } else {
       // Le couple (écart minimal, budget d'ancre) est résolu ensemble : voir
       // `hueWithGap`. L'écart gagne sur le clamp, quitte à changer d'ancre.
@@ -1445,6 +1640,31 @@ export function buildShowPlan(
       if (grouped) groupHues.set(group, hue);
     }
     previousHue = hue;
+    if (role === "refrain") lastRefrainHue = hue;
+
+    // Intensité d'un refrain : croissante au fil des occurrences du groupe.
+    // C'est ce qui fait que le troisième refrain « monte » plus que le premier,
+    // tout en gardant la même famille et la même teinte reconnaissables. Le
+    // facteur reste sous 1, pour que la progression se voie avant la saturation.
+    let intensity = clamp01(moodIntensity(mood, caractere.energy));
+    if (role === "refrain" && grouped) {
+      const sectionStart = section?.start ?? start;
+      const nouvelleOccurrence = groupRefrainSections.get(group) !== sectionStart;
+      if (nouvelleOccurrence) {
+        groupRefrainSections.set(group, sectionStart);
+        groupRefrainOccurrences.set(group, (groupRefrainOccurrences.get(group) ?? 0) + 1);
+      }
+      const rang = groupRefrainOccurrences.get(group) ?? 1;
+      const facteur = Math.min(1, 0.88 + 0.06 * Math.max(0, rang - 1));
+      const plancher = nouvelleOccurrence
+        ? (groupRefrainIntensity.get(group) ?? 0) + 0.02
+        : 0;
+      intensity = clamp01(Math.max(clamp01(moodIntensity(mood, caractere.energy)) * facteur, plancher));
+      groupRefrainIntensity.set(
+        group,
+        Math.max(groupRefrainIntensity.get(group) ?? 0, intensity),
+      );
+    }
 
     scenes.push({
       index: turn,
@@ -1461,9 +1681,9 @@ export function buildShowPlan(
         saturation: paletteSaturation(mood),
         lightness: paletteLightness(mood),
       },
-      intensity: clamp01(moodIntensity(mood, caractere.energy)),
+      intensity,
       fadeIn: index === 0 ? 0.7 : event.weight >= 1 ? 1.2 : 0.7,
-      fadeOut: 0.9,
+      fadeOut: isSilenceSection(section) ? 1.8 : 0.9,
       mood,
       role,
       reason: event.reason,

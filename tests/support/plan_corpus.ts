@@ -27,7 +27,7 @@ const REAL_CACHE_DIR = join(ROOT, "tests/fixtures/analyses");
 export interface PlanTrack {
   name: string;
   analysis: Analysis;
-  source: "corpus" | "real";
+  source: "corpus" | "real" | "fixture";
 }
 
 function run(command: string, args: string[]): void {
