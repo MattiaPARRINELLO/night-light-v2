@@ -1,0 +1,27 @@
+{
+  "titre": "Karma",
+  "artiste": "Bigflo & Oli",
+  "id": 3884482861,
+  "durée": 259.0,
+  "bpm": { "value": 115.4, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 31.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "couplet", "start": 31.5, "end": 48.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 48.5, "end": 65.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "couplet", "start": 65.0, "end": 80.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "montee", "start": 80.0, "end": 98.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "refrain", "start": 98.5, "end": 131.0, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "pont", "start": 131.0, "end": 148.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 148.5, "end": 173.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "pont", "start": 173.5, "end": 217.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 217.5, "end": 250.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "finale", "start": 250.5, "end": 259.0, "confidence": 0.7, "source": "agent-proposition" }
+  ],
+  "drops": [
+    { "time": 30.67, "confidence": 0.5, "source": "agent-proposition" },
+    { "time": 65.83, "confidence": 0.5, "source": "agent-proposition" },
+    { "time": 100.31, "confidence": 0.6, "source": "agent-proposition" },
+    { "time": 150.42, "confidence": 0.6, "source": "agent-proposition" },
+    { "time": 216.92, "confidence": 0.6, "source": "agent-proposition" }
+  ]
+}

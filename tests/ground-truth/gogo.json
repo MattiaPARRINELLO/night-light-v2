@@ -1,0 +1,25 @@
+{
+  "titre": "Gogo",
+  "artiste": "Laylow",
+  "id": 1794963897,
+  "durée": 244.6,
+  "bpm": { "value": 120.0, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 11.0, "confidence": 0.7, "source": "agent-proposition" },
+    { "role": "couplet", "start": 11.0, "end": 33.0, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 33.0, "end": 48.0, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 48.0, "end": 66.5, "confidence": 0.4, "source": "agent-proposition" },
+    { "role": "couplet", "start": 66.5, "end": 82.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "refrain", "start": 82.0, "end": 97.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "pont", "start": 97.0, "end": 129.0, "confidence": 0.7, "source": "agent-proposition" },
+    { "role": "refrain", "start": 129.0, "end": 159.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "pont", "start": 159.0, "end": 177.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "refrain", "start": 177.5, "end": 207.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "finale", "start": 207.5, "end": 244.6, "confidence": 0.4, "source": "agent-proposition" }
+  ],
+  "drops": [
+    { "time": 26.63, "confidence": 0.4, "source": "agent-proposition" },
+    { "time": 37.62, "confidence": 0.6, "source": "agent-proposition" },
+    { "time": 130.22, "confidence": 0.6, "source": "agent-proposition" }
+  ]
+}

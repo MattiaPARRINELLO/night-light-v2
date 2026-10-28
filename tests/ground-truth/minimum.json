@@ -1,0 +1,26 @@
+{
+  "titre": "Minimum",
+  "artiste": "Bigflo & Oli",
+  "id": 3884482841,
+  "durée": 196.3,
+  "bpm": { "value": 142.9, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 14.0, "confidence": 0.7, "source": "agent-proposition" },
+    { "role": "couplet", "start": 14.0, "end": 41.0, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "refrain", "start": 41.0, "end": 55.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "couplet", "start": 55.5, "end": 68.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "montee", "start": 68.5, "end": 82.0, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "refrain", "start": 82.0, "end": 98.5, "confidence": 0.6, "source": "agent-proposition" },
+    { "role": "couplet", "start": 98.5, "end": 110.0, "confidence": 0.4, "source": "agent-proposition" },
+    { "role": "refrain", "start": 110.0, "end": 122.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "pont", "start": 122.5, "end": 136.5, "confidence": 0.7, "source": "agent-proposition" },
+    { "role": "refrain", "start": 136.5, "end": 151.5, "confidence": 0.5, "source": "agent-proposition" },
+    { "role": "couplet", "start": 151.5, "end": 176.0, "confidence": 0.4, "source": "agent-proposition" },
+    { "role": "finale", "start": 176.0, "end": 196.3, "confidence": 0.5, "source": "agent-proposition" }
+  ],
+  "drops": [
+    { "time": 41.87, "confidence": 0.6, "source": "agent-proposition" },
+    { "time": 82.57, "confidence": 0.6, "source": "agent-proposition" },
+    { "time": 138.72, "confidence": 0.6, "source": "agent-proposition" }
+  ]
+}

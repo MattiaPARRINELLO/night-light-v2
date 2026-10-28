@@ -1,0 +1,619 @@
+{
+  "toleranceSec": 0.5,
+  "tracks": [
+    {
+      "titre": "Gogo",
+      "artiste": "Laylow",
+      "id": 1794963897,
+      "duration": 244.63,
+      "bpm": {
+        "detected": 117.454,
+        "proposed": 120,
+        "absoluteError": 2.546,
+        "relativeError": 2.1,
+        "confidence": 0.4
+      },
+      "drops": {
+        "toleranceSec": 0.5,
+        "proposed": 3,
+        "detected": 3,
+        "found": 3,
+        "missed": 0,
+        "false": 0,
+        "matches": [
+          {
+            "truth": 26.63,
+            "detected": 26.633,
+            "delta": 0.003
+          },
+          {
+            "truth": 37.62,
+            "detected": 37.616,
+            "delta": -0.004
+          },
+          {
+            "truth": 130.22,
+            "detected": 130.218,
+            "delta": -0.002
+          }
+        ],
+        "detectedTimes": [
+          26.633,
+          37.616,
+          130.218
+        ]
+      },
+      "sections": {
+        "total": 11,
+        "coveredSameRole": 3,
+        "coveredAnyRole": 11,
+        "details": [
+          {
+            "role": "intro",
+            "start": 0,
+            "end": 11,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 11,
+            "end": 33,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 33,
+            "end": 48,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 48,
+            "end": 66.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 66.5,
+            "end": 82,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 82,
+            "end": 97,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 97,
+            "end": 129,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 129,
+            "end": 159,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 159,
+            "end": 177.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 177.5,
+            "end": 207.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "finale",
+            "start": 207.5,
+            "end": 244.6,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          }
+        ]
+      },
+      "roles": {
+        "intro": 1,
+        "couplet": 16,
+        "drop": 3,
+        "finale": 1
+      },
+      "families": {
+        "spiral": 2,
+        "pluie": 1,
+        "lyres-suspendues": 1,
+        "vortex": 1,
+        "pont-concert": 2,
+        "parade": 2,
+        "rings": 1,
+        "spots": 2,
+        "mirror": 2,
+        "tunnel": 1,
+        "particles": 1,
+        "beams": 1,
+        "burst": 1,
+        "mandala": 1,
+        "crossfire": 1,
+        "couronne": 1
+      }
+    },
+    {
+      "titre": "Minimum",
+      "artiste": "Bigflo & Oli",
+      "id": 3884482841,
+      "duration": 196.26,
+      "bpm": {
+        "detected": 143.555,
+        "proposed": 142.9,
+        "absoluteError": 0.655,
+        "relativeError": 0.5,
+        "confidence": 0.4
+      },
+      "drops": {
+        "toleranceSec": 0.5,
+        "proposed": 3,
+        "detected": 3,
+        "found": 3,
+        "missed": 0,
+        "false": 0,
+        "matches": [
+          {
+            "truth": 41.87,
+            "detected": 41.866,
+            "delta": -0.004
+          },
+          {
+            "truth": 82.57,
+            "detected": 82.57,
+            "delta": 0
+          },
+          {
+            "truth": 138.72,
+            "detected": 138.716,
+            "delta": -0.004
+          }
+        ],
+        "detectedTimes": [
+          41.866,
+          82.57,
+          138.716
+        ]
+      },
+      "sections": {
+        "total": 12,
+        "coveredSameRole": 6,
+        "coveredAnyRole": 12,
+        "details": [
+          {
+            "role": "intro",
+            "start": 0,
+            "end": 14,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 14,
+            "end": 41,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 41,
+            "end": 55.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 55.5,
+            "end": 68.5,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "montee",
+            "start": 68.5,
+            "end": 82,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 82,
+            "end": 98.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 98.5,
+            "end": 110,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 110,
+            "end": 122.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 122.5,
+            "end": 136.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 136.5,
+            "end": 151.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 151.5,
+            "end": 176,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "finale",
+            "start": 176,
+            "end": 196.3,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          }
+        ]
+      },
+      "roles": {
+        "intro": 1,
+        "couplet": 12,
+        "drop": 3,
+        "finale": 1
+      },
+      "families": {
+        "waves": 1,
+        "particles": 1,
+        "spiral": 2,
+        "pont-concert": 3,
+        "rings": 1,
+        "shutters": 1,
+        "mirror": 2,
+        "spots": 1,
+        "parade": 1,
+        "beams": 2,
+        "tunnel": 1,
+        "lyres-suspendues": 1
+      }
+    },
+    {
+      "titre": "Karma",
+      "artiste": "Bigflo & Oli",
+      "id": 3884482861,
+      "duration": 259,
+      "bpm": {
+        "detected": 117.454,
+        "proposed": 115.4,
+        "absoluteError": 2.054,
+        "relativeError": 1.8,
+        "confidence": 0.4
+      },
+      "drops": {
+        "toleranceSec": 0.5,
+        "proposed": 5,
+        "detected": 5,
+        "found": 5,
+        "missed": 0,
+        "false": 0,
+        "matches": [
+          {
+            "truth": 30.67,
+            "detected": 30.674,
+            "delta": 0.004
+          },
+          {
+            "truth": 65.83,
+            "detected": 65.829,
+            "delta": -0.001
+          },
+          {
+            "truth": 100.31,
+            "detected": 100.31,
+            "delta": 0
+          },
+          {
+            "truth": 150.42,
+            "detected": 150.419,
+            "delta": -0.001
+          },
+          {
+            "truth": 216.92,
+            "detected": 216.921,
+            "delta": 0.001
+          }
+        ],
+        "detectedTimes": [
+          30.674,
+          65.829,
+          100.31,
+          150.419,
+          216.921
+        ]
+      },
+      "sections": {
+        "total": 11,
+        "coveredSameRole": 1,
+        "coveredAnyRole": 11,
+        "details": [
+          {
+            "role": "intro",
+            "start": 0,
+            "end": 31.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 31.5,
+            "end": 48.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 48.5,
+            "end": 65,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 65,
+            "end": 80,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "montee",
+            "start": 80,
+            "end": 98.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 98.5,
+            "end": 131,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 131,
+            "end": 148.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 148.5,
+            "end": 173.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 173.5,
+            "end": 217.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 217.5,
+            "end": 250.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "finale",
+            "start": 250.5,
+            "end": 259,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          }
+        ]
+      },
+      "roles": {
+        "intro": 1,
+        "couplet": 16,
+        "drop": 5,
+        "finale": 1
+      },
+      "families": {
+        "waves": 2,
+        "spiral": 2,
+        "pluie": 2,
+        "pont-concert": 5,
+        "pendule": 1,
+        "particles": 2,
+        "rings": 2,
+        "lyres-suspendues": 1,
+        "mirror": 1,
+        "beams": 1,
+        "vortex": 1,
+        "parade": 2,
+        "spots": 1
+      }
+    },
+    {
+      "titre": "Focus",
+      "artiste": "Bigflo & Oli",
+      "id": 3884482881,
+      "duration": 246.22,
+      "bpm": {
+        "detected": 117.454,
+        "proposed": 120,
+        "absoluteError": 2.546,
+        "relativeError": 2.1,
+        "confidence": 0.4
+      },
+      "drops": {
+        "toleranceSec": 0.5,
+        "proposed": 3,
+        "detected": 3,
+        "found": 3,
+        "missed": 0,
+        "false": 0,
+        "matches": [
+          {
+            "truth": 15.56,
+            "detected": 15.557,
+            "delta": -0.003
+          },
+          {
+            "truth": 72.1,
+            "detected": 72.098,
+            "delta": -0.002
+          },
+          {
+            "truth": 154.34,
+            "detected": 154.343,
+            "delta": 0.003
+          }
+        ],
+        "detectedTimes": [
+          15.557,
+          72.098,
+          154.343
+        ]
+      },
+      "sections": {
+        "total": 11,
+        "coveredSameRole": 3,
+        "coveredAnyRole": 11,
+        "details": [
+          {
+            "role": "intro",
+            "start": 0,
+            "end": 16.5,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 16.5,
+            "end": 32.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 32.5,
+            "end": 46,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 46,
+            "end": 72,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 72,
+            "end": 90,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 90,
+            "end": 137,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 137,
+            "end": 151.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 151.5,
+            "end": 193.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "pont",
+            "start": 193.5,
+            "end": 209.5,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "refrain",
+            "start": 209.5,
+            "end": 233,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "finale",
+            "start": 233,
+            "end": 246.2,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          }
+        ]
+      },
+      "roles": {
+        "intro": 1,
+        "drop": 3,
+        "couplet": 15,
+        "finale": 1
+      },
+      "families": {
+        "waves": 2,
+        "pont-concert": 3,
+        "beams": 1,
+        "spots": 2,
+        "particles": 1,
+        "pluie": 2,
+        "parade": 1,
+        "rings": 1,
+        "portique": 1,
+        "mirror": 1,
+        "tunnel": 2,
+        "grid": 1,
+        "bars": 1,
+        "crossfire": 1
+      }
+    }
+  ]
+}
