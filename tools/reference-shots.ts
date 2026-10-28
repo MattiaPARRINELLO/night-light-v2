@@ -14,7 +14,7 @@
  *     bun tools/reference-shots.ts --out /tmp/opencode/shots --json /tmp/opencode/shots.json
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 
 import { DEFAULT_SETTINGS, type Analysis } from "../src/types";
@@ -188,6 +188,8 @@ async function main(): Promise<number> {
         reducedMotion: false,
       });
       const trackDir = join(outDir, slug(entry.titre));
+      // Un nouveau passage remplace les captures précédentes du même titre.
+      rmSync(trackDir, { recursive: true, force: true });
       mkdirSync(trackDir, { recursive: true });
       for (const moment of momentsFor(truth, analysis.duration)) {
         const capture = await renderer.capture(moment.time, Math.round(moment.time * 60));

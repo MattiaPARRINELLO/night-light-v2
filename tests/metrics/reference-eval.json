@@ -17,24 +17,24 @@
         "toleranceSec": 0.5,
         "proposed": 3,
         "detected": 3,
-        "found": 3,
-        "missed": 0,
-        "false": 0,
+        "found": 0,
+        "missed": 3,
+        "false": 3,
         "matches": [
           {
-            "truth": 26.63,
-            "detected": 26.633,
-            "delta": 0.003
+            "truth": 79,
+            "detected": null,
+            "delta": null
           },
           {
-            "truth": 37.62,
-            "detected": 37.616,
-            "delta": -0.004
+            "truth": 129,
+            "detected": null,
+            "delta": null
           },
           {
-            "truth": 130.22,
-            "detected": 130.218,
-            "delta": -0.002
+            "truth": 175,
+            "detected": null,
+            "delta": null
           }
         ],
         "detectedTimes": [
@@ -44,83 +44,62 @@
         ]
       },
       "sections": {
-        "total": 11,
+        "total": 8,
         "coveredSameRole": 3,
-        "coveredAnyRole": 11,
+        "coveredAnyRole": 8,
         "details": [
           {
             "role": "intro",
             "start": 0,
-            "end": 11,
-            "coveredSameRole": true,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "couplet",
-            "start": 11,
-            "end": 33,
+            "end": 13,
             "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "refrain",
-            "start": 33,
-            "end": 48,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "refrain",
-            "start": 48,
-            "end": 66.5,
+            "start": 13,
+            "end": 31,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
-            "start": 66.5,
-            "end": 82,
+            "start": 31,
+            "end": 79,
             "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "refrain",
-            "start": 82,
-            "end": 97,
+            "start": 79,
+            "end": 96,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "pont",
-            "start": 97,
+            "start": 96,
             "end": 129,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
+            "role": "couplet",
             "start": 129,
-            "end": 159,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "pont",
-            "start": 159,
-            "end": 177.5,
-            "coveredSameRole": false,
+            "end": 175,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "refrain",
-            "start": 177.5,
-            "end": 207.5,
+            "start": 175,
+            "end": 191,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "finale",
-            "start": 207.5,
+            "start": 191,
             "end": 244.6,
             "coveredSameRole": false,
             "coveredAnyRole": true
@@ -166,26 +145,21 @@
       },
       "drops": {
         "toleranceSec": 0.5,
-        "proposed": 3,
+        "proposed": 2,
         "detected": 3,
-        "found": 3,
-        "missed": 0,
-        "false": 0,
+        "found": 0,
+        "missed": 2,
+        "false": 3,
         "matches": [
           {
-            "truth": 41.87,
-            "detected": 41.866,
-            "delta": -0.004
+            "truth": 51,
+            "detected": null,
+            "delta": null
           },
           {
-            "truth": 82.57,
-            "detected": 82.57,
-            "delta": 0
-          },
-          {
-            "truth": 138.72,
-            "detected": 138.716,
-            "delta": -0.004
+            "truth": 102,
+            "detected": null,
+            "delta": null
           }
         ],
         "detectedTimes": [
@@ -195,9 +169,9 @@
         ]
       },
       "sections": {
-        "total": 12,
-        "coveredSameRole": 6,
-        "coveredAnyRole": 12,
+        "total": 9,
+        "coveredSameRole": 4,
+        "coveredAnyRole": 9,
         "details": [
           {
             "role": "intro",
@@ -214,71 +188,50 @@
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 41,
-            "end": 55.5,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "couplet",
-            "start": 55.5,
-            "end": 68.5,
-            "coveredSameRole": true,
-            "coveredAnyRole": true
-          },
-          {
             "role": "montee",
-            "start": 68.5,
-            "end": 82,
+            "start": 41,
+            "end": 51,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 82,
-            "end": 98.5,
+            "role": "drop",
+            "start": 51,
+            "end": 68,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
-            "start": 98.5,
-            "end": 110,
+            "start": 68,
+            "end": 102,
             "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 110,
-            "end": 122.5,
+            "role": "drop",
+            "start": 102,
+            "end": 124,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "pont",
-            "start": 122.5,
-            "end": 136.5,
+            "start": 124,
+            "end": 138,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 136.5,
-            "end": 151.5,
+            "role": "montee",
+            "start": 138,
+            "end": 151,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
-            "start": 151.5,
-            "end": 176,
-            "coveredSameRole": true,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "finale",
-            "start": 176,
+            "start": 151,
             "end": 196.3,
             "coveredSameRole": true,
             "coveredAnyRole": true
@@ -320,36 +273,21 @@
       },
       "drops": {
         "toleranceSec": 0.5,
-        "proposed": 5,
+        "proposed": 2,
         "detected": 5,
-        "found": 5,
-        "missed": 0,
-        "false": 0,
+        "found": 0,
+        "missed": 2,
+        "false": 5,
         "matches": [
           {
-            "truth": 30.67,
-            "detected": 30.674,
-            "delta": 0.004
+            "truth": 98,
+            "detected": null,
+            "delta": null
           },
           {
-            "truth": 65.83,
-            "detected": 65.829,
-            "delta": -0.001
-          },
-          {
-            "truth": 100.31,
-            "detected": 100.31,
-            "delta": 0
-          },
-          {
-            "truth": 150.42,
-            "detected": 150.419,
-            "delta": -0.001
-          },
-          {
-            "truth": 216.92,
-            "detected": 216.921,
-            "delta": 0.001
+            "truth": 218,
+            "detected": null,
+            "delta": null
           }
         ],
         "detectedTimes": [
@@ -361,85 +299,71 @@
         ]
       },
       "sections": {
-        "total": 11,
-        "coveredSameRole": 1,
-        "coveredAnyRole": 11,
+        "total": 9,
+        "coveredSameRole": 3,
+        "coveredAnyRole": 9,
         "details": [
           {
             "role": "intro",
             "start": 0,
-            "end": 31.5,
-            "coveredSameRole": false,
+            "end": 13,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
-            "start": 31.5,
-            "end": 48.5,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "refrain",
-            "start": 48.5,
-            "end": 65,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "couplet",
-            "start": 65,
-            "end": 80,
-            "coveredSameRole": false,
+            "start": 13,
+            "end": 64,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "montee",
-            "start": 80,
-            "end": 98.5,
+            "start": 64,
+            "end": 81,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "refrain",
-            "start": 98.5,
+            "start": 81,
+            "end": 98,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "drop",
+            "start": 98,
             "end": 131,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "pont",
+            "role": "couplet",
             "start": 131,
-            "end": 148.5,
-            "coveredSameRole": false,
+            "end": 183,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 148.5,
-            "end": 173.5,
+            "role": "montee",
+            "start": 183,
+            "end": 201,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "pont",
-            "start": 173.5,
-            "end": 217.5,
+            "start": 201,
+            "end": 218,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "refrain",
-            "start": 217.5,
-            "end": 250.5,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "finale",
-            "start": 250.5,
+            "start": 218,
             "end": 259,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           }
         ]
@@ -482,24 +406,24 @@
         "toleranceSec": 0.5,
         "proposed": 3,
         "detected": 3,
-        "found": 3,
-        "missed": 0,
-        "false": 0,
+        "found": 1,
+        "missed": 2,
+        "false": 2,
         "matches": [
           {
-            "truth": 15.56,
-            "detected": 15.557,
-            "delta": -0.003
-          },
-          {
-            "truth": 72.1,
+            "truth": 72,
             "detected": 72.098,
-            "delta": -0.002
+            "delta": 0.098
           },
           {
-            "truth": 154.34,
-            "detected": 154.343,
-            "delta": 0.003
+            "truth": 152,
+            "detected": null,
+            "delta": null
+          },
+          {
+            "truth": 200,
+            "detected": null,
+            "delta": null
           }
         ],
         "detectedTimes": [
@@ -509,83 +433,69 @@
         ]
       },
       "sections": {
-        "total": 11,
-        "coveredSameRole": 3,
-        "coveredAnyRole": 11,
+        "total": 9,
+        "coveredSameRole": 5,
+        "coveredAnyRole": 9,
         "details": [
           {
             "role": "intro",
             "start": 0,
-            "end": 16.5,
+            "end": 15,
             "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
-            "start": 16.5,
-            "end": 32.5,
-            "coveredSameRole": false,
+            "start": 15,
+            "end": 47,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 32.5,
-            "end": 46,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "couplet",
-            "start": 46,
+            "role": "montee",
+            "start": 47,
             "end": 72,
+            "coveredSameRole": false,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "couplet",
+            "start": 72,
+            "end": 127,
             "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 72,
-            "end": 90,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "refrain",
-            "start": 90,
-            "end": 137,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
             "role": "pont",
-            "start": 137,
-            "end": 151.5,
+            "start": 127,
+            "end": 152,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "refrain",
-            "start": 151.5,
-            "end": 193.5,
+            "role": "couplet",
+            "start": 152,
+            "end": 194,
+            "coveredSameRole": true,
+            "coveredAnyRole": true
+          },
+          {
+            "role": "montee",
+            "start": 194,
+            "end": 200,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
-            "role": "pont",
-            "start": 193.5,
-            "end": 209.5,
-            "coveredSameRole": false,
-            "coveredAnyRole": true
-          },
-          {
-            "role": "refrain",
-            "start": 209.5,
-            "end": 233,
+            "role": "drop",
+            "start": 200,
+            "end": 226,
             "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "finale",
-            "start": 233,
+            "start": 226,
             "end": 246.2,
             "coveredSameRole": true,
             "coveredAnyRole": true
