@@ -13,9 +13,7 @@ import { build } from "bun";
 import { chromium, type Browser, type Page } from "playwright";
 
 import type { RenderSettings } from "../../src/types";
-import type { FrameMetric, HeadlessApi } from "./headless_browser";
-
-export type { FrameMetric };
+import type { HeadlessApi } from "./headless_browser";
 
 export interface RenderSetup {
   /** Analyse du morceau (JSON du serveur). */
@@ -28,8 +26,6 @@ export interface RenderSetup {
   quality: number;
   settings: RenderSettings;
   reducedMotion: boolean;
-  /** Remise à zéro du harnais avant chaque image (diagnostic de coût). */
-  resetHarness?: boolean;
 }
 
 export interface CompareRequest extends RenderSetup {
@@ -69,20 +65,13 @@ export interface HeadlessRenderer {
   clear(): Promise<void>;
   /** Part de pixels proches du blanc pour une série d'instants (un seul aller-retour). */
   whiteRatios(times: ReadonlyArray<number>, fps?: number): Promise<number[]>;
-  /** Part de blanc + luminance moyenne pour une série d'instants (un seul aller-retour). */
-  frameMetrics(times: ReadonlyArray<number>, fps?: number): Promise<FrameMetric[]>;
-  /** Durée de chaque image, en ms (diagnostic du coût d'un seek). */
-  timeFrames(times: ReadonlyArray<number>, fps?: number): Promise<number[]>;
-  /** Image PNG (data URL) d'un instant, pour les captures de revue. */
-  capturePng(time: number, frame?: number): Promise<string>;
   /** Empreinte + part de blanc d'une image. */
   imageStats(time: number, frame?: number): Promise<ImageStats>;
   /** Boucle de rendu in-page (mesure de coût par image). */
-  renderLoop(count: number, fps?: number, start?: number, seek?: { every: number; jump: number }): Promise<{
+  renderLoop(count: number, fps?: number, start?: number): Promise<{
     scenes: number;
     elapsedMs: number;
     perFrameMs: number;
-    seeks: number;
   }>;
   /** Compare rendu continu puis seek, sur deux canvas distincts. */
   compareContinuousSeek(payload: CompareRequest): Promise<CompareResult>;
@@ -161,26 +150,11 @@ export async function createHeadlessRenderer(): Promise<HeadlessRenderer> {
     async whiteRatios(times, fps = 10) {
       return invoke("whiteRatios", { times: [...times], fps });
     },
-    async frameMetrics(times, fps = 10) {
-      return invoke("frameMetrics", { times: [...times], fps });
-    },
-    async timeFrames(times, fps = 10) {
-      return invoke("timeFrames", { times: [...times], fps });
-    },
-    async capturePng(time, frame = Math.round(time * 60)) {
-      return invoke("capturePng", { time, frame });
-    },
     async imageStats(time, frame = Math.round(time * 10)) {
       return invoke("imageStats", { time, frame });
     },
-    async renderLoop(count, fps = 60, start = 0, seek) {
-      return invoke("renderLoop", {
-        count,
-        fps,
-        start,
-        seekEvery: seek?.every,
-        seekJump: seek?.jump,
-      });
+    async renderLoop(count, fps = 60, start = 0) {
+      return invoke("renderLoop", { count, fps, start });
     },
     async compareContinuousSeek(payload) {
       return invoke("compareContinuousSeek", payload);

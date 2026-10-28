@@ -676,36 +676,6 @@ function signatureKey(signature: DropSignature): string {
 }
 
 /**
- * Nombre de composantes qui diffèrent entre deux signatures : lyres, barres,
- * blinders, teinte.
- *
- * Une simple unicité ne suffit pas : deux drops peuvent ne changer que d'un
- * seul paramètre et se lire comme le même geste. On exige donc au moins deux
- * composantes différentes entre deux drops consécutifs (voir la boucle
- * d'`attempt` dans `buildShowPlan`).
- */
-function signatureDistance(left: DropSignature, right: DropSignature): number {
-  return (
-    (left.lyres !== right.lyres ? 1 : 0) +
-    (left.barres !== right.barres ? 1 : 0) +
-    (left.blinders !== right.blinders ? 1 : 0) +
-    (left.hue !== right.hue ? 1 : 0)
-  );
-}
-
-/**
- * Force minimale pour qu'un impact déploie le pont concert.
- *
- * Calibré sur le corpus réel (vague 2) : le p67 des forces de drop vaut 1,00,
- * mais treize drops s'y agglutinent — un simple seuil sur la force rendrait
- * encore le pont majoritaire. 0,98 est la force du climax le plus faible du
- * corpus (Shine On). Le seuil ne décide donc que des morceaux à un seul drop :
- * dès qu'un morceau a plusieurs impacts, seul son climax peut prendre le pont
- * (voir `buildShowPlan`).
- */
-export const DROP_PONT_STRENGTH_THRESHOLD = 0.98;
-
-/**
  * Saturation d'une humeur. Le spectacle doit éclairer une salle : les passages
  * forts sont franchement saturés, les passages calmes se permettent une couleur
  * plus retenue (mais jamais grise — c'est une soirée, pas un aquarium).
@@ -1229,18 +1199,6 @@ export function buildShowPlan(
     segments.push({ event, start, end, caractere: caractereAt(analysis, start, end), section, group });
   }
 
-  // Forces des impacts du morceau, dans l'ordre du plan. Un impact est toujours
-  // la fin d'une montée : c'est le seul événement qui donne le rôle `drop`.
-  // On les connaît avant la boucle pour pouvoir désigner le climax du morceau
-  // (dernier drop à la force maximale), et donc lui réserver le pont concert.
-  const dropStrengths = reduced
-    ? []
-    : segments
-        .filter((segment) => segment.event.reason === "build")
-        .map((segment) => clamp01(segment.event.weight));
-  const dropClimaxRank =
-    dropStrengths.length > 0 ? dropStrengths.lastIndexOf(Math.max(...dropStrengths)) : -1;
-
   // L'humeur se calibre sur la distribution d'énergie **du morceau** : le rang
   // d'une scène décide, pas un seuil absolu tombé au milieu d'une zone peuplée.
   // Le plancher absolu empêche un morceau calme de devenir explosif à son pic.
@@ -1274,9 +1232,6 @@ export function buildShowPlan(
   // a fortiori rapprochés, ne rejouent pas la même combinaison.
   let dropRank = 0;
   const usedDropSignatures = new Set<string>();
-  // Signature du drop précédent du morceau : deux impacts consécutifs doivent
-  // différer sur au moins deux composantes, pas seulement être uniques.
-  let previousDropSignature: DropSignature | undefined;
 
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index]!;
@@ -1301,29 +1256,16 @@ export function buildShowPlan(
     let signature: DropSignature | undefined;
     if (forceConcert) {
       const rank = dropRank;
-      // Deux drops ne partagent jamais leur signature dans un même plan, et
-      // deux drops consécutifs doivent différer sur au moins deux composantes.
-      // On parcourt les `attempt` dans l'ordre : la première combinaison
-      // inutilisée qui respecte la distance est retenue, sinon la première
-      // inutilisée (le plan reste défini). Aucun état global : la suite ne
-      // dépend que de la graine, du rang, de la force et du drop précédent.
-      let chosen: DropSignature | undefined;
-      let fallback: DropSignature | undefined;
-      for (let attempt = 0; attempt < 54; attempt += 1) {
-        const candidate = dropSignature(seed, rank, strength, attempt);
-        if (usedDropSignatures.has(signatureKey(candidate))) continue;
-        if (fallback === undefined) fallback = candidate;
-        if (
-          previousDropSignature === undefined ||
-          signatureDistance(candidate, previousDropSignature) >= 2
-        ) {
-          chosen = candidate;
-          break;
-        }
+      signature = dropSignature(seed, rank, strength);
+      // Deux drops ne partagent jamais leur signature dans un même plan : la
+      // contrainte des 15 s est couverte, et un morceau très long épuise les
+      // 54 combinaisons avant de répéter. On décale la combinaison d'un cran,
+      // de façon déterministe.
+      for (let attempt = 1; attempt < 54; attempt += 1) {
+        if (!usedDropSignatures.has(signatureKey(signature))) break;
+        signature = dropSignature(seed, rank, strength, attempt);
       }
-      signature = chosen ?? fallback ?? dropSignature(seed, rank, strength);
       usedDropSignatures.add(signatureKey(signature));
-      previousDropSignature = signature;
       dropRank += 1;
     }
     let family: FamilyId;
@@ -1332,29 +1274,14 @@ export function buildShowPlan(
     if (previousFamily !== undefined) excluded.push(previousFamily);
     if (beforePreviousFamily !== undefined) excluded.push(beforePreviousFamily);
     if (forceConcert) {
-      // Le plateau complet est réservé au tiers supérieur des forces de drop :
-      // dès qu'un morceau a plusieurs impacts, seul son climax y a droit, ce qui
-      // garde la scénographie maximale là où elle se remarque. Le climax fait
-      // exception au seuil : c'est le sommet du morceau, même si sa montée est
-      // plus douce que celle d'un autre titre. Les autres impacts alternent
-      // lyres suspendues et barres LED, en évitant la famille de la scène
-      // précédente.
-      const isClimax = dropRank - 1 === dropClimaxRank;
-      const pont =
-        dropStrengths.length >= 2
-          ? isClimax
-          : strength >= DROP_PONT_STRENGTH_THRESHOLD;
-      if (pont) {
-        family = "pont-concert";
-      } else {
-        const alternated: FamilyId = dropRank % 2 === 1 ? "lyres-suspendues" : "barres-led";
-        family =
-          alternated === previousFamily
-            ? alternated === "lyres-suspendues"
-              ? "barres-led"
-              : "lyres-suspendues"
-            : alternated;
-      }
+      // Le plateau complet est réservé aux vrais impacts ; une montée plus
+      // douce alterne lyres suspendues et barres LED.
+      family =
+        strength >= 0.6
+          ? "pont-concert"
+          : dropRank % 2 === 1
+            ? "lyres-suspendues"
+            : "barres-led";
     } else if (cachedFamily !== undefined) {
       // Un groupe est un matériau musical qui revient : il garde sa famille.
       family = cachedFamily;
