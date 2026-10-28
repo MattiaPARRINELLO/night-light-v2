@@ -98,6 +98,7 @@ def write_manifest(path: Path, entries: list[dict]) -> None:
                 "id": int(entry["id"]),
                 "meter_attendu": int(entry.get("meter_attendu", 4)),
                 "profil": str(entry["profil"]),
+                **({"reference": True} if entry.get("reference") is True else {}),
                 "titre": str(entry["titre"]),
             }
             for entry in entries

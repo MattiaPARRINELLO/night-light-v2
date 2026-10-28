@@ -15,26 +15,24 @@ interface Entry {
   profil: string;
   durée: number;
   meter_attendu: 3 | 4;
+  reference?: true;
 }
 
 const MANIFEST = join(import.meta.dir, "../support/real_corpus.json");
 const entries = JSON.parse(readFileSync(MANIFEST, "utf8")) as Entry[];
 
 describe("manifeste du corpus réel", () => {
-  test("8 à 10 morceaux, champs exacts, identifiants uniques", () => {
+  test("8 à 14 morceaux, champs exacts, identifiants uniques", () => {
     expect(entries.length).toBeGreaterThanOrEqual(8);
-    expect(entries.length).toBeLessThanOrEqual(10);
+    expect(entries.length).toBeLessThanOrEqual(14);
     const ids = new Set(entries.map((entry) => entry.id));
     expect(ids.size).toBe(entries.length);
     for (const entry of entries) {
-      expect(Object.keys(entry).sort()).toEqual([
-        "artiste",
-        "durée",
-        "id",
-        "meter_attendu",
-        "profil",
-        "titre",
-      ]);
+      expect(Object.keys(entry).sort()).toEqual(
+        entry.reference === true
+          ? ["artiste", "durée", "id", "meter_attendu", "profil", "reference", "titre"]
+          : ["artiste", "durée", "id", "meter_attendu", "profil", "titre"],
+      );
       expect(Number.isInteger(entry.id)).toBe(true);
       expect(entry.id).toBeGreaterThan(0);
       expect(entry.titre.length).toBeGreaterThan(0);
@@ -59,6 +57,17 @@ describe("manifeste du corpus réel", () => {
     ]) {
       expect(profiles).toContain(expected);
     }
+  });
+
+  test("quatre titres de référence rap sont marqués", () => {
+    const references = entries.filter((entry) => entry.reference === true);
+    expect(references.map((entry) => `${entry.artiste} — ${entry.titre}`).sort()).toEqual([
+      "Bigflo & Oli — Focus",
+      "Bigflo & Oli — Karma",
+      "Bigflo & Oli — Minimum",
+      "Laylow — Gogo",
+    ]);
+    for (const entry of references) expect(entry.profil).toContain("rap");
   });
 
   test("aucun chemin local ni secret dans le manifeste", () => {

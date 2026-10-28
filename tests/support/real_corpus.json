@@ -78,5 +78,41 @@
     "meter_attendu": 4,
     "profil": "rap masterisé sans montée",
     "titre": "TRINITYVILLE"
+  },
+  {
+    "artiste": "Laylow",
+    "durée": 244.6,
+    "id": 1794963897,
+    "meter_attendu": 4,
+    "profil": "rap (référence)",
+    "reference": true,
+    "titre": "Gogo"
+  },
+  {
+    "artiste": "Bigflo & Oli",
+    "durée": 196.3,
+    "id": 3884482841,
+    "meter_attendu": 4,
+    "profil": "rap (référence)",
+    "reference": true,
+    "titre": "Minimum"
+  },
+  {
+    "artiste": "Bigflo & Oli",
+    "durée": 259.0,
+    "id": 3884482861,
+    "meter_attendu": 4,
+    "profil": "rap (référence)",
+    "reference": true,
+    "titre": "Karma"
+  },
+  {
+    "artiste": "Bigflo & Oli",
+    "durée": 246.2,
+    "id": 3884482881,
+    "meter_attendu": 4,
+    "profil": "rap (référence)",
+    "reference": true,
+    "titre": "Focus"
   }
 ]
