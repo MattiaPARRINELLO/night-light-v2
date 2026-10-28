@@ -147,6 +147,96 @@ function imageStats(payload: { time: number; frame: number }): {
   };
 }
 
+/**
+ * Capture 1080p d'une image : PNG (data URL) et mesures d'éclairage.
+ *
+ * - luminance : moyenne Rec. 709, 0..1 ;
+ * - part de blanc : définition de `saturation.ts` (luminance > 0,92 et
+ *   saturation < 0,15) ;
+ * - centre/bords : luminance moyenne du cadre central 50 % divisée par celle
+ *   des bords (0 quand les bords sont noirs) ;
+ * - teintes dominantes : histogramme 12 × 30° pondéré par la saturation, une
+ *   teinte compte si elle porte au moins 8 % de la couleur de l'image.
+ */
+function capture(payload: { time: number; frame: number }): {
+  png: string;
+  width: number;
+  height: number;
+  luminanceMean: number;
+  whiteRatio: number;
+  centerEdgeRatio: number;
+  dominantHues: number;
+  hueBuckets: Array<{ hue: number; share: number }>;
+} {
+  renderAt(payload.time, payload.frame);
+  if (session === null) throw new Error("setup() d'abord");
+  const canvas = session.canvas;
+  const width = canvas.width;
+  const height = canvas.height;
+  const data = pixels(session);
+  const white = whitePixels(data);
+  let luminanceSum = 0;
+  let centerSum = 0;
+  let centerCount = 0;
+  let borderSum = 0;
+  let borderCount = 0;
+  const buckets = Array.from({ length: 12 }, () => 0);
+  let chromatic = 0;
+  const x0 = width / 4;
+  const x1 = (width * 3) / 4;
+  const y0 = height / 4;
+  const y1 = (height * 3) / 4;
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    const index = pixel * 4;
+    const r = (data[index] ?? 0) / 255;
+    const g = (data[index + 1] ?? 0) / 255;
+    const b = (data[index + 2] ?? 0) / 255;
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    luminanceSum += luminance;
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    if (x >= x0 && x < x1 && y >= y0 && y < y1) {
+      centerSum += luminance;
+      centerCount += 1;
+    } else {
+      borderSum += luminance;
+      borderCount += 1;
+    }
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    if (saturation < 0.2 || luminance < 0.05) continue;
+    let hue: number;
+    if (max === min) hue = 0;
+    else if (max === r) hue = ((g - b) / (max - min)) % 6;
+    else if (max === g) hue = (b - r) / (max - min) + 2;
+    else hue = (r - g) / (max - min) + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+    const bucket = Math.min(11, Math.floor(hue / 30));
+    const weight = saturation * luminance;
+    buckets[bucket] = (buckets[bucket] ?? 0) + weight;
+    chromatic += weight;
+  }
+  const total = width * height;
+  const hueBuckets = buckets.map((weight, index) => ({
+    hue: index * 30,
+    share: chromatic === 0 ? 0 : weight / chromatic,
+  }));
+  const centerMean = centerCount === 0 ? 0 : centerSum / centerCount;
+  const borderMean = borderCount === 0 ? 0 : borderSum / borderCount;
+  return {
+    png: canvas.toDataURL("image/png"),
+    width,
+    height,
+    luminanceMean: total === 0 ? 0 : luminanceSum / total,
+    whiteRatio: white.ratio,
+    centerEdgeRatio: borderMean === 0 ? 0 : centerMean / borderMean,
+    dominantHues: hueBuckets.filter((bucket) => bucket.share >= 0.08).length,
+    hueBuckets,
+  };
+}
+
 /** Boucle de rendu in-page, pour mesurer un coût par image sans aller-retour. */
 function renderLoop(payload: {
   count: number;
@@ -275,6 +365,7 @@ export interface HeadlessApi {
   whiteRatioAt: typeof whiteRatioAt;
   whiteRatios: typeof whiteRatios;
   imageStats: typeof imageStats;
+  capture: typeof capture;
   renderLoop: typeof renderLoop;
   compareContinuousSeek: typeof compareContinuousSeek;
 }
@@ -286,6 +377,7 @@ export interface HeadlessApi {
   whiteRatioAt,
   whiteRatios,
   imageStats,
+  capture,
   renderLoop,
   compareContinuousSeek,
 };

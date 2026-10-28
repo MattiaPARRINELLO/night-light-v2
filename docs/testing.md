@@ -98,6 +98,22 @@ si une toile devient disponible :
 Aucun fichier `tests/golden/` n'est créé tant que ces conditions ne sont pas
 réunies.
 
+## Bench rap de référence
+
+Quatre titres rap sont marqués `"reference": true` dans
+`tests/support/real_corpus.json` (Bigflo & Oli « Minimum », « Focus »,
+« Karma » ; Laylow « Gogo »). Leur vérité terrain proposée vit dans
+`tests/ground-truth/` (format et procédure de correction dans son README).
+
+```bash
+uv run python tools/real_corpus.py      # audio + analyses (hors git)
+bun run eval:ref                        # BPM, drops, sections, rôles
+bun run shots:ref                       # captures 1080p + mesures d'éclairage
+```
+
+`eval:ref` compare les drops avec ±0,5 s. Aucun de ces outils ne tourne en CI :
+ils exigent le cache audio Deezer et les analyses réelles.
+
 ## Outillage manuel (hors CI)
 
 Trois scripts servent à instrumenter à la main ; aucun ne tourne en CI.
