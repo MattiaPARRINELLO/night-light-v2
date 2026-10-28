@@ -29,6 +29,3 @@ tools/review/vague2-rendu/after-captures/
 
 # Revue vague 2 : captures lourdes (~6,9 Mo), régénérées par la commande du rapport.
 tools/review/vague2/captures/
-
-# Revue vague 3 : captures lourdes, régénérées par le script décrit dans le rapport.
-tools/review/vague3/captures/

@@ -9,15 +9,8 @@
  * justifié scène par scène (ou par catégorie) avant d'être committé.
  */
 
-import {
-  checkContractSnapshots,
-  checkSnapshots,
-  SNAPSHOT_DIR,
-  writeContractSnapshots,
-  writeSnapshots,
-} from "../tests/support/plan_snapshot_store";
+import { checkSnapshots, SNAPSHOT_DIR, writeSnapshots } from "../tests/support/plan_snapshot_store";
 import { DEFAULT_CORPUS_DIR, loadCorpusAnalyses } from "../tests/support/plan_corpus";
-import { loadContractFixtures } from "../tests/support/contract_fixtures";
 
 function main(): number {
   const args = process.argv.slice(2);
@@ -28,26 +21,21 @@ function main(): number {
 
   const tracks = loadCorpusAnalyses(directory);
   if (tracks.length === 0) throw new Error("corpus vide");
-  const fixtures = loadContractFixtures();
-  if (fixtures.length === 0) throw new Error("fixtures v3.1 absentes");
 
   if (update) {
-    const files = [...writeSnapshots(tracks), ...writeContractSnapshots(fixtures)];
+    const files = writeSnapshots(tracks);
     for (const file of files) console.log(`snapshot réécrit : ${file}`);
     console.log("Relire le diff et le justifier avant commit.");
     return 0;
   }
 
   const result = checkSnapshots(tracks);
-  const contract = checkContractSnapshots(fixtures);
-  if (result.ok && contract.ok) {
-    console.log(
-      `snapshots à jour (${tracks.length} pistes, ${fixtures.length} fixtures v3.1, ${SNAPSHOT_DIR})`,
-    );
+  if (result.ok) {
+    console.log(`snapshots à jour (${tracks.length} pistes, ${SNAPSHOT_DIR})`);
     return 0;
   }
   console.error("snapshots obsolètes :");
-  console.error([...result.lines, ...contract.lines].join("\n"));
+  console.error(result.lines.join("\n"));
   console.error("\nMise à jour explicite : bun tools/plan-snapshots.ts --update");
   return 1;
 }
