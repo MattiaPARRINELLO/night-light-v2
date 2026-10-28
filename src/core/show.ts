@@ -110,11 +110,12 @@ export interface Scene {
  * quand aucun événement musical (section, impact, cycle retenu) ne tombe dans
  * `MAX_SCENE_SPAN`. `finale` marque la dernière scène non terminée par un drop.
  */
-export type SceneReason = "section" | "build" | "cycle" | "beat" | "ouverture" | "finale";
+export type SceneReason = "section" | "build" | "drop" | "cycle" | "beat" | "ouverture" | "finale";
 
 export const SCENE_REASON_LABELS: Record<SceneReason, string> = {
   section: "nouveau passage",
   build: "impact de la montée",
+  drop: "reprise de la production",
   cycle: "retour du cycle",
   beat: "nouvelle mesure",
   ouverture: "début du morceau",
@@ -626,7 +627,7 @@ function roleFor(
   index: number,
   dramaturgy: boolean,
 ): SceneRole {
-  if (reason === "build") return "drop";
+  if (reason === "build" || reason === "drop") return "drop";
   if (dramaturgy) {
     if (section?.kind === "intro") return "intro";
     if (section?.kind === "refrain") return "refrain";
@@ -823,7 +824,7 @@ export function moodBranchFor(
   thresholds: MoodThresholds = DEFAULT_MOOD_THRESHOLDS,
   dramaturgy = false,
 ): MoodBranch {
-  if (reason === "build") return "build-explosif";
+  if (reason === "build" || reason === "drop") return "build-explosif";
   if (dramaturgy && !reduced && section?.kind === "refrain") return "refrain-explosif";
   const label = section?.label ?? "intense";
   if (dramaturgy && label === "silence") return "silence-sombre";
@@ -874,6 +875,7 @@ export function resolveMoods(
   const adjusted = Array.from({ length: base.length }, () => false);
   const forced = (segment: MoodSegment) =>
     segment.reason === "build" ||
+    segment.reason === "drop" ||
     (dramaturgy && !reduced && segment.section?.kind === "refrain");
   for (let index = 1; index < segments.length; index += 1) {
     const current = segments[index]!;
@@ -974,9 +976,20 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
     fixed.push({ time: section.start, reason: "section", weight: section.label === "silence" ? 0.4 : 1 });
   }
 
-  // Fin de chaque montée : c'est l'impact, l'événement le plus spectaculaire.
-  for (const build of analysis.builds) {
-    fixed.push({ time: build.end, reason: "build", weight: build.strength });
+  // Reprises de production détectées par l'analyseur (creux puis retour qui
+  // tient). Elles passent avant les fins de montée : sur le rap, la montée se
+  // termine souvent un ou deux temps avant la vraie reprise.
+  for (const drop of analysis.drops ?? []) {
+    fixed.push({ time: drop.time, reason: "drop", weight: drop.strength });
+  }
+
+  // Les montées ne servent d'impact que si l'analyseur ne fournit pas de
+  // reprise de production : sinon elles placent l'impact au début de la
+  // montée, ou 1,5 à 2 s après la reprise (constat R1).
+  if ((analysis.drops?.length ?? 0) === 0) {
+    for (const build of analysis.builds) {
+      fixed.push({ time: build.end, reason: "build", weight: build.strength });
+    }
   }
 
   const cycles: Array<{ time: number; reason: SceneReason; weight: number }> = [];
@@ -994,7 +1007,7 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
     const previous = keptFixed[keptFixed.length - 1];
     if (previous !== undefined && event.time - previous.time < MIN_SCENE_SPAN) {
       const score = (candidate: { weight: number; reason: SceneReason }) =>
-        candidate.weight * (candidate.reason === "build" ? 1.25 : 1);
+        candidate.weight * (candidate.reason === "drop" ? 2.6 : candidate.reason === "build" ? 1.25 : 1);
       if (score(event) > score(previous)) keptFixed[keptFixed.length - 1] = event;
       continue;
     }
@@ -1028,7 +1041,7 @@ function sceneBoundaries(analysis: Analysis): Array<{ time: number; reason: Scen
       // Les impacts de montée l'emportent : c'est le moment qu'on remarque le
       // plus dans un morceau, il mérite son changement d'ambiance.
       const score = (candidate: { weight: number; reason: SceneReason }) =>
-        candidate.weight * (candidate.reason === "build" ? 1.25 : 1);
+        candidate.weight * (candidate.reason === "drop" ? 2.6 : candidate.reason === "build" ? 1.25 : 1);
       if (score(event) > score(previous)) {
         merged[merged.length - 1] = { time: event.time, reason: event.reason, weight: event.weight };
       }
@@ -1252,7 +1265,8 @@ export function buildShowPlan(
     // resterait un pont concert.
     const forceConcert = !reduced && role === "drop";
     // Force de la montée qui a produit ce drop (0 pour un drop hors build).
-    const strength = event.reason === "build" ? clamp01(event.weight) : 0;
+    const strength =
+      event.reason === "build" || event.reason === "drop" ? clamp01(event.weight) : 0;
     let signature: DropSignature | undefined;
     if (forceConcert) {
       const rank = dropRank;
@@ -1389,7 +1403,14 @@ export function buildShowPlan(
         lightness: paletteLightness(mood),
       },
       intensity: clamp01(moodIntensity(mood, caractere.energy)),
-      fadeIn: index === 0 ? 0.7 : event.weight >= 1 ? 1.2 : 0.7,
+      fadeIn:
+        event.reason === "drop"
+          ? 0.05
+          : index === 0
+            ? 0.7
+            : event.weight >= 1
+              ? 1.2
+              : 0.7,
       fadeOut: 0.9,
       mood,
       role,

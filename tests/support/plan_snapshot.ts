@@ -148,7 +148,7 @@ export function buildSnapshot(
 ): SnapshotFile {
   const out: Record<string, SnapshotTrack> = {};
   for (const track of tracks) {
-    out[track.name] = serializePlan(buildShowPlan(track.analysis, false));
+    out[track.name] = serializePlan(buildShowPlan(track.analysis, false, undefined, { dramaturgy: true }));
   }
   return { version: SNAPSHOT_VERSION, tracks: out };
 }
@@ -158,7 +158,7 @@ export function buildReducedSnapshot(
 ): SnapshotFile {
   const out: Record<string, SnapshotTrack> = {};
   for (const track of tracks) {
-    out[track.name] = serializePlan(buildShowPlan(track.analysis, true));
+    out[track.name] = serializePlan(buildShowPlan(track.analysis, true, undefined, { dramaturgy: true }));
   }
   return { version: SNAPSHOT_VERSION, tracks: out };
 }

@@ -31,7 +31,7 @@ export function installShow(Target: { prototype: App }): void {
   /** Construit le plan en mesurant le temps réellement passé dans `buildShowPlan`. */
   Target.prototype.buildPlan = function (this: App, analysis: Analysis, seed?: number): ShowPlan {
     const startedAt = performance.now();
-    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed);
+    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed, { dramaturgy: true });
     const durationMs = performance.now() - startedAt;
     this.debug("show", "plan de spectacle construit", {
       dureeMs: Number(durationMs.toFixed(2)),

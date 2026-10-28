@@ -17,6 +17,7 @@
   ],
   "drops": [
     { "time": 51.0, "confidence": 0.9, "source": "proprietaire" },
-    { "time": 102.0, "confidence": 0.9, "source": "proprietaire" }
+    { "time": 102.0, "confidence": 0.9, "source": "proprietaire" },
+    { "time": 138.0, "confidence": 0.8, "source": "proprietaire" }
   ]
 }

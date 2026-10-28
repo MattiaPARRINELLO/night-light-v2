@@ -1,0 +1,106 @@
+"""Structure locale et reprises de production sur des courbes synthétiques."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from server.structure import detect_structure  # noqa: E402
+
+
+def make_curves(duration: float = 120.0) -> dict[str, np.ndarray]:
+    rate = 20.0
+    times = np.arange(0.0, duration, 1.0 / rate)
+    beats = np.arange(0.0, duration, 0.5)
+    energy = np.full_like(times, 0.15)
+    bass = np.full_like(times, 0.05)
+    for start, end, value, low in [
+        (20.0, 50.0, 0.80, 0.65),
+        (60.0, 100.0, 0.85, 0.70),
+    ]:
+        window = (times >= start) & (times < end)
+        energy[window] = value
+        bass[window] = low
+    onsets = np.arange(0.0, duration, 2.0)
+    chroma = np.ones((12, times.size))
+    mfcc = np.ones((13, times.size))
+    # Le timbre du bloc final diffère du premier : nouvelle production.
+    chroma[:, times >= 60.0] = 2.0
+    mfcc[:, times >= 60.0] = 3.0
+    return {
+        "times": times,
+        "beats": beats,
+        "energy": energy,
+        "bass": bass,
+        "onsets": onsets,
+        "chroma": chroma,
+        "mfcc": mfcc,
+        "duration": duration,
+    }
+
+
+def test_reprise_apres_creux_et_pas_la_premiere_exposition() -> None:
+    data = make_curves()
+    structure = detect_structure(
+        [],
+        [],
+        data["times"],
+        data["energy"],
+        data["bass"],
+        data["beats"],
+        data["onsets"],
+        data["chroma"],
+        data["mfcc"],
+        data["duration"],
+    )
+    starts = [drop["time"] for drop in structure.drops]
+    assert starts, "la reprise de 60 s doit être détectée"
+    assert min(starts, key=lambda time: abs(time - 60.0)) < 62.0
+    # Le premier bloc plein est l'exposition : ce n'est pas une reprise.
+    assert all(abs(time - 20.0) > 2.0 for time in starts)
+
+
+def test_sections_couvrent_le_morceau_sans_trou() -> None:
+    data = make_curves()
+    structure = detect_structure(
+        [],
+        [],
+        data["times"],
+        data["energy"],
+        data["bass"],
+        data["beats"],
+        data["onsets"],
+        data["chroma"],
+        data["mfcc"],
+        data["duration"],
+    )
+    assert structure.sections
+    assert structure.sections[0]["start"] == 0.0
+    assert structure.sections[-1]["end"] == data["duration"]
+    for previous, following in zip(structure.sections, structure.sections[1:], strict=False):
+        assert previous["end"] == following["start"]
+
+
+def test_energie_constante_ne_produit_aucun_drop() -> None:
+    duration = 90.0
+    rate = 20.0
+    times = np.arange(0.0, duration, 1.0 / rate)
+    energy = np.full_like(times, 0.6)
+    bass = np.full_like(times, 0.5)
+    structure = detect_structure(
+        [],
+        [],
+        times,
+        energy,
+        bass,
+        np.arange(0.0, duration, 0.5),
+        np.arange(0.0, duration, 2.0),
+        np.ones((12, times.size)),
+        np.ones((13, times.size)),
+        duration,
+    )
+    assert structure.drops == []

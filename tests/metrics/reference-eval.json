@@ -1,5 +1,9 @@
 {
-  "toleranceSec": 0.5,
+  "dropTolerancesSec": [
+    0.5,
+    1.5
+  ],
+  "refrainToleranceSec": 2,
   "tracks": [
     {
       "titre": "Gogo",
@@ -13,39 +17,136 @@
         "relativeError": 2.1,
         "confidence": 0.4
       },
-      "drops": {
-        "toleranceSec": 0.5,
+      "drops": [
+        {
+          "toleranceSec": 0.5,
+          "proposed": 3,
+          "detected": 3,
+          "found": 0,
+          "missed": 3,
+          "false": 3,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "meanSignedDelta": null,
+          "matches": [
+            {
+              "truth": 79,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 129,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 175,
+              "detected": null,
+              "delta": null
+            }
+          ],
+          "detectedTimes": [
+            79.621,
+            127.594,
+            176.123
+          ]
+        },
+        {
+          "toleranceSec": 1.5,
+          "proposed": 3,
+          "detected": 3,
+          "found": 3,
+          "missed": 0,
+          "false": 0,
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "meanSignedDelta": 0.113,
+          "matches": [
+            {
+              "truth": 79,
+              "detected": 79.621,
+              "delta": 0.621
+            },
+            {
+              "truth": 129,
+              "detected": 127.594,
+              "delta": -1.406
+            },
+            {
+              "truth": 175,
+              "detected": 176.123,
+              "delta": 1.123
+            }
+          ],
+          "detectedTimes": [
+            79.621,
+            127.594,
+            176.123
+          ]
+        }
+      ],
+      "refrains": {
+        "toleranceSec": 2,
         "proposed": 3,
-        "detected": 3,
-        "found": 0,
-        "missed": 3,
-        "false": 3,
+        "found": 2,
+        "missed": 1,
+        "recall": 0.667,
         "matches": [
           {
-            "truth": 79,
+            "truth": 13,
             "detected": null,
             "delta": null
           },
           {
-            "truth": 129,
-            "detected": null,
-            "delta": null
+            "truth": 79,
+            "detected": 79.621,
+            "delta": 0.621
           },
           {
             "truth": 175,
-            "detected": null,
-            "delta": null
+            "detected": 176.123,
+            "delta": 1.123
           }
         ],
         "detectedTimes": [
-          26.633,
-          37.616,
-          130.218
+          31.649,
+          79.621,
+          89.118,
+          127.594,
+          139.622,
+          176.123,
+          192.122,
+          215.319
         ]
       },
+      "lighting": [
+        {
+          "truth": 79,
+          "detected": 79.621,
+          "offset": 0.1,
+          "luminanceMean": 0.078,
+          "whiteRatio": 0
+        },
+        {
+          "truth": 129,
+          "detected": 127.594,
+          "offset": 0.1,
+          "luminanceMean": 0.088,
+          "whiteRatio": 0
+        },
+        {
+          "truth": 175,
+          "detected": 176.123,
+          "offset": 0.1,
+          "luminanceMean": 0.153,
+          "whiteRatio": 0
+        }
+      ],
       "sections": {
         "total": 8,
-        "coveredSameRole": 3,
+        "coveredSameRole": 2,
         "coveredAnyRole": 8,
         "details": [
           {
@@ -87,7 +188,7 @@
             "role": "couplet",
             "start": 129,
             "end": 175,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
@@ -107,28 +208,27 @@
         ]
       },
       "roles": {
-        "intro": 1,
-        "couplet": 16,
+        "intro": 2,
+        "montee": 1,
+        "refrain": 6,
+        "couplet": 8,
         "drop": 3,
         "finale": 1
       },
       "families": {
-        "spiral": 2,
+        "spiral": 1,
         "pluie": 1,
-        "lyres-suspendues": 1,
-        "vortex": 1,
-        "pont-concert": 2,
-        "parade": 2,
-        "rings": 1,
-        "spots": 2,
-        "mirror": 2,
+        "barres-led": 6,
+        "lyres-suspendues": 2,
+        "parade": 1,
+        "rings": 2,
+        "spots": 1,
         "tunnel": 1,
         "particles": 1,
-        "beams": 1,
+        "pont-concert": 2,
+        "mirror": 1,
         "burst": 1,
-        "mandala": 1,
-        "crossfire": 1,
-        "couronne": 1
+        "crossfire": 1
       }
     },
     {
@@ -143,34 +243,101 @@
         "relativeError": 0.5,
         "confidence": 0.4
       },
-      "drops": {
-        "toleranceSec": 0.5,
-        "proposed": 2,
-        "detected": 3,
+      "drops": [
+        {
+          "toleranceSec": 0.5,
+          "proposed": 3,
+          "detected": 2,
+          "found": 0,
+          "missed": 3,
+          "false": 2,
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "meanSignedDelta": null,
+          "matches": [
+            {
+              "truth": 51,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 102,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 138,
+              "detected": null,
+              "delta": null
+            }
+          ],
+          "detectedTimes": [
+            41.03,
+            136.998
+          ]
+        },
+        {
+          "toleranceSec": 1.5,
+          "proposed": 3,
+          "detected": 2,
+          "found": 1,
+          "missed": 2,
+          "false": 1,
+          "precision": 0.5,
+          "recall": 0.333,
+          "f1": 0.4,
+          "meanSignedDelta": -1.002,
+          "matches": [
+            {
+              "truth": 51,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 102,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 138,
+              "detected": 136.998,
+              "delta": -1.002
+            }
+          ],
+          "detectedTimes": [
+            41.03,
+            136.998
+          ]
+        }
+      ],
+      "refrains": {
+        "toleranceSec": 2,
+        "proposed": 0,
         "found": 0,
-        "missed": 2,
-        "false": 3,
-        "matches": [
-          {
-            "truth": 51,
-            "detected": null,
-            "delta": null
-          },
-          {
-            "truth": 102,
-            "detected": null,
-            "delta": null
-          }
-        ],
+        "missed": 0,
+        "recall": 0,
+        "matches": [],
         "detectedTimes": [
-          41.866,
-          82.57,
-          138.716
+          41.03,
+          82.593,
+          100.589,
+          136.998,
+          154.157
         ]
       },
+      "lighting": [
+        {
+          "truth": 138,
+          "detected": 136.998,
+          "offset": 0.1,
+          "luminanceMean": 0.128,
+          "whiteRatio": 0
+        }
+      ],
       "sections": {
         "total": 9,
-        "coveredSameRole": 4,
+        "coveredSameRole": 2,
         "coveredAnyRole": 9,
         "details": [
           {
@@ -205,7 +372,7 @@
             "role": "couplet",
             "start": 68,
             "end": 102,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
@@ -233,30 +400,29 @@
             "role": "couplet",
             "start": 151,
             "end": 196.3,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           }
         ]
       },
       "roles": {
-        "intro": 1,
-        "couplet": 12,
-        "drop": 3,
+        "intro": 2,
+        "couplet": 4,
+        "drop": 2,
+        "refrain": 9,
         "finale": 1
       },
       "families": {
         "waves": 1,
         "particles": 1,
-        "spiral": 2,
-        "pont-concert": 3,
-        "rings": 1,
+        "spiral": 1,
+        "pont-concert": 2,
+        "lyres-suspendues": 4,
         "shutters": 1,
-        "mirror": 2,
-        "spots": 1,
-        "parade": 1,
-        "beams": 2,
-        "tunnel": 1,
-        "lyres-suspendues": 1
+        "mirror": 1,
+        "barres-led": 5,
+        "rings": 1,
+        "treillis": 1
       }
     },
     {
@@ -271,33 +437,110 @@
         "relativeError": 1.8,
         "confidence": 0.4
       },
-      "drops": {
-        "toleranceSec": 0.5,
+      "drops": [
+        {
+          "toleranceSec": 0.5,
+          "proposed": 2,
+          "detected": 3,
+          "found": 1,
+          "missed": 1,
+          "false": 2,
+          "precision": 0.333,
+          "recall": 0.5,
+          "f1": 0.4,
+          "meanSignedDelta": -0.035,
+          "matches": [
+            {
+              "truth": 98,
+              "detected": 97.965,
+              "delta": -0.035
+            },
+            {
+              "truth": 218,
+              "detected": null,
+              "delta": null
+            }
+          ],
+          "detectedTimes": [
+            64.087,
+            97.965,
+            216.921
+          ]
+        },
+        {
+          "toleranceSec": 1.5,
+          "proposed": 2,
+          "detected": 3,
+          "found": 2,
+          "missed": 0,
+          "false": 1,
+          "precision": 0.667,
+          "recall": 1,
+          "f1": 0.8,
+          "meanSignedDelta": -0.557,
+          "matches": [
+            {
+              "truth": 98,
+              "detected": 97.965,
+              "delta": -0.035
+            },
+            {
+              "truth": 218,
+              "detected": 216.921,
+              "delta": -1.079
+            }
+          ],
+          "detectedTimes": [
+            64.087,
+            97.965,
+            216.921
+          ]
+        }
+      ],
+      "refrains": {
+        "toleranceSec": 2,
         "proposed": 2,
-        "detected": 5,
-        "found": 0,
-        "missed": 2,
-        "false": 5,
+        "found": 1,
+        "missed": 1,
+        "recall": 0.5,
         "matches": [
           {
-            "truth": 98,
+            "truth": 81,
             "detected": null,
             "delta": null
           },
           {
             "truth": 218,
-            "detected": null,
-            "delta": null
+            "detected": 216.921,
+            "delta": -1.079
           }
         ],
         "detectedTimes": [
-          30.674,
-          65.829,
-          100.31,
-          150.419,
-          216.921
+          36.432,
+          64.087,
+          97.965,
+          148.027,
+          159.01,
+          216.921,
+          238.33
         ]
       },
+      "lighting": [
+        {
+          "truth": 98,
+          "detected": 97.965,
+          "offset": 0.1,
+          "luminanceMean": 0.131,
+          "whiteRatio": 0
+        },
+        {
+          "truth": 218,
+          "detected": 216.921,
+          "offset": 0.1,
+          "luminanceMean": 0.825,
+          "whiteRatio": 0.295
+        }
+      ],
       "sections": {
         "total": 9,
         "coveredSameRole": 3,
@@ -314,7 +557,7 @@
             "role": "couplet",
             "start": 13,
             "end": 64,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
@@ -356,7 +599,7 @@
             "role": "pont",
             "start": 201,
             "end": 218,
-            "coveredSameRole": false,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
@@ -370,24 +613,26 @@
       },
       "roles": {
         "intro": 1,
-        "couplet": 16,
-        "drop": 5,
+        "couplet": 10,
+        "refrain": 7,
+        "drop": 3,
+        "montee": 2,
         "finale": 1
       },
       "families": {
         "waves": 2,
-        "spiral": 2,
-        "pluie": 2,
-        "pont-concert": 5,
-        "pendule": 1,
-        "particles": 2,
-        "rings": 2,
-        "lyres-suspendues": 1,
-        "mirror": 1,
-        "beams": 1,
+        "spiral": 1,
+        "mandala": 1,
+        "barres-led": 5,
+        "lyres-suspendues": 4,
+        "pont-concert": 3,
+        "pluie": 1,
+        "particles": 1,
+        "couronne": 1,
         "vortex": 1,
-        "parade": 2,
-        "spots": 1
+        "etoile": 1,
+        "rings": 2,
+        "parade": 1
       }
     },
     {
@@ -402,39 +647,110 @@
         "relativeError": 2.1,
         "confidence": 0.4
       },
-      "drops": {
-        "toleranceSec": 0.5,
-        "proposed": 3,
-        "detected": 3,
-        "found": 1,
-        "missed": 2,
-        "false": 2,
-        "matches": [
-          {
-            "truth": 72,
-            "detected": 72.098,
-            "delta": 0.098
-          },
-          {
-            "truth": 152,
-            "detected": null,
-            "delta": null
-          },
-          {
-            "truth": 200,
-            "detected": null,
-            "delta": null
-          }
-        ],
+      "drops": [
+        {
+          "toleranceSec": 0.5,
+          "proposed": 3,
+          "detected": 2,
+          "found": 1,
+          "missed": 2,
+          "false": 1,
+          "precision": 0.5,
+          "recall": 0.333,
+          "f1": 0.4,
+          "meanSignedDelta": -0.39,
+          "matches": [
+            {
+              "truth": 72,
+              "detected": 71.61,
+              "delta": -0.39
+            },
+            {
+              "truth": 152,
+              "detected": null,
+              "delta": null
+            },
+            {
+              "truth": 200,
+              "detected": null,
+              "delta": null
+            }
+          ],
+          "detectedTimes": [
+            71.61,
+            151.185
+          ]
+        },
+        {
+          "toleranceSec": 1.5,
+          "proposed": 3,
+          "detected": 2,
+          "found": 2,
+          "missed": 1,
+          "false": 0,
+          "precision": 1,
+          "recall": 0.667,
+          "f1": 0.8,
+          "meanSignedDelta": -0.602,
+          "matches": [
+            {
+              "truth": 72,
+              "detected": 71.61,
+              "delta": -0.39
+            },
+            {
+              "truth": 152,
+              "detected": 151.185,
+              "delta": -0.815
+            },
+            {
+              "truth": 200,
+              "detected": null,
+              "delta": null
+            }
+          ],
+          "detectedTimes": [
+            71.61,
+            151.185
+          ]
+        }
+      ],
+      "refrains": {
+        "toleranceSec": 2,
+        "proposed": 0,
+        "found": 0,
+        "missed": 0,
+        "recall": 0,
+        "matches": [],
         "detectedTimes": [
-          15.557,
-          72.098,
-          154.343
+          15.581,
+          34.11,
+          87.586,
+          114.103,
+          151.185,
+          170.133,
+          210.094
         ]
       },
+      "lighting": [
+        {
+          "truth": 72,
+          "detected": 71.61,
+          "offset": 0.1,
+          "luminanceMean": 0.108,
+          "whiteRatio": 0
+        },
+        {
+          "truth": 152,
+          "detected": 151.185,
+          "offset": 0.1,
+          "luminanceMean": 0.138,
+          "whiteRatio": 0
+        }
+      ],
       "sections": {
         "total": 9,
-        "coveredSameRole": 5,
+        "coveredSameRole": 3,
         "coveredAnyRole": 9,
         "details": [
           {
@@ -448,7 +764,7 @@
             "role": "couplet",
             "start": 15,
             "end": 47,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
@@ -462,21 +778,21 @@
             "role": "couplet",
             "start": 72,
             "end": 127,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
             "role": "pont",
             "start": 127,
             "end": 152,
-            "coveredSameRole": false,
+            "coveredSameRole": true,
             "coveredAnyRole": true
           },
           {
             "role": "couplet",
             "start": 152,
             "end": 194,
-            "coveredSameRole": true,
+            "coveredSameRole": false,
             "coveredAnyRole": true
           },
           {
@@ -503,26 +819,26 @@
         ]
       },
       "roles": {
-        "intro": 1,
-        "drop": 3,
-        "couplet": 15,
+        "intro": 2,
+        "refrain": 9,
+        "couplet": 6,
+        "drop": 2,
+        "montee": 2,
         "finale": 1
       },
       "families": {
-        "waves": 2,
-        "pont-concert": 3,
-        "beams": 1,
-        "spots": 2,
-        "particles": 1,
-        "pluie": 2,
-        "parade": 1,
+        "waves": 1,
         "rings": 1,
-        "portique": 1,
+        "lyres-suspendues": 5,
+        "barres-led": 6,
+        "spots": 1,
+        "particles": 1,
+        "tunnel": 1,
+        "pont-concert": 2,
+        "beams": 1,
+        "crossfire": 1,
         "mirror": 1,
-        "tunnel": 2,
-        "grid": 1,
-        "bars": 1,
-        "crossfire": 1
+        "pluie": 1
       }
     }
   ]
