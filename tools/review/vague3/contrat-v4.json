@@ -1,0 +1,15 @@
+{
+  "analyse_v4_section_unique": {
+    "normal": "ec97039532acef9a67c00963536be560d552db4dd045e536c4ceb6b050e73791 (stableStringify)"
+  },
+  "multi_sections": {
+    "normal": "529754b1c2573205d9227e2fa3b6252e5a737d728771dc4ed2bbd38cd4c8e83e",
+    "reduit": "0272fe78c201a5674458e29bff62cf931f9e04584aeb17d0120e97aaf793d63a",
+    "note": "identiques sur origin/main et reconcile/vague3"
+  },
+  "sandbox": {
+    "single": "d26d17bd5bad04b8b1a57ebe930585192fb225606603031ee5707e1e10480781",
+    "multi": "14be22e74a0af20076331f05aaf36bb2242d0afaea97303af819cf799141139e"
+  },
+  "determinisme_rapport_synthetique": "36681f40f424e73ebeef2656c9159ab8fccec0cb2932ec6f88c2b2ff0f51cca4 (2 exécutions)"
+}

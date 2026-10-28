@@ -1,0 +1,230 @@
+{
+  "toleranceSec": 2.0,
+  "precisionRefrain": 0.9231,
+  "rappelRefrain": 0.8,
+  "vraisPositifs": 12,
+  "detections": 13,
+  "attendus": 15,
+  "silences": {
+    "attendus": 0,
+    "trouves": 0,
+    "morceauxSansSilence": 8,
+    "sansFauxSilence": 8
+  },
+  "tracks": [
+    {
+      "id": 3135553,
+      "titre": "One More Time",
+      "meter": 4,
+      "sections": 16,
+      "kinds": {
+        "couplet": 7,
+        "intro": 1,
+        "outro": 0,
+        "pont": 0,
+        "refrain": 8,
+        "silence": 0
+      },
+      "attendus": [
+        31.4,
+        215.5
+      ],
+      "detectes": [
+        31.393,
+        215.458
+      ],
+      "ecart": [
+        0.01,
+        0.04
+      ],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 2.27
+    },
+    {
+      "id": 6058080,
+      "titre": "Bolero",
+      "meter": 4,
+      "sections": 1,
+      "kinds": {
+        "couplet": 1,
+        "intro": 0,
+        "outro": 0,
+        "pont": 0,
+        "refrain": 0,
+        "silence": 0
+      },
+      "attendus": [],
+      "detectes": [],
+      "ecart": [],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 1.658
+    },
+    {
+      "id": 14552221,
+      "titre": "They Don't Care About Us",
+      "meter": 4,
+      "sections": 1,
+      "kinds": {
+        "couplet": 1,
+        "intro": 0,
+        "outro": 0,
+        "pont": 0,
+        "refrain": 0,
+        "silence": 0
+      },
+      "attendus": [
+        0.0,
+        53.4,
+        114.4
+      ],
+      "detectes": [],
+      "ecart": [],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 0.68
+    },
+    {
+      "id": 73693857,
+      "titre": "La Vie en Rose",
+      "meter": 4,
+      "sections": 10,
+      "kinds": {
+        "couplet": 3,
+        "intro": 1,
+        "outro": 0,
+        "pont": 1,
+        "refrain": 5,
+        "silence": 0
+      },
+      "attendus": [
+        27.9,
+        119.9,
+        171.1
+      ],
+      "detectes": [
+        27.864,
+        119.861,
+        171.108
+      ],
+      "ecart": [
+        0.04,
+        0.04,
+        0.01
+      ],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 0.616
+    },
+    {
+      "id": 75009998,
+      "titre": "Gymnopédie No. 1",
+      "meter": 3,
+      "sections": 1,
+      "kinds": {
+        "couplet": 1,
+        "intro": 0,
+        "outro": 0,
+        "pont": 0,
+        "refrain": 0,
+        "silence": 0
+      },
+      "attendus": [],
+      "detectes": [],
+      "ecart": [],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 0.787
+    },
+    {
+      "id": 75526535,
+      "titre": "Latch",
+      "meter": 4,
+      "sections": 14,
+      "kinds": {
+        "couplet": 8,
+        "intro": 1,
+        "outro": 1,
+        "pont": 0,
+        "refrain": 4,
+        "silence": 0
+      },
+      "attendus": [
+        96.6,
+        128.1,
+        206.8
+      ],
+      "detectes": [
+        96.618,
+        128.081,
+        173.337,
+        206.774
+      ],
+      "ecart": [
+        0.02,
+        0.02,
+        33.46,
+        0.03
+      ],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 0.827
+    },
+    {
+      "id": 98755430,
+      "titre": "Your Hand in Mine",
+      "meter": 4,
+      "sections": 21,
+      "kinds": {
+        "couplet": 13,
+        "intro": 1,
+        "outro": 1,
+        "pont": 1,
+        "refrain": 5,
+        "silence": 0
+      },
+      "attendus": [
+        73.8,
+        187.3,
+        374.9,
+        438.4
+      ],
+      "detectes": [
+        73.816,
+        187.339,
+        374.886,
+        438.439
+      ],
+      "ecart": [
+        0.02,
+        0.04,
+        0.01,
+        0.04
+      ],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 1.628
+    },
+    {
+      "id": 857616032,
+      "titre": "TRINITYVILLE",
+      "meter": 4,
+      "sections": 1,
+      "kinds": {
+        "couplet": 1,
+        "intro": 0,
+        "outro": 0,
+        "pont": 0,
+        "refrain": 0,
+        "silence": 0
+      },
+      "attendus": [],
+      "detectes": [],
+      "ecart": [],
+      "silencesDetectes": [],
+      "violations": [],
+      "analysisSec": 0.666
+    }
+  ]
+}

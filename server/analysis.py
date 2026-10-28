@@ -23,13 +23,21 @@ import numpy as np
 import soundfile as sf
 
 from .config import Settings
+from .meter import analyse_meter_and_events
+from .structure import detect_structure
 
 SR_DEFAULT = 22050
 HOP = 512
 NFFT = 2048
 # Version du résultat d'analyse. À incrémenter dès que l'algorithme change :
 # le cache d'analyse est indexé dessus, donc les entrées périmées sont ignorées.
-ANALYZER_VERSION = "4"
+#
+# "5" (vague 3) : sections locales V3.1 (`kind`/`group`/`confidence`), métrique
+# 3/4 fiabilisée avec `meterConfidence`, et `events` (retours de basse). Le
+# passage 4 → 5 invalide volontairement tout le cache d'analyses produit par la
+# vague 2 : les entrées "4" n'ont ni ces champs ni la métrique corrigée. Aucune
+# migration n'est nécessaire côté client, les nouveaux champs restant optionnels.
+ANALYZER_VERSION = "5"
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
@@ -74,6 +82,8 @@ class AnalysisResult:
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
+    meter_confidence: float = 0.6
+    events: list[dict] = field(default_factory=list)
     coverage: tuple[float, float] | None = None
     phase_timings: dict[str, float] = field(default_factory=dict)
 
@@ -950,7 +960,19 @@ def analyze_file(
     # forts.
     curves_started = time.monotonic()
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, full_duration)
-    sections = detect_sections(energy, frame_times, full_duration)
+    # --- vague3:structure ---
+    sections = detect_structure(
+        duration=full_duration,
+        beats=beats,
+        meter=meter,
+        spectrum=spectrum,
+        sample_rate=sample_rate,
+        hop_length=HOP,
+        frame_times=frame_times,
+        energy_points=energy_points,
+        audio=y,
+    )
+    # --- /vague3:structure ---
     bass_points = curve_to_points(frame_times, bass, settings.curve_rate_hz, full_duration)
     mid_points = curve_to_points(frame_times, mid, settings.curve_rate_hz, full_duration)
     mid_low_points = curve_to_points(frame_times, mid_low, settings.curve_rate_hz, full_duration)
@@ -961,6 +983,16 @@ def analyze_file(
     builds_started = time.monotonic()
     builds = detect_builds(energy_points, full_duration, onsets, bass_points)
     phase_timings["buildsSec"] = round(time.monotonic() - builds_started, 3)
+    # --- vague3:metrique ---
+    meter, meter_confidence, events = analyse_meter_and_events(
+        spectrum=spectrum,
+        frequencies=frequencies,
+        frame_times=frame_times,
+        beats=beats,
+        builds=builds,
+        duration=full_duration,
+    )
+    # --- /vague3:metrique ---
     check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")
     progress(phases[4], 1.0, "données du spectacle prêtes")
@@ -970,6 +1002,8 @@ def analyze_file(
         duration=round(full_duration, 3),
         tempo=round(tempo, 3),
         meter=meter,
+        meter_confidence=meter_confidence,
+        events=events,
         beats=beats,
         onsets=onsets,
         energy=energy_points,

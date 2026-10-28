@@ -10,9 +10,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { buildShowPlan } from "../../src/core/show";
+import { loadContractFixtures } from "../support/contract_fixtures";
 import { loadCorpusAnalyses } from "../support/plan_corpus";
 import { buildReducedSnapshot, buildSnapshot, roundTo, stableStringify } from "../support/plan_snapshot";
-import { checkSnapshots } from "../support/plan_snapshot_store";
+import { checkContractSnapshots, checkSnapshots } from "../support/plan_snapshot_store";
 
 describe("snapshots de plans", () => {
   test(
@@ -108,5 +109,51 @@ describe("snapshots de plans", () => {
     const first = stableStringify(buildShowPlan(track.analysis, false));
     const second = stableStringify(buildShowPlan(track.analysis, false));
     expect(first).toBe(second);
+  });
+
+  test("les fixtures v3.1 égales à leur snapshot versionné (normal + réduit)", () => {
+    const fixtures = loadContractFixtures();
+    expect(fixtures.length).toBeGreaterThanOrEqual(6);
+    const result = checkContractSnapshots(fixtures);
+    expect(result.lines).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  test("le snapshot des fixtures v3.1 est stable d'une génération à l'autre", () => {
+    const fixtures = loadContractFixtures();
+    expect(stableStringify(buildSnapshot(fixtures))).toBe(stableStringify(buildSnapshot(fixtures)));
+    expect(stableStringify(buildReducedSnapshot(fixtures))).toBe(
+      stableStringify(buildReducedSnapshot(fixtures)),
+    );
+  });
+
+  test("une analyse sans les champs v3.1 garde le comportement historique", () => {
+    // Rétrocompatibilité du contrat v3.1 : retirer kind/group/confidence/
+    // events/meterConfidence rend la dramaturgie dormante. Le plan est alors
+    // strictement celui du code historique (même plan à chaque appel, et
+    // identique à un appel explicitement non dramaturgique).
+    const fixtures = loadContractFixtures();
+    for (const fixture of fixtures) {
+      const historique: typeof fixture.analysis = {
+        ...fixture.analysis,
+        sections: fixture.analysis.sections.map((section) => ({
+          start: section.start,
+          end: section.end,
+          label: section.label,
+          energy: section.energy,
+        })),
+        builds: fixture.analysis.builds,
+      };
+      delete (historique as { events?: unknown }).events;
+      delete (historique as { meterConfidence?: unknown }).meterConfidence;
+      const premier = stableStringify(buildShowPlan(historique, false));
+      const second = stableStringify(buildShowPlan(historique, false));
+      expect(second, `${fixture.name} : plan historique non déterministe`).toBe(premier);
+      expect(stableStringify(buildShowPlan(historique, false, undefined, { dramaturgy: false }))).toBe(
+        premier,
+      );
+      // Les champs v3.1, eux, réveillent bien des branches différentes.
+      expect(stableStringify(buildShowPlan(fixture.analysis, false))).not.toBe(premier);
+    }
   });
 });
