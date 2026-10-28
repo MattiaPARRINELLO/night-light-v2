@@ -155,4 +155,19 @@ describe("analyse factice", () => {
     expect(view.onsetsIn(1, 5)).toEqual([2, 3, 4, 5]);
     expect(view.onsetsIn(9, 10)).toEqual([]);
   });
+
+  test("une reprise de production alimente la courbe drop du rendu", () => {
+    const without = new TrackView(fakeAnalysis({ builds: [], drops: [] }));
+    expect(without.buildIntensity(10.1)).toBe(0);
+    const view = new TrackView(
+      fakeAnalysis({
+        builds: [],
+        drops: [{ time: 10, strength: 0.8, source: "return" }],
+      }),
+    );
+    // exp(-0,1 / 0,42) * 0,8 ≈ 0,63 : au-dessus du seuil de lavage blanc.
+    expect(view.buildIntensity(10.1)).toBeGreaterThan(0.35);
+    expect(view.dropImpact(10.1)).toBeGreaterThan(0.35);
+    expect(view.buildIntensity(20)).toBe(0);
+  });
 });

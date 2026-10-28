@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 
+import { buildShowPlan } from "../src/core/show";
 import { DEFAULT_SETTINGS, type Analysis } from "../src/types";
 import { createHeadlessRenderer } from "../tests/support/headless_render";
 
@@ -103,8 +104,26 @@ function sectionMidpoint(truth: Truth, role: string): Moment | null {
   };
 }
 
-function momentsFor(truth: Truth, duration: number): Moment[] {
+function momentsFor(
+  truth: Truth,
+  plan: ReturnType<typeof buildShowPlan>,
+  duration: number,
+): Moment[] {
   const moments: Moment[] = [];
+  // Ce que le plan produit réellement : chaque drop détecté à +0,1 s (le
+  // premier éclair de la reprise) et chaque début de refrain.
+  plan.scenes.forEach((scene, index) => {
+    if (scene.role === "drop") {
+      const time = Math.min(duration, scene.start + 0.1);
+      moments.push({ label: `detecte-drop${index + 1}-010s`, time: round(time), role: "drop" });
+    } else if (scene.role === "refrain") {
+      moments.push({
+        label: `detecte-refrain${index + 1}`,
+        time: round(scene.start),
+        role: "refrain",
+      });
+    }
+  });
   truth.drops.forEach((drop, index) => {
     for (const offset of DROP_OFFSETS) {
       const time = drop.time + offset;
@@ -191,7 +210,8 @@ async function main(): Promise<number> {
       // Un nouveau passage remplace les captures précédentes du même titre.
       rmSync(trackDir, { recursive: true, force: true });
       mkdirSync(trackDir, { recursive: true });
-      for (const moment of momentsFor(truth, analysis.duration)) {
+      const plan = buildShowPlan(analysis, false, undefined, { dramaturgy: true });
+      for (const moment of momentsFor(truth, plan, analysis.duration)) {
         const capture = await renderer.capture(moment.time, Math.round(moment.time * 60));
         const file = `${slug(entry.titre)}-${moment.label}-${moment.time.toFixed(2)}s.png`;
         const base64 = capture.png.replace(/^data:image\/png;base64,/, "");

@@ -65,18 +65,31 @@ def test_les_bandes_different_des_moments(tmp_path: Path) -> None:
     assert energy[int(len(energy) * 0.75)] > energy[int(len(energy) * 0.2)]
 
 
-def test_section_unique_couvre_le_morceau(tmp_path: Path) -> None:
-    """Plus de découpage couplet/refrain : une seule section, de 0 à la fin."""
+def test_sections_locales_couvrent_le_morceau(tmp_path: Path) -> None:
+    """Le découpage est local, ordonné et couvre tout le morceau, sans trou."""
     result = make_analysis(tmp_path, duration=40.0, bpm=126.0)
-    assert len(result.sections) == 1
-    section = result.sections[0]
-    assert section["start"] == 0.0
-    assert section["end"] >= result.duration - 0.5
-    assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
-    assert 0.0 <= section["energy"] <= 1.0
-    assert section["group"] == ""
-    assert section["kind"] == "section"
-    assert section["occurrence"] == 0
+    assert len(result.sections) >= 1
+    previous_end = 0.0
+    for section in result.sections:
+        assert section["start"] == previous_end
+        assert section["end"] > section["start"]
+        assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
+        assert section["kind"] in {
+            "intro",
+            "couplet",
+            "refrain",
+            "pont",
+            "outro",
+            "section",
+            "exposition",
+            "developpement",
+            "climax",
+            "resolution",
+        }
+        assert 0.0 <= section["energy"] <= 1.0
+        assert 0.0 <= section["bass"] <= 1.0
+        previous_end = section["end"]
+    assert abs(previous_end - result.duration) <= 0.5
 
 
 def test_montee_detectee(tmp_path: Path) -> None:

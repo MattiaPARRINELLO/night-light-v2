@@ -4,11 +4,18 @@
  *
  * Ne modifie rien : lit les analyses réelles (`tests/fixtures/analyses/`), le
  * manifeste (`tests/support/real_corpus.json`) et les JSON de vérité terrain,
- * puis écrit un rapport chiffré. Tous les horodatages sont en secondes et les
- * drops sont comparés avec une tolérance de ±0,5 s.
+ * puis écrit un rapport chiffré. Tous les horodatages sont en secondes.
+ *
+ * Les drops sont évalués à deux tolérances : ±0,5 s (précision historique) et
+ * ±1,5 s (tolérance de travail du chantier R2). On rapporte, pour chacune, les
+ * vrais/faux/manqués, la précision, le rappel, le F1 et l'écart moyen signé
+ * (négatif = en avance, positif = en retard). Les débuts de refrain sont
+ * évalués à ±2 s. Enfin, pour chaque drop validé, on mesure la luminance
+ * moyenne et la part de blanc du plan à +0,1 s, avec le rendu headless 1080p.
  *
  *     bun tools/eval-reference.ts
  *     bun tools/eval-reference.ts --json tests/metrics/reference-eval.json
+ *     bun tools/eval-reference.ts --no-render   # chiffres sans captures
  *
  * Prérequis : `uv run python tools/real_corpus.py` (analyses réelles).
  */
@@ -17,16 +24,22 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { buildShowPlan, type SceneRole } from "../src/core/show";
-import type { Analysis } from "../src/types";
+import { createTrackView } from "../src/core/view";
+import { DEFAULT_SETTINGS, type Analysis } from "../src/types";
+import { createHeadlessRenderer } from "../tests/support/headless_render";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DEFAULT_MANIFEST = join(ROOT, "tests/support/real_corpus.json");
 const DEFAULT_ANALYSES = join(ROOT, "tests/fixtures/analyses");
 const DEFAULT_TRUTH = join(ROOT, "tests/ground-truth");
-/** Tolérance de correspondance d'un drop, en secondes. */
-const DROP_TOLERANCE = 0.5;
+/** Tolérances de correspondance d'un drop, en secondes. */
+const DROP_TOLERANCES = [0.5, 1.5] as const;
+/** Tolérance des débuts de refrain, en secondes. */
+const REFRAIN_TOLERANCE = 2.0;
 /** Part minimale d'une section de vérité couverte par une scène du plan. */
 const SECTION_COVERAGE = 0.5;
+/** Décalage de la mesure d'éclairage après l'impact. */
+const LIGHTING_OFFSET = 0.1;
 
 type TruthRole = SceneRole | "pont";
 
@@ -64,6 +77,36 @@ interface DropMatch {
   delta: number | null;
 }
 
+interface DropScore {
+  toleranceSec: number;
+  proposed: number;
+  detected: number;
+  found: number;
+  missed: number;
+  false: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  meanSignedDelta: number | null;
+  matches: DropMatch[];
+  detectedTimes: number[];
+}
+
+interface RefrainMatch {
+  truth: number;
+  detected: number | null;
+  delta: number | null;
+}
+
+interface LightingMeasure {
+  truth: number;
+  detected: number;
+  offset: number;
+  dropCurve: number;
+  luminanceMean: number;
+  whiteRatio: number;
+}
+
 interface SectionResult {
   role: TruthRole;
   start: number;
@@ -84,16 +127,21 @@ interface TrackReport {
     relativeError: number;
     confidence: number;
   };
-  drops: {
+  drops: DropScore[];
+  refrains: {
     toleranceSec: number;
     proposed: number;
     detected: number;
     found: number;
     missed: number;
     false: number;
-    matches: DropMatch[];
+    precision: number;
+    recall: number;
+    f1: number;
+    matches: RefrainMatch[];
     detectedTimes: number[];
   };
+  lighting: LightingMeasure[];
   sections: {
     total: number;
     coveredSameRole: number;
@@ -127,7 +175,11 @@ function round(value: number, digits = 3): number {
   return Math.round(value * factor) / factor;
 }
 
-function compareDrops(truth: Truth, detected: number[]): TrackReport["drops"] {
+function ratio(numerator: number, denominator: number): number {
+  return denominator === 0 ? 0 : numerator / denominator;
+}
+
+function scoreDrops(truth: Truth, detected: number[], tolerance: number): DropScore {
   const remaining = [...detected];
   const matches: DropMatch[] = [];
   for (const entry of truth.drops) {
@@ -135,7 +187,7 @@ function compareDrops(truth: Truth, detected: number[]): TrackReport["drops"] {
     let bestDelta = Infinity;
     for (let index = 0; index < remaining.length; index += 1) {
       const delta = Math.abs(remaining[index]! - entry.time);
-      if (delta <= DROP_TOLERANCE && delta < bestDelta) {
+      if (delta <= tolerance && delta < bestDelta) {
         bestDelta = delta;
         bestIndex = index;
       }
@@ -148,24 +200,84 @@ function compareDrops(truth: Truth, detected: number[]): TrackReport["drops"] {
     }
   }
   const found = matches.filter((match) => match.detected !== null).length;
+  const deltas = matches
+    .map((match) => match.delta)
+    .filter((delta): delta is number => delta !== null);
+  const precision = ratio(found, detected.length);
+  const recall = ratio(found, truth.drops.length);
   return {
-    toleranceSec: DROP_TOLERANCE,
+    toleranceSec: tolerance,
     proposed: truth.drops.length,
     detected: detected.length,
     found,
     missed: truth.drops.length - found,
     false: remaining.length,
+    precision: round(precision),
+    recall: round(recall),
+    f1: round(ratio(2 * precision * recall, precision + recall)),
+    meanSignedDelta:
+      deltas.length === 0
+        ? null
+        : round(deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length),
     matches,
     detectedTimes: detected.map((time) => round(time)),
   };
 }
 
-function evaluateTrack(
-  entry: ManifestEntry,
+function scoreRefrains(
   truth: Truth,
   analysis: Analysis,
-): TrackReport {
-  const plan = buildShowPlan(analysis, false);
+): TrackReport["refrains"] {
+  const starts = truth.sections
+    .filter((section) => section.role === "refrain")
+    .map((section) => section.start);
+  // Le rôle refrain du plan cède la place à un drop quand les deux tombent au
+  // même instant (c'est l'impact qui commande la lumière). On évalue donc le
+  // début de refrain sur le découpage produit par l'analyseur, qui porte
+  // l'information « ce bloc est un refrain », et on rapporte les rôles du plan
+  // séparément.
+  const detected = analysis.sections
+    .filter((section) => section.kind === "refrain")
+    .map((section) => section.start);
+  const remaining = [...detected];
+  const matches: RefrainMatch[] = [];
+  for (const start of starts) {
+    let bestIndex = -1;
+    let bestDelta = Infinity;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const delta = Math.abs(remaining[index]! - start);
+      if (delta <= REFRAIN_TOLERANCE && delta < bestDelta) {
+        bestDelta = delta;
+        bestIndex = index;
+      }
+    }
+    if (bestIndex >= 0) {
+      const at = remaining.splice(bestIndex, 1)[0]!;
+      matches.push({ truth: start, detected: at, delta: round(at - start) });
+    } else {
+      matches.push({ truth: start, detected: null, delta: null });
+    }
+  }
+  const found = matches.filter((match) => match.detected !== null).length;
+  const precision = ratio(found, detected.length);
+  const recall = ratio(found, starts.length);
+  return {
+    toleranceSec: REFRAIN_TOLERANCE,
+    proposed: starts.length,
+    detected: detected.length,
+    found,
+    missed: starts.length - found,
+    false: remaining.length,
+    precision: round(precision),
+    recall: round(recall),
+    f1: round(ratio(2 * precision * recall, precision + recall)),
+    matches,
+    detectedTimes: detected.map((time) => round(time)),
+  };
+}
+
+function evaluateTrack(entry: ManifestEntry, truth: Truth, analysis: Analysis): TrackReport {
+  const plan = buildShowPlan(analysis, false, undefined, { dramaturgy: true });
   const detected = plan.scenes
     .filter((scene) => scene.role === "drop")
     .map((scene) => scene.start);
@@ -212,7 +324,9 @@ function evaluateTrack(
       relativeError: round((bpmError / truth.bpm.value) * 100, 1),
       confidence: truth.bpm.confidence,
     },
-    drops: compareDrops(truth, detected),
+    drops: DROP_TOLERANCES.map((tolerance) => scoreDrops(truth, detected, tolerance)),
+    refrains: scoreRefrains(truth, analysis),
+    lighting: [],
     sections: {
       total: details.length,
       coveredSameRole: details.filter((detail) => detail.coveredSameRole).length,
@@ -224,38 +338,126 @@ function evaluateTrack(
   };
 }
 
+async function measureLighting(
+  reports: TrackReport[],
+  analysesDir: string,
+): Promise<void> {
+  const renderer = await createHeadlessRenderer();
+  try {
+    for (const report of reports) {
+      const analysisPath = join(analysesDir, `real-${report.id}.json`);
+      const analysis = JSON.parse(readFileSync(analysisPath, "utf8")) as Analysis;
+      const validated = report.drops.find((drop) => drop.toleranceSec === 1.5)?.matches ?? [];
+      const captures = validated.filter(
+        (match): match is DropMatch & { detected: number } => match.detected !== null,
+      );
+      if (captures.length === 0) continue;
+      await renderer.setup({
+        analysis,
+        reduced: false,
+        width: 1920,
+        height: 1080,
+        dpr: 1,
+        quality: 1,
+        settings: DEFAULT_SETTINGS,
+        reducedMotion: false,
+      });
+      const view = createTrackView(analysis);
+      for (const match of captures) {
+        const at = round(match.detected + LIGHTING_OFFSET);
+        const capture = await renderer.capture(at, Math.round(at * 60));
+        report.lighting.push({
+          truth: match.truth,
+          detected: match.detected,
+          offset: LIGHTING_OFFSET,
+          dropCurve: round(view.buildIntensity(at)),
+          luminanceMean: round(capture.luminanceMean),
+          whiteRatio: round(capture.whiteRatio),
+        });
+      }
+    }
+  } finally {
+    await renderer.close();
+  }
+}
+
 function formatReport(reports: TrackReport[]): string {
   const lines: string[] = [];
-  lines.push("titre              BPM détecté / proposé   écart     drops trouvés/manqués/faux   sections couvertes");
+  lines.push(
+    "titre              drops ±0,5 (justes/faux/manqués, F1, écart)   drops ±1,5 (justes/faux/manqués, F1, écart)   refrains",
+  );
   for (const report of reports) {
-    const bpm = `${report.bpm.detected.toFixed(1)} / ${report.bpm.proposed.toFixed(1)}`;
-    const drop = `${report.drops.found}/${report.drops.missed}/${report.drops.false}`;
-    const sections = `${report.sections.coveredSameRole}/${report.sections.total}`;
+    const narrow = report.drops.find((drop) => drop.toleranceSec === 0.5);
+    const wide = report.drops.find((drop) => drop.toleranceSec === 1.5);
+    if (narrow === undefined || wide === undefined) continue;
+    const cell = (score: DropScore) =>
+      `${score.found}/${score.false}/${score.missed} F1=${score.f1.toFixed(2)} Δ=${
+        score.meanSignedDelta === null ? "—" : score.meanSignedDelta.toFixed(2)
+      }`;
+    const refrain = `${report.refrains.found}/${report.refrains.proposed} P=${report.refrains.precision.toFixed(2)} (${report.refrains.detected} détectés)`;
     lines.push(
-      `${report.titre.padEnd(18)} ${bpm.padEnd(22)} ${`${report.bpm.absoluteError.toFixed(1)} BPM`.padEnd(9)} ` +
-        `${drop.padEnd(28)} ${sections}`,
+      `${report.titre.padEnd(18)} ${cell(narrow).padEnd(43)} ${cell(wide).padEnd(43)} ${refrain}`,
     );
   }
   lines.push("");
   for (const report of reports) {
-    lines.push(`${report.titre} — rôles : ${Object.entries(report.roles).map(([k, v]) => `${k}×${v}`).join(", ")}`);
+    const bpm = `${report.bpm.detected.toFixed(1)} / ${report.bpm.proposed.toFixed(1)}`;
     lines.push(
-      `  familles : ${Object.entries(report.families).map(([k, v]) => `${k}×${v}`).join(", ")}`,
+      `${report.titre} — BPM ${bpm} (écart ${report.bpm.absoluteError.toFixed(1)}) — rôles : ${Object.entries(
+        report.roles,
+      )
+        .map(([key, value]) => `${key}×${value}`)
+        .join(", ")}`,
     );
-    const missed = report.sections.details
+    lines.push(
+      `  familles : ${Object.entries(report.families)
+        .map(([key, value]) => `${key}×${value}`)
+        .join(", ")}`,
+    );
+    const wide = report.drops.find((drop) => drop.toleranceSec === 1.5);
+    if (wide !== undefined) {
+      const missed = wide.matches
+        .filter((match) => match.detected === null)
+        .map((match) => match.truth.toFixed(1));
+      const falseTimes = wide.detectedTimes.filter(
+        (time) => !wide.matches.some((match) => match.detected !== null && Math.abs(match.detected - time) < 1e-6),
+      );
+      if (missed.length > 0) lines.push(`  drops manqués (±1,5) : ${missed.join(", ")}`);
+      if (falseTimes.length > 0) lines.push(`  faux drops (±1,5) : ${falseTimes.join(", ")}`);
+    }
+    if (report.refrains.proposed > 0) {
+      const missed = report.refrains.matches
+        .filter((match) => match.detected === null)
+        .map((match) => match.truth.toFixed(1));
+      if (missed.length > 0) lines.push(`  refrains manqués : ${missed.join(", ")}`);
+    }
+    const missedSections = report.sections.details
       .filter((detail) => !detail.coveredSameRole)
       .map((detail) => `${detail.role} ${detail.start.toFixed(1)}–${detail.end.toFixed(1)}`);
-    if (missed.length > 0) lines.push(`  sections non couvertes (même rôle) : ${missed.join(" | ")}`);
+    if (missedSections.length > 0)
+      lines.push(`  sections non couvertes (même rôle) : ${missedSections.join(" | ")}`);
+  }
+  lines.push("");
+  lines.push("éclairage à +0,1 s des drops validés (±1,5) :");
+  for (const report of reports) {
+    for (const measure of report.lighting) {
+      lines.push(
+        `  ${report.titre.padEnd(10)} vérité ${measure.truth.toFixed(2).padStart(7)}  ` +
+          `détecté ${measure.detected.toFixed(2).padStart(7)}  ` +
+          `courbe drop ${measure.dropCurve.toFixed(3)}  luminance ${measure.luminanceMean.toFixed(3)}  blanc ${(measure.whiteRatio * 100).toFixed(2)} %`,
+      );
+    }
   }
   return lines.join("\n");
 }
 
-function main(): number {
+async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   let manifestPath = DEFAULT_MANIFEST;
   let analysesDir = DEFAULT_ANALYSES;
   let truthDir = DEFAULT_TRUTH;
   let jsonOut: string | null = null;
+  let render = true;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]!;
     const next = () => argv[++index];
@@ -263,8 +465,11 @@ function main(): number {
     else if (arg === "--analyses") analysesDir = next() ?? analysesDir;
     else if (arg === "--truth") truthDir = next() ?? truthDir;
     else if (arg === "--json") jsonOut = next() ?? null;
+    else if (arg === "--no-render") render = false;
     else if (arg === "--help" || arg === "-h") {
-      console.log("bun tools/eval-reference.ts [--manifest f] [--analyses d] [--truth d] [--json f]");
+      console.log(
+        "bun tools/eval-reference.ts [--manifest f] [--analyses d] [--truth d] [--json f] [--no-render]",
+      );
       return 0;
     } else {
       console.error(`argument inconnu : ${arg}`);
@@ -299,15 +504,29 @@ function main(): number {
     reports.push(evaluateTrack(entry, truth, analysis));
   }
 
-  const text = formatReport(reports);
-  console.log(text);
+  if (render) {
+    try {
+      await measureLighting(reports, analysesDir);
+    } catch (error) {
+      console.error(`captures indisponibles : ${(error as Error).message}`);
+    }
+  }
+
+  console.log(formatReport(reports));
   if (jsonOut !== null) {
     const out = resolve(jsonOut);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, `${JSON.stringify({ toleranceSec: DROP_TOLERANCE, tracks: reports }, null, 2)}\n`);
+    writeFileSync(
+      out,
+      `${JSON.stringify(
+        { dropTolerancesSec: DROP_TOLERANCES, refrainToleranceSec: REFRAIN_TOLERANCE, tracks: reports },
+        null,
+        2,
+      )}\n`,
+    );
     console.log(`\nrapport JSON : ${out}`);
   }
   return 0;
 }
 
-if (import.meta.main) process.exit(main());
+if (import.meta.main) process.exit(await main());

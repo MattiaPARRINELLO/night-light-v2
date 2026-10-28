@@ -57,6 +57,16 @@ export interface Build {
   strength: number;
 }
 
+/** Reprise de production détectée par l'analyseur. */
+export interface DropEvent {
+  /** Premier temps fort de la reprise, en secondes. */
+  time: number;
+  /** Force de la reprise, 0..1 : un drop léger reste léger. */
+  strength: number;
+  /** Origine de la détection (`return`, `beat-switch`…). */
+  source?: string;
+}
+
 export interface Analysis {
   schema: typeof ANALYSIS_SCHEMA;
   /** Durée du morceau, en secondes. */
@@ -92,6 +102,8 @@ export interface Analysis {
   sections: Section[];
   /** Montées d'énergie détectées, avec l'impact qui les conclut. */
   builds: Build[];
+  /** Reprises de production détectées (drops), optionnelles. */
+  drops?: DropEvent[];
   /**
    * Fenêtre réellement analysée pour une analyse rapide, en secondes.
    * Absent = analyse complète.

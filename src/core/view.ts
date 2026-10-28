@@ -54,9 +54,20 @@ export class TrackView {
     this.beats = analysis.beats;
     this.onsets = analysis.onsets;
 
-    this.buildsByStart = [...analysis.builds].sort((left, right) => left.start - right.start);
+    // Les reprises de production sont des impacts pour le rendu : sans elles,
+    // un drop détecté par la structure ne déclencherait ni la courbe `drop`
+    // (buildIntensity / dropImpact) ni le lavage blanc, qui exige > 0,35.
+    const impacts: Build[] = [
+      ...analysis.builds,
+      ...(analysis.drops ?? []).map((drop) => ({
+        start: Math.max(0, drop.time - 0.5),
+        end: drop.time,
+        strength: drop.strength,
+      })),
+    ];
+    this.buildsByStart = impacts.sort((left, right) => left.start - right.start);
     this.buildStarts = this.buildsByStart.map((build) => build.start);
-    this.buildsByEnd = [...analysis.builds].sort((left, right) => left.end - right.end);
+    this.buildsByEnd = [...impacts].sort((left, right) => left.end - right.end);
     this.buildEnds = this.buildsByEnd.map((build) => build.end);
     this.energyArea = cumulativeArea(analysis.energy);
   }

@@ -23,13 +23,14 @@ import numpy as np
 import soundfile as sf
 
 from .config import Settings
+from .structure import detect_structure
 
 SR_DEFAULT = 22050
 HOP = 512
 NFFT = 2048
 # Version du résultat d'analyse. À incrémenter dès que l'algorithme change :
 # le cache d'analyse est indexé dessus, donc les entrées périmées sont ignorées.
-ANALYZER_VERSION = "4"
+ANALYZER_VERSION = "5"
 # Retard de groupe d'une STFT : le pic de flux spectral précède le transitoire
 # d'environ n_fft/2 échantillons. On le corrige explicitement.
 GROUP_DELAY_SEC = (NFFT / 2) / SR_DEFAULT
@@ -74,6 +75,7 @@ class AnalysisResult:
     high: list[list[float]]
     sections: list[dict]
     builds: list[dict]
+    drops: list[dict] = field(default_factory=list)
     coverage: tuple[float, float] | None = None
     phase_timings: dict[str, float] = field(default_factory=dict)
 
@@ -376,6 +378,15 @@ def detect_rhythm(
     if timings is not None:
         timings["beatTrackSec"] = round(time.monotonic() - started, 3)
     tempo_value = float(np.atleast_1d(np.asarray(tempo, dtype=float))[0])
+    # Pourquoi 117,5 BPM revient sur plusieurs titres : `beat_track` choisit son
+    # tempo dans une grille logarithmique de 384 valeurs (30–300 BPM). Le pas
+    # vaut ~5,6 BPM autour de 120, et 117.45383522727273 est exactement le
+    # point 22 de cette grille (librosa.tempo_frequencies). Ce n'est ni un
+    # défaut ni un plafond : c'est la résolution de la grille, et la valeur
+    # affichée est le point le plus proche du tempo réel (mesuré à 117,4-117,7
+    # sur l'intervalle médian entre temps forts). On garde donc la valeur du
+    # tracker, qui pilote correctement la grille de temps ; la documenter vaut
+    # mieux que la bricoler avec un arrondi qui casserait l'alignement.
     # `NaN <= 0` est faux : sans le test de finitude, un tempo NaN traversait
     # toute l'analyse et faisait dériver la grille de repli jusqu'au rendu.
     if not np.isfinite(tempo_value) or tempo_value <= 0:
@@ -950,7 +961,6 @@ def analyze_file(
     # forts.
     curves_started = time.monotonic()
     energy_points = curve_to_points(frame_times, energy, settings.curve_rate_hz, full_duration)
-    sections = detect_sections(energy, frame_times, full_duration)
     bass_points = curve_to_points(frame_times, bass, settings.curve_rate_hz, full_duration)
     mid_points = curve_to_points(frame_times, mid, settings.curve_rate_hz, full_duration)
     mid_low_points = curve_to_points(frame_times, mid_low, settings.curve_rate_hz, full_duration)
@@ -963,8 +973,30 @@ def analyze_file(
     phase_timings["buildsSec"] = round(time.monotonic() - builds_started, 3)
     check_cancel(0.9)
     progress(phases[3], 1.0, f"{len(builds)} montées repérées")
+
+    # Structure locale : chroma + timbre pour les blocs qui se répètent, et
+    # reprises de production recalées sur le premier temps fort du retour.
+    structure_started = time.monotonic()
+    chroma = librosa.feature.chroma_stft(S=spectrum, sr=sample_rate, hop_length=HOP)
+    mfcc = librosa.feature.mfcc(S=librosa.power_to_db(spectrum**2 + 1e-10), n_mfcc=13)
+    structure = detect_structure(
+        energy_points,
+        bass_points,
+        frame_times,
+        energy,
+        bass,
+        np.asarray(beats, dtype=float),
+        np.asarray(onsets, dtype=float),
+        chroma,
+        mfcc,
+        full_duration,
+    )
+    phase_timings["structureSec"] = round(time.monotonic() - structure_started, 3)
+    sections = structure.sections or detect_sections(energy, frame_times, full_duration)
+    drops = structure.drops
+    progress(phases[3], 1.0, f"{len(drops)} reprises repérées")
     progress(phases[4], 1.0, "données du spectacle prêtes")
-    phase_timings["mfccChromaSec"] = 0.0
+    phase_timings["mfccChromaSec"] = phase_timings["structureSec"]
 
     return AnalysisResult(
         duration=round(full_duration, 3),
@@ -980,6 +1012,7 @@ def analyze_file(
         high=high_points,
         sections=sections,
         builds=builds,
+        drops=drops,
         coverage=coverage,
         phase_timings=phase_timings,
     )

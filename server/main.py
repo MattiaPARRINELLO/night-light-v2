@@ -577,6 +577,7 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "high": result.high,
         "sections": result.sections,
         "builds": result.builds,
+        "drops": result.drops,
         **({"coverage": list(result.coverage)} if result.coverage is not None else {}),
     }
 

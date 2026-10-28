@@ -94,7 +94,7 @@ function hashPixels(data: Uint8ClampedArray): string {
 function setup(payload: SetupPayload): { scenes: number; width: number; height: number } {
   const target = createTarget(payload);
   const view = new TrackView(payload.analysis);
-  const plan = buildShowPlan(payload.analysis, payload.reduced);
+  const plan = buildShowPlan(payload.analysis, payload.reduced, undefined, { dramaturgy: true });
   session = { canvas: target.canvas, ctx: target.ctx, view, plan, setup: payload };
   return { scenes: plan.scenes.length, width: target.canvas.width, height: target.canvas.height };
 }
@@ -288,7 +288,7 @@ function compareContinuousSeek(payload: ComparePayload): {
   diffSamples: Array<{ x: number; y: number; before: number[]; after: number[] }>;
 } {
   const view = new TrackView(payload.analysis);
-  const plan = buildShowPlan(payload.analysis, payload.reduced);
+  const plan = buildShowPlan(payload.analysis, payload.reduced, undefined, { dramaturgy: true });
   const frame = Math.round(payload.time * payload.fps);
 
   const continuous = createTarget(payload);
