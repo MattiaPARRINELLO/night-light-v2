@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import { buildShowPlan, type SceneRole } from "../src/core/show";
+import { createTrackView } from "../src/core/view";
 import { DEFAULT_SETTINGS, type Analysis } from "../src/types";
 import { createHeadlessRenderer } from "../tests/support/headless_render";
 
@@ -101,6 +102,7 @@ interface LightingMeasure {
   truth: number;
   detected: number;
   offset: number;
+  dropCurve: number;
   luminanceMean: number;
   whiteRatio: number;
 }
@@ -129,9 +131,13 @@ interface TrackReport {
   refrains: {
     toleranceSec: number;
     proposed: number;
+    detected: number;
     found: number;
     missed: number;
+    false: number;
+    precision: number;
     recall: number;
+    f1: number;
     matches: RefrainMatch[];
     detectedTimes: number[];
   };
@@ -253,12 +259,18 @@ function scoreRefrains(
     }
   }
   const found = matches.filter((match) => match.detected !== null).length;
+  const precision = ratio(found, detected.length);
+  const recall = ratio(found, starts.length);
   return {
     toleranceSec: REFRAIN_TOLERANCE,
     proposed: starts.length,
+    detected: detected.length,
     found,
     missed: starts.length - found,
-    recall: round(ratio(found, starts.length)),
+    false: remaining.length,
+    precision: round(precision),
+    recall: round(recall),
+    f1: round(ratio(2 * precision * recall, precision + recall)),
     matches,
     detectedTimes: detected.map((time) => round(time)),
   };
@@ -350,6 +362,7 @@ async function measureLighting(
         settings: DEFAULT_SETTINGS,
         reducedMotion: false,
       });
+      const view = createTrackView(analysis);
       for (const match of captures) {
         const at = round(match.detected + LIGHTING_OFFSET);
         const capture = await renderer.capture(at, Math.round(at * 60));
@@ -357,6 +370,7 @@ async function measureLighting(
           truth: match.truth,
           detected: match.detected,
           offset: LIGHTING_OFFSET,
+          dropCurve: round(view.buildIntensity(at)),
           luminanceMean: round(capture.luminanceMean),
           whiteRatio: round(capture.whiteRatio),
         });
@@ -380,7 +394,7 @@ function formatReport(reports: TrackReport[]): string {
       `${score.found}/${score.false}/${score.missed} F1=${score.f1.toFixed(2)} Δ=${
         score.meanSignedDelta === null ? "—" : score.meanSignedDelta.toFixed(2)
       }`;
-    const refrain = `${report.refrains.found}/${report.refrains.proposed}`;
+    const refrain = `${report.refrains.found}/${report.refrains.proposed} P=${report.refrains.precision.toFixed(2)} (${report.refrains.detected} détectés)`;
     lines.push(
       `${report.titre.padEnd(18)} ${cell(narrow).padEnd(43)} ${cell(wide).padEnd(43)} ${refrain}`,
     );
@@ -430,7 +444,7 @@ function formatReport(reports: TrackReport[]): string {
       lines.push(
         `  ${report.titre.padEnd(10)} vérité ${measure.truth.toFixed(2).padStart(7)}  ` +
           `détecté ${measure.detected.toFixed(2).padStart(7)}  ` +
-          `luminance ${measure.luminanceMean.toFixed(3)}  blanc ${(measure.whiteRatio * 100).toFixed(2)} %`,
+          `courbe drop ${measure.dropCurve.toFixed(3)}  luminance ${measure.luminanceMean.toFixed(3)}  blanc ${(measure.whiteRatio * 100).toFixed(2)} %`,
       );
     }
   }

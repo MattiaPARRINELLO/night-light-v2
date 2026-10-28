@@ -306,8 +306,25 @@ def detect_structure(
             raw[other]["energy"] for other in (index - 1, index + 1) if 0 <= other < len(raw)
         ]
         neighbour = float(np.mean(neighbour_energies)) if neighbour_energies else 0.0
+        # Un refrain est un bloc qui **revient** : sans une autre occurrence
+        # de même énergie, de même basse et de même densité (à distance, pas
+        # la section voisine), ce n'est qu'un passage fort.
+        repeated = any(
+            abs(other - index) >= 2
+            and 0.5 <= span / max(raw[other]["end"] - raw[other]["start"], 1e-6) <= 2.0
+            and abs(raw[other]["energy"] - section["energy"]) <= 0.10
+            and abs(raw[other]["bass"] - section["bass"]) <= 0.15
+            and abs(raw[other]["density"] - section["density"]) <= 1.2
+            and any(
+                raw[between]["energy"] <= section["energy"] - 0.10
+                for between in range(min(index, other) + 1, max(index, other))
+            )
+            for other in range(len(raw))
+        )
+        after_calm = index > 0 and sections[index - 1]["kind"] == "pont"
         refrain = (
-            index not in (0, len(raw) - 1)
+            (repeated or after_calm)
+            and index not in (0, len(raw) - 1)
             and section["energy"] >= REFRAIN_MIN_RELATIVE_ENERGY * max(maximum_energy, 1e-6)
             and section["energy"] >= neighbour + 0.02
         )
@@ -369,7 +386,7 @@ def detect_structure(
             continue
         reprise = before_bass <= 0.15 and bass_gain >= 0.10 and (
             energy_gain >= 0.08 or bass_gain >= 0.20
-        ) and (energy_gain >= 0.20 or before_energy <= 0.45)
+        ) and (energy_gain >= 0.25 or before_energy <= 0.45)
         # Drop léger : plus aucune basse pendant une mesure, puis un bloc
         # plein qui tient. C'est le cas d'un refrain qui revient sans impact
         # spectaculaire ; il doit rester un drop, avec une force modérée.

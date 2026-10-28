@@ -90,9 +90,13 @@
       "refrains": {
         "toleranceSec": 2,
         "proposed": 3,
+        "detected": 5,
         "found": 2,
         "missed": 1,
+        "false": 3,
+        "precision": 0.4,
         "recall": 0.667,
+        "f1": 0.5,
         "matches": [
           {
             "truth": 13,
@@ -113,12 +117,9 @@
         "detectedTimes": [
           31.649,
           79.621,
-          89.118,
           127.594,
           139.622,
-          176.123,
-          192.122,
-          215.319
+          176.123
         ]
       },
       "lighting": [
@@ -126,22 +127,25 @@
           "truth": 79,
           "detected": 79.621,
           "offset": 0.1,
-          "luminanceMean": 0.078,
+          "dropCurve": 0.361,
+          "luminanceMean": 0.398,
           "whiteRatio": 0
         },
         {
           "truth": 129,
           "detected": 127.594,
           "offset": 0.1,
-          "luminanceMean": 0.088,
-          "whiteRatio": 0
+          "dropCurve": 0.756,
+          "luminanceMean": 0.815,
+          "whiteRatio": 0.278
         },
         {
           "truth": 175,
           "detected": 176.123,
           "offset": 0.1,
-          "luminanceMean": 0.153,
-          "whiteRatio": 0
+          "dropCurve": 0.788,
+          "luminanceMean": 0.826,
+          "whiteRatio": 0.295
         }
       ],
       "sections": {
@@ -210,15 +214,15 @@
       "roles": {
         "intro": 2,
         "montee": 1,
-        "refrain": 6,
-        "couplet": 8,
+        "refrain": 3,
+        "couplet": 11,
         "drop": 3,
         "finale": 1
       },
       "families": {
-        "spiral": 1,
+        "spiral": 2,
         "pluie": 1,
-        "barres-led": 6,
+        "barres-led": 3,
         "lyres-suspendues": 2,
         "parade": 1,
         "rings": 2,
@@ -228,7 +232,9 @@
         "pont-concert": 2,
         "mirror": 1,
         "burst": 1,
-        "crossfire": 1
+        "mandala": 1,
+        "crossfire": 1,
+        "couronne": 1
       }
     },
     {
@@ -247,10 +253,10 @@
         {
           "toleranceSec": 0.5,
           "proposed": 3,
-          "detected": 2,
+          "detected": 1,
           "found": 0,
           "missed": 3,
-          "false": 2,
+          "false": 1,
           "precision": 0,
           "recall": 0,
           "f1": 0,
@@ -273,20 +279,19 @@
             }
           ],
           "detectedTimes": [
-            41.03,
             136.998
           ]
         },
         {
           "toleranceSec": 1.5,
           "proposed": 3,
-          "detected": 2,
+          "detected": 1,
           "found": 1,
           "missed": 2,
-          "false": 1,
-          "precision": 0.5,
+          "false": 0,
+          "precision": 1,
           "recall": 0.333,
-          "f1": 0.4,
+          "f1": 0.5,
           "meanSignedDelta": -1.002,
           "matches": [
             {
@@ -306,7 +311,6 @@
             }
           ],
           "detectedTimes": [
-            41.03,
             136.998
           ]
         }
@@ -314,9 +318,13 @@
       "refrains": {
         "toleranceSec": 2,
         "proposed": 0,
+        "detected": 5,
         "found": 0,
         "missed": 0,
+        "false": 5,
+        "precision": 0,
         "recall": 0,
+        "f1": 0,
         "matches": [],
         "detectedTimes": [
           41.03,
@@ -331,8 +339,9 @@
           "truth": 138,
           "detected": 136.998,
           "offset": 0.1,
-          "luminanceMean": 0.128,
-          "whiteRatio": 0
+          "dropCurve": 0.781,
+          "luminanceMean": 0.824,
+          "whiteRatio": 0.292
         }
       ],
       "sections": {
@@ -408,19 +417,19 @@
       "roles": {
         "intro": 2,
         "couplet": 4,
-        "drop": 2,
-        "refrain": 9,
+        "refrain": 10,
+        "drop": 1,
         "finale": 1
       },
       "families": {
         "waves": 1,
         "particles": 1,
         "spiral": 1,
-        "pont-concert": 2,
+        "barres-led": 6,
         "lyres-suspendues": 4,
         "shutters": 1,
         "mirror": 1,
-        "barres-led": 5,
+        "pont-concert": 1,
         "rings": 1,
         "treillis": 1
       }
@@ -500,9 +509,13 @@
       "refrains": {
         "toleranceSec": 2,
         "proposed": 2,
+        "detected": 4,
         "found": 1,
         "missed": 1,
+        "false": 3,
+        "precision": 0.25,
         "recall": 0.5,
+        "f1": 0.333,
         "matches": [
           {
             "truth": 81,
@@ -517,12 +530,9 @@
         ],
         "detectedTimes": [
           36.432,
-          64.087,
-          97.965,
           148.027,
           159.01,
-          216.921,
-          238.33
+          216.921
         ]
       },
       "lighting": [
@@ -530,13 +540,15 @@
           "truth": 98,
           "detected": 97.965,
           "offset": 0.1,
-          "luminanceMean": 0.131,
-          "whiteRatio": 0
+          "dropCurve": 0.788,
+          "luminanceMean": 0.826,
+          "whiteRatio": 0.295
         },
         {
           "truth": 218,
           "detected": 216.921,
           "offset": 0.1,
+          "dropCurve": 0.788,
           "luminanceMean": 0.825,
           "whiteRatio": 0.295
         }
@@ -613,8 +625,8 @@
       },
       "roles": {
         "intro": 1,
-        "couplet": 10,
-        "refrain": 7,
+        "couplet": 13,
+        "refrain": 4,
         "drop": 3,
         "montee": 2,
         "finale": 1
@@ -623,16 +635,18 @@
         "waves": 2,
         "spiral": 1,
         "mandala": 1,
-        "barres-led": 5,
-        "lyres-suspendues": 4,
+        "barres-led": 4,
+        "lyres-suspendues": 2,
         "pont-concert": 3,
         "pluie": 1,
-        "particles": 1,
+        "particles": 2,
+        "spots": 1,
+        "rings": 2,
         "couronne": 1,
         "vortex": 1,
         "etoile": 1,
-        "rings": 2,
-        "parade": 1
+        "parade": 1,
+        "mirror": 1
       }
     },
     {
@@ -718,9 +732,13 @@
       "refrains": {
         "toleranceSec": 2,
         "proposed": 0,
+        "detected": 7,
         "found": 0,
         "missed": 0,
+        "false": 7,
+        "precision": 0,
         "recall": 0,
+        "f1": 0,
         "matches": [],
         "detectedTimes": [
           15.581,
@@ -737,15 +755,17 @@
           "truth": 72,
           "detected": 71.61,
           "offset": 0.1,
-          "luminanceMean": 0.108,
-          "whiteRatio": 0
+          "dropCurve": 0.686,
+          "luminanceMean": 0.815,
+          "whiteRatio": 0.276
         },
         {
           "truth": 152,
           "detected": 151.185,
           "offset": 0.1,
-          "luminanceMean": 0.138,
-          "whiteRatio": 0
+          "dropCurve": 0.788,
+          "luminanceMean": 0.825,
+          "whiteRatio": 0.295
         }
       ],
       "sections": {

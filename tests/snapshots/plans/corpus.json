@@ -99,16 +99,16 @@
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyres-suspendues",
+          "family": "lyre",
           "hue": 353.898,
           "intensity": 0.969,
           "lightness": 0.76,
           "mood": "explosif",
           "reason": "beat",
-          "role": "refrain",
+          "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyres-suspendues"
+          "variant": "lyre"
         },
         {
           "accent": 326.965,
@@ -236,16 +236,16 @@
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyres-suspendues",
+          "family": "lyre",
           "hue": 353.898,
           "intensity": 0.969,
           "lightness": 0.76,
           "mood": "explosif",
           "reason": "beat",
-          "role": "refrain",
+          "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyres-suspendues"
+          "variant": "lyre"
         },
         {
           "accent": 326.965,

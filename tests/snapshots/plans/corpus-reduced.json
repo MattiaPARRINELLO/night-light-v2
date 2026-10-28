@@ -100,7 +100,7 @@
           "lightness": 0.76,
           "mood": "explosif",
           "reason": "beat",
-          "role": "refrain",
+          "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
           "variant": "particles"
@@ -232,7 +232,7 @@
           "lightness": 0.76,
           "mood": "explosif",
           "reason": "beat",
-          "role": "refrain",
+          "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
           "variant": "particles"
