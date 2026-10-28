@@ -24,6 +24,7 @@
     "report": "bun tools/plan-report.ts",
     "eval:ref": "bun tools/eval-reference.ts",
     "shots:ref": "bun tools/reference-shots.ts",
+    "calm:report": "bun tools/calm-report.ts",
     "snapshots": "bun tools/plan-snapshots.ts",
     "snapshots:update": "bun tools/plan-snapshots.ts --update",
     "timeline": "bun tools/plan-timeline.ts",

@@ -35,6 +35,11 @@ STRUCTURE_MIN_SPACING = 8.0
 # Similarité minimale (chroma + timbre) pour dire que deux blocs sont le même
 # matériau musical.
 GROUP_MIN_SIMILARITY = 0.80
+# Le chroma moyen est presque identique d'un bloc à l'autre sur le rap ; le
+# timbre (MFCC) est le vrai discriminant entre un refrain qui revient et un
+# couplet dense. Seuil mesuré sur les références : les vrais refrains se
+# retrouvent à ≥ 0,99, les couplets denses restent sous 0,985.
+GROUP_MIN_MFCC_SIMILARITY = 0.985
 # Part de l'énergie maximale du morceau sous laquelle un bloc répété n'est pas
 # un refrain.
 REFRAIN_MIN_RELATIVE_ENERGY = 0.62
@@ -164,6 +169,55 @@ def _trough_length(beats: np.ndarray) -> float:
         return 2.0
     period = float(np.median(np.diff(beats)))
     return float(np.clip(4.0 * period, DROP_MIN_TROUGH, 2.6))
+
+
+def _late_return(
+    energy: np.ndarray,
+    bass: np.ndarray,
+    times: np.ndarray,
+    beats: np.ndarray,
+    start: float,
+    horizon: float,
+) -> float | None:
+    """Premier temps fort plein d'une reprise qui suit une frontière molle.
+
+    Une frontière de section peut tomber un ou deux temps avant l'impact réel
+    (constat R3 sur Focus 197,1 → 200). Quand la section qui commence est de
+    faible énergie, on cherche dans les ``horizon`` secondes un creux court
+    (basse quasi absente) suivi d'un retour de production, et on rend le
+    **premier temps fort dont la mesure précédente est déjà pleine** : c'est lui
+    qui porte l'impact, pas l'échantillon de bascule.
+    """
+    period = float(np.median(np.diff(beats))) if beats.size > 1 else 0.5
+    trough = max(0.5, min(1.0, period * 1.5))
+    for index in range(1, beats.size):
+        beat = float(beats[index])
+        if beat <= start or beat > start + horizon:
+            continue
+        if beat > float(times[-1]) - 6.0:
+            break
+        window = (times >= max(0.0, beat - trough)) & (times < beat)
+        if not window.any():
+            continue
+        before_bass = float(bass[window].mean())
+        before_energy = float(energy[window].mean())
+        if before_bass > 0.22 or before_energy > 0.62:
+            continue
+        after_energy = _mean(energy, times, beat, beat + 1.2)
+        after_bass = _mean(bass, times, beat, beat + 1.2)
+        if after_energy < 0.30 or (after_bass < 0.42 and after_energy < 0.55):
+            continue
+        sustain_energy = _mean(energy, times, beat + 4.0, beat + 8.0)
+        sustain_bass = _mean(bass, times, beat + 4.0, beat + 8.0)
+        if not (sustain_energy >= 0.28 or sustain_bass >= 0.35):
+            continue
+        # Recalage : premier temps fort dont la mesure précédente est pleine.
+        for following in range(index, min(index + 4, beats.size - 1)):
+            left = float(beats[following])
+            right = float(beats[following + 1])
+            if _mean(bass, times, left, right) >= 0.42 or _mean(energy, times, left, right) >= 0.55:
+                return round(right, 3)
+    return None
 
 
 def _boundaries(
@@ -315,6 +369,11 @@ def detect_structure(
             and abs(raw[other]["energy"] - section["energy"]) <= 0.10
             and abs(raw[other]["bass"] - section["bass"]) <= 0.15
             and abs(raw[other]["density"] - section["density"]) <= 1.2
+            # Même matériau musical : énergie et densité proches ne suffisent
+            # pas, un couplet dense ressemble à un refrain. On exige la
+            # similarité chroma + timbre entre les deux occurrences.
+            and _cosine(section["chroma"], raw[other]["chroma"]) >= GROUP_MIN_SIMILARITY
+            and _cosine(section["mfcc"], raw[other]["mfcc"]) >= GROUP_MIN_MFCC_SIMILARITY
             and any(
                 raw[between]["energy"] <= section["energy"] - 0.10
                 for between in range(min(index, other) + 1, max(index, other))
@@ -384,17 +443,16 @@ def detect_structure(
         )
         if not had_production:
             continue
-        reprise = before_bass <= 0.15 and bass_gain >= 0.10 and (
-            energy_gain >= 0.08 or bass_gain >= 0.20
-        ) and (energy_gain >= 0.25 or before_energy <= 0.45)
+        reprise = (
+            before_bass <= 0.15
+            and bass_gain >= 0.10
+            and (energy_gain >= 0.08 or bass_gain >= 0.20)
+            and (energy_gain >= 0.25 or before_energy <= 0.45)
+        )
         # Drop léger : plus aucune basse pendant une mesure, puis un bloc
         # plein qui tient. C'est le cas d'un refrain qui revient sans impact
         # spectaculaire ; il doit rester un drop, avec une force modérée.
-        light = (
-            before_bass <= 0.015
-            and after_energy >= 0.70
-            and after_bass >= 0.25
-        )
+        light = before_bass <= 0.015 and after_energy >= 0.70 and after_bass >= 0.25
         if not (reprise or light):
             continue
         strength = float(
@@ -414,6 +472,26 @@ def detect_structure(
                 "source": "return",
             }
         )
+
+    # Frontières molles : la section commence bas, mais la production ne
+    # revient qu'un ou deux temps plus loin. On recale l'impact sur ce retour
+    # (Focus : frontière 197,1 s, impact 198,6 s, vérité 200 s).
+    for index in range(1, len(raw)):
+        section = raw[index]
+        start = section["start"]
+        if start < 20.0 or section["energy"] >= 0.70:
+            continue
+        # La frontière doit être réellement molle : les toutes premières
+        # secondes de la section restent basses. Sinon c'est un simple
+        # enchaînement de couplets, pas une reprise décalée.
+        if _mean(energy, times, start, start + 0.75) > 0.35:
+            continue
+        if any(abs(drop["time"] - start) <= 3.0 for drop in drops):
+            continue
+        late = _late_return(energy, bass, times, beats, start, 2.0)
+        if late is None:
+            continue
+        drops.append({"time": late, "strength": 0.85, "source": "return"})
 
     drops.sort(key=lambda drop: drop["time"])
     merged_drops: list[dict] = []

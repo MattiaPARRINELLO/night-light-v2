@@ -160,6 +160,82 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   ctx.fillRect(Math.max(0, cx - span), Math.max(0, cy - span), Math.min(w, span * 2), Math.min(h, span * 2));
 }
 
+/** Bloc de scènes calmes contiguës : le voile ne doit pas clignoter entre elles. */
+interface CalmBlock {
+  start: number;
+  end: number;
+  glow: number;
+  fadeSec: number;
+  riseSec: number;
+}
+
+function calmBlockFor(plan: ShowPlan, scene: Scene): CalmBlock | null {
+  if (scene.mood !== "calme" || (scene.calmGlow ?? 0) <= 0) return null;
+  let first = scene.index;
+  while (first > 0 && plan.scenes[first - 1]?.mood === "calme") first -= 1;
+  let last = scene.index;
+  while (last + 1 < plan.scenes.length && plan.scenes[last + 1]?.mood === "calme") last += 1;
+  const firstScene = plan.scenes[first] ?? scene;
+  const lastScene = plan.scenes[last] ?? scene;
+  return {
+    start: firstScene.start,
+    end: lastScene.end,
+    glow: scene.calmGlow ?? 0,
+    fadeSec: Math.max(0.1, scene.calmFadeSec ?? 2),
+    riseSec: Math.max(0.1, scene.calmRiseSec ?? 2),
+  };
+}
+
+/**
+ * Voile de calme lumineux.
+ *
+ * Le fond de scène est volontairement sombre (il porte les impacts) : sans ce
+ * voile, un passage calme tombe sous 0,10 de luminance moyenne et devient un
+ * « noir de tension ». Le voile est une nappe pastel pleine image, dont
+ * l'intensité vient de `scene.calmGlow` (paramètre fourni par `show.ts`).
+ *
+ * Fonction pure du temps musical : deux rendus au même instant donnent les
+ * mêmes pixels. Le voile s'éteint sur 0,1 s à la fin du bloc calme pour que
+ * l'impact suivant tranche ; le fondu d'entrée dure au moins une mesure.
+ */
+function drawCalmVeil(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  block: CalmBlock,
+): void {
+  const fadeSec = f.reduced ? Math.max(2, block.fadeSec) : block.fadeSec;
+  const into = f.t - block.start;
+  const left = block.end - f.t;
+  const fadeIn = clamp01(into / fadeSec);
+  const cut = clamp01(left / 0.1);
+  const riseSec = f.reduced ? Math.max(2, block.riseSec) : block.riseSec;
+  const rise = clamp01((riseSec - left) / riseSec);
+  const envelope = Math.min(fadeIn, cut) * (1 + 0.06 * rise);
+  const alpha = clamp01(block.glow * envelope);
+  if (alpha <= 0.002) return;
+
+  const { width: w, height: h } = f;
+  const saturation = Math.min(0.6, f.palette.saturation + 0.05);
+  const lightness = f.reduced ? 0.46 : 0.52;
+  const top = paint(f.palette.hue, saturation, lightness, alpha);
+  const bottom = paint(contrastHue(f), saturation, lightness * 0.84, alpha);
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(1, bottom);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  // Respiration très lente, pour que la salle reste vivante sans flash.
+  const cx = w * 0.5;
+  const cy = h * 0.52;
+  const radius = Math.hypot(w, h) * 0.55;
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  halo.addColorStop(0, paint(f.palette.hue, saturation * 0.8, lightness + 0.08, alpha * 0.28));
+  halo.addColorStop(1, paint(f.palette.hue, saturation * 0.8, lightness, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, w, h);
+}
+
 function drawDust(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   const base = f.reduced ? 26 : 64;
@@ -634,6 +710,8 @@ export function renderFrame(input: RenderInput): void {
   // chaque image, c'est une écriture de framebuffer en moins sur le GPU.
 
   drawBackground(ctx, { ...base, palette });
+  const calmBlock = calmBlockFor(plan, scene);
+  if (calmBlock !== null) drawCalmVeil(ctx, { ...base, palette }, calmBlock);
 
   // Couche permanente : le fond, le halo et la poussière ne dépendent pas du
   // fondu de scène. C'est ce qui garantit qu'il reste toujours quelque chose à

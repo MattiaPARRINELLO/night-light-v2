@@ -65,6 +65,12 @@ export interface CaptureResult {
   centerEdgeRatio: number;
   dominantHues: number;
   hueBuckets: Array<{ hue: number; share: number }>;
+  /** Saturation HSV moyenne des pixels éclairés (luminance ≥ 0,05). */
+  saturationMean?: number;
+  /** Teinte moyenne circulaire, pondérée par saturation × luminance. */
+  hueMean?: number;
+  /** Teinte moyenne des pixels franchement colorés (saturation ≥ 0,45). */
+  hueSaturated?: number;
 }
 
 export interface HeadlessRenderer {

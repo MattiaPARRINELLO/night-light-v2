@@ -167,6 +167,9 @@ function capture(payload: { time: number; frame: number }): {
   centerEdgeRatio: number;
   dominantHues: number;
   hueBuckets: Array<{ hue: number; share: number }>;
+  saturationMean: number;
+  hueMean: number;
+  hueSaturated: number;
 } {
   renderAt(payload.time, payload.frame);
   if (session === null) throw new Error("setup() d'abord");
@@ -182,6 +185,13 @@ function capture(payload: { time: number; frame: number }): {
   let borderCount = 0;
   const buckets = Array.from({ length: 12 }, () => 0);
   let chromatic = 0;
+  let saturationSum = 0;
+  let saturationCount = 0;
+  let hueX = 0;
+  let hueY = 0;
+  let strongX = 0;
+  let strongY = 0;
+  let strongWeight = 0;
   const x0 = width / 4;
   const x1 = (width * 3) / 4;
   const y0 = height / 4;
@@ -205,6 +215,10 @@ function capture(payload: { time: number; frame: number }): {
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     const saturation = max === 0 ? 0 : (max - min) / max;
+    if (luminance >= 0.05) {
+      saturationSum += saturation;
+      saturationCount += 1;
+    }
     if (saturation < 0.2 || luminance < 0.05) continue;
     let hue: number;
     if (max === min) hue = 0;
@@ -217,6 +231,14 @@ function capture(payload: { time: number; frame: number }): {
     const weight = saturation * luminance;
     buckets[bucket] = (buckets[bucket] ?? 0) + weight;
     chromatic += weight;
+    const radians = (hue * Math.PI) / 180;
+    hueX += Math.cos(radians) * weight;
+    hueY += Math.sin(radians) * weight;
+    if (saturation >= 0.45) {
+      strongX += Math.cos(radians) * weight;
+      strongY += Math.sin(radians) * weight;
+      strongWeight += weight;
+    }
   }
   const total = width * height;
   const hueBuckets = buckets.map((weight, index) => ({
@@ -234,6 +256,10 @@ function capture(payload: { time: number; frame: number }): {
     centerEdgeRatio: borderMean === 0 ? 0 : centerMean / borderMean,
     dominantHues: hueBuckets.filter((bucket) => bucket.share >= 0.08).length,
     hueBuckets,
+    saturationMean: saturationCount === 0 ? 0 : saturationSum / saturationCount,
+    hueMean: chromatic === 0 ? 0 : ((Math.atan2(hueY, hueX) * 180) / Math.PI + 360) % 360,
+    hueSaturated:
+      strongWeight === 0 ? 0 : ((Math.atan2(strongY, strongX) * 180) / Math.PI + 360) % 360,
   };
 }
 

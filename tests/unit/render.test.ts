@@ -580,7 +580,9 @@ describe("cadence musicale des flashs", () => {
     const flashs = (builds: Analysis["builds"]) =>
       renderAt(8.02, analysis({ builds })).filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
     const sansMontee = flashs([]);
-    expect(sansMontee).toBeLessThanOrEqual(3); // fond + flash éventuel + vignette
+    // fond + voile calme éventuel + flash éventuel + vignette. Le voile calme
+    // est une nappe pastel, pas un lavage blanc : il n'augmente pas le blanc.
+    expect(sansMontee).toBeLessThanOrEqual(4);
   });
 });
 

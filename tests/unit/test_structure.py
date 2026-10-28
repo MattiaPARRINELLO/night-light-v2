@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from server.structure import detect_structure  # noqa: E402
+from server.structure import _late_return, detect_structure  # noqa: E402
 
 
 def make_curves(duration: float = 120.0) -> dict[str, np.ndarray]:
@@ -83,6 +83,22 @@ def test_sections_couvrent_le_morceau_sans_trou() -> None:
     assert structure.sections[-1]["end"] == data["duration"]
     for previous, following in zip(structure.sections, structure.sections[1:], strict=False):
         assert previous["end"] == following["start"]
+
+
+def test_reprise_decalee_recalée_sur_le_temps_fort_suivant() -> None:
+    """Une frontière molle suivie d'un creux court : l'impact est le temps fort plein."""
+    duration = 20.0
+    times = np.arange(0.0, duration, 1.0 / 20.0)
+    beats = np.arange(0.0, duration, 0.5)
+    energy = np.full_like(times, 0.10)
+    bass = np.zeros_like(times)
+    # La production revient à 10,5 s, après un creux d'une demi-seconde.
+    energy[(times >= 10.5) & (times < 19.0)] = 0.90
+    bass[(times >= 10.5) & (times < 19.0)] = 0.70
+    late = _late_return(energy, bass, times, beats, 10.4, 2.0)
+    assert late is not None
+    # Le premier temps fort dont la mesure précédente est déjà pleine : 11,0 s.
+    assert 10.9 <= late <= 11.1
 
 
 def test_energie_constante_ne_produit_aucun_drop() -> None:
