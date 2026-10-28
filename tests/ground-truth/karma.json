@@ -1,0 +1,22 @@
+{
+  "titre": "Karma",
+  "artiste": "Bigflo & Oli",
+  "id": 3884482861,
+  "durée": 259.0,
+  "bpm": { "value": 115.4, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 13.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 13.0, "end": 64.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "montee", "start": 64.0, "end": 81.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "refrain", "start": 81.0, "end": 98.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "drop", "start": 98.0, "end": 131.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 131.0, "end": 183.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "montee", "start": 183.0, "end": 201.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "pont", "start": 201.0, "end": 218.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "refrain", "start": 218.0, "end": 259.0, "confidence": 0.7, "source": "proprietaire" }
+  ],
+  "drops": [
+    { "time": 98.0, "confidence": 0.9, "source": "proprietaire" },
+    { "time": 218.0, "confidence": 0.8, "source": "proprietaire" }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "titre": "Minimum",
+  "artiste": "Bigflo & Oli",
+  "id": 3884482841,
+  "durée": 196.3,
+  "bpm": { "value": 142.9, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 14.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 14.0, "end": 41.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "montee", "start": 41.0, "end": 51.0, "confidence": 0.7, "source": "proprietaire" },
+    { "role": "drop", "start": 51.0, "end": 68.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 68.0, "end": 102.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "drop", "start": 102.0, "end": 124.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "pont", "start": 124.0, "end": 138.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "montee", "start": 138.0, "end": 151.0, "confidence": 0.6, "source": "proprietaire" },
+    { "role": "couplet", "start": 151.0, "end": 196.3, "confidence": 0.8, "source": "proprietaire" }
+  ],
+  "drops": [
+    { "time": 51.0, "confidence": 0.9, "source": "proprietaire" },
+    { "time": 102.0, "confidence": 0.9, "source": "proprietaire" }
+  ]
+}

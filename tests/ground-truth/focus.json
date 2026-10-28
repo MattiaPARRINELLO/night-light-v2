@@ -1,0 +1,23 @@
+{
+  "titre": "Focus",
+  "artiste": "Bigflo & Oli",
+  "id": 3884482881,
+  "durée": 246.2,
+  "bpm": { "value": 120.0, "confidence": 0.4, "source": "agent-proposition" },
+  "sections": [
+    { "role": "intro", "start": 0.0, "end": 15.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 15.0, "end": 47.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "montee", "start": 47.0, "end": 72.0, "confidence": 0.6, "source": "proprietaire" },
+    { "role": "couplet", "start": 72.0, "end": 127.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "pont", "start": 127.0, "end": 152.0, "confidence": 0.9, "source": "proprietaire" },
+    { "role": "couplet", "start": 152.0, "end": 194.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "montee", "start": 194.0, "end": 200.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "drop", "start": 200.0, "end": 226.0, "confidence": 0.8, "source": "proprietaire" },
+    { "role": "finale", "start": 226.0, "end": 246.2, "confidence": 0.9, "source": "proprietaire" }
+  ],
+  "drops": [
+    { "time": 72.0, "confidence": 0.8, "source": "proprietaire" },
+    { "time": 152.0, "confidence": 0.8, "source": "proprietaire" },
+    { "time": 200.0, "confidence": 0.9, "source": "proprietaire" }
+  ]
+}

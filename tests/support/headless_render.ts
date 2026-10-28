@@ -56,6 +56,17 @@ export interface ImageStats {
   white: number;
 }
 
+export interface CaptureResult {
+  png: string;
+  width: number;
+  height: number;
+  luminanceMean: number;
+  whiteRatio: number;
+  centerEdgeRatio: number;
+  dominantHues: number;
+  hueBuckets: Array<{ hue: number; share: number }>;
+}
+
 export interface HeadlessRenderer {
   /** Prépare le canvas et le plan pour des mesures successives. */
   setup(payload: RenderSetup): Promise<{ scenes: number; width: number; height: number }>;
@@ -67,6 +78,8 @@ export interface HeadlessRenderer {
   whiteRatios(times: ReadonlyArray<number>, fps?: number): Promise<number[]>;
   /** Empreinte + part de blanc d'une image. */
   imageStats(time: number, frame?: number): Promise<ImageStats>;
+  /** PNG + mesures d'éclairage d'une image (captures de référence). */
+  capture(time: number, frame?: number): Promise<CaptureResult>;
   /** Boucle de rendu in-page (mesure de coût par image). */
   renderLoop(count: number, fps?: number, start?: number): Promise<{
     scenes: number;
@@ -152,6 +165,9 @@ export async function createHeadlessRenderer(): Promise<HeadlessRenderer> {
     },
     async imageStats(time, frame = Math.round(time * 10)) {
       return invoke("imageStats", { time, frame });
+    },
+    async capture(time, frame = Math.round(time * 10)) {
+      return invoke("capture", { time, frame });
     },
     async renderLoop(count, fps = 60, start = 0) {
       return invoke("renderLoop", { count, fps, start });

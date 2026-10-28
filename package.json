@@ -22,6 +22,8 @@
     "measure": "bun scripts/measure.ts",
     "compare-metrics": "bun scripts/compare-metrics.ts",
     "report": "bun tools/plan-report.ts",
+    "eval:ref": "bun tools/eval-reference.ts",
+    "shots:ref": "bun tools/reference-shots.ts",
     "snapshots": "bun tools/plan-snapshots.ts",
     "snapshots:update": "bun tools/plan-snapshots.ts --update",
     "timeline": "bun tools/plan-timeline.ts",
