@@ -565,8 +565,6 @@ def to_schema(result: AnalysisResult) -> dict[str, Any]:
         "duration": result.duration,
         "tempo": result.tempo,
         "meter": result.meter,
-        "meterConfidence": result.meter_confidence,
-        "events": result.events,
         "beatCount": len(result.beats),
         "beatPeriod": beat_period,
         "beats": result.beats,

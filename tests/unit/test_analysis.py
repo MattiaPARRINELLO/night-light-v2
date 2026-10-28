@@ -65,27 +65,18 @@ def test_les_bandes_different_des_moments(tmp_path: Path) -> None:
     assert energy[int(len(energy) * 0.75)] > energy[int(len(energy) * 0.2)]
 
 
-def test_sections_couvrent_le_morceau(tmp_path: Path) -> None:
-    """La partition locale couvre [0, durée] sans trou (contrat V3.1)."""
+def test_section_unique_couvre_le_morceau(tmp_path: Path) -> None:
+    """Plus de découpage couplet/refrain : une seule section, de 0 à la fin."""
     result = make_analysis(tmp_path, duration=40.0, bpm=126.0)
-    assert result.sections
-    assert result.sections[0]["start"] == 0.0
-    assert abs(result.sections[-1]["end"] - result.duration) < 1e-3
-    for previous, following in zip(result.sections, result.sections[1:], strict=False):
-        assert abs(previous["end"] - following["start"]) < 1e-6
-    for section in result.sections:
-        assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
-        assert 0.0 <= section["energy"] <= 1.0
-        assert isinstance(section["group"], str)
-        assert 0.0 <= section["confidence"] <= 1.0
-        assert section["kind"] in {
-            "intro",
-            "couplet",
-            "refrain",
-            "pont",
-            "silence",
-            "outro",
-        }
+    assert len(result.sections) == 1
+    section = result.sections[0]
+    assert section["start"] == 0.0
+    assert section["end"] >= result.duration - 0.5
+    assert section["label"] in {"calme", "montee", "intense", "descente", "silence"}
+    assert 0.0 <= section["energy"] <= 1.0
+    assert section["group"] == ""
+    assert section["kind"] == "section"
+    assert section["occurrence"] == 0
 
 
 def test_montee_detectee(tmp_path: Path) -> None:

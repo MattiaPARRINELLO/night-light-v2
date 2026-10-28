@@ -695,25 +695,12 @@ describe("diversite du spectacle", () => {
       // La signature est complète sur chaque drop.
       for (const drop of drops) expect(drop.drop).toBeDefined();
       const signatures = drops.map(
-        (drop) =>
-          `${drop.drop!.lyres}/${drop.drop!.barres}/${drop.drop!.blinders}/${drop.drop!.hue}`,
+        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
       );
       expect(new Set(signatures).size).toBe(signatures.length);
-      // Deux drops consécutifs diffèrent sur au moins deux composantes : on ne
-      // rejoue pas le même geste en changeant un seul paramètre.
-      for (let index = 1; index < drops.length; index += 1) {
-        const previous = drops[index - 1]!.drop!;
-        const current = drops[index]!.drop!;
-        const distance =
-          (previous.lyres !== current.lyres ? 1 : 0) +
-          (previous.barres !== current.barres ? 1 : 0) +
-          (previous.blinders !== current.blinders ? 1 : 0) +
-          (previous.hue !== current.hue ? 1 : 0);
-        expect(distance).toBeGreaterThanOrEqual(2);
-      }
-      // Le pont concert est réservé au climax du morceau (dernier drop à la
-      // force maximale) ; les autres impacts alternent lyres et barres LED.
-      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBe(1);
+      // Les impacts forts déploient le pont, les plus doux alternent lyres et
+      // barres LED.
+      expect(drops.filter((scene) => scene.family === "pont-concert").length).toBeGreaterThanOrEqual(2);
       expect(
         drops.some((scene) => scene.family === "lyres-suspendues" || scene.family === "barres-led"),
       ).toBe(true);
@@ -923,30 +910,23 @@ describe("répétition des passages (couplet / refrain)", () => {
     expect(refrains[0]!.palette.hue).not.toBe(couplets[0]!.palette.hue);
   });
 
-  test("la dramaturgie s'active sur un découpage structuré, jamais sur une section globale", () => {
+  test("la dramaturgie des sections ne s'active que sur demande explicite", () => {
     const sections = [
       { start: 0, end: 30, label: "calme" as const, energy: 0.2, kind: "couplet" as const },
       { start: 30, end: 60, label: "intense" as const, energy: 0.9, kind: "refrain" as const },
       { start: 60, end: 90, label: "montee" as const, energy: 0.6, kind: "pont" as const },
     ];
     const data = analysis({ duration: 90, sections });
-    // Une section structurée (kind/group/confidence) réveille la dramaturgie.
-    const automatique = buildShowPlan(data, false);
-    expect(automatique.scenes.some((scene) => scene.role === "refrain")).toBe(true);
-    expect(automatique.scenes.some((scene) => scene.role === "montee")).toBe(true);
-    // L'option permet encore de la couper explicitement.
-    const coupe = buildShowPlan(data, false, undefined, { dramaturgy: false });
-    expect(coupe.scenes.some((scene) => scene.role === "refrain")).toBe(false);
-    expect(coupe.scenes.some((scene) => scene.role === "montee")).toBe(false);
-    // Une étiquette globale (une seule section `section`) reste ignorée : c'est
-    // ce qui garantit les snapshots synthétiques historiques inchangés.
-    const globale = analysis({
-      duration: 90,
-      sections: [{ start: 0, end: 90, label: "intense", energy: 0.5, kind: "section" }],
-    });
-    const planGlobal = buildShowPlan(globale, false);
-    expect(planGlobal.scenes.some((scene) => scene.role === "refrain")).toBe(false);
-    expect(planGlobal.scenes.some((scene) => scene.role === "montee")).toBe(false);
+    const parDefaut = buildShowPlan(data, false);
+    const dramatise = buildShowPlan(data, false, undefined, { dramaturgy: true });
+    // Par défaut, seule la structure locale est ignorée : aucun rôle refrain ni
+    // montée, même avec des sections explicites.
+    expect(parDefaut.scenes.some((scene) => scene.role === "refrain")).toBe(false);
+    expect(parDefaut.scenes.some((scene) => scene.role === "montee")).toBe(false);
+    // L'option réveille la dramaturgie dormante pour le jour où le serveur
+    // produira un vrai découpage.
+    expect(dramatise.scenes.some((scene) => scene.role === "refrain")).toBe(true);
+    expect(dramatise.scenes.some((scene) => scene.role === "montee")).toBe(true);
   });
 
   test("le refrain s'allume : humeur explosive et complémentaire", () => {

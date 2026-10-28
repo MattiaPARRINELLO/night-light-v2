@@ -23,8 +23,6 @@ interface SetupPayload {
   quality: number;
   settings: RenderSettings;
   reducedMotion: boolean;
-  /** Remise à zéro du harnais avant chaque image (diagnostic de coût). */
-  resetHarness?: boolean;
 }
 
 interface Session {
@@ -61,10 +59,9 @@ function draw(
 ): void {
   // Neutralise le cache de rastérisation Skia interne au canvas. Il ne masque
   // aucun état applicatif : sans reset, le résidu mesuré est de 146 px / 57 600
-  // (delta max 4 niveaux) dû au seul moteur. `renderFrame` reset désormais la
-  // première image après un seek, mais la comparaison continue ↔ seek exige la
-  // même base des deux côtés : le harnais garde donc son reset.
-  if (setup.resetHarness !== false) target.ctx.reset();
+  // (delta max 4 niveaux), dû au seul moteur, et la production ne fait
+  // volontairement pas ce reset (le seek applicatif peut donc garder ce résidu).
+  target.ctx.reset();
   renderFrame({
     ctx: target.ctx,
     width: setup.width,
@@ -77,23 +74,6 @@ function draw(
     reducedMotion: setup.reducedMotion,
     quality: setup.quality,
     frame,
-  });
-}
-
-/** Image PNG (data URL) d'un instant, pour les captures de revue. */
-function capturePng(payload: { time: number; frame: number }): string {
-  renderAt(payload.time, payload.frame);
-  if (session === null) throw new Error("setup() d'abord");
-  return session.canvas.toDataURL("image/png");
-}
-
-/** Durée de rendu de chaque image, en ms (diagnostic du coût d'un seek). */
-function timeFrames(payload: { times: number[]; fps: number }): number[] {
-  if (session === null) throw new Error("setup() d'abord");
-  return payload.times.map((time) => {
-    const started = performance.now();
-    renderAt(time, Math.round(time * payload.fps));
-    return performance.now() - started;
   });
 }
 
@@ -149,41 +129,6 @@ function whiteRatios(payload: { times: number[]; fps: number }): number[] {
   return payload.times.map((time) => whiteRatioAt(time, Math.round(time * payload.fps)));
 }
 
-export interface FrameMetric {
-  /** Part de pixels proches du blanc (critère de saturation). */
-  whiteRatio: number;
-  /** Luminance moyenne Rec. 709 de l'image, 0..1. */
-  meanLuminance: number;
-}
-
-/**
- * Luminance moyenne + part de blanc pour une série d'instants.
- *
- * Sert à la métrique photosensible (transitions de luminance) : la luminance
- * moyenne est calculée sur tous les pixels, sans seuil, contrairement à
- * `whiteRatio`.
- */
-function frameMetrics(payload: { times: number[]; fps: number }): FrameMetric[] {
-  if (session === null) throw new Error("setup() d'abord");
-  return payload.times.map((time) => {
-    renderAt(time, Math.round(time * payload.fps));
-    const data = pixels(session!);
-    let sum = 0;
-    let count = 0;
-    for (let index = 0; index + 3 < data.length; index += 4) {
-      const r = (data[index] ?? 0) / 255;
-      const g = (data[index + 1] ?? 0) / 255;
-      const b = (data[index + 2] ?? 0) / 255;
-      sum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      count += 1;
-    }
-    return {
-      whiteRatio: whitePixels(data).ratio,
-      meanLuminance: count === 0 ? 0 : sum / count,
-    };
-  });
-}
-
 function imageStats(payload: { time: number; frame: number }): {
   hash: string;
   whiteRatio: number;
@@ -207,23 +152,11 @@ function renderLoop(payload: {
   count: number;
   fps: number;
   start: number;
-  /** Saute `seekJump` secondes toutes les `seekEvery` images (coût d'un seek). */
-  seekEvery?: number;
-  seekJump?: number;
-}): { scenes: number; elapsedMs: number; perFrameMs: number; seeks: number } {
+}): { scenes: number; elapsedMs: number; perFrameMs: number } {
   if (session === null) throw new Error("setup() d'abord");
   const started = performance.now();
-  let time = payload.start;
-  let seeks = 0;
   for (let index = 0; index < payload.count; index += 1) {
-    if (index > 0) {
-      if (payload.seekEvery !== undefined && payload.seekEvery > 0 && index % payload.seekEvery === 0) {
-        time += payload.seekJump ?? 5;
-        seeks += 1;
-      } else {
-        time += 1 / payload.fps;
-      }
-    }
+    const time = payload.start + index / payload.fps;
     renderAt(time, Math.round(time * payload.fps));
   }
   const elapsedMs = performance.now() - started;
@@ -231,7 +164,6 @@ function renderLoop(payload: {
     scenes: session.plan.scenes.length,
     elapsedMs,
     perFrameMs: payload.count === 0 ? 0 : elapsedMs / payload.count,
-    seeks,
   };
 }
 
@@ -342,9 +274,6 @@ export interface HeadlessApi {
   clear: typeof clear;
   whiteRatioAt: typeof whiteRatioAt;
   whiteRatios: typeof whiteRatios;
-  frameMetrics: typeof frameMetrics;
-  timeFrames: typeof timeFrames;
-  capturePng: typeof capturePng;
   imageStats: typeof imageStats;
   renderLoop: typeof renderLoop;
   compareContinuousSeek: typeof compareContinuousSeek;
@@ -356,9 +285,6 @@ export interface HeadlessApi {
   clear,
   whiteRatioAt,
   whiteRatios,
-  frameMetrics,
-  timeFrames,
-  capturePng,
   imageStats,
   renderLoop,
   compareContinuousSeek,

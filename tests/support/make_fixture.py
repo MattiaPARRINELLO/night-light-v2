@@ -74,52 +74,6 @@ def write_synthetic_track(
     return bpm
 
 
-def write_meter_track(
-    path: Path,
-    duration: float = 24.0,
-    bpm: float = 120.0,
-    beats_per_bar: int = 3,
-) -> float:
-    """Écrit une valse (3 temps) ou un 6/8 synthétique, sans section.
-
-    Le premier temps porte une basse grave et un kick ; les temps faibles un
-    accord médium/aigu plus léger. C'est le motif oom-pah-pah qui doit guider
-    la métrique, sans aucune information de tempo dans le nom du fichier.
-    """
-    t = np.arange(int(SR * duration)) / SR
-    beat = 60.0 / bpm
-    rng = np.random.default_rng(3)
-    mix = np.zeros_like(t)
-    for index in range(int(duration / beat)):
-        start_frame = int(index * beat * SR)
-        if start_frame >= len(t):
-            break
-        length = min(int(beat * SR), len(t) - start_frame)
-        local = np.arange(length) / SR
-        decay = np.exp(-local * 6.0)
-        downbeat = index % beats_per_bar == 0
-        bass_freq = 55.0 if beats_per_bar != 6 else (55.0 if index % 3 == 0 else 82.5)
-        amplitude = 0.9 if downbeat else 0.18
-        bass = np.sin(2 * np.pi * bass_freq * local) * decay * amplitude
-        chord = (
-            (
-                np.sin(2 * np.pi * 220.0 * local)
-                + 0.6 * np.sin(2 * np.pi * 330.0 * local)
-                + 0.4 * np.sin(2 * np.pi * 440.0 * local)
-            )
-            * decay
-            * (0.12 if downbeat else 0.22)
-        )
-        hat = rng.standard_normal(length) * np.exp(-local * 60.0) * 0.05
-        segment = (bass + chord + hat).astype(np.float32)
-        mix[start_frame : start_frame + length] += segment[:length]
-    peak = float(np.max(np.abs(mix)))
-    if peak > 0:
-        mix = mix / peak * 0.9
-    sf.write(path, mix.astype(np.float32), SR, subtype="PCM_16")
-    return bpm
-
-
 def _gate_window(t: np.ndarray, start: float, end: float, fade: float) -> np.ndarray:
     gate = np.ones_like(t)
     gate[t < start] = 0
