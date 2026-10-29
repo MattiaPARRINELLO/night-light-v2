@@ -8,6 +8,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Reprises de production sans condition de basse (R5)** : un retour d'énergie
+  après un creux net peut corroborer un refrain même quand la basse continue
+  (Latch, One More Time). Les drops restent un sous-ensemble strict des
+  reprises et leurs horodatages sont inchangés ; une reprise sans drop
+  n'allume ni flash ni plateau concert. Détail : `docs/r5-reprises.md`.
 - **File multi-source** : modèle `QueueTrack`, résolution Deezer par ID puis
   ISRC (contrôle de durée ±3 s) puis recherche ; file Deezer via userscript
   (`userscripts/deezer-queue.user.js`). Repli MPRIS seul si rien n'est configuré.
