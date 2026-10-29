@@ -1441,6 +1441,47 @@ export function buildShowPlan(
     });
   }
 
+  // Saut de teinte des reprises après un calme. On agit après la construction
+  // pour ne pas décaler la chaîne de teintes des scènes suivantes : seule la
+  // première scène qui suit le calme change. Le candidat reste dans le budget
+  // de l'une des deux ancres et maximise l'écart avec le calme ET avec la
+  // scène suivante (le contrat de couleur exige aussi un écart entre voisines).
+  for (let index = 1; index < scenes.length; index += 1) {
+    const scene = scenes[index];
+    const previous = scenes[index - 1];
+    if (scene === undefined || previous === undefined) continue;
+    if (previous.mood !== "calme" || scene.mood === "calme") continue;
+    const previousHue = previous.palette.hue;
+    const nextHue = scenes[index + 1]?.palette.hue ?? (previousHue + 180) % 360;
+    const candidates: number[] = [];
+    for (let degree = 0; degree < 360; degree += 1) {
+      const candidate = degree;
+      const inBudget = [track.hue, track.accent].some(
+        (anchor) => Math.abs(hueDelta(anchor, candidate)) <= track.spread + 1e-6,
+      );
+      if (inBudget) candidates.push(candidate);
+    }
+    // Priorité à l'écart ≥ 90° avec le calme ; ensuite on maximise l'écart
+    // avec la scène suivante pour respecter le contrat de couleur.
+    const farFromCalm = candidates.filter(
+      (candidate) => Math.abs(hueDelta(previousHue, candidate)) >= 90,
+    );
+    const pool = farFromCalm.length > 0 ? farFromCalm : candidates;
+    let best = scene.palette.hue;
+    let bestNext = -1;
+    let bestCalm = -1;
+    for (const candidate of pool) {
+      const fromCalm = Math.abs(hueDelta(previousHue, candidate));
+      const fromNext = Math.abs(hueDelta(candidate, nextHue));
+      if (fromNext > bestNext || (fromNext === bestNext && fromCalm > bestCalm)) {
+        bestNext = fromNext;
+        bestCalm = fromCalm;
+        best = candidate;
+      }
+    }
+    scene.palette.hue = best;
+  }
+
   if (scenes.length === 0) {
     scenes.push({
       index: 0,

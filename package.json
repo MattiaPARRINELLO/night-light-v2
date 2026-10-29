@@ -35,7 +35,8 @@
     "check:fallback": "bun tests/e2e/fallback_check.mjs",
     "check:crossfade": "bun tests/e2e/crossfade_check.mjs",
     "check:partial": "bun tests/e2e/partial_check.mjs",
-    "check:family": "bun tests/e2e/family_check.mjs"
+    "check:family": "bun tests/e2e/family_check.mjs",
+    "verify:safety": "bun tools/verify-safety.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
