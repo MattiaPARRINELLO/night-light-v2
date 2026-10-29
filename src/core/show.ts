@@ -1247,7 +1247,6 @@ export function buildShowPlan(
 
   const scenes: Scene[] = [];
   let previousHue = -999;
-  let previousMood: Mood | null = null;
   // Mémoire par groupe de structure : deux sections du même matériau musical
   // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
   // famille et leur teinte à la première apparition et on les réutilise.
@@ -1378,31 +1377,17 @@ export function buildShowPlan(
       section?.kind === "refrain" ||
       mood === "explosif" ||
       (mood === "pulse" && caractere.energy > 0.6);
-    // Après un calme, la reprise doit trancher : on vise le pôle de teinte le
-    // plus éloigné de celui du calme (l'autre ancre du morceau), sans dérive.
-    const afterCalm = previousMood === "calme" && mood !== "calme";
-    // Un calme reste près de l'ancre du morceau : teinte douce, pas de saut.
-    const ancre = mood === "calme"
-      ? track.hue
-      : afterCalm
-        ? Math.abs(hueDelta(previousHue, track.hue)) >= Math.abs(hueDelta(previousHue, track.accent))
+    const ancre =
+      signature?.hue === "contraste"
+        ? fort
           ? track.hue
           : track.accent
-        : signature?.hue === "contraste"
-          ? fort
-            ? track.hue
-            : track.accent
-          : fort
-            ? track.accent
-            : track.hue;
-    const derive =
-      mood === "calme"
-        ? (hash01(seed + turn * 977) - 0.5) * track.spread * 0.6
-        : afterCalm
-          ? (hash01(seed + turn * 977) - 0.5) * 12
-          : grouped
-            ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
-            : (hash01(seed + turn * 977) - 0.5) * track.spread;
+        : fort
+          ? track.accent
+          : track.hue;
+    const derive = grouped
+      ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
+      : (hash01(seed + turn * 977) - 0.5) * track.spread;
     const autreAncre = ancre === track.hue ? track.accent : track.hue;
     let hue: number;
     const cachedHue = grouped ? groupHues.get(group) : undefined;
@@ -1454,7 +1439,6 @@ export function buildShowPlan(
         : {}),
       ...(signature !== undefined ? { drop: signature } : {}),
     });
-    previousMood = mood;
   }
 
   if (scenes.length === 0) {

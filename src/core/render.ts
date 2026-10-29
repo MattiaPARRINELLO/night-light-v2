@@ -594,10 +594,11 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
   // Impact de montée : toujours, et sans attendre la cadence.
   if (lastDrop >= lastBeat) return true;
 
-  // Pendant un drop, la musique donne la cadence : un flash par temps fort.
-  // La fenêtre couvre la retombée immédiate (~1,5 s) pendant laquelle la salle
-  // « bat » encore avec l'impact.
-  if (view.buildsEndingIn(t - 1.5, t).length > 0) return true;
+  // Dans les 1,5 s qui suivent un impact, aucun flash de temps fort : l'impact
+  // lui-même est déjà admis par `lastDrop >= lastBeat` juste au-dessus. Sans
+  // cette garde, la salle « battait » encore avec le drop et enchaînait un
+  // flash par temps fort, au-delà du budget de sécurité.
+  if (view.buildsEndingIn(t - 1.5, t).length > 0) return false;
 
   // Hors drop : un seul temps fort par phrase, calé sur l'index du temps fort
   // pour rester stable quel que soit le moment où l'image est calculée.
