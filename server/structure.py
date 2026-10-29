@@ -11,6 +11,10 @@ choses, mesurées sur les mêmes courbes que le reste de l'analyse :
   basse sur au moins une mesure) suivi d'un retour de basse et d'attaques qui
   tient au moins quatre secondes, recalé sur le premier temps fort de la
   reprise. Un simple début de couplet, sans creux préalable, ne passe pas.
+* une notion plus large de **reprise** (R5) : le même creux suivi d'un retour
+  d'énergie, **sans condition de basse**, utilisé seulement pour corroborer un
+  refrain. Les drops restent un sous-ensemble strict des reprises ; une reprise
+  sans drop n'allume rien.
 
 Aucun seuil n'est propre à un titre : tout est calculé sur les courbes du
 morceau et les paramètres ci-dessous sont communs au corpus.
@@ -18,7 +22,7 @@ morceau et les paramètres ci-dessous sont communs au corpus.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -50,6 +54,8 @@ REFRAIN_MIN_RELATIVE_ENERGY = 0.62
 # distingue les refrains de Gogo et Karma est le **saut complémentaire** : le
 # matériau revient avec une reprise de production au même instant. Un bloc
 # répété qui ne porte aucun retour de production reste donc un couplet/pulse.
+# Une reprise sans condition de basse (voir R5) compte comme saut : elle peut
+# ancrer un refrain sans déclencher d'impact visuel.
 REFRAIN_DROP_TOLERANCE = 0.75
 # Durée minimale d'un creux de production, en secondes (une mesure à 120 BPM).
 DROP_MIN_TROUGH = 1.2
@@ -68,11 +74,46 @@ DROP_MIN_BASS = 0.42
 # Deux drops plus proches que cette durée sont fusionnés.
 DROP_MIN_SPACING = 18.0
 
+# ------------------------------------------- reprises sans condition de basse
+# Une **reprise** est le retour de la production après un creux net, sans
+# exiger que la basse remonte : sur la house et l'électro, la basse continue
+# pendant le break, seul le niveau d'ensemble revient. Les drops restent un
+# sous-ensemble strict des reprises (mêmes horodatages) ; une reprise sans
+# drop peut corroborer un refrain, mais ne déclenche ni flash ni plateau.
+#
+# Énergie du bloc qui suit : la production doit être réellement revenue.
+REPRISE_MIN_AFTER_ENERGY = 0.50
+# Le retour doit tenir (même fenêtre que DROP_SUSTAIN).
+REPRISE_MIN_SUSTAIN_ENERGY = 0.30
+# Creux maximal avant le retour : en dessous, le bloc précédent est une vraie
+# baisse et non une simple respiration. 0,25 attrape le retour de They Don't
+# Care (10,5 s, creux 0,05) sans ouvrir les blocs déjà forts.
+REPRISE_MAX_TROUGH_ENERGY = 0.25
+# Saut minimal entre le creux et le retour. C'est ce qui distingue une reprise
+# d'un passage fort déjà installé.
+REPRISE_MIN_ENERGY_JUMP = 0.30
+# Le bloc qui commence doit être plus énergique que celui qui le précède :
+# un retour qui redescend en moyenne n'est pas une reprise.
+REPRISE_MIN_SECTION_GAIN = 0.05
+# La densité ne doit pas s'effondrer : une reprise peut perdre un peu
+# d'attaques (Latch 95,6 s), jamais la moitié du tissu rythmique.
+REPRISE_MIN_DENSITY_KEEP = 0.5
+# Énergie minimale du bloc qui précède une **première entrée de production**
+# (section d'intro). En dessous, c'est une intro quasi silencieuse : l'entrée
+# est l'exposition du morceau, pas une reprise. Mesure : Focus 15,6 s suit
+# 0,06 (silence, exposition) tandis que They Don't Care 10,5 s suit 0,18
+# (bloc audible nettement plus faible). Le seuil 0,15 les sépare sans règle
+# par titre.
+REPRISE_MIN_PREVIOUS_ENERGY = 0.15
+
 
 @dataclass
 class Structure:
     sections: list[dict]
     drops: list[dict]
+    # Reprises de production (drops inclus). Sert à corroborer un refrain sans
+    # modifier drops : `drops` reste le sous-ensemble qui déclenche la lumière.
+    reprises: list[dict] = field(default_factory=list)
 
 
 def _mean(values: np.ndarray, times: np.ndarray, start: float, end: float) -> float:
@@ -453,6 +494,47 @@ def detect_structure(
         else:
             merged_drops.append(drop)
 
+    # Reprises sans condition de basse (R5). On part des drops déjà validés :
+    # le sous-ensemble est garanti et leurs horodatages ne peuvent pas bouger.
+    # Puis on ajoute les retours d'énergie qui suivent un creux net, y compris
+    # la **première entrée de production** quand elle suit un bloc réellement
+    # plus faible (jamais une intro quasi silencieuse : c'est l'exposition).
+    reprises: list[dict] = [dict(drop) for drop in merged_drops]
+    for index in range(1, len(raw)):
+        previous = raw[index - 1]
+        current = raw[index]
+        start = current["start"]
+        if current["end"] - start < 5.0:
+            continue
+        if intro[index - 1] and previous["energy"] < REPRISE_MIN_PREVIOUS_ENERGY:
+            continue
+        before_energy, _ = _trough(energy, bass, times, start, _trough_length(beats))
+        after_energy = _mean(energy, times, start, start + DROP_SUSTAIN)
+        sustain_energy = _mean(energy, times, start + DROP_SUSTAIN, start + 2 * DROP_SUSTAIN)
+        if before_energy > REPRISE_MAX_TROUGH_ENERGY:
+            continue
+        if after_energy < REPRISE_MIN_AFTER_ENERGY:
+            continue
+        if sustain_energy < REPRISE_MIN_SUSTAIN_ENERGY:
+            continue
+        if after_energy - before_energy < REPRISE_MIN_ENERGY_JUMP:
+            continue
+        if current["energy"] - previous["energy"] < REPRISE_MIN_SECTION_GAIN:
+            continue
+        if current["density"] < REPRISE_MIN_DENSITY_KEEP * previous["density"]:
+            continue
+        if any(abs(start - reprise["time"]) <= REFRAIN_DROP_TOLERANCE for reprise in reprises):
+            continue
+        jump = after_energy - before_energy
+        reprises.append(
+            {
+                "time": round(start, 3),
+                "strength": round(float(np.clip(0.15 + 0.55 * jump, 0.15, 1.0)), 3),
+                "source": "reprise",
+            }
+        )
+    reprises.sort(key=lambda reprise: reprise["time"])
+
     sections: list[dict] = []
     for index, section in enumerate(raw):
         start = section["start"]
@@ -490,7 +572,7 @@ def detect_structure(
         # avec une reprise de production. Sans ce saut complémentaire, le bloc
         # garde le rôle couplet/pulse (Minimum et Focus n'ont aucun refrain).
         corroborated = any(
-            abs(drop["time"] - start) <= REFRAIN_DROP_TOLERANCE for drop in merged_drops
+            abs(reprise["time"] - start) <= REFRAIN_DROP_TOLERANCE for reprise in reprises
         )
         refrain = (
             (repeated or after_calm)
@@ -523,4 +605,4 @@ def detect_structure(
             }
         )
 
-    return Structure(sections=sections, drops=merged_drops)
+    return Structure(sections=sections, drops=merged_drops, reprises=reprises)
