@@ -43,6 +43,14 @@ GROUP_MIN_MFCC_SIMILARITY = 0.985
 # Part de l'énergie maximale du morceau sous laquelle un bloc répété n'est pas
 # un refrain.
 REFRAIN_MIN_RELATIVE_ENERGY = 0.62
+# Tolérance (secondes) entre le début d'un refrain et une reprise de production.
+# Aucune mesure de timbre ne sépare proprement un vrai refrain d'un couplet
+# dense sur le corpus rap (voir le diagnostic R4 : MFCC ≥ 0,985 partout,
+# énergie, brillance et densité se recouvrent). Le seul fait indépendant qui
+# distingue les refrains de Gogo et Karma est le **saut complémentaire** : le
+# matériau revient avec une reprise de production au même instant. Un bloc
+# répété qui ne porte aucun retour de production reste donc un couplet/pulse.
+REFRAIN_DROP_TOLERANCE = 0.75
 # Durée minimale d'un creux de production, en secondes (une mesure à 120 BPM).
 DROP_MIN_TROUGH = 1.2
 # Durée minimale du retour, en secondes : la prod doit tenir, pas seulement
@@ -348,68 +356,11 @@ def detect_structure(
         return Structure(sections=[], drops=[])
 
     maximum_energy = max(section["energy"] for section in raw)
-    sections: list[dict] = []
-    for index, section in enumerate(raw):
-        start = section["start"]
-        end = section["end"]
-        span = end - start
-        front = _mean(energy, times, start, start + span * 0.25)
-        back = _mean(energy, times, end - span * 0.25, end)
-        rising = back - front >= 0.12 and back >= 0.30
-        neighbour_energies = [
-            raw[other]["energy"] for other in (index - 1, index + 1) if 0 <= other < len(raw)
-        ]
-        neighbour = float(np.mean(neighbour_energies)) if neighbour_energies else 0.0
-        # Un refrain est un bloc qui **revient** : sans une autre occurrence
-        # de même énergie, de même basse et de même densité (à distance, pas
-        # la section voisine), ce n'est qu'un passage fort.
-        repeated = any(
-            abs(other - index) >= 2
-            and 0.5 <= span / max(raw[other]["end"] - raw[other]["start"], 1e-6) <= 2.0
-            and abs(raw[other]["energy"] - section["energy"]) <= 0.10
-            and abs(raw[other]["bass"] - section["bass"]) <= 0.15
-            and abs(raw[other]["density"] - section["density"]) <= 1.2
-            # Même matériau musical : énergie et densité proches ne suffisent
-            # pas, un couplet dense ressemble à un refrain. On exige la
-            # similarité chroma + timbre entre les deux occurrences.
-            and _cosine(section["chroma"], raw[other]["chroma"]) >= GROUP_MIN_SIMILARITY
-            and _cosine(section["mfcc"], raw[other]["mfcc"]) >= GROUP_MIN_MFCC_SIMILARITY
-            and any(
-                raw[between]["energy"] <= section["energy"] - 0.10
-                for between in range(min(index, other) + 1, max(index, other))
-            )
-            for other in range(len(raw))
-        )
-        after_calm = index > 0 and sections[index - 1]["kind"] == "pont"
-        refrain = (
-            (repeated or after_calm)
-            and index not in (0, len(raw) - 1)
-            and section["energy"] >= REFRAIN_MIN_RELATIVE_ENERGY * max(maximum_energy, 1e-6)
-            and section["energy"] >= neighbour + 0.02
-        )
-        if index == 0 and section["energy"] < 0.18:
-            kind = "intro"
-        elif index == len(raw) - 1 and section["energy"] < 0.18:
-            kind = "outro"
-        elif refrain:
-            kind = "refrain"
-        elif section["energy"] < 0.26:
-            kind = "pont"
-        else:
-            kind = "couplet"
-        sections.append(
-            {
-                "start": round(start, 3),
-                "end": round(end, 3),
-                "label": _label_for(section["energy"], rising),
-                "energy": round(float(np.clip(section["energy"], 0.0, 1.0)), 3),
-                "group": "",
-                "kind": kind,
-                "occurrence": 0,
-                "bass": round(float(np.clip(section["bass"], 0.0, 1.0)), 3),
-                "density": round(float(section["density"]), 3),
-            }
-        )
+
+    # Les reprises de production sont calculées **avant** le rôle des sections :
+    # elles servent de corroboration au refrain (voir REFRAIN_DROP_TOLERANCE).
+    # Seule l'intro conditionne ce calcul ; elle ne dépend pas du refrain.
+    intro = [index == 0 and section["energy"] < 0.18 for index, section in enumerate(raw)]
 
     drops: list[dict] = []
     for index in range(1, len(raw)):
@@ -418,7 +369,7 @@ def detect_structure(
         start = current["start"]
         if start < 20.0 or current["end"] - start < 5.0:
             continue
-        if sections[index - 1]["kind"] == "intro":
+        if intro[index - 1]:
             continue
         before_energy, before_bass = _trough(energy, bass, times, start, _trough_length(beats))
         after_energy = _mean(energy, times, start, start + DROP_SUSTAIN)
@@ -501,5 +452,75 @@ def detect_structure(
                 merged_drops[-1] = drop
         else:
             merged_drops.append(drop)
+
+    sections: list[dict] = []
+    for index, section in enumerate(raw):
+        start = section["start"]
+        end = section["end"]
+        span = end - start
+        front = _mean(energy, times, start, start + span * 0.25)
+        back = _mean(energy, times, end - span * 0.25, end)
+        rising = back - front >= 0.12 and back >= 0.30
+        neighbour_energies = [
+            raw[other]["energy"] for other in (index - 1, index + 1) if 0 <= other < len(raw)
+        ]
+        neighbour = float(np.mean(neighbour_energies)) if neighbour_energies else 0.0
+        # Un refrain est un bloc qui **revient** : sans une autre occurrence
+        # de même énergie, de même basse et de même densité (à distance, pas
+        # la section voisine), ce n'est qu'un passage fort.
+        repeated = any(
+            abs(other - index) >= 2
+            and 0.5 <= span / max(raw[other]["end"] - raw[other]["start"], 1e-6) <= 2.0
+            and abs(raw[other]["energy"] - section["energy"]) <= 0.10
+            and abs(raw[other]["bass"] - section["bass"]) <= 0.15
+            and abs(raw[other]["density"] - section["density"]) <= 1.2
+            # Même matériau musical : énergie et densité proches ne suffisent
+            # pas, un couplet dense ressemble à un refrain. On exige la
+            # similarité chroma + timbre entre les deux occurrences.
+            and _cosine(section["chroma"], raw[other]["chroma"]) >= GROUP_MIN_SIMILARITY
+            and _cosine(section["mfcc"], raw[other]["mfcc"]) >= GROUP_MIN_MFCC_SIMILARITY
+            and any(
+                raw[between]["energy"] <= section["energy"] - 0.10
+                for between in range(min(index, other) + 1, max(index, other))
+            )
+            for other in range(len(raw))
+        )
+        after_calm = index > 0 and sections[index - 1]["kind"] == "pont"
+        # Confiance R4 : le retour du matériau ne suffit pas, il doit coïncider
+        # avec une reprise de production. Sans ce saut complémentaire, le bloc
+        # garde le rôle couplet/pulse (Minimum et Focus n'ont aucun refrain).
+        corroborated = any(
+            abs(drop["time"] - start) <= REFRAIN_DROP_TOLERANCE for drop in merged_drops
+        )
+        refrain = (
+            (repeated or after_calm)
+            and corroborated
+            and index not in (0, len(raw) - 1)
+            and section["energy"] >= REFRAIN_MIN_RELATIVE_ENERGY * max(maximum_energy, 1e-6)
+            and section["energy"] >= neighbour + 0.02
+        )
+        if index == 0 and section["energy"] < 0.18:
+            kind = "intro"
+        elif index == len(raw) - 1 and section["energy"] < 0.18:
+            kind = "outro"
+        elif refrain:
+            kind = "refrain"
+        elif section["energy"] < 0.26:
+            kind = "pont"
+        else:
+            kind = "couplet"
+        sections.append(
+            {
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "label": _label_for(section["energy"], rising),
+                "energy": round(float(np.clip(section["energy"], 0.0, 1.0)), 3),
+                "group": "",
+                "kind": kind,
+                "occurrence": 0,
+                "bass": round(float(np.clip(section["bass"], 0.0, 1.0)), 3),
+                "density": round(float(section["density"]), 3),
+            }
+        )
 
     return Structure(sections=sections, drops=merged_drops)
