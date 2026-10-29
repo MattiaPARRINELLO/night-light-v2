@@ -10,8 +10,11 @@
  * ±1,5 s (tolérance de travail du chantier R2). On rapporte, pour chacune, les
  * vrais/faux/manqués, la précision, le rappel, le F1 et l'écart moyen signé
  * (négatif = en avance, positif = en retard). Les débuts de refrain sont
- * évalués à ±2 s. Enfin, pour chaque drop validé, on mesure la luminance
- * moyenne et la part de blanc du plan à +0,1 s, avec le rendu headless 1080p.
+ * évalués à ±2 s. La vérité refrain peut être déclarée vide (`"refrains": []`,
+ * `"refrainsStatus": "valide"`) : c'est une validation « aucun refrain », à ne
+ * pas confondre avec l'absence d'annotation. Enfin, pour chaque drop validé, on
+ * mesure la luminance moyenne et la part de blanc du plan à +0,1 s, avec le
+ * rendu headless 1080p.
  *
  *     bun tools/eval-reference.ts
  *     bun tools/eval-reference.ts --json tests/metrics/reference-eval.json
@@ -67,9 +70,22 @@ interface Truth {
   artiste: string;
   id: number;
   bpm: { value: number; confidence: number; source: string };
+  /**
+   * Refrains validés. La **présence** de la clé fait foi :
+   * - absente → non annoté (on retombe sur les sections de rôle `refrain`) ;
+   * - `[]` → annoté et validé : aucun refrain (un faux positif est compté) ;
+   * - non vide → liste des refrains validés.
+   * `refrainsStatus: "valide"` marque explicitement une annotation validée
+   * même quand la liste est dérivée des sections (Gogo, Karma).
+   */
+  refrains?: TruthSection[];
+  refrainsStatus?: "valide";
   sections: TruthSection[];
   drops: TruthEntry[];
 }
+
+/** Provenance de la vérité refrain, pour distinguer « aucun » de « non annoté ». */
+type RefrainTruthStatus = "aucun" | "annote" | "non-annote";
 
 interface DropMatch {
   truth: number;
@@ -130,6 +146,7 @@ interface TrackReport {
   drops: DropScore[];
   refrains: {
     toleranceSec: number;
+    status: RefrainTruthStatus;
     proposed: number;
     detected: number;
     found: number;
@@ -224,13 +241,27 @@ function scoreDrops(truth: Truth, detected: number[], tolerance: number): DropSc
   };
 }
 
+function truthRefrains(truth: Truth): { starts: number[]; status: RefrainTruthStatus } {
+  if (truth.refrains !== undefined) {
+    return {
+      starts: truth.refrains.map((section) => section.start),
+      status: truth.refrains.length === 0 ? "aucun" : "annote",
+    };
+  }
+  const starts = truth.sections
+    .filter((section) => section.role === "refrain")
+    .map((section) => section.start);
+  if (truth.refrainsStatus === "valide") {
+    return { starts, status: starts.length === 0 ? "aucun" : "annote" };
+  }
+  return { starts, status: "non-annote" };
+}
+
 function scoreRefrains(
   truth: Truth,
   analysis: Analysis,
 ): TrackReport["refrains"] {
-  const starts = truth.sections
-    .filter((section) => section.role === "refrain")
-    .map((section) => section.start);
+  const { starts, status } = truthRefrains(truth);
   // Le rôle refrain du plan cède la place à un drop quand les deux tombent au
   // même instant (c'est l'impact qui commande la lumière). On évalue donc le
   // début de refrain sur le découpage produit par l'analyseur, qui porte
@@ -263,6 +294,7 @@ function scoreRefrains(
   const recall = ratio(found, starts.length);
   return {
     toleranceSec: REFRAIN_TOLERANCE,
+    status,
     proposed: starts.length,
     detected: detected.length,
     found,
@@ -394,7 +426,15 @@ function formatReport(reports: TrackReport[]): string {
       `${score.found}/${score.false}/${score.missed} F1=${score.f1.toFixed(2)} Δ=${
         score.meanSignedDelta === null ? "—" : score.meanSignedDelta.toFixed(2)
       }`;
-    const refrain = `${report.refrains.found}/${report.refrains.proposed} P=${report.refrains.precision.toFixed(2)} (${report.refrains.detected} détectés)`;
+    const label =
+      report.refrains.status === "aucun"
+        ? "validé : aucun"
+        : report.refrains.status === "non-annote"
+          ? "non annoté"
+          : "annoté";
+    const refrain =
+      `${report.refrains.found}/${report.refrains.proposed} P=${report.refrains.precision.toFixed(2)} ` +
+      `(${report.refrains.detected} détectés, ${report.refrains.false} faux, ${label})`;
     lines.push(
       `${report.titre.padEnd(18)} ${cell(narrow).padEnd(43)} ${cell(wide).padEnd(43)} ${refrain}`,
     );
@@ -431,6 +471,13 @@ function formatReport(reports: TrackReport[]): string {
         .map((match) => match.truth.toFixed(1));
       if (missed.length > 0) lines.push(`  refrains manqués : ${missed.join(", ")}`);
     }
+    const falseRefrains = report.refrains.detectedTimes.filter(
+      (time) =>
+        !report.refrains.matches.some(
+          (match) => match.detected !== null && Math.abs(match.detected - time) < 1e-6,
+        ),
+    );
+    if (falseRefrains.length > 0) lines.push(`  faux refrains : ${falseRefrains.join(", ")}`);
     const missedSections = report.sections.details
       .filter((detail) => !detail.coveredSameRole)
       .map((detail) => `${detail.role} ${detail.start.toFixed(1)}–${detail.end.toFixed(1)}`);

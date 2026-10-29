@@ -4,6 +4,7 @@
   "id": 1794963897,
   "durée": 244.6,
   "bpm": { "value": 120.0, "confidence": 0.4, "source": "agent-proposition" },
+  "refrainsStatus": "valide",
   "sections": [
     { "role": "intro", "start": 0.0, "end": 13.0, "confidence": 0.9, "source": "proprietaire" },
     { "role": "refrain", "start": 13.0, "end": 31.0, "confidence": 0.9, "source": "proprietaire" },

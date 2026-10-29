@@ -4,6 +4,8 @@
   "id": 3884482841,
   "durée": 196.3,
   "bpm": { "value": 142.9, "confidence": 0.4, "source": "agent-proposition" },
+  "refrains": [],
+  "refrainsStatus": "valide",
   "sections": [
     { "role": "intro", "start": 0.0, "end": 14.0, "confidence": 0.9, "source": "proprietaire" },
     { "role": "couplet", "start": 14.0, "end": 41.0, "confidence": 0.9, "source": "proprietaire" },
