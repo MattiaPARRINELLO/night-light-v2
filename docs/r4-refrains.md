@@ -111,7 +111,7 @@ leur matériau répété, donc le plan les traite en couplet/pulse.
 |---|---|---|
 | Sécurité photosensible | `bun run verify:safety` | `SÉCURITÉ OK` (0 fenêtre > 3 flashs/s, 0 flash post-drop, blanc réduit max 0,000) |
 | Pureté du rendu | `bun test tests/unit/render-purity.test.ts` | 2 pass, 0 pixel d'écart |
-| Snapshots de plans | `bun run snapshots` | à jour, **aucun diff** (le corpus snapshoté est synthétique et ne porte pas de refrain) |
+| Snapshots de plans | `bun run snapshots` | à jour ; **une seule scène** change : `90bpm #2` (24,752–38,058) `refrain` → `couplet` (famille, humeur, intensité et saturation suivent, normal et réduit) |
 | Types | `bun run typecheck` | OK |
 | Lint | `bun run lint` | OK |
 | Tests front | `bun test tests/` | 385 pass |
