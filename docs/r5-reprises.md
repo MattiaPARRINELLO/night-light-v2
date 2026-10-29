@@ -175,7 +175,39 @@ de la consigne + The Blue Danube) :
 
 Écart de liste : **0** (aucun horodatage ajouté, déplacé ou supprimé).
 
-## 5. Non-régression
+## 5. Robustesse des seuils (±10 %, un seuil à la fois)
+
+Chaque seuil `REPRISE_*` est déplacé de ±10 %, tous les autres restant fixes,
+sur les mêmes features figées. « Cibles » = les 5 reprises R5 (One More Time
+30,4 / 61,7 ; Latch 95,6 / 127,1 ; They Don't Care 10,5). Précision calculée sur
+les quatre titres annotés (Gogo, Minimum, Karma, Focus).
+
+| Seuil | Variation | Reprises | Cibles | Faux Min | Faux Focus | Faux Gogo | Précision |
+|---|---|---:|---:|---:|---:|---:|---:|
+| baseline | — | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_AFTER_ENERGY` | −10 % | 37 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_AFTER_ENERGY` | +10 % | 35 | 4/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_SUSTAIN_ENERGY` | −10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_SUSTAIN_ENERGY` | +10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| **`REPRISE_MAX_TROUGH_ENERGY`** | **−10 %** | **34** | **3/5** | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MAX_TROUGH_ENERGY` | +10 % | 38 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_ENERGY_JUMP` | −10 % | 37 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_ENERGY_JUMP` | +10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_SECTION_GAIN` | −10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_SECTION_GAIN` | +10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_DENSITY_KEEP` | −10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_DENSITY_KEEP` | +10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_PREVIOUS_ENERGY` | −10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+| `REPRISE_MIN_PREVIOUS_ENERGY` | +10 % | 36 | 5/5 | 1 | 1 | 1 | 0,50 |
+
+**Seuil fragile : `REPRISE_MAX_TROUGH_ENERGY`.** À −10 % (0,225), les creux des
+cibles One More Time 61,7 s et Latch 127,1 s valent 0,24 et passent au-dessus du
+seuil : **2 cibles perdues** (3/5). La marge n'est que de 0,01. `REPRISE_MIN_AFTER_ENERGY`
+à +10 % (0,55) perd une seule cible (They Don't Care 10,5, retour 0,5125) : à
+surveiller, mais pas fragile au critère ≥ 2. Les douze autres variantes gardent
+les 5 cibles, les faux compteurs et la précision.
+
+## 6. Non-régression
 
 | Vérification | Commande | Résultat |
 |---|---|---|
@@ -186,51 +218,50 @@ de la consigne + The Blue Danube) :
 | Types | `bun run typecheck` | OK |
 | Lint | `bun run lint` | OK |
 | Tests front | `bun test tests/` | 385 pass |
-| Tests serveur | `uv run pytest tests/ -q` | 193 pass (3 tests ajoutés) |
+| Tests serveur | `uv run pytest tests/ -q` | 195 pass (5 tests ajoutés, dont les features figées R5) |
 | Build | `bun run build` | OK |
 
 ### Scènes de plans réels changées
 
 Les snapshots versionnés portent sur le corpus synthétique et ne changent pas.
-Sur les analyses réelles, le diff `buildShowPlan` avant/après est exhaustif
-ci-dessous (`role` et familles en cascade quand une section devient refrain) :
+Sur les analyses réelles, le diff `buildShowPlan` avant/après représente
+**28 diffs** : **10 changements de rôle** et **15 cascades de famille/teinte**
+sur les 13 titres, plus **3 diffs Blue Danube** (1 rôle, 2 cascades), hors
+périmètre de la consigne. Aucune scène ne reçoit le rôle `drop` : les nouvelles
+reprises ne déclenchent ni flash ni plateau.
 
-| Titre | Scène | Début (s) | Changement |
-|---|---:|---:|---|
-| One More Time | 3 | 30.441 | role couplet→refrain, famille beams→barres-led, humeur pulse→explosif |
-| One More Time | 5 | 61.672 | role couplet→refrain, famille rings→barres-led |
-| One More Time | 6 | 73.398 | role couplet→refrain, famille parade→lyres-suspendues |
-| One More Time | 7 | 85.124 | role couplet→refrain, famille spots→barres-led, humeur pulse→explosif |
-| One More Time | 9 | 105.140 | famille particles→spots |
-| One More Time | 10 | 116.843 | famille spiral→particles |
-| One More Time | 12 | 138.321 | famille waves→rings |
-| One More Time | 13 | 154.227 | famille tunnel→waves |
-| One More Time | 14 | 166.301 | famille spiral→tunnel |
-| One More Time | 15 | 180.814 | famille rings→spiral |
-| One More Time | 16 | 188.871 | famille particles→rings |
-| One More Time | 17 | 200.620 | famille waves→particles |
-| One More Time | 18 | 212.486 | famille tunnel→waves |
-| One More Time | 21 | 244.785 | famille mirror→parade |
-| They Don't Care About Us | 1 | 10.542 | role couplet→refrain, famille pluie→barres-led, humeur calme→explosif |
-| They Don't Care About Us | 2 | 22.175 | role couplet→refrain, famille grid→lyres-suspendues, humeur pulse→explosif |
-| The Blue Danube, Op. 314 | 28 | 335.691 | role couplet→refrain, famille bars→lyres-suspendues, humeur pulse→explosif |
-| The Blue Danube, Op. 314 | 29 | 345.165 | famille portique→bars |
-| The Blue Danube, Op. 314 | 30 | 356.496 | famille lyres-suspendues→portique |
-| Latch | 8 | 95.620 | role couplet→refrain, famille spots→lyres-suspendues, humeur aerien→explosif |
-| Latch | 10 | 127.106 | role couplet→refrain, famille beams→lyres-suspendues |
-| Latch | 11 | 140.388 | famille mirror→beams |
-| Latch | 12 | 152.184 | famille parade→mirror |
-| Latch | 17 | 205.798 | famille spiral→parade |
-| Gogo | 3 | 31.649 | role couplet→refrain, famille vortex→barres-led, humeur pulse→explosif |
-| Gogo | 4 | 43.607 | role couplet→refrain, famille particles→lyres-suspendues |
-| Gogo | 10 | 99.637 | famille spiral→particles |
-| Gogo | 11 | 111.618 | famille pluie→spiral |
+| Titre | Scène | Début | Fin | Type | Reprise d'ancrage | Drop |
+|---|---:|---:|---:|---|---:|:--:|
+| One More Time | 3 | 30.441 | 46.533 | rôle couplet→refrain | 30.441 | non |
+| One More Time | 5 | 61.672 | 73.398 | rôle couplet→refrain | 61.672 | non |
+| One More Time | 6 | 73.398 | 85.124 | rôle couplet→refrain | 61.672 | non |
+| One More Time | 7 | 85.124 | 93.414 | rôle couplet→refrain | 61.672 | non |
+| One More Time | 9 | 105.140 | 116.843 | cascade famille/teinte | — | — |
+| One More Time | 10 | 116.843 | 127.106 | cascade famille/teinte | — | — |
+| One More Time | 12 | 138.321 | 154.227 | cascade famille/teinte | — | — |
+| One More Time | 13 | 154.227 | 166.301 | cascade famille/teinte | — | — |
+| One More Time | 14 | 166.301 | 180.814 | cascade famille/teinte | — | — |
+| One More Time | 15 | 180.814 | 188.871 | cascade famille/teinte | — | — |
+| One More Time | 16 | 188.871 | 200.620 | cascade famille/teinte | — | — |
+| One More Time | 17 | 200.620 | 212.486 | cascade famille/teinte | — | — |
+| One More Time | 18 | 212.486 | 220.845 | cascade famille/teinte | — | — |
+| One More Time | 21 | 244.785 | 257.950 | cascade famille/teinte | — | — |
+| They Don't Care About Us | 1 | 10.542 | 22.175 | rôle couplet→refrain | 10.542 | non |
+| They Don't Care About Us | 2 | 22.175 | 34.319 | rôle couplet→refrain | 10.542 | non |
+| The Blue Danube, Op. 314 | 28 | 335.691 | 345.165 | rôle couplet→refrain | 335.691 | non |
+| The Blue Danube, Op. 314 | 29 | 345.165 | 356.496 | cascade famille/teinte | — | — |
+| The Blue Danube, Op. 314 | 30 | 356.496 | 367.990 | cascade famille/teinte | — | — |
+| Latch | 8 | 95.620 | 110.852 | rôle couplet→refrain | 95.620 | non |
+| Latch | 10 | 127.106 | 140.388 | rôle couplet→refrain | 127.106 | non |
+| Latch | 11 | 140.388 | 152.184 | cascade famille/teinte | — | — |
+| Latch | 12 | 152.184 | 158.569 | cascade famille/teinte | — | — |
+| Latch | 17 | 205.798 | 217.757 | cascade famille/teinte | — | — |
+| Gogo | 3 | 31.649 | 43.607 | rôle couplet→refrain | 31.649 | non |
+| Gogo | 4 | 43.607 | 50.620 | rôle couplet→refrain | 31.649 | non |
+| Gogo | 10 | 99.637 | 111.618 | cascade famille/teinte | — | — |
+| Gogo | 11 | 111.618 | 127.594 | cascade famille/teinte | — | — |
 
-Aucune scène ne reçoit le rôle `drop` : les nouvelles reprises ne déclenchent
-ni flash ni plateau. Toutes les différences de rôle sont des
-`couplet → refrain`.
-
-## 6. Paramètres ajoutés
+## 7. Paramètres ajoutés
 
 `server/structure.py` :
 

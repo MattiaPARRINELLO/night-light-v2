@@ -88,6 +88,9 @@ REPRISE_MIN_SUSTAIN_ENERGY = 0.30
 # Creux maximal avant le retour : en dessous, le bloc précédent est une vraie
 # baisse et non une simple respiration. 0,25 attrape le retour de They Don't
 # Care (10,5 s, creux 0,05) sans ouvrir les blocs déjà forts.
+# FRAGILE : les creux des cibles One More Time 61,7 s et Latch 127,1 s valent
+# 0,24, soit 0,01 sous ce seuil ; −10 % (0,225) fait perdre ces deux cibles.
+# Ne pas modifier sans relancer l'étude de robustesse (docs/r5-reprises.md §5).
 REPRISE_MAX_TROUGH_ENERGY = 0.25
 # Saut minimal entre le creux et le retour. C'est ce qui distingue une reprise
 # d'un passage fort déjà installé.
