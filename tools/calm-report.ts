@@ -3,7 +3,7 @@
  *
  * Pour les titres marqués `"reference": true` dans le manifeste :
  * - luminance moyenne / minimale / saturation / part de blanc dans chaque
- *   section de vérité `pont` (Focus 127–152, Minimum 124–138, Gogo 96–129) ;
+ *   section de vérité `pont` (Focus 137–152, Minimum 124–138, Gogo 96–129) ;
  * - luminance et écart de teinte à +0,1 s de chaque drop validé (±1,5 s) ;
  * - captures 1080p au milieu du calme, 1 s avant la reprise et +0,1 s après.
  *
@@ -163,7 +163,7 @@ async function main(): Promise<number> {
       }
       const calmSamples = await sample(renderer, times);
       // Sous-intervalle réellement classé calme par le plan : sur Focus, la
-      // vérité commence à 127 s mais l'analyseur n'entend le pont qu'à 134,1 s.
+      // vérité commence à 137 s mais l'analyseur n'entend le pont qu'à 134,1 s.
       const calmScenes = plan.scenes.filter(
         (scene) => scene.mood === "calme" && scene.end > calm.start && scene.start < calm.end,
       );

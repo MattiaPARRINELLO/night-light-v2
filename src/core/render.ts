@@ -225,7 +225,7 @@ function drawCalmVeil(
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
 
-  // Respiration très lente, pour que la salle reste vivante sans flash.
+  // Halo statique (aucune dépendance au temps) : il éclaire la salle sans flash.
   const cx = w * 0.5;
   const cy = h * 0.52;
   const radius = Math.hypot(w, h) * 0.55;
