@@ -93,6 +93,18 @@ export interface Scene {
   fadeIn: number;
   /** Durée du fondu de sortie, en secondes. */
   fadeOut: number;
+  /**
+   * Intensité du voile lumineux de calme, 0..1 (0 hors humeur calme).
+   *
+   * C'est un paramètre de scène, pas une constante du rendu : le rendu se
+   * contente de peindre le voile avec cette valeur. Le mode réduit reçoit une
+   * valeur plus basse (plafond de luminance).
+   */
+  calmGlow?: number;
+  /** Fondu d'entrée du voile calme, en secondes (au moins une mesure). */
+  calmFadeSec?: number;
+  /** Durée de la légère montée de voile avant la reprise, en secondes. */
+  calmRiseSec?: number;
   /** Caractère de la scène qui pilote les réactions aux impacts. */
   mood: Mood;
   /** Rôle dramaturgique : pilote les cinématiques de concert. */
@@ -683,7 +695,9 @@ function signatureKey(signature: DropSignature): string {
  */
 function paletteSaturation(mood: Mood): number {
   if (mood === "sombre") return 0.55;
-  if (mood === "calme") return 0.62;
+  // Calme lumineux : une salle éclairée en pastel, pas un aquarium gris. La
+  // saturation baisse (pastel) mais la lumière reste franche.
+  if (mood === "calme") return 0.45;
   if (mood === "aerien") return 0.8;
   if (mood === "explosif") return 0.96;
   if (mood === "pulse") return 0.9;
@@ -692,12 +706,12 @@ function paletteSaturation(mood: Mood): number {
 
 /**
  * Luminosité d'une humeur. Les moments forts montent près du blanc — c'est ce
- * qui « allume la salle » — et les passages calmes ou juste avant un drop
- * restent sombres, pour que l'impact se voie.
+ * qui « allume la salle » — et les passages calmes s'éclairent par le voile de
+ * scène (`calmGlow`), sans jamais devenir un plein blanc.
  */
 function paletteLightness(mood: Mood): number {
   if (mood === "sombre") return 0.38;
-  if (mood === "calme") return 0.44;
+  if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
@@ -919,7 +933,8 @@ function moodIntensity(mood: Mood, energy: number): number {
     case "aerien":
       return 0.28 + 0.2 * energy;
     case "calme":
-      return 0.24 + 0.16 * energy;
+      // Un calme lumineux garde un peu de mouvement, sans jamais clignoter.
+      return 0.34 + 0.2 * energy;
     case "sombre":
       return 0.1;
   }
@@ -1173,6 +1188,9 @@ export function buildShowPlan(
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
+  const beatPeriod = analysis.beatPeriod > 0 ? analysis.beatPeriod : 0.5;
+  /** Une mesure, pour les fondus du voile calme (au moins une mesure). */
+  const measureSec = Math.max(1, (analysis.meter ?? 4) * beatPeriod);
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
   // l'autre, et tenue du premier au dernier plan.
@@ -1359,9 +1377,6 @@ export function buildShowPlan(
       section?.kind === "refrain" ||
       mood === "explosif" ||
       (mood === "pulse" && caractere.energy > 0.6);
-    // La signature de drop choisit le pôle de teinte : tantôt la
-    // complémentaire du morceau, tantôt le pôle opposé (l'ancre de base). Les
-    // deux restent dans le budget de couleur autour de l'ancre de scène.
     const ancre =
       signature?.hue === "contraste"
         ? fort
@@ -1415,8 +1430,56 @@ export function buildShowPlan(
       mood,
       role,
       reason: event.reason,
+      ...(mood === "calme"
+        ? {
+            calmGlow: reduced ? 0.4 : 0.6,
+            calmFadeSec: measureSec,
+            calmRiseSec: measureSec * 2,
+          }
+        : {}),
       ...(signature !== undefined ? { drop: signature } : {}),
     });
+  }
+
+  // Saut de teinte des reprises après un calme. On agit après la construction
+  // pour ne pas décaler la chaîne de teintes des scènes suivantes : seule la
+  // première scène qui suit le calme change. Le candidat reste dans le budget
+  // de l'une des deux ancres et maximise l'écart avec le calme ET avec la
+  // scène suivante (le contrat de couleur exige aussi un écart entre voisines).
+  for (let index = 1; index < scenes.length; index += 1) {
+    const scene = scenes[index];
+    const previous = scenes[index - 1];
+    if (scene === undefined || previous === undefined) continue;
+    if (previous.mood !== "calme" || scene.mood === "calme") continue;
+    const previousHue = previous.palette.hue;
+    const nextHue = scenes[index + 1]?.palette.hue ?? (previousHue + 180) % 360;
+    const candidates: number[] = [];
+    for (let degree = 0; degree < 360; degree += 1) {
+      const candidate = degree;
+      const inBudget = [track.hue, track.accent].some(
+        (anchor) => Math.abs(hueDelta(anchor, candidate)) <= track.spread + 1e-6,
+      );
+      if (inBudget) candidates.push(candidate);
+    }
+    // Priorité à l'écart ≥ 90° avec le calme ; ensuite on maximise l'écart
+    // avec la scène suivante pour respecter le contrat de couleur.
+    const farFromCalm = candidates.filter(
+      (candidate) => Math.abs(hueDelta(previousHue, candidate)) >= 90,
+    );
+    const pool = farFromCalm.length > 0 ? farFromCalm : candidates;
+    let best = scene.palette.hue;
+    let bestNext = -1;
+    let bestCalm = -1;
+    for (const candidate of pool) {
+      const fromCalm = Math.abs(hueDelta(previousHue, candidate));
+      const fromNext = Math.abs(hueDelta(candidate, nextHue));
+      if (fromNext > bestNext || (fromNext === bestNext && fromCalm > bestCalm)) {
+        bestNext = fromNext;
+        bestCalm = fromCalm;
+        best = candidate;
+      }
+    }
+    scene.palette.hue = best;
   }
 
   if (scenes.length === 0) {
@@ -1492,8 +1555,13 @@ function localSectionAt(analysis: Analysis, start: number): Section | null {
  * premier plan d'un refrain serait étiqueté comme le couplet qui le précède.
  */
 function sectionAt(analysis: Analysis, t: number): Section | null {
+  // Tolérance d'arrondi : les bornes viennent du serveur avec trois décimales,
+  // et un début de scène calculé depuis la même valeur peut tomber à
+  // 120,743999… au lieu de 120,744. Sans marge, la scène d'un pont héritait du
+  // refrain précédent (mauvais rôle, mauvaise humeur, donc pas de calme).
+  const epsilon = 1e-6;
   for (const section of analysis.sections) {
-    if (t >= section.start && t < section.end) return section;
+    if (t + epsilon >= section.start && t + epsilon < section.end) return section;
   }
   const last = analysis.sections[analysis.sections.length - 1];
   return last !== undefined && t >= last.end ? last : null;

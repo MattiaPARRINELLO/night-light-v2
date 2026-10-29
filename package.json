@@ -24,6 +24,7 @@
     "report": "bun tools/plan-report.ts",
     "eval:ref": "bun tools/eval-reference.ts",
     "shots:ref": "bun tools/reference-shots.ts",
+    "calm:report": "bun tools/calm-report.ts",
     "snapshots": "bun tools/plan-snapshots.ts",
     "snapshots:update": "bun tools/plan-snapshots.ts --update",
     "timeline": "bun tools/plan-timeline.ts",
@@ -34,7 +35,8 @@
     "check:fallback": "bun tests/e2e/fallback_check.mjs",
     "check:crossfade": "bun tests/e2e/crossfade_check.mjs",
     "check:partial": "bun tests/e2e/partial_check.mjs",
-    "check:family": "bun tests/e2e/family_check.mjs"
+    "check:family": "bun tests/e2e/family_check.mjs",
+    "verify:safety": "bun tools/verify-safety.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

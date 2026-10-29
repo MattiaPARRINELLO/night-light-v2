@@ -419,18 +419,19 @@ describe("palette du morceau", () => {
     }
   });
 
-  test("les moments forts sont vifs et clairs, les calmes sombres", () => {
+  test("les moments forts sont vifs, les calmes portent un voile lumineux", () => {
     const plan = buildShowPlan(morceau(), false);
     const explosif = plan.scenes.find((scene) => scene.mood === "explosif");
-    const sombre = plan.scenes.find((scene) => scene.mood === "sombre" || scene.mood === "calme");
+    const calme = plan.scenes.find((scene) => scene.mood === "calme");
     expect(explosif).toBeDefined();
-    expect(sombre).toBeDefined();
-    // Vif : saturation franche et luminosité haute (on s'approche du blanc),
-    // contre une teinte retenue et sombre pour les passages calmes.
+    expect(calme).toBeDefined();
+    // Vif : saturation franche et luminosité haute (on s'approche du blanc).
     expect(explosif!.palette.saturation).toBeGreaterThan(0.9);
     expect(explosif!.palette.lightness).toBeGreaterThan(0.7);
-    expect(explosif!.palette.saturation).toBeGreaterThan(sombre!.palette.saturation);
-    expect(explosif!.palette.lightness).toBeGreaterThan(sombre!.palette.lightness + 0.2);
+    // Calme lumineux : palette pastel et voile de scène, pas un noir de tension.
+    expect(explosif!.palette.saturation).toBeGreaterThan(calme!.palette.saturation);
+    expect(calme!.calmGlow).toBeGreaterThan(0);
+    expect(calme!.palette.lightness).toBeLessThan(explosif!.palette.lightness);
   });
 
   test("deux morceaux differents peuvent avoir des identites differentes", () => {

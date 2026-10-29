@@ -530,13 +530,13 @@ describe("cadence musicale des flashs", () => {
     expect(flashAdmitted(view, 8.05)).toBe(true);
   });
 
-  test("un drop flashe à chaque temps fort, sans attendre la phrase", () => {
-    // La montée se termine à 22 s. Pendant le drop, chaque temps fort porte un
-    // flash : la cadence suit la musique au lieu d'un métronome de 1,6 s.
+  test("un drop flashe à l'impact, puis plus aucun temps fort pendant 1,5 s", () => {
+    // La montée se termine à 22 s. L'impact flashe, mais la salle ne
+    // « bat » plus ensuite : aucun flash de temps fort dans les 1,5 s.
     const view = new TrackView(analysis());
     expect(flashAdmitted(view, 22.02)).toBe(true);
-    expect(flashAdmitted(view, 22.52)).toBe(true);
-    expect(flashAdmitted(view, 23.02)).toBe(true);
+    expect(flashAdmitted(view, 22.52)).toBe(false);
+    expect(flashAdmitted(view, 23.02)).toBe(false);
     expect(flashAdmitted(view, 22.3)).toBe(false);
   });
 
@@ -580,7 +580,9 @@ describe("cadence musicale des flashs", () => {
     const flashs = (builds: Analysis["builds"]) =>
       renderAt(8.02, analysis({ builds })).filter((operation) => operation === "fillRect:0.0,0.0,1280.0,720.0").length;
     const sansMontee = flashs([]);
-    expect(sansMontee).toBeLessThanOrEqual(3); // fond + flash éventuel + vignette
+    // fond + voile calme éventuel + flash éventuel + vignette. Le voile calme
+    // est une nappe pastel, pas un lavage blanc : il n'augmente pas le blanc.
+    expect(sansMontee).toBeLessThanOrEqual(4);
   });
 });
 

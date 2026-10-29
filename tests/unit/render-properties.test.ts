@@ -448,7 +448,7 @@ describe("F4 — durée de montée du flash", () => {
 });
 
 describe("F2 — les flashs de drop sont plus forts que les flashs ordinaires", () => {
-  test.failing("alpha médian d'un flash de drop ≥ 2 × alpha médian ordinaire (render.ts:145-155)", () => {
+  test("alpha médian d'un flash de drop ≥ 2 × alpha médian ordinaire (render.ts:145-155)", () => {
     const ratios: string[] = [];
     for (const { name, analysis } of tracks) {
       const events = analyseFlashes(analysis);

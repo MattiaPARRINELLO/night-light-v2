@@ -437,6 +437,23 @@ function formatReport(reports: TrackReport[]): string {
     if (missedSections.length > 0)
       lines.push(`  sections non couvertes (même rôle) : ${missedSections.join(" | ")}`);
   }
+  const globalRefrain = (pool: TrackReport[]) => {
+    const found = pool.reduce((sum, report) => sum + report.refrains.found, 0);
+    const proposed = pool.reduce((sum, report) => sum + report.refrains.proposed, 0);
+    const detected = pool.reduce((sum, report) => sum + report.refrains.detected, 0);
+    const precision = detected === 0 ? 0 : found / detected;
+    const recall = proposed === 0 ? 0 : found / proposed;
+    return `justes ${found}/${proposed}, détectés ${detected}, P=${precision.toFixed(2)} R=${recall.toFixed(2)} F1=${(
+      precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall)
+    ).toFixed(2)}`;
+  };
+  lines.push("");
+  lines.push(`refrains globaux (tous titres) : ${globalRefrain(reports)}`);
+  lines.push(
+    `refrains globaux (titres avec refrain de vérité) : ${globalRefrain(
+      reports.filter((report) => report.refrains.proposed > 0),
+    )}`,
+  );
   lines.push("");
   lines.push("éclairage à +0,1 s des drops validés (±1,5) :");
   for (const report of reports) {
