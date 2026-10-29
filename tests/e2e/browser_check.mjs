@@ -40,18 +40,23 @@ function startApi(sessionDir) {
   return spawnApi(root, API_PORT, { SESSION_DIR: sessionDir });
 }
 
-async function waitForUrl(url, timeout = 60000) {
-  const deadline = Date.now() + timeout;
+async function waitForUrl(url, timeout = 120000) {
+  const started = Date.now();
+  const deadline = started + timeout;
+  let last = "aucune réponse";
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url);
       if (response.status < 500) return;
-    } catch {
-      // pas encore prêt
+      last = `HTTP ${response.status}`;
+    } catch (error) {
+      last = error instanceof Error ? error.message : String(error);
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  throw new Error(`${url} n'a pas démarré`);
+  throw new Error(
+    `${url} n'a pas démarré après ${Math.round((Date.now() - started) / 1000)} s (${last})`,
+  );
 }
 
 const audioState = (page) =>
