@@ -99,6 +99,30 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/**
+ * Signature des compteurs d'une analyse. Deux analyses du même morceau qui ne
+ * diffèrent que par leur précision (rapide puis finale) ont des compteurs
+ * différents : c'est ce qui permet au dashboard de savoir qu'il doit
+ * redemander les courbes.
+ */
+function analysisSignature(entry: {
+  duration: number;
+  tempo: number;
+  beats: number;
+  builds: number;
+  sections: number;
+  coverage?: [number, number] | null;
+}): string {
+  return [
+    entry.duration.toFixed(2),
+    entry.tempo.toFixed(1),
+    entry.beats,
+    entry.builds,
+    entry.sections,
+    entry.coverage ? entry.coverage.join(",") : "",
+  ].join("|");
+}
+
 /** « 1 montée », « 3 montées » : un compteur qui se lit sans accroc. */
 function pluriel(count: number, singulier: string, pluriels: string): string {
   return `${count} ${count > 1 ? pluriels : singulier}`;
@@ -391,16 +415,43 @@ class Dashboard {
     // Un morceau différent de celui qu'on a localement (chargé depuis le show,
     // par MPRIS, ou après un rechargement) : on jette le graphe périmé.
     if (this.analysis !== null) {
-      const localKey = `${this.analysisTitle}|${this.analysis.duration.toFixed(2)}`;
+      const local = this.analysis;
+      const localKey = `${this.analysisTitle}|${local.duration.toFixed(2)}`;
       const remoteKey = `${remote.title}|${remote.durationSec.toFixed(2)}`;
       if (localKey !== remoteKey) {
         this.analysis = null;
         this.analysisTitle = "";
         this.analysisArtist = "";
         this.sectionsSource = null;
+      } else {
+        // Même morceau : on compare la version d'analyse. Une analyse rapide
+        // déjà affichée ne doit jamais écraser une analyse finale, et l'arrivée
+        // de l'analyse finale doit remplacer les courbes rapides.
+        const localPartial = local.coverage !== undefined;
+        const remotePartial = remote.coverage !== null;
+        const localSignature = analysisSignature({
+          duration: local.duration,
+          tempo: local.tempo,
+          beats: local.beats.length,
+          builds: local.builds.length,
+          sections: local.sections.length,
+          coverage: local.coverage ?? null,
+        });
+        const remoteSignature = analysisSignature({
+          duration: remote.durationSec,
+          tempo: remote.tempo,
+          beats: remote.beats,
+          builds: remote.builds,
+          sections: remote.sections,
+          coverage: remote.coverage,
+        });
+        const stale =
+          localPartial === remotePartial ? localSignature !== remoteSignature : !remotePartial;
+        if (!stale) return;
+        // On garde l'ancienne analyse à l'écran pendant l'aller-retour : elle
+        // décrit le même morceau, seule sa précision change.
       }
     }
-    if (this.analysis !== null) return;
     const now = Date.now();
     if (now - this.lastAnalysisRequestAt < 3000) return;
     this.lastAnalysisRequestAt = now;
@@ -676,9 +727,17 @@ class Dashboard {
     const trackFacts = el<HTMLElement>("track-facts");
     const sectionCount = el<HTMLElement>("section-count");
     if (this.analysis !== null) {
+      // Une analyse rapide ne couvre qu'une fenêtre du morceau : le dire évite
+      // de la lire comme l'analyse définitive en attendant la finale.
+      const partial = this.analysis.coverage !== undefined;
       trackTitle.textContent = this.analysisTitle || "Morceau analysé";
-      trackArtist.textContent = this.analysisArtist === "" ? "analyse locale complète" : this.analysisArtist;
-      trackStatus.textContent = "analyse locale complète";
+      trackArtist.textContent =
+        this.analysisArtist === ""
+          ? partial
+            ? "analyse rapide : courbes partielles"
+            : "analyse locale complète"
+          : this.analysisArtist;
+      trackStatus.textContent = partial ? "analyse rapide" : "analyse locale complète";
       trackFacts.textContent = [
         fmtTime(this.analysis.duration),
         `${this.analysis.tempo.toFixed(1)} BPM`,
