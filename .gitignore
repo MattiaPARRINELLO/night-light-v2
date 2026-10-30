@@ -10,7 +10,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.shot/
-node_modules/
+node_modules
 
 # Corpus audio de test : régénéré par tests/support/make_fixture.py en < 10 s,
 # donc jamais committé (voir docs/testing.md).
