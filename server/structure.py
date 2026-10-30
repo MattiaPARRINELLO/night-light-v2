@@ -36,6 +36,19 @@ STRUCTURE_WINDOW_BEATS = 8
 STRUCTURE_MIN_NOVELTY = 0.10
 # Deux frontières plus proches que cette durée (secondes) n'en font qu'une.
 STRUCTURE_MIN_SPACING = 8.0
+# ------------------------------------------------ recadrage sur la production
+# Le pic de nouveauté est déjà un temps ; le recadrage énergétique ne doit pas
+# le déplacer de plus d'une mesure, sinon il saute sur un climax de montée
+# voisin (Karma : pic 79,20 s → 76,58 s, soit 4,42 s avant la vérité à 81 s).
+# Au-delà, un déplacement n'est accepté que s'il tombe sur un drop/reprise déjà
+# calculé : c'est le seul endroit où la production revient réellement. Ces
+# horodatages sont **gelés** avant le recadrage (voir detect_structure), donc
+# le recadrage ne peut ni les déplacer ni les supprimer.
+RECALAGE_FREE_SHIFT_BARS = 1.0
+# Portée maximale de l'ancien recadrage (secondes), conservée comme borne dure.
+RECALAGE_MAX_SHIFT = 3.0
+# Tolérance (secondes) pour reconnaître un drop/reprise gelé.
+RECALAGE_ANCHOR_TOLERANCE = 1.6
 # Similarité minimale (chroma + timbre) pour dire que deux blocs sont le même
 # matériau musical.
 GROUP_MIN_SIMILARITY = 0.80
@@ -272,6 +285,57 @@ def _late_return(
     return None
 
 
+def _snap_score(
+    beat: float,
+    energy: np.ndarray,
+    bass: np.ndarray,
+    times: np.ndarray,
+) -> float:
+    """Force d'un retour de production à ce temps, sur deux secondes.
+
+    Mesure la production présente juste après le temps moins celle qui la
+    précède : c'est l'ancien critère de recadrage, inchangé.
+    """
+    return (
+        _mean(bass, times, beat, beat + 2.0)
+        + _mean(energy, times, beat, beat + 2.0)
+        - _mean(bass, times, max(0.0, beat - 2.0), beat)
+        - 0.5 * _mean(energy, times, max(0.0, beat - 2.0), beat)
+    )
+
+
+def _merge_boundaries(
+    boundaries: list[float],
+    duration: float,
+    origins: list[float | None] | None = None,
+) -> tuple[list[float], list[float | None]]:
+    """Trie, écarte les bords et fusionne les frontières trop proches.
+
+    Rend les frontières et, pour chacune, le pic de nouveauté qui l'a produite
+    (``None`` pour les bornes 0 et durée). Ce lien d'origine permet au recadrage
+    R6 de déplacer une frontière sans recomposer la liste : nombre, ordre et
+    identité restent ceux des impacts.
+    """
+    pairs = list(zip(boundaries, origins or [None] * len(boundaries), strict=False))
+    kept = sorted(
+        ((time, origin) for time, origin in pairs if 4.0 < time < duration - 4.0),
+        key=lambda item: item[0],
+    )
+    merged: list[float] = [0.0]
+    merged_origins: list[float | None] = [None]
+    for time, origin in kept:
+        if time - merged[-1] >= STRUCTURE_MIN_SPACING:
+            merged.append(round(time, 3))
+            merged_origins.append(origin)
+    if duration - merged[-1] >= STRUCTURE_MIN_SPACING:
+        merged.append(round(duration, 3))
+        merged_origins.append(None)
+    else:
+        merged[-1] = round(duration, 3)
+        merged_origins[-1] = None
+    return merged, merged_origins
+
+
 def _boundaries(
     energy: np.ndarray,
     bass: np.ndarray,
@@ -280,7 +344,8 @@ def _boundaries(
     chroma: np.ndarray,
     mfcc: np.ndarray,
     duration: float,
-) -> list[float]:
+) -> tuple[list[float], list[float | None]]:
+    """Frontières d'impact (recadrage historique) et pics de nouveauté d'origine."""
     synced_chroma = _unit(_beat_sync(chroma, times, beats))
     synced_mfcc = _beat_sync(mfcc, times, beats)
     synced_mfcc = (synced_mfcc - synced_mfcc.mean(axis=1, keepdims=True)) / (
@@ -298,40 +363,77 @@ def _boundaries(
     )
     features = _unit(features)
     scores = _novelty_curve(features, STRUCTURE_WINDOW_BEATS)
-    boundaries = _peaks(scores, beats, STRUCTURE_MIN_NOVELTY, STRUCTURE_MIN_SPACING)
+    peaks = _peaks(scores, beats, STRUCTURE_MIN_NOVELTY, STRUCTURE_MIN_SPACING)
 
     # Le pic de nouveauté tombe souvent un ou deux temps avant la reprise
     # elle-même (le timbre change pendant le dernier temps du creux). On recale
     # chaque frontière sur le premier temps fort où la production remonte, sans
     # jamais déplacer de plus de trois secondes.
     snapped: list[float] = []
-    for time in boundaries:
-        candidates = [float(beat) for beat in beats if abs(float(beat) - time) <= 3.0]
+    origins: list[float | None] = []
+    for time in peaks:
+        candidates = [
+            float(beat) for beat in beats if abs(float(beat) - time) <= RECALAGE_MAX_SHIFT
+        ]
         if not candidates:
             snapped.append(time)
-            continue
-        best = max(
-            candidates,
-            key=lambda beat: (
-                _mean(bass, times, beat, beat + 2.0)
-                + _mean(energy, times, beat, beat + 2.0)
-                - _mean(bass, times, max(0.0, beat - 2.0), beat)
-                - 0.5 * _mean(energy, times, max(0.0, beat - 2.0), beat)
-            ),
-        )
-        snapped.append(best)
-    boundaries = snapped
+        else:
+            snapped.append(max(candidates, key=lambda beat: _snap_score(beat, energy, bass, times)))
+        origins.append(time)
 
-    boundaries = [time for time in sorted(boundaries) if 4.0 < time < duration - 4.0]
-    merged: list[float] = [0.0]
-    for time in boundaries:
-        if time - merged[-1] >= STRUCTURE_MIN_SPACING:
-            merged.append(round(time, 3))
-    if duration - merged[-1] >= STRUCTURE_MIN_SPACING:
-        merged.append(round(duration, 3))
-    else:
-        merged[-1] = round(duration, 3)
-    return merged
+    return _merge_boundaries(snapped, duration, origins)
+
+
+def _recalage_boundaries(
+    impact: list[float],
+    origins: list[float | None],
+    anchors: list[float],
+    energy: np.ndarray,
+    bass: np.ndarray,
+    times: np.ndarray,
+    beats: np.ndarray,
+    meter: int,
+) -> list[float]:
+    """Repositionne les sections sans toucher à la liste des impacts.
+
+    Pour chaque frontière d'impact, on repart de son pic de nouveauté d'origine.
+    Le temps fort le plus « retour de production » dans la portée historique
+    (``RECALAGE_MAX_SHIFT``) n'est retenu que s'il reste à moins d'une mesure du
+    pic. Au-delà, il n'est accepté que s'il tombe à
+    ``RECALAGE_ANCHOR_TOLERANCE`` d'un drop/reprise gelé. Sinon on se rabat sur
+    le meilleur temps fort de la zone libre.
+
+    Une frontière n'est jamais déplacée au-delà de ses voisines : la liste,
+    l'ordre et le nombre restent exactement ceux des impacts.
+    """
+    period = float(np.median(np.diff(beats))) if beats.size > 1 else 0.5
+    bar = max(1, meter) * max(period, 1e-3)
+    free = RECALAGE_FREE_SHIFT_BARS * bar
+    result = list(impact)
+    for index in range(1, len(impact) - 1):
+        origin = origins[index]
+        if origin is None:
+            continue
+        candidates = [
+            float(beat) for beat in beats if abs(float(beat) - origin) <= RECALAGE_MAX_SHIFT
+        ]
+        if not candidates:
+            continue
+        best = max(candidates, key=lambda beat: _snap_score(beat, energy, bass, times))
+        anchored = any(abs(best - anchor) <= RECALAGE_ANCHOR_TOLERANCE for anchor in anchors)
+        if abs(best - origin) <= free + 1e-9 or anchored:
+            target = best
+        else:
+            local = [beat for beat in candidates if abs(beat - origin) <= free + 1e-9]
+            target = (
+                max(local, key=lambda beat: _snap_score(beat, energy, bass, times))
+                if local
+                else origin
+            )
+        low = result[index - 1] + 1e-3
+        high = impact[index + 1] - 1e-3
+        result[index] = round(min(max(target, low), high), 3)
+    return result
 
 
 def _section_features(
@@ -377,25 +479,30 @@ def detect_structure(
     chroma: np.ndarray,
     mfcc: np.ndarray,
     duration: float,
+    meter: int = 4,
 ) -> Structure:
     """Découpe le morceau en sections locales et repère les reprises de prod."""
     if duration < 8.0 or beats.size < 8 or times.size < 8:
         return Structure(sections=[], drops=[])
 
-    boundaries = _boundaries(energy, bass, times, beats, chroma, mfcc, duration)
-    raw = [
-        _section_features(
-            boundaries[index],
-            boundaries[index + 1],
-            energy,
-            bass,
-            times,
-            onsets,
-            chroma,
-            mfcc,
-        )
-        for index in range(len(boundaries) - 1)
-    ]
+    boundaries, origins = _boundaries(energy, bass, times, beats, chroma, mfcc, duration)
+
+    def build_sections(edges: list[float]) -> list[dict]:
+        return [
+            _section_features(
+                edges[index],
+                edges[index + 1],
+                energy,
+                bass,
+                times,
+                onsets,
+                chroma,
+                mfcc,
+            )
+            for index in range(len(edges) - 1)
+        ]
+
+    raw = build_sections(boundaries)
     if not raw:
         return Structure(sections=[], drops=[])
 
@@ -537,6 +644,26 @@ def detect_structure(
             }
         )
     reprises.sort(key=lambda reprise: reprise["time"])
+
+    # Drops et reprises sont désormais **gelés** : le recadrage R6 ne
+    # repositionne que les sections. Les deux listes restent donc identiques à
+    # l'octet près, et `reprises` continue de corroborer les refrains avec les
+    # horodatages d'impact.
+    anchors = [drop["time"] for drop in merged_drops] + [reprise["time"] for reprise in reprises]
+    recalaged = _recalage_boundaries(
+        boundaries,
+        origins,
+        anchors,
+        energy,
+        bass,
+        times,
+        beats,
+        meter,
+    )
+    if recalaged != boundaries:
+        boundaries = recalaged
+        raw = build_sections(boundaries)
+        maximum_energy = max(section["energy"] for section in raw)
 
     sections: list[dict] = []
     for index, section in enumerate(raw):
