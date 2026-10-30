@@ -78,7 +78,10 @@ export function installControl(Target: { prototype: App }): void {
         // Le dashboard ne voit du morceau qu'un résumé (compteurs) dans l'état
         // publié 5 fois par seconde : il réclame ici l'analyse complète pour
         // tracer les courbes, une seule fois à la demande.
-        const analysis = this.view?.analysis ?? this.pendingAnalysis;
+        // L'analyse finale attend la fin de la scène partielle avant d'être
+        // appliquée : sans la servir en priorité, le dashboard resterait sur les
+        // courbes rapides jusqu'à la bascule.
+        const analysis = this.pendingSynced?.view.analysis ?? this.view?.analysis ?? this.pendingAnalysis;
         if (analysis !== null) {
           this.control?.publishAnalysis({
             title: this.pendingTitle || this.debugSync.expectedTitle,
@@ -214,6 +217,7 @@ export function installControl(Target: { prototype: App }): void {
               beats: this.pendingAnalysis.beats.length,
               builds: this.pendingAnalysis.builds.length,
               sections: this.pendingAnalysis.sections.length,
+              coverage: this.pendingAnalysis.coverage ?? null,
             },
       settings: {
         intensity: this.settings.intensity,

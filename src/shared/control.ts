@@ -108,6 +108,12 @@ export interface ShowState {
     beats: number;
     builds: number;
     sections: number;
+    /**
+     * Fenêtre réellement analysée quand le show tourne sur une analyse rapide ;
+     * `null` pour une analyse finale. Le dashboard s'en sert pour savoir s'il
+     * doit redemander les courbes à la fin de l'analyse.
+     */
+    coverage: [number, number] | null;
   } | null;
   settings: {
     intensity: number;
