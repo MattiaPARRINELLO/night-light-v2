@@ -8,6 +8,12 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Refrains sans reprise de production (R7)** : un matériau répété au moins
+  trois fois et qui tranche avec ses voisins reste un refrain même quand la
+  production n'a pas de creux avant (Lune de fiel : 53,3 / 123,5 / 208,2 s au
+  lieu de zéro). La règle R4/R5 reste inchangée et prioritaire, aucun faux
+  refrain ajouté sur le corpus annoté. `ANALYZER_VERSION` passe à 6. Détail :
+  `docs/r7-refrains-repetition.md`.
 - **Reprises de production sans condition de basse (R5)** : un retour d'énergie
   après un creux net peut corroborer un refrain même quand la basse continue
   (Latch, One More Time). Les drops restent un sous-ensemble strict des

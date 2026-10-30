@@ -15,6 +15,9 @@ choses, mesurées sur les mêmes courbes que le reste de l'analyse :
   d'énergie, **sans condition de basse**, utilisé seulement pour corroborer un
   refrain. Les drops restent un sous-ensemble strict des reprises ; une reprise
   sans drop n'allume rien.
+* une **répétition sans reprise** (R7) : un matériau qui revient au moins trois
+  fois et qui tranche avec ses voisins reste un refrain même quand la
+  production n'a pas de creux avant (refrain enchaîné).
 
 Aucun seuil n'est propre à un titre : tout est calculé sur les courbes du
 morceau et les paramètres ci-dessous sont communs au corpus.
@@ -57,6 +60,15 @@ REFRAIN_MIN_RELATIVE_ENERGY = 0.62
 # Une reprise sans condition de basse (voir R5) compte comme saut : elle peut
 # ancrer un refrain sans déclencher d'impact visuel.
 REFRAIN_DROP_TOLERANCE = 0.75
+# Un refrain peut aussi être reconnu **sans** reprise de production (R7) quand
+# son matériau revient au moins trois fois et que le bloc contraste avec ses
+# voisins immédiats : c'est ce qui distingue un refrain d'une simple texture
+# répétée en boucle. Mesures sur le corpus : Lune de fiel, trois refrains
+# (53,3 / 123,5 / 208,2 s) avec une similarité MFCC au voisin le plus proche de
+# 0,90 / 0,93 / 0,69 ; Boléro ne répète ses blocs que deux fois ; Gymnopédie
+# répète le même timbre partout (≥ 0,998) et ne doit produire aucun refrain.
+REFRAIN_RECURRENCE_MIN_OCCURRENCES = 3
+REFRAIN_CONTRAST_MAX_MFCC = 0.96
 # Durée minimale d'un creux de production, en secondes (une mesure à 120 BPM).
 DROP_MIN_TROUGH = 1.2
 # Durée minimale du retour, en secondes : la prod doit tenir, pas seulement
@@ -553,8 +565,10 @@ def detect_structure(
         # Un refrain est un bloc qui **revient** : sans une autre occurrence
         # de même énergie, de même basse et de même densité (à distance, pas
         # la section voisine), ce n'est qu'un passage fort.
-        repeated = any(
-            abs(other - index) >= 2
+        occurrences = [
+            other
+            for other in range(len(raw))
+            if abs(other - index) >= 2
             and 0.5 <= span / max(raw[other]["end"] - raw[other]["start"], 1e-6) <= 2.0
             and abs(raw[other]["energy"] - section["energy"]) <= 0.10
             and abs(raw[other]["bass"] - section["bass"]) <= 0.15
@@ -568,7 +582,22 @@ def detect_structure(
                 raw[between]["energy"] <= section["energy"] - 0.10
                 for between in range(min(index, other) + 1, max(index, other))
             )
-            for other in range(len(raw))
+        ]
+        repeated = bool(occurrences)
+        # Contraste de timbre avec le voisin le plus proche : un refrain a son
+        # propre matériau, une texture continue (Gymnopédie, Boléro) répète le
+        # même timbre d'un bloc à l'autre. On ignore les blocs calmes (intro,
+        # pont, outro) : leur timbre diffère par construction et suffirait à
+        # faire passer un couplet pour un refrain.
+        neighbours = [
+            raw[other]
+            for other in (index - 1, index + 1)
+            if 0 <= other < len(raw) and raw[other]["energy"] >= 0.26
+        ]
+        contrasted = (
+            bool(neighbours)
+            and min(_cosine(section["mfcc"], neighbour["mfcc"]) for neighbour in neighbours)
+            < REFRAIN_CONTRAST_MAX_MFCC
         )
         after_calm = index > 0 and sections[index - 1]["kind"] == "pont"
         # Confiance R4 : le retour du matériau ne suffit pas, il doit coïncider
@@ -577,10 +606,12 @@ def detect_structure(
         corroborated = any(
             abs(reprise["time"] - start) <= REFRAIN_DROP_TOLERANCE for reprise in reprises
         )
-        refrain = (
-            (repeated or after_calm)
-            and corroborated
-            and index not in (0, len(raw) - 1)
+        # R7 : une répétition franche (au moins trois occurrences du même
+        # matériau) qui tranche avec ses voisins reste un refrain même quand la
+        # production n'a pas de creux avant (Lune de fiel, refrain enchaîné).
+        recurring = len(occurrences) + 1 >= REFRAIN_RECURRENCE_MIN_OCCURRENCES and contrasted
+        refrain = (((repeated or after_calm) and corroborated) or recurring) and (
+            index not in (0, len(raw) - 1)
             and section["energy"] >= REFRAIN_MIN_RELATIVE_ENERGY * max(maximum_energy, 1e-6)
             and section["energy"] >= neighbour + 0.02
         )
