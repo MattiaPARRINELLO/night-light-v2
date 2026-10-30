@@ -29,7 +29,7 @@ export function spawnApi(root, port, env = {}) {
     {
       cwd: root,
       stdio: debug ? "inherit" : ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PORT: String(port), ...env },
+      env: { ...process.env, PORT: String(port), PYTHONUNBUFFERED: "1", ...env },
       detached: true,
     },
   );
