@@ -131,7 +131,7 @@ Réellement calculé par librosa sur les échantillons décodés (22 050 Hz, STF
 | attaques | `onset_detect`, corrigé du retard de groupe de la STFT |
 | basses / médiums / aigus | énergie des bandes 30–150, 150–2000, 2000–10 000 Hz, lissée puis normalisée ; `midLow` (150–600 Hz) et `midHigh` (600–2500 Hz) subdivisent le médium |
 | énergie globale | RMS + bandes, normalisation logarithmique (reste lisible dans les passages modérés) |
-| section | une seule section, de 0 à la fin, étiquetée `calme`, `intense` ou `silence` d'après l'énergie (le schéma accepte aussi `montee`/`descente`, que le serveur ne produit pas) ; plus de découpage couplet/refrain |
+| section | un découpage local par nouveauté (chroma + timbre) : `intro`, `couplet`, `refrain`, `pont`, `outro` ; un refrain est un matériau répété corroboré par une reprise de production, ou répété au moins trois fois et contrasté avec ses voisins (R7) |
 | montées | dérivée de la courbe d'énergie, filtrée sur l'amplitude gagnée ; un cut de 150–450 ms avant l'impact est enjambé pour caler le drop sur le premier onset qui suit le silence |
 
 Toutes les courbes sont envoyées en points `[secondes, 0..1]` à 20 Hz — compacts et
@@ -145,9 +145,11 @@ directement échantillonnables depuis le navigateur.
   percussion marquée (ambient), elle peut désigner la moitié ou le double du tempo ressenti.
   Le spectacle s'appuie donc aussi sur les courbes d'énergie et de bandes, pas seulement sur
   les temps forts.
-- **Sections** : le découpage automatique couplet/refrain a été retiré — trop coûteux et
-  trop souvent faux (refrains enchaînés) à cause du temps d'analyse limité. Le morceau est
-  décrit par une seule section ; le spectacle suit l'énergie, les montées et les temps forts.
+- **Sections** : le découpage est local et automatique. Un refrain exige un
+  matériau répété ; il est corroboré par une reprise de production, ou reconnu
+  par une répétition franche (au moins trois occurrences) qui tranche avec ses
+  voisins. Les frontières restent approximatives (décalage possible de quelques
+  secondes), et les morceaux sans refrain chanté gardent des couplets répétés.
 - La lecture dans le navigateur dépend des codecs du navigateur : si un morceau analysé
   n'est pas lisible, l'application le dit et propose un format plus sûr (WAV, MP3).
 - **Récupération Deezer** : la recherche de streamrip ne renvoie pas la durée d'un
