@@ -9,7 +9,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from server.structure import _late_return, detect_structure  # noqa: E402
+from server.structure import (  # noqa: E402
+    _deep_break_drops,
+    _late_return,
+    detect_structure,
+)
 
 
 def make_curves(duration: float = 120.0) -> dict[str, np.ndarray]:
@@ -194,3 +198,67 @@ def test_premiere_entree_apres_une_intro_silencieuse_reste_l_exposition() -> Non
     reprises = [reprise["time"] for reprise in structure.reprises]
     assert all(abs(time - 10.0) > 2.0 for time in reprises)
     assert structure.drops == []
+
+
+def _break_curves(
+    duration: float = 160.0,
+    *,
+    impact_bass: float = 0.80,
+    break_energy: float = 0.05,
+) -> dict[str, np.ndarray]:
+    """Musique, creux profond, retour de voix sans basse, puis vrai impact.
+
+    Reproduit « Je vis cette mélodie » (creux 113,5-120,2, voix à 120, impact
+    à 122) : la basse ne revient qu'à l'impact, pas au retour des voix.
+    """
+    times = np.arange(0.0, duration, 1.0 / 20.0)
+    energy = np.full_like(times, 0.15)
+    bass = np.full_like(times, 0.05)
+    energy[(times >= 20.0) & (times < 100.0)] = 0.85
+    bass[(times >= 20.0) & (times < 100.0)] = 0.55
+    energy[(times >= 100.0) & (times < 107.0)] = break_energy
+    bass[(times >= 100.0) & (times < 107.0)] = 0.0
+    # Les voix reviennent avant le drop : énergie moyenne, aucune basse.
+    energy[(times >= 107.0) & (times < 109.0)] = 0.50
+    bass[(times >= 107.0) & (times < 109.0)] = 0.0
+    energy[times >= 109.0] = 0.95
+    bass[times >= 109.0] = impact_bass
+    return {
+        "times": times,
+        "energy": energy,
+        "bass": bass,
+        "beats": np.arange(0.0, duration, 0.5),
+        "onsets": np.arange(0.0, duration, 0.5),
+        "duration": duration,
+    }
+
+
+def test_impact_sur_creux_profond_meme_sans_frontiere() -> None:
+    """Le drop est le retour de la basse, pas le retour des voix."""
+    data = _break_curves()
+    drops = _deep_break_drops(
+        data["energy"], data["bass"], data["times"], data["beats"], data["onsets"]
+    )
+    assert len(drops) == 1
+    assert abs(drops[0]["time"] - 109.0) <= 1.0
+    assert drops[0]["source"] == "break"
+    assert drops[0]["strength"] > 0.85
+
+
+def test_creux_profond_sans_retour_de_basse_ne_fait_pas_un_drop() -> None:
+    data = _break_curves(impact_bass=0.30)
+    drops = _deep_break_drops(
+        data["energy"], data["bass"], data["times"], data["beats"], data["onsets"]
+    )
+    assert drops == []
+
+
+def test_creux_court_ne_fait_pas_un_drop() -> None:
+    data = _break_curves(break_energy=0.80)
+    # Plus de creux quasi silencieux : le passage reste de la musique.
+    data["energy"][(data["times"] >= 100.0) & (data["times"] < 109.0)] = 0.80
+    data["bass"][(data["times"] >= 100.0) & (data["times"] < 109.0)] = 0.55
+    drops = _deep_break_drops(
+        data["energy"], data["bass"], data["times"], data["beats"], data["onsets"]
+    )
+    assert drops == []
