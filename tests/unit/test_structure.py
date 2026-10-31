@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from server.structure import (  # noqa: E402
     _deep_break_drops,
     _late_return,
+    align_builds_to_drops,
     detect_structure,
 )
 
@@ -262,3 +263,36 @@ def test_creux_court_ne_fait_pas_un_drop() -> None:
         data["energy"], data["bass"], data["times"], data["beats"], data["onsets"]
     )
     assert drops == []
+
+
+def test_montee_prolongee_jusqu_au_drop_qui_la_suit() -> None:
+    """La montée qui se terminait sur les voix culmine sur l'impact réel."""
+    builds = [{"start": 10.0, "end": 13.0, "strength": 1.0, "source": "rise"}]
+    drops = [{"time": 15.0, "strength": 0.9, "source": "break"}]
+    aligned = align_builds_to_drops(builds, drops)
+    assert aligned[0]["end"] == 15.0
+    # La montée d'origine n'est pas mutée (l'analyse reste réutilisable).
+    assert builds[0]["end"] == 13.0
+
+
+def test_montee_eloignee_du_drop_garde_sa_fin() -> None:
+    builds = [{"start": 10.0, "end": 13.0, "strength": 1.0, "source": "rise"}]
+    drops = [{"time": 17.0, "strength": 0.9, "source": "break"}]
+    assert align_builds_to_drops(builds, drops)[0]["end"] == 13.0
+    # Un drop déjà passé ne déplace rien non plus.
+    drops = [{"time": 11.0, "strength": 0.9, "source": "return"}]
+    assert align_builds_to_drops(builds, drops)[0]["end"] == 13.0
+    # Sans drop, les montées sont rendues telles quelles.
+    assert align_builds_to_drops(builds, []) == builds
+
+
+def test_montee_jamais_prolongee_sur_la_mont_e_suivante() -> None:
+    """Le recalage ne crée pas de chevauchement entre deux montées."""
+    builds = [
+        {"start": 10.0, "end": 13.0, "strength": 1.0, "source": "rise"},
+        {"start": 14.0, "end": 18.0, "strength": 1.0, "source": "rise"},
+    ]
+    drops = [{"time": 15.0, "strength": 0.9, "source": "break"}]
+    aligned = align_builds_to_drops(builds, drops)
+    assert aligned[0]["end"] == 13.0
+    assert aligned[1]["end"] == 18.0

@@ -108,6 +108,14 @@ BREAK_RETURN_BASS = 0.42
 # un drop (même règle que la reprise R5).
 BREAK_MIN_BASS_GAIN = 0.25
 
+# --------------------------------------- montées recalées sur leur impact
+# Une montée peut se terminer sur le retour des voix, quelques secondes avant
+# le vrai impact. C'est la fin de montée qui déclenche le flash (`buildIntensity`
+# / `dropImpact` côté rendu) : sans recalage, le flash tombe sur les voix et le
+# drop réel paraît en retard. Quand un drop suit la fin d'une montée de moins de
+# cette durée, la montée est prolongée jusqu'à l'impact.
+BUILD_DROP_ALIGNMENT = 3.0
+
 # ------------------------------------------- reprises sans condition de basse
 # Une **reprise** est le retour de la production après un creux net, sans
 # exiger que la basse remonte : sur la house et l'électro, la basse continue
@@ -427,6 +435,28 @@ def _deep_break_drops(
             )
             break
     return drops
+
+
+def align_builds_to_drops(builds: list[dict], drops: list[dict]) -> list[dict]:
+    """Prolonge une montée jusqu'au drop qu'elle annonce.
+
+    Une montée dont la fin précède de peu un drop (retour des voix, respiration
+    avant l'impact) doit culminer sur l'impact : c'est `build.end` qui porte le
+    flash dans le rendu. Au-delà de BUILD_DROP_ALIGNMENT, la montée garde sa fin.
+    """
+    if not drops or not builds:
+        return builds
+    aligned: list[dict] = []
+    for index, build in enumerate(builds):
+        end = float(build["end"])
+        limit = float(builds[index + 1]["start"]) if index + 1 < len(builds) else float("inf")
+        for drop in drops:
+            delta = float(drop["time"]) - end
+            if 0.0 < delta <= BUILD_DROP_ALIGNMENT and float(drop["time"]) <= limit:
+                end = float(drop["time"])
+                break
+        aligned.append({**build, "end": round(end, 3)})
+    return aligned
 
 
 def _boundaries(
