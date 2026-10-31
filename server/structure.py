@@ -74,6 +74,28 @@ DROP_MIN_BASS = 0.42
 # Deux drops plus proches que cette durée sont fusionnés.
 DROP_MIN_SPACING = 18.0
 
+# ------------------------------------- impacts hors frontière (creux profond)
+# Une vraie coupure (break) suivie d'un retour de production peut tomber
+# **à l'intérieur** d'une section : quand deux frontières sont à moins de
+# STRUCTURE_MIN_SPACING, la moins saillante est fusionnée et l'impact n'a plus
+# de frontière. C'était le cas de « Je vis cette mélodie » (creux 113,5-120,2,
+# vrai drop à 122, section 111,6-136,6) : le drop était posé 14 s trop tard et
+# la montée de 120 s allumait un impact avant le vrai retour. On cherche donc
+# aussi les creux profonds sur les courbes, indépendamment du découpage.
+#
+# Durée minimale du creux (une vraie coupure, pas une respiration de groove).
+BREAK_MIN_LENGTH = 2.0
+# Énergie maximale pendant le creux : quasi silence.
+BREAK_MAX_ENERGY = 0.25
+# Fenêtre de recherche du retour après la fin du creux.
+BREAK_RETURN_SEARCH = 6.0
+# Production réellement revenue : énergie et basse pleines.
+BREAK_RETURN_ENERGY = 0.55
+BREAK_RETURN_BASS = 0.42
+# Et la basse doit **monter** : une basse continue pendant le creux ne fait pas
+# un drop (même règle que la reprise R5).
+BREAK_MIN_BASS_GAIN = 0.25
+
 # ------------------------------------------- reprises sans condition de basse
 # Une **reprise** est le retour de la production après un creux net, sans
 # exiger que la basse remonte : sur la house et l'électro, la basse continue
@@ -272,6 +294,129 @@ def _late_return(
     return None
 
 
+def _had_production(energy: np.ndarray, bass: np.ndarray, times: np.ndarray, start: float) -> bool:
+    """Une production pleine a-t-elle déjà sonné dans les 30 s qui précèdent ?"""
+    return any(
+        _mean(energy, times, window, window + 4.0) >= 0.55
+        or _mean(bass, times, window, window + 4.0) >= 0.40
+        for window in np.arange(max(0.0, start - 30.0), start - 1.0, 1.0)
+    )
+
+
+def _strength(
+    before_energy: float,
+    before_bass: float,
+    before_density: float,
+    after_energy: float,
+    after_bass: float,
+    after_density: float,
+) -> float:
+    """Force d'un impact, sur les mêmes courbes que les drops de frontière."""
+    energy_gain = max(0.0, after_energy - before_energy)
+    bass_gain = max(0.0, after_bass - before_bass)
+    density_gain = max(0.0, after_density - before_density)
+    return float(
+        np.clip(
+            0.18
+            + 0.45 * min(1.0, energy_gain / 0.45)
+            + 0.30 * min(1.0, bass_gain / 0.45)
+            + 0.20 * min(1.0, density_gain / 1.5),
+            0.15,
+            1.0,
+        )
+    )
+
+
+def _deep_break_drops(
+    energy: np.ndarray,
+    bass: np.ndarray,
+    times: np.ndarray,
+    beats: np.ndarray,
+    onsets: np.ndarray,
+) -> list[dict]:
+    """Impacts posés sur un vrai retour de production, même sans frontière.
+
+    Un creux quasi silencieux d'au moins BREAK_MIN_LENGTH secondes, puis une
+    basse qui revient franchement : le drop est le premier temps fort dont la
+    mesure est déjà pleine. Sans frontière de section, le détecteur de drops
+    ne pouvait pas le voir et prenait la fin de la montée précédente.
+    """
+    drops: list[dict] = []
+    step = float(np.median(np.diff(times))) if times.size > 1 else 0.05
+    index = 0
+    while index < times.size:
+        if energy[index] > BREAK_MAX_ENERGY:
+            index += 1
+            continue
+        first = index
+        while index < times.size and energy[index] <= BREAK_MAX_ENERGY:
+            index += 1
+        start = float(times[first])
+        end = float(times[index - 1]) + step
+        if end - start < BREAK_MIN_LENGTH or end < 20.0:
+            continue
+        if not _had_production(energy, bass, times, start):
+            continue
+        before_energy = _mean(energy, times, start, end)
+        before_bass = _mean(bass, times, start, end)
+        if BREAK_RETURN_BASS - before_bass < BREAK_MIN_BASS_GAIN:
+            continue
+        for beat_index in range(1, beats.size):
+            beat = float(beats[beat_index])
+            if beat < end - 0.5:
+                continue
+            if beat > end + BREAK_RETURN_SEARCH:
+                break
+            after_energy = _mean(energy, times, beat, beat + 2.0)
+            after_bass = _mean(bass, times, beat, beat + 2.0)
+            if after_energy < BREAK_RETURN_ENERGY or after_bass < BREAK_RETURN_BASS:
+                continue
+            sustain_energy = _mean(energy, times, beat + 4.0, beat + 8.0)
+            sustain_bass = _mean(bass, times, beat + 4.0, beat + 8.0)
+            if sustain_energy < 0.30 and sustain_bass < 0.35:
+                continue
+            # Recalage : premier temps fort dont la mesure précédente est déjà
+            # pleine. C'est le temps qui porte l'impact, pas la bascule.
+            target = beat
+            for following in range(beat_index, min(beat_index + 4, beats.size - 1)):
+                left = float(beats[following])
+                right = float(beats[following + 1])
+                if (
+                    _mean(bass, times, left, right) >= BREAK_RETURN_BASS
+                    and _mean(energy, times, left, right) >= BREAK_RETURN_ENERGY
+                ):
+                    target = right
+                    break
+            after_energy = _mean(energy, times, target, target + DROP_SUSTAIN)
+            after_bass = _mean(bass, times, target, target + DROP_SUSTAIN)
+            before_density = float(
+                np.count_nonzero((onsets >= start) & (onsets < end)) / max(end - start, 1e-6)
+            )
+            after_density = float(
+                np.count_nonzero((onsets >= target) & (onsets < target + DROP_SUSTAIN))
+                / DROP_SUSTAIN
+            )
+            drops.append(
+                {
+                    "time": round(target, 3),
+                    "strength": round(
+                        _strength(
+                            before_energy,
+                            before_bass,
+                            before_density,
+                            after_energy,
+                            after_bass,
+                            after_density,
+                        ),
+                        3,
+                    ),
+                    "source": "break",
+                }
+            )
+            break
+    return drops
+
+
 def _boundaries(
     energy: np.ndarray,
     bass: np.ndarray,
@@ -431,12 +576,7 @@ def detect_structure(
         bass_gain = current["bass"] - previous["bass"]
         # Le premier bloc de production pleine est l'exposition du morceau :
         # ce n'est pas une reprise, même quand il contraste avec l'intro.
-        had_production = any(
-            _mean(energy, times, window, window + 4.0) >= 0.55
-            or _mean(bass, times, window, window + 4.0) >= 0.40
-            for window in np.arange(max(0.0, start - 30.0), start - 1.0, 1.0)
-        )
-        if not had_production:
+        if not _had_production(energy, bass, times, start):
             continue
         reprise = (
             before_bass <= 0.15
@@ -487,6 +627,11 @@ def detect_structure(
         if late is None:
             continue
         drops.append({"time": late, "strength": 0.85, "source": "return"})
+
+    # Impacts sur un creux profond, même sans frontière de section (voir
+    # _deep_break_drops). Ils passent par la même fusion que les autres : un
+    # drop déjà trouvé à moins de DROP_MIN_SPACING garde le plus fort.
+    drops.extend(_deep_break_drops(energy, bass, times, beats, onsets))
 
     drops.sort(key=lambda drop: drop["time"])
     merged_drops: list[dict] = []
