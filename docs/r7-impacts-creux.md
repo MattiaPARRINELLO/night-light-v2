@@ -1,7 +1,8 @@
 # R7 — impacts hors frontière (creux profond)
 
-**Statut : livré.** `server/structure.py` uniquement, plus `ANALYZER_VERSION`
-(« 5 » → « 6 ») et trois tests dans `tests/unit/test_structure.py`.
+**Statut : livré.** `server/structure.py`, `server/analysis.py`, plus
+`ANALYZER_VERSION` (« 5 » → « 7 ») et les tests de
+`tests/unit/test_structure.py`.
 
 ## 1. Défaut constaté
 
@@ -38,7 +39,28 @@ de 18 s d'un drop existant, le plus fort des deux reste. `source = "break"`.
 Les drops restent un sous-ensemble des reprises (`reprises` est initialisé
 depuis `merged_drops` après cette passe).
 
-## 3. Mesures
+## 3. Flash de montée recalé sur l'impact
+
+Le flash blanc et le sursaut d'intensité ne lisent pas `drops` : le rendu
+(`src/core/render.ts`) utilise `buildIntensity` / `dropImpact`, calculés depuis
+**`builds[].end`**. Sur « Je vis cette mélodie », la montée détectée
+117,8 → 120,4 s se terminait sur le retour des voix : le flash tombait donc à
+120,4 s, avant le vrai impact, même une fois le drop replacé à 122,35 s.
+
+`align_builds_to_drops` prolonge la fin d'une montée jusqu'au drop qui la suit
+quand l'écart est de `0 < écart ≤ BUILD_DROP_ALIGNMENT` (3,0 s), sans jamais
+dépasser le début de la montée suivante. Sur le morceau :
+
+| | avant | après |
+|---|---:|---:|
+| fin de la montée | 120,40 s | **122,35 s** |
+| flash (`dropImpact` à 120,5 s) | 0,79 | **0** |
+| premier impact | 120,40 s | **122,35 s** |
+
+Sur le corpus (≈ 40 titres), 78 fins de montée sont recalées, dont la plupart de
+moins d'une seconde ; l'écart maximal retenu est de 2,2 s.
+
+## 4. Mesures
 
 - « Je vis cette mélodie » : premier drop **136,6 → 122,35 s** ; le drop de
   153,3 s (creux de 150-152 s, basse absente puis retour à 153) réapparaît ; le
@@ -50,7 +72,7 @@ depuis `merged_drops` après cette passe).
   JVCM 153,3), 7 recalages (0,4 à 2,9 s), un déplacement (Energie sombre 158,4 → 164,2,
   Imaginarium 147,4 → 150,6).
 
-## 4. Limites
+## 5. Limites
 
 - Ne couvre que les creux **quasi silencieux** (≤ 0,25). Un break de house où
   la basse continue n'est pas traité par cette passe : il reste couvert par la
@@ -59,7 +81,7 @@ depuis `merged_drops` après cette passe).
   impact si la basse et l'énergie reviennent franchement.
 - Les seuils sont communs au corpus, aucun réglage par titre.
 
-## 5. Vérifier
+## 6. Vérifier
 
 ```bash
 uv run pytest tests/unit/test_structure.py -q
