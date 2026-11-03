@@ -327,9 +327,11 @@ export function installSync(Target: { prototype: App }): void {
       // en pleine résolution avec du flou partout, et l'image saccadait.
       if (lastTs !== 0) {
         const delta = timestamp - lastTs;
-        if (delta > 0) {
+        if (delta > 0 && this.crossfade === null) {
           // Moyenne rapide : à cinq images par seconde, une moyenne lente
-          // mettrait dix secondes à voir que la machine souffre.
+          // mettrait dix secondes à voir que la machine souffre. Pendant un
+          // fondu, on s'abstient : la double rendu est une charge passagère et
+          // ne doit pas coûter un palier au show qui entre.
           this.fps += (1000 / delta - this.fps) * 0.2;
           this.updateQuality();
         }
