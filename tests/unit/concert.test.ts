@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   angleBatten,
+  CONCERT_FAMILIES,
   couleurBlinder,
   decroissanceFilament,
+  drawFamily,
   intensiteBlinder,
   motifBlinder,
   NOMBRE_BATTENS,
@@ -16,6 +18,7 @@ import {
   positionLyre,
   TAU_FILAMENT,
 } from "../../src/core/families";
+import { fakeContext } from "../support/fake_canvas";
 import type { FrameState } from "../../src/core/families";
 import { buildShowPlan, type SceneRole } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
@@ -317,6 +320,64 @@ describe("cinématiques des lyres et des barres", () => {
       }
     }
   });
+
+  test("le geste auto reproduit le comportement historique", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    for (let index = 0; index < NOMBRE_LYRES; index += 1) {
+      expect(orientationLyre(f, view, index, "refrain", "auto")).toEqual(
+        orientationLyre(f, view, index, "refrain"),
+      );
+    }
+  });
+
+  test("la poursuite n'allume qu'une tête à la fois et avance", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    const teteActive = (t: number) =>
+      Array.from({ length: NOMBRE_LYRES }, (_, index) =>
+        orientationLyre(
+          { ...f, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          index,
+          "refrain",
+          "poursuite",
+        ).intensite,
+      )
+        .map((valeur, index) => (valeur > 0.5 ? index : -1))
+        .filter((index) => index >= 0);
+    expect(teteActive(12).length).toBeGreaterThan(0);
+    expect(teteActive(12).length).toBeLessThanOrEqual(2);
+    expect(teteActive(12)).not.toEqual(teteActive(13));
+  });
+
+  test("chaque geste reste continu d'une image à l'autre", () => {
+    const view = new TrackView(analysis());
+    const gestes = ["poursuite", "eventail", "croisement", "vague"] as const;
+    for (const geste of gestes) {
+      const base = frame("refrain", 10);
+      let precedent = orientationLyre(base, view, 0, "refrain", geste);
+      let angleMax = 0;
+      let intensiteMax = 0;
+      for (let t = 10 + 1 / 60; t < 20; t += 1 / 60) {
+        const courant = orientationLyre(
+          { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          0,
+          "refrain",
+          geste,
+        );
+        angleMax = Math.max(angleMax, Math.abs(courant.angle - precedent.angle));
+        intensiteMax = Math.max(intensiteMax, Math.abs(courant.intensite - precedent.intensite));
+        precedent = courant;
+      }
+      expect(angleMax).toBeLessThan(0.02);
+      // La poursuite déplace volontairement le point chaud plus vite que les
+      // autres gestes : 0,0236 par image à 60 Hz reste une course lente, pas un
+      // clignotement.
+      expect(intensiteMax).toBeLessThan(geste === "poursuite" ? 0.04 : 0.02);
+    }
+  });
 });
 
 describe("rôles du plan de spectacle", () => {
@@ -345,5 +406,22 @@ describe("rôles du plan de spectacle", () => {
     const impact = plan.scenes.find((scene) => Math.abs(scene.start - 100) < 0.6);
     expect(impact?.role).toBe("drop");
     expect(impact?.family).toBe("pont-concert");
+  });
+});
+
+describe("familles de lyres", () => {
+  test("les trois nouvelles familles de lyres sont déclarées", () => {
+    expect(Object.keys(CONCERT_FAMILIES)).toEqual(
+      expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
+    );
+  });
+
+  test("les familles de lyres se dessinent sans erreur", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    for (const family of ["lyres-poursuite", "lyres-duo", "lyres-eventail"] as const) {
+      const { ctx } = fakeContext();
+      expect(() => drawFamily(ctx, f, view, family)).not.toThrow();
+    }
   });
 });

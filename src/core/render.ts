@@ -3,6 +3,7 @@ import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
 import {
   contrastHue,
   dessinerBlinders,
+  dessinerBordure,
   dessinerStructure,
   drawCoreGlow,
   drawFamily,
@@ -827,6 +828,11 @@ export function renderFrame(input: RenderInput): void {
   // l'impact d'un drop s'éteindrait au moment précis où il doit frapper.
   ctx.globalCompositeOperation = "lighter";
   dessinerBlinders(ctx, permanent, view, settings.flashes);
+
+  // Bordure LED : couche permanente elle aussi, avec ses propres motifs. Elle
+  // ne suit pas le fondu de scène, sinon un impact s'éteindrait au moment où il
+  // doit frapper.
+  dessinerBordure(ctx, permanent, view, settings.flashes);
 
   drawDust(ctx, permanent);
 

@@ -65,7 +65,7 @@ réservoir. L'ordre des règles va du plus spécifique au plus général :
 | 1 | mode réduit, énergie < 0,22 | familles calmes | restrictions du mode réduit |
 | 2 | mode réduit, densité < 0,6 att/s | familles calmes | idem |
 | 3 | mode réduit | `beams`, `waves`, `rings`, `particles` | palette réduite |
-| 4 | rôle `refrain` | `lyres-suspendues` / `barres-led` en alternance | ballyhoo de concert |
+| 4 | rôle `refrain` | `lyres-suspendues`, `barres-led`, `lyres-poursuite`, `lyres-duo`, `lyres-eventail` | ballyhoo et duo de concert |
 | 5 | rôle `montee` | `barres-led` | vague de montée |
 | 6 | énergie < 0,22 | familles calmes | passage sans percussion |
 | 7 | brillance > **0,30** | particules, projecteurs, spirale, anneaux, faisceaux, miroirs, défilé | spectre clair, figure aérienne |
@@ -132,7 +132,13 @@ Un `drop` ne se contente plus du rôle : il reçoit une signature déterministe 
 - 54 combinaisons ; une signature n'est **jamais réutilisée dans le même
   plan**, donc deux drops à moins de 15 s diffèrent forcément.
 - `pont-concert` est réservé aux montées de force ≥ 0,6 ; en dessous, les
-  familles `lyres-suspendues` et `barres-led` alternent.
+  familles de concert du réservoir alternent, dont `lyres-poursuite`,
+  `lyres-duo` et `lyres-eventail`.
+- `orientationLyre` accepte un geste optionnel (`"auto"` par défaut, donc
+  comportement historique inchangé) : `poursuite` (une tête court le long du
+  pont), `eventail` (ouverture large), `croisement` (les faisceaux se croisent)
+  et `vague` (onde d'inclinaison). Ces gestes ne sont utilisés que par les
+  nouvelles familles.
 - Le mode réduit ne produit ni signature ni pont forcé.
 - Les cycles, enveloppes et géométries existants ne changent pas : seule la
   cible (angle, rideau, motif) est choisie.
@@ -182,3 +188,26 @@ hors budget sur le corpus, et 0 paire sous le seuil effectif sur 6 morceaux ×
 | `sections = []` | aucun rôle de section ; caractère et raison d'événement seuls |
 | couverture partielle | les courbes valent 0 hors fenêtre ; `coverage` est recopié dans le plan, le rendu sait où la donnée est fiable |
 | courbe vide sur une fenêtre | énergie → 0,3, brillance → 0,5 (milieu d'échelle documenté) |
+
+## 9. Bordure LED
+
+Une couche **permanente** (`src/core/families/bordure.ts`), dessinée par
+`render.ts` après les blinders, sur `permanent` : elle ne suit donc pas le fondu
+de scène.
+
+- **Géométrie** : `NOMBRE_DIODES_BORDURE = 72` diodes réparties sur le périmètre
+  d'un rectangle rentré de `1,2 %` du petit côté. `positionBordure` renvoie le
+  point, l'angle du segment et le côté (`haut`, `bas`, `gauche`, `droite`).
+- **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
+  rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
+  (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
+  `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
+  part allumée de chaque diode ; les diodes éteintes gardent une veilleuse.
+- **Couleur** : `couleurBordure(f, index) = lampHue(f, index)`, donc les diodes
+  voisines portent des membres différents de l'accord de la scène.
+- **Intensité** : rail permanent `0,03 + 0,08 × énergie`, part du motif modulée
+  par la respiration, éclat d'impact dosé par `settings.flashes`.
+- **Mode réduit** : plafond `0,3`, facteur `0,5` : jamais de chenillard rapide
+  ni d'éclat au-delà du seuil d'inconfort.
+- **Coût** : un trait pour le rail, deux remplissages par diode visible, aucune
+  transformation ni dégradé radial par diode.

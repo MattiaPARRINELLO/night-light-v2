@@ -12,6 +12,17 @@ export type { BeamLayer, BeamSpec, FamilyDraw, FrameState, HazeLayer, HazeTarget
 export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
+export { CONCERT_FAMILIES } from "./concert-rig";
+export {
+  couleurBordure,
+  dessinerBordure,
+  intensiteBordure,
+  motifBordure,
+  NOMBRE_DIODES_BORDURE,
+  poidsMotif,
+  positionBordure,
+} from "./bordure";
+export type { DiodeBordure, MotifBordure } from "./bordure";
 export { contrastHue, lampHue, sceneChord } from "./harmony";
 export { beatSwing, colorFlip, elementEnvelope, elementEnvelopeForEnergy } from "./tempo";
 export { rowPositions } from "./geometry";
@@ -36,7 +47,7 @@ export {
   TAU_FILAMENT,
   tempsTempsFort,
 } from "./concert-rig";
-export type { CouleurFilament, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
+export type { CouleurFilament, GesteLyre, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...AMBIENT_FAMILIES,

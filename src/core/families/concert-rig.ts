@@ -150,6 +150,9 @@ export function tempsTempsFort(f: FrameState, view: TrackView): number {
   return f.t / periode;
 }
 
+/** Geste imposé aux huit lyres, indépendamment du rôle de la scène. */
+export type GesteLyre = "auto" | "poursuite" | "eventail" | "croisement" | "vague";
+
 /**
  * Cinématique pan/tilt d'une lyre.
  *
@@ -166,6 +169,9 @@ export function tempsTempsFort(f: FrameState, view: TrackView): number {
  * seules une respiration lente et une présence propre à chaque tête la font
  * varier.
  *
+ * `geste` remplace ce choix par rôle quand une famille veut un mouvement
+ * précis : `"auto"` garde exactement le comportement historique.
+ *
  * Tout reste analytique, sans état d'une image sur l'autre.
  */
 export function orientationLyre(
@@ -173,6 +179,7 @@ export function orientationLyre(
   view: TrackView,
   index: number,
   role: SceneRole = f.scene.role,
+  geste: GesteLyre = "auto",
 ): OrientationLyre {
   const i = borner(index, NOMBRE_LYRES);
   const phase = (i / (NOMBRE_LYRES - 1)) * Math.PI * 2;
@@ -253,6 +260,46 @@ export function orientationLyre(
       ouverture = 0.024;
       intensite = 0.6;
       break;
+  }
+
+  // Gestes imposés par une famille : ils remplacent le choix par rôle, mais
+  // passent ensuite par la même respiration, donc aucune tête ne clignote.
+  if (geste !== "auto") {
+    switch (geste) {
+      case "poursuite": {
+        const brut = (tempsTempsFort(f, view) * 0.5) % NOMBRE_LYRES;
+        const position = ((brut % NOMBRE_LYRES) + NOMBRE_LYRES) % NOMBRE_LYRES;
+        const ecart = Math.abs(i - position);
+        const distance = Math.min(ecart, NOMBRE_LYRES - ecart);
+        intensite = 0.12 + 0.88 * (1 - smoothstep(0.4, 1.15, distance));
+        angle = base + (i - centre) * 0.006 + beatSwing(f, view, 0.12, 4, decalage) * 0.6;
+        ouverture = 0.018;
+        prisme = 0;
+        break;
+      }
+      case "eventail": {
+        const ouvertureEventail = 0.2 * (0.85 + 0.15 * Math.sin(f.t * 0.17));
+        angle = base + (i - centre) * ouvertureEventail;
+        ouverture = 0.026;
+        intensite = 0.8;
+        prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy) * 0.6;
+        break;
+      }
+      case "croisement": {
+        angle = base + (i - centre) * 0.075 + beatSwing(f, view, 0.18, 8, decalage) * 0.5;
+        ouverture = 0.021;
+        intensite = 0.85;
+        prisme = f.reduced ? 0 : smoothstep(0.6, 0.9, f.energy) * 0.5;
+        break;
+      }
+      case "vague": {
+        angle = base + 0.16 * Math.sin(tempsTempsFort(f, view) * Math.PI * 0.5 - i * 0.55);
+        ouverture = 0.022;
+        intensite = 0.7;
+        prisme = 0;
+        break;
+      }
+    }
   }
 
   // Aucun terme de beat ici : une lyre ne s'éteint pas sur chaque kick. La
@@ -793,7 +840,12 @@ export function dessinerBlinders(
  * à haute énergie : trois sous-cônes décalés d'un angle fin qui oscille à
  * `sin(time · 4)`.
  */
-const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
+function dessinerLyres(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  geste: GesteLyre,
+): void {
   const { width: w, height: h } = f;
   // Pas de terme de beat : les huit têtes ne clignotent pas ensemble sur le
   // kick. Leur intensité est déjà modulée, tête par tête, lentement.
@@ -802,7 +854,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
 
   for (let index = 0; index < NOMBRE_LYRES; index += 1) {
     const { x, y } = positionLyre(index, w, h);
-    const orientation = orientationLyre(f, view, index);
+    const orientation = orientationLyre(f, view, index, f.scene.role, geste);
     const portee = Math.min(
       Math.hypot(w, h) * 1.25,
       (h * 1.04 - y) / Math.max(Math.sin(orientation.angle), 0.32),
@@ -861,7 +913,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
     ctx.arc(x, y, 2.2 + f.energy * 1.4, 0, Math.PI * 2);
     ctx.fill();
   }
-};
+}
 
 /**
  * Seize barres LED : vague d'inclinaison ou rideau de lumière.
@@ -870,7 +922,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
  * refrain et en drop, toutes les lames tombent parallèlement et l'intensité
  * suit le spectre bas/médium : c'est le rideau qui ferme la scène.
  */
-const barresLed: FamilyDraw = (ctx, f, view) => {
+function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView): void {
   const { width: w, height: h } = f;
   // Même règle que pour les lyres : la rampe ne clignote pas sur le kick.
   const alpha = (0.07 + 0.26 * f.energy) * f.alpha;
@@ -925,6 +977,29 @@ const barresLed: FamilyDraw = (ctx, f, view) => {
     ctx.arc(x, y, 1.8 + f.energy * 1.1, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** Familles historiques : geste automatique, piloté par le rôle de la scène. */
+const lyresSuspendues: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "auto");
+const barresLed: FamilyDraw = (ctx, f, view) => dessinerBarres(ctx, f, view);
+
+/** Poursuite : une seule tête éclairée court le long du pont. */
+const lyresPoursuite: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "poursuite");
+
+/**
+ * Duo : les lyres du haut croisent leurs faisceaux pendant que les barres du
+ * milieu déroulent leur vague. C'est la scène où les deux étages du plateau
+ * jouent ensemble, au lieu de s'alterner.
+ */
+const lyresDuo: FamilyDraw = (ctx, f, view) => {
+  dessinerLyres(ctx, f, view, "croisement");
+  dessinerBarres(ctx, { ...f, alpha: f.alpha * 0.85 }, view);
+};
+
+/** Éventail large au-dessus du rideau de barres LED. */
+const lyresEventail: FamilyDraw = (ctx, f, view) => {
+  dessinerLyres(ctx, f, view, "eventail");
+  dessinerBarres(ctx, { ...f, alpha: f.alpha * 0.85 }, view);
 };
 
 /**
@@ -944,4 +1019,7 @@ export const CONCERT_FAMILIES = {
   "lyres-suspendues": lyresSuspendues,
   "barres-led": barresLed,
   "pont-concert": pontConcert,
+  "lyres-poursuite": lyresPoursuite,
+  "lyres-duo": lyresDuo,
+  "lyres-eventail": lyresEventail,
 } as const;
