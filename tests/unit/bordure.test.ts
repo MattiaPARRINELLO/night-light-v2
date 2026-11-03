@@ -446,9 +446,11 @@ describe("visibilité des motifs", () => {
   test("le plein éclaire tout le corps", () => {
     const view = new TrackView(analysis());
     let f = frame("drop", 12, { energy: 0.9 });
-    for (let t = 1; t < 60; t += 2) {
+    for (let t = 1; t < 400; t += 1) {
       f = frame("drop", t, { energy: 0.9 });
-      if (motifBordure(f, view) === "plein") break;
+      const temps = f.beatIndex + f.beatPhase;
+      const local = temps / 8 - Math.floor(temps / 8);
+      if (motifBordure(f, view) === "plein" && local > 0.3) break;
     }
     expect(motifBordure(f, view)).toBe("plein");
     expect(moyenneBordure(f, view)).toBeCloseTo(1, 2);
@@ -524,5 +526,120 @@ describe("moments forts", () => {
     // plus fort du morceau.
     expect(motifs.size).toBeGreaterThan(1);
     expect([...motifs].some((motif) => motif !== "plein")).toBe(true);
+  });
+});
+
+describe("remplissages progressifs", () => {
+  const poids = (f: FrameState, view: TrackView, motif: MotifBordure) =>
+    Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, motif),
+    );
+
+  test("la progression allume le pourtour petit à petit", () => {
+    const view = new TrackView(analysis());
+    const debut = poids(frame("couplet", 0.5, { energy: 0.8 }), view, "progression");
+    const milieu = poids(frame("couplet", 6, { energy: 0.8 }), view, "progression");
+    expect(debut.filter((valeur) => valeur > 0.5).length).toBeLessThan(
+      milieu.filter((valeur) => valeur > 0.5).length,
+    );
+    expect(debut[0]).toBeGreaterThan(0.5);
+    expect(debut[NOMBRE_DIODES_BORDURE - 1]).toBeLessThan(0.2);
+  });
+
+  test("le remplissage haut-bas commence par le haut", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 1, { energy: 0.8 });
+    const haut = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "haut",
+    );
+    const bas = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "bas",
+    );
+    expect(Math.max(...bas.map((index) => poidsMotif(f, view, index, "haut-bas")))).toBeLessThan(0.2);
+    expect(Math.max(...haut.map((index) => poidsMotif(f, view, index, "haut-bas")))).toBeGreaterThan(0.5);
+  });
+
+  test("le motif milieu part du centre des bords", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 2, { energy: 0.8 });
+    const centre = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "haut",
+    );
+    const valeurs = centre.map((index) => poidsMotif(f, view, index, "milieu"));
+    // Le centre du bord haut est allumé, les extrémités non.
+    expect(Math.max(...valeurs)).toBeGreaterThan(0.5);
+    expect(Math.min(...valeurs)).toBeLessThan(0.2);
+  });
+
+  test("la vague ondule le long du pourtour", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 3, { energy: 0.8 });
+    const valeurs = poids(f, view, "vague");
+    expect(Math.max(...valeurs) - Math.min(...valeurs)).toBeGreaterThan(0.5);
+  });
+});
+
+describe("comète, vumètre, pluie, scintillement et strobe", () => {
+  const poids = (f: FrameState, view: TrackView, motif: MotifBordure, budget = 1) =>
+    Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, motif, budget),
+    );
+
+  test("la comète a une tête vive et une traînée", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.8 });
+    const valeurs = poids(f, view, "comete");
+    const tete = valeurs.indexOf(Math.max(...valeurs));
+    expect(valeurs[tete]!).toBeGreaterThan(0.9);
+    expect(valeurs[(tete + 40) % NOMBRE_DIODES_BORDURE]!).toBeLessThan(0.3);
+    expect(valeurs[(tete - 30 + NOMBRE_DIODES_BORDURE) % NOMBRE_DIODES_BORDURE]!).toBeGreaterThan(
+      valeurs[(tete + 30) % NOMBRE_DIODES_BORDURE]!,
+    );
+  });
+
+  test("le vumètre lit les basses en bas et les aigus en haut", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.8, bass: 0.9, mid: 0.5, high: 0.1 });
+    const bas = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "bas",
+    );
+    const haut = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "haut",
+    );
+    const moyenne = (indices: number[]) =>
+      indices.reduce((total, index) => total + poidsMotif(f, view, index, "vumetre"), 0) /
+      indices.length;
+    expect(moyenne(bas)).toBeGreaterThan(moyenne(haut) + 0.2);
+  });
+
+  test("la pluie allume des gouttes qui changent", () => {
+    const view = new TrackView(analysis());
+    const a = poids(frame("couplet", 12, { energy: 0.8 }), view, "pluie");
+    const b = poids(frame("couplet", 13, { energy: 0.8 }), view, "pluie");
+    expect(Math.max(...a) - Math.min(...a)).toBeGreaterThan(0.4);
+    expect(a).not.toEqual(b);
+  });
+
+  test("le scintillement suit les aigus", () => {
+    const view = new TrackView(analysis());
+    const eteint = poids(frame("couplet", 12, { energy: 0.8, high: 0 }), view, "scintillement");
+    const allume = poids(frame("couplet", 12, { energy: 0.8, high: 0.9 }), view, "scintillement");
+    expect(Math.max(...eteint)).toBeLessThan(0.1);
+    expect(Math.max(...allume)).toBeGreaterThan(0.5);
+  });
+
+  test("le strobe bat vite et respecte le budget de flashs", () => {
+    const view = new TrackView(analysis());
+    const allume = poids(frame("couplet", 12, { energy: 0.8 }), view, "strobe", 1);
+    const eteint = poids(
+      frame("couplet", 12, { energy: 0.8, beatIndex: 24, beatPhase: 0.0625 }),
+      view,
+      "strobe",
+      1,
+    );
+    expect(Math.max(...allume)).toBeGreaterThan(0.9);
+    expect(Math.max(...eteint)).toBeLessThan(0.1);
+    const coupe = poids(frame("couplet", 12, { energy: 0.8 }), view, "strobe", 0);
+    expect(Math.max(...coupe)).toBeLessThan(0.1);
   });
 });
