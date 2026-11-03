@@ -341,6 +341,9 @@ describe("densité du ruban", () => {
     expect(operations.filter((op) => op === "stroke").length).toBeGreaterThan(
       NOMBRE_DIODES_BORDURE * 0.5,
     );
+    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(
+      NOMBRE_DIODES_BORDURE * 0.5,
+    );
   });
 });
 

@@ -111,9 +111,10 @@ Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
   la scène, avec une ondulation périodique de 8° sur le pourtour (aucun raccord
   au bouclage) et une dérive lente dans son budget de teinte. Pas de diodes
   multicolores : deux voisines sont presque identiques.
-- `dessinerBordure(ctx, f, view, budgetFlash)` : halo, cœur de trait, puis
-  tronçons continus portant l'intensité du motif. Pas de points ni de cœur
-  blanc : le rendu doit lire comme un fil, pas comme une guirlande.
+- `dessinerBordure(ctx, f, view, budgetFlash)` : bloom en trois passes, tube
+  diffuseur, cœur clair, puis tronçons et petits émetteurs colorés (halo court,
+  variation déterministe). Pas de cœur blanc : le rendu doit lire comme une
+  vraie bande LED, pas comme une guirlande.
 - Appel dans `render.ts` à côté de `dessinerBlinders`, sur `permanent`, en
   `lighter`.
 

@@ -200,10 +200,16 @@ de scène.
   dense. `positionBordure` renvoie le point, l'angle du segment et le côté
   (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
   qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.
-- **Fil continu** : le ruban est toujours visible — un halo extérieur, un cœur
-  de trait, puis des tronçons qui portent l'intensité du motif. Aucun point
-  blanc : le rendu reste un trait. Même au silence, chaque tronçon garde une
-  veilleuse (`poidsMotif ≥ 0,3`), donc la bordure ne s'éteint jamais.
+- **Rendu en couches, comme un vrai ruban** :
+  1. **bloom** — trois traits de largeurs décroissantes pour la lumière diffusée
+     dans la salle ;
+  2. **tube diffuseur** — le plastique laiteux qui rend la bande continue ;
+  3. **cœur** — un trait plus fin et plus clair au centre du tube ;
+  4. **émetteurs** — de petites diodes colorées, régulièrement espacées, avec un
+     halo court et une variation déterministe de brillance entre voisines.
+  Aucun cœur blanc : la diode reste de la couleur du ruban. Même au silence,
+  chaque tronçon garde une veilleuse (`poidsMotif ≥ 0,3`), donc la bordure ne
+  s'éteint jamais.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
   rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
@@ -226,5 +232,5 @@ de scène.
 - **Intensité** : rail permanent, part du motif modulée par la respiration,
   éclat d'impact et blinder de couleur dosés par `settings.flashes`.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
-- **Coût** : deux traits pour le fil, un tronçon tracé par diode échantillonnée,
-  aucune transformation ni dégradé radial par diode.
+- **Coût** : cinq traits pour le bloom/tube/cœur, puis un tronçon et deux
+  remplissages par diode échantillonnée, sans transformation ni dégradé radial.

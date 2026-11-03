@@ -332,27 +332,49 @@ export function dessinerBordure(
     ctx.stroke();
   };
 
-  // Halo : la lumière que le ruban diffuse dans la salle.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.7, 0.55, 0.1 + 0.1 * energie);
-  ctx.lineWidth = Math.max(5, petitCote * 0.018);
+  const tube = Math.max(3, petitCote * 0.006);
+
+  // 1. Bloom : trois passes de plus en plus larges et de plus en plus faibles.
+  // C'est la lumière que le ruban jette sur le cadre et dans la salle.
+  const blooms = [
+    [3.6, 0.028],
+    [2.1, 0.055],
+    [1.35, 0.1],
+  ] as const;
+  for (const [facteur, alpha] of blooms) {
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation * 0.7,
+      0.55,
+      alpha * (0.5 + 0.9 * energie),
+    );
+    ctx.lineWidth = tube * facteur;
+    traceRuban();
+  }
+
+  // 2. Tube diffuseur : le plastique laiteux qui rend la bande continue.
+  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.85, 0.72, 0.35 + 0.3 * energie);
+  ctx.lineWidth = tube;
   traceRuban();
 
-  // Cœur du fil : présent même quand aucune diode n'est renforcée.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.8, 0.4 + 0.25 * energie);
-  ctx.lineWidth = Math.max(2.5, petitCote * 0.005);
+  // 3. Cœur du tube, plus fin et plus clair.
+  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, 0.35 + 0.35 * energie);
+  ctx.lineWidth = tube * 0.45;
   traceRuban();
 
-  // Le ruban est un trait continu, pas une file de points : chaque tronçon
-  // porte l'intensité de sa position dans le motif, sans cœur blanc.
+  // 4. Émetteurs : de vraies diodes, petites, colorées et régulièrement
+  // espacées. Le tronçon assure la continuité, le point donne la granularité de
+  // la bande réelle — sans redevenir un chapelet de points blancs.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
   const perimetre = 2 * (w - 2 * marge + (h - 2 * marge));
-  // Longueur fixe par diode (sans le pas) : les positions restent identiques
-  // quand la qualité change, comme pour toutes les autres familles.
   const demi = Math.max(1.4, (perimetre / NOMBRE_DIODES_BORDURE) * 0.55);
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
     const { x, y, angle } = positionBordure(index, w, h);
     const couleur = teinteBordure(f, view, index, budgetFlash);
+    // Variation déterministe : deux diodes voisines ne brillent jamais
+    // exactement pareil, comme sur un vrai ruban.
+    const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
     const dx = Math.cos(angle) * demi;
     const dy = Math.sin(angle) * demi;
 
@@ -360,12 +382,30 @@ export function dessinerBordure(
       couleur.hue,
       couleur.saturation,
       couleur.lightness,
-      0.25 + 0.6 * intensite,
+      (0.16 + 0.55 * intensite) * variation,
     );
-    ctx.lineWidth = Math.max(2.5, petitCote * 0.005) * (0.7 + 0.6 * intensite);
+    ctx.lineWidth = tube * 0.5 * (0.8 + 0.5 * intensite);
     ctx.beginPath();
     ctx.moveTo(x - dx, y - dy);
     ctx.lineTo(x + dx, y + dy);
     ctx.stroke();
+
+    // Halo de la diode (diffusion dans le tube).
+    const rayon = tube * 0.18 * (0.8 + 0.6 * intensite) * variation;
+    ctx.fillStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.62, 0.14 * intensite);
+    ctx.beginPath();
+    ctx.arc(x, y, rayon * 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cœur de la diode : coloré, jamais blanc.
+    ctx.fillStyle = paint(
+      couleur.hue,
+      couleur.saturation,
+      0.68 + 0.17 * intensite,
+      clamp01(0.35 + 0.65 * intensite),
+    );
+    ctx.beginPath();
+    ctx.arc(x, y, rayon, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
