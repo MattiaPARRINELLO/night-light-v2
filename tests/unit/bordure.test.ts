@@ -89,7 +89,9 @@ describe("géométrie de la bordure", () => {
   test("les diodes font le tour du cadre, rentrées du petit côté", () => {
     const largeur = 1280;
     const hauteur = 720;
-    const marge = Math.min(largeur, hauteur) * 0.012;
+    // Le ruban est collé au bord : les centres restent dans le cadre, seuls
+    // les halos débordent.
+    const marge = 0;
     const points = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, i) =>
       positionBordure(i, largeur, hauteur),
     );
@@ -108,7 +110,7 @@ describe("géométrie de la bordure", () => {
   test("le pourtour tient aussi en portrait", () => {
     const largeur = 400;
     const hauteur = 900;
-    const marge = Math.min(largeur, hauteur) * 0.012;
+    const marge = 0;
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
       const p = positionBordure(index, largeur, hauteur);
       expect(p.x).toBeGreaterThanOrEqual(marge - 1e-6);

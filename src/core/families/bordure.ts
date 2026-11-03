@@ -18,8 +18,11 @@ import { paint } from "./util";
 /** Nombre de diodes réparties sur le périmètre : un vrai ruban LED, dense. */
 export const NOMBRE_DIODES_BORDURE = 240;
 
-/** Retrait de la bordure par rapport au bord, en fraction du petit côté. */
-const MARGE_BORDURE = 0.018;
+/**
+ * Retrait du centre du ruban par rapport au bord, en fraction du petit côté.
+ * Quasi nul : le ruban est collé au bord, seul son halo déborde hors cadre.
+ */
+const MARGE_BORDURE = 0.003;
 
 export type MotifBordure =
   | "rail"

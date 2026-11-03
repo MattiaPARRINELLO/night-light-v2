@@ -196,7 +196,7 @@ Une couche **permanente** (`src/core/families/bordure.ts`), dessinée par
 de scène.
 
 - **Géométrie** : `NOMBRE_DIODES_BORDURE = 240` diodes réparties sur le
-  périmètre d'un rectangle rentré de `1,2 %` du petit côté : un vrai ruban LED,
+  périmètre d'un rectangle collé au bord (retrait de `0,3 %` du petit côté) : un vrai ruban LED,
   dense. `positionBordure` renvoie le point, l'angle du segment et le côté
   (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
   qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.

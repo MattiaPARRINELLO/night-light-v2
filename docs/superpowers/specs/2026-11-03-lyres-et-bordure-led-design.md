@@ -83,7 +83,7 @@ existantes appelant la valeur `"auto"`.
 Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
 
 - `NOMBRE_DIODES_BORDURE` (240) réparties uniformément sur le périmètre d'un
-  rectangle rentré de ~1,2 % du petit côté : c'est un ruban LED dense, pas une
+  rectangle collé au bord (retrait de ~0,3 % du petit côté) : c'est un ruban LED dense, pas une
   guirlande. `positionBordure(index, w, h)` renvoie le point, l'orientation du
   segment et le côté (`haut`, `bas`, `gauche`, `droite`). Le dessin
   échantillonne ce ruban selon la qualité sans déplacer les positions.
