@@ -615,8 +615,11 @@ async def purge_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
-    state.executor.submit(warmup)
+    # Le worker d'analyse d'abord : son préchauffage (protégé par le verrou
+    # numba) répare un éventuel cache corrompu avant que l'API ne compile à son
+    # tour dans le même cache.
     start_analysis_worker()
+    state.executor.submit(warmup)
     state.queue.start()
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()

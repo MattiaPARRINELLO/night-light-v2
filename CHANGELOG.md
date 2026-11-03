@@ -133,6 +133,13 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **Segfault numba/librosa au démarrage** : l'API et le worker d'analyse
+  compilaient en même temps dans le même cache disque numba ; deux
+  compilations concurrentes pouvaient corrompre l'index et tuer l'interpréteur
+  au chargement suivant (`Segmentation fault` dans `librosa/beat.py`). La
+  compilation est désormais sérialisée par un verrou inter-process, le worker
+  démarre avant le préchauffage de l'API, et un cache corrompu est purgé
+  automatiquement (une fois) quand le worker meurt au préchauffage.
 - **Flux SSE du lecteur** : le serveur n'émettait que sur changement de morceau,
   donc le client prenait 5 s de silence pour une coupure et basculait en polling
   (`SSE morceau indisponible · polling de secours`) à chaque plage stable. Le

@@ -46,6 +46,9 @@ def test_le_flux_bat_quand_aucun_morceau_ne_change(monkeypatch) -> None:
 
 def test_le_flux_transmet_les_changements_de_morceau(monkeypatch) -> None:
     monkeypatch.setattr(main, "NOW_PLAYING_HEARTBEAT_SEC", 0.05)
+    # Titre unique : l'état MPRIS est global et d'autres tests ont pu y laisser
+    # un morceau identique, que le flux ne renverrait alors pas (même payload).
+    titre = "Morceau SSE de test"
 
     async def scenario() -> str:
         response = await main.now_playing_stream(_FakeRequest())
@@ -56,13 +59,13 @@ def test_le_flux_transmet_les_changements_de_morceau(monkeypatch) -> None:
             async def next_track() -> str:
                 while True:
                     frame = str(await iterator.__anext__())
-                    if frame.startswith("data: ") and "Neon" in frame:
+                    if frame.startswith("data: ") and titre in frame:
                         return frame
 
-            mpris._publish(mpris.NowPlaying(available=True, title="Neon", artist="Sky"))
+            mpris._publish(mpris.NowPlaying(available=True, title=titre, artist="Test"))
             return await asyncio.wait_for(next_track(), timeout=5.0)
         finally:
             await iterator.aclose()
 
     frame = asyncio.run(scenario())
-    assert "Neon" in frame
+    assert titre in frame
