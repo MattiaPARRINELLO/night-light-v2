@@ -353,6 +353,40 @@ export function moyenneBordure(f: FrameState, view: TrackView): number {
   return total / echantillons;
 }
 
+/** Trace un tronçon en suivant le périmètre, coin compris. */
+function tracerTroncon(
+  ctx: CanvasRenderingContext2D,
+  deIndex: number,
+  versIndex: number,
+  largeur: number,
+  hauteur: number,
+): void {
+  const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
+  const largeurUtile = Math.max(largeur - 2 * marge, 0);
+  const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
+  const perimetre = 2 * (largeurUtile + hauteurUtile);
+  const pas = perimetre / NOMBRE_DIODES_BORDURE;
+  const coins = [
+    0,
+    largeurUtile / pas,
+    (largeurUtile + hauteurUtile) / pas,
+    (2 * largeurUtile + hauteurUtile) / pas,
+    NOMBRE_DIODES_BORDURE,
+  ];
+
+  const debut = pointBordure(deIndex, largeur, hauteur);
+  ctx.beginPath();
+  ctx.moveTo(debut.x, debut.y);
+  for (const coin of coins) {
+    if (coin <= deIndex || coin >= versIndex) continue;
+    const point = pointBordure(coin, largeur, hauteur);
+    ctx.lineTo(point.x, point.y);
+  }
+  const fin = pointBordure(versIndex, largeur, hauteur);
+  ctx.lineTo(fin.x, fin.y);
+  ctx.stroke();
+}
+
 /**
  * Dessine le ruban : un fil continu, puis les diodes qui le composent.
  *
@@ -432,12 +466,8 @@ export function dessinerBordure(
     // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
     const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
-    // Tronçon entre deux positions fractionnaires : les morceaux se raccordent
-    // exactement, coins compris. On trace TOUS les tronçons, quel que soit le
-    // pas : sinon la bande devient pointillée quand la qualité baisse.
-    const debut = pointBordure(index - 0.6, w, h);
-    const fin = pointBordure(index + 0.6, w, h);
-
+    // Tronçon suivant le périmètre : les morceaux se raccordent exactement et
+    // passent par le coin au lieu de le couper en diagonale.
     ctx.strokeStyle = paint(
       couleur.hue,
       couleur.saturation,
@@ -445,10 +475,7 @@ export function dessinerBordure(
       (0.04 + 0.96 * intensite) * variation,
     );
     ctx.lineWidth = tube * (0.45 + 0.75 * intensite);
-    ctx.beginPath();
-    ctx.moveTo(debut.x, debut.y);
-    ctx.lineTo(fin.x, fin.y);
-    ctx.stroke();
+    tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
 
     // Les émetteurs, eux, peuvent être échantillonnés : ce sont les points.
     if (index % pas !== 0) continue;

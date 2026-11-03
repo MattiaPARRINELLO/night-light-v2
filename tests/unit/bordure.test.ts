@@ -475,3 +475,16 @@ describe("attaque du gros blinder", () => {
     expect(blinderBordure(debut, view, 0)).toBe(0);
   });
 });
+
+describe("coins du ruban", () => {
+  test("les tronçons passent par le coin au lieu de le couper", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.6 });
+    const { ctx, operations } = fakeContext();
+    dessinerBordure(ctx, f, view, 1);
+    const marge = Math.min(f.width, f.height) * 0.003;
+    const coin = `${marge.toFixed(1)},${marge.toFixed(1)}`;
+    // Le coin haut-gauche n'apparaît comme `lineTo` que si un tronçon y passe.
+    expect(operations).toContain(`lineTo:${coin}`);
+  });
+});
