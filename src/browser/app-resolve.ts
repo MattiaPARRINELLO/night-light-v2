@@ -6,7 +6,7 @@
 import type { App } from "./app";
 import { ApiError, fetchNowPlaying, normalizeNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
 import { dbgThrottled } from "../core/debug";
-import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve } from "../core/nowPlaying";
+import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve, shouldFallbackToPolling } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
 
 declare module "./app" {
@@ -310,13 +310,25 @@ export function installResolve(Target: { prototype: App }): void {
     }
     const source = new EventSource("/api/now-playing/stream");
     this.nowPlayingStream = source;
+    // Sans horodatage initial, le watchdog concluait au silence avant même la
+    // première trame et lançait le polling pour rien.
+    this.nowPlayingLastEventAt = Date.now();
+    const markAlive = (): void => {
+      if (this.nowPlayingStream !== source) return;
+      this.nowPlayingLastEventAt = Date.now();
+    };
     source.onopen = () => {
       if (this.nowPlayingStream !== source) return;
+      markAlive();
       this.debug("sync", "flux SSE morceau ouvert");
       this.stopNowPlayingPolling();
     };
+    // Le serveur bat le flux même sans changement de morceau : ces pings
+    // distinguent un flux vivant et silencieux d'une vraie coupure.
+    source.addEventListener("ping", markAlive);
     source.onmessage = (event) => {
       if (this.nowPlayingStream !== source) return;
+      markAlive();
       try {
         const raw = JSON.parse(event.data) as Record<string, unknown>;
         this.receiveNowPlaying(raw);
@@ -329,7 +341,12 @@ export function installResolve(Target: { prototype: App }): void {
     };
     this.nowPlayingWatchdog = window.setInterval(() => {
       if (this.nowPlayingStream === null) return;
-      if (Date.now() - this.nowPlayingLastEventAt > 5000) this.startNowPlayingPolling();
+      const dead = shouldFallbackToPolling({
+        readyState: this.nowPlayingStream.readyState,
+        lastEventAt: this.nowPlayingLastEventAt,
+        now: Date.now(),
+      });
+      if (dead) this.startNowPlayingPolling();
     }, 1000);
   };
 

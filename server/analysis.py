@@ -7,13 +7,15 @@ provient d'un calcul effectué sur les échantillons décodés.
 from __future__ import annotations
 
 import contextlib
+import logging
 import multiprocessing
+import os
 import queue as queue_module
 import subprocess
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,8 @@ import soundfile as sf
 
 from .config import Settings
 from .structure import align_builds_to_drops, detect_structure
+
+_LOGGER = logging.getLogger(__name__)
 
 SR_DEFAULT = 22050
 HOP = 512
@@ -785,6 +789,57 @@ def detect_builds(
     return merged
 
 
+# Cache disque de numba (librosa y compile ses noyaux) : l'API et le worker
+# d'analyse y écrivent tous les deux au démarrage. Deux compilations
+# simultanées peuvent laisser un index pointant les octets d'une autre
+# signature, et le chargement suivant tue l'interpréteur (segfault, sans
+# exception Python). Un verrou inter-process sérialise la compilation.
+_NUMBA_LOCK_PATH = Path(tempfile.gettempdir()) / (
+    f"night-light-numba-{getattr(os, 'getuid', lambda: 0)()}.lock"
+)
+
+
+@contextlib.contextmanager
+def _numba_compile_lock() -> Iterator[None]:
+    """Sérialise les compilations numba entre process du même utilisateur."""
+    try:
+        # Le descripteur reste ouvert pendant tout le bloc protégé : le verrou
+        # est relâché à la fermeture, donc pas de `with` ici.
+        handle = open(_NUMBA_LOCK_PATH, "a+b")  # noqa: SIM115
+    except OSError:
+        yield
+        return
+    try:
+        try:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            # Pas de verrou possible : mieux vaut compiler sans protection que
+            # bloquer le préchauffage.
+            yield
+            return
+        yield
+    finally:
+        # La fermeture relâche le verrou ; le noyau le fait aussi si le
+        # processus meurt pendant la compilation.
+        handle.close()
+
+
+def _purge_numba_cache(root: Path | None = None) -> None:
+    """Supprime le cache numba de librosa, supposé corrompu.
+
+    Un cache corrompu fait planter le process au chargement (segfault), donc il
+    n'y a rien à valider : après un démarrage raté, on le jette et on recompile.
+    """
+    if root is None:
+        root = Path(librosa.__file__).resolve().parent
+    for pattern in ("*.nbi", "*.nbc"):
+        for path in root.rglob(pattern):
+            with contextlib.suppress(OSError):
+                path.unlink()
+
+
 def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
     """Préchauffe les chemins numba/librosa.
 
@@ -792,25 +847,26 @@ def warmup(seconds: float = 2.0, sample_rate: int = SR_DEFAULT) -> None:
     l'avancement reste bloqué sur la première phase sans que l'utilisateur
     comprenne pourquoi.
     """
-    try:
-        rng = np.random.default_rng(0)
-        noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(np.float32)
-        onset_env = librosa.onset.onset_strength(y=noise, sr=sample_rate, hop_length=HOP)
-        librosa.beat.beat_track(
-            onset_envelope=onset_env, sr=sample_rate, hop_length=HOP, trim=False
-        )
-        mel = librosa.feature.melspectrogram(
-            y=noise, sr=sample_rate, n_fft=NFFT, hop_length=HOP, n_mels=64
-        )
-        librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
-        librosa.feature.chroma_stft(
-            S=librosa.stft(noise, n_fft=NFFT, hop_length=HOP),
-            sr=sample_rate,
-            hop_length=HOP,
-        )
-        librosa.feature.rms(y=noise, hop_length=HOP)
-    except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
-        pass
+    with _numba_compile_lock():
+        try:
+            rng = np.random.default_rng(0)
+            noise = (rng.standard_normal(int(sample_rate * seconds)) * 0.05).astype(np.float32)
+            onset_env = librosa.onset.onset_strength(y=noise, sr=sample_rate, hop_length=HOP)
+            librosa.beat.beat_track(
+                onset_envelope=onset_env, sr=sample_rate, hop_length=HOP, trim=False
+            )
+            mel = librosa.feature.melspectrogram(
+                y=noise, sr=sample_rate, n_fft=NFFT, hop_length=HOP, n_mels=64
+            )
+            librosa.feature.mfcc(S=librosa.power_to_db(mel + 1e-10), n_mfcc=13)
+            librosa.feature.chroma_stft(
+                S=librosa.stft(noise, n_fft=NFFT, hop_length=HOP),
+                sr=sample_rate,
+                hop_length=HOP,
+            )
+            librosa.feature.rms(y=noise, hop_length=HOP)
+        except Exception:  # noqa: BLE001 - un échec de préchauffage n'est pas fatal
+            pass
 
 
 # ------------------------------------------------------------------ analyse
@@ -1110,7 +1166,7 @@ class PersistentAnalysis:
         self._ready_pending = False
         self._spawn_started = 0.0
 
-    def _spawn(self, *, wait_ready: bool = True) -> None:
+    def _spawn(self, *, wait_ready: bool = True, retry: bool = True) -> None:
         self._tasks = self._context.Queue()
         self._events = self._context.Queue()
         process = self._context.Process(
@@ -1123,8 +1179,25 @@ class PersistentAnalysis:
         process.start()
         self._process = process
         self._ready_pending = True
-        if wait_ready:
+        if not wait_ready:
+            return
+        try:
             self._await_ready()
+        except _EngineUnavailable:
+            # Un cache numba corrompu tue le worker au préchauffage (segfault,
+            # pas d'exception). Une seule fois : on jette le cache et on
+            # relance, plutôt que de laisser l'app inutilisable.
+            if retry and process.exitcode is not None and process.exitcode < 0:
+                _LOGGER.warning(
+                    "Worker d'analyse tué au préchauffage (signal %s) : cache numba purgé",
+                    -process.exitcode,
+                )
+                self._kill()
+                with _numba_compile_lock():
+                    _purge_numba_cache()
+                self._spawn(wait_ready=wait_ready, retry=False)
+                return
+            raise
 
     def _await_ready(self) -> None:
         process = self._process

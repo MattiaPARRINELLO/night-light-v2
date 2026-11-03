@@ -615,8 +615,11 @@ async def purge_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.store.purge_all()
-    state.executor.submit(warmup)
+    # Le worker d'analyse d'abord : son préchauffage (protégé par le verrou
+    # numba) répare un éventuel cache corrompu avant que l'API ne compile à son
+    # tour dans le même cache.
     start_analysis_worker()
+    state.executor.submit(warmup)
     state.queue.start()
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()
@@ -829,22 +832,39 @@ async def now_playing() -> dict[str, Any]:
     return get_now_playing().to_dict()
 
 
+# Le flux now-playing n'émet que sur changement de métadonnée MPRIS : sans
+# battement, une longue plage stable ressemble à une coupure côté navigateur,
+# qui basculerait en polling alors que le flux est parfaitement vivant.
+NOW_PLAYING_HEARTBEAT_SEC = 2.0
+
+
 @app.get("/api/now-playing/stream")
 async def now_playing_stream(request: Request) -> StreamingResponse:
 
     async def stream() -> asyncio.AsyncIterator[str]:
         subscriber = subscribe_now_playing()
         try:
-            current = get_now_playing().to_dict()
-            yield f"data: {json.dumps(current, ensure_ascii=False)}\n\n"
+            last = json.dumps(get_now_playing().to_dict(), ensure_ascii=False)
+            yield f"data: {last}\n\n"
+            last_sent = time.monotonic()
+            wait = min(1.0, NOW_PLAYING_HEARTBEAT_SEC)
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    payload = await asyncio.to_thread(subscriber.get, True, 1.0)
+                    payload = await asyncio.to_thread(subscriber.get, True, wait)
                 except queue.Empty:
+                    if time.monotonic() - last_sent >= NOW_PLAYING_HEARTBEAT_SEC:
+                        last_sent = time.monotonic()
+                        # Événement nommé : `onmessage` ne reçoit pas les
+                        # commentaires `:` ; le client écoute `ping`.
+                        yield "event: ping\ndata: {}\n\n"
                     continue
-                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                body = json.dumps(payload, ensure_ascii=False)
+                if body != last:
+                    last = body
+                    last_sent = time.monotonic()
+                    yield f"data: {body}\n\n"
         finally:
             unsubscribe_now_playing(subscriber)
 

@@ -5,6 +5,8 @@ import {
   detectedTrackLabel,
   hasDetectedTrack,
   shouldAutoResolve,
+  shouldFallbackToPolling,
+  SSE_SILENCE_MS,
 } from "../../src/core/nowPlaying";
 
 function nowPlaying(overrides: Partial<NowPlayingResponse> = {}): NowPlayingResponse {
@@ -87,5 +89,26 @@ describe("détection du morceau joué", () => {
 
   it("clé stable : l'artiste manquant ne change pas le morceau", () => {
     expect(detectedTrackKey(nowPlaying({ artist: "" }))).toBe("Neon Skyline|");
+  });
+});
+
+describe("santé du flux SSE du lecteur", () => {
+  const now = 10_000;
+
+  it("un flux ouvert et battu n'est jamais mis en repli", () => {
+    expect(shouldFallbackToPolling({ readyState: 1, lastEventAt: now, now })).toBe(false);
+    expect(
+      shouldFallbackToPolling({ readyState: 1, lastEventAt: now - SSE_SILENCE_MS, now }),
+    ).toBe(false);
+  });
+
+  it("déclenche le repli après un silence anormal, flux ouvert ou en reconnexion", () => {
+    const stale = { lastEventAt: now - SSE_SILENCE_MS - 1, now };
+    expect(shouldFallbackToPolling({ readyState: 1, ...stale })).toBe(true);
+    expect(shouldFallbackToPolling({ readyState: 0, ...stale })).toBe(true);
+  });
+
+  it("déclenche le repli dès que le flux est fermé", () => {
+    expect(shouldFallbackToPolling({ readyState: 2, lastEventAt: now, now })).toBe(true);
   });
 });
