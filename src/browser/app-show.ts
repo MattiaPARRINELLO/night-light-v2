@@ -166,10 +166,10 @@ export function installShow(Target: { prototype: App }): void {
 
     showScreen("show");
     this.markSynced();
-    this.resize();
     this.quality = 1;
     this.fps = 60;
     this.frame = 0;
+    this.resize();
 
     try {
       await this.audio.play();

@@ -42,7 +42,7 @@ import {
   sceneChord,
   softBeam,
 } from "../../src/core/families";
-import { QUALITY_STEPS, hash01, quantizeQuality } from "../../src/core/series";
+import { MAX_RENDER_PIXELS, QUALITY_STEPS, hash01, quantizeQuality, renderPixelRatio } from "../../src/core/series";
 import { TrackView } from "../../src/core/view";
 import { DEFAULT_SETTINGS } from "../../src/types";
 import type { Analysis } from "../../src/types";
@@ -1430,14 +1430,20 @@ describe("faisceaux adoucis", () => {
     }
   });
 
-  test("chaque nappe est floutee une seule fois par image", () => {
+  test("chaque nappe est floutee au plus une fois par image", () => {
     // C'est le cœur de l'optimisation : chaque faisceau est déposé dans une nappe,
     // et chaque nappe n'est floutée qu'une fois par image. Le flou direct — une
     // passe pleine toile PAR projecteur — faisait tomber le spectacle à 2 images
     // par seconde sur une scène chargée, contre 40 ici.
+    //
+    // Depuis, le flou n'est en outre rafraîchi qu'une image sur deux : le filtre
+    // est la seule opération synchrone de l'image, et la fumée se déplace trop
+    // lentement pour qu'une image d'écart se voie.
     const vue = new TrackView(analysis());
     const plan = buildShowPlan(analysis(), false);
     let vuLaFumee = false;
+    let imagesAvecContenu = 0;
+    let imagesFlouees = 0;
 
     for (let temps = 0; temps < 60; temps += 0.25) {
       const { ctx, operations } = fakeContext();
@@ -1459,19 +1465,26 @@ describe("faisceaux adoucis", () => {
       let remontees = 0;
       for (const nappe of [fine, large]) {
         const floutee = nappe.flou.filter((operation) => operation.startsWith("filter:blur(")).length;
-        if (floutee === 0) {
-          // Rien n'y a été dessiné : la nappe n'est pas floutée en vain.
-          expect(dessins(nappe)).toBe(0);
+        const remontee = nappe.flou.filter((operation) => operation === "drawImage").length;
+        // Une seule passe de flou au plus par nappe et par image.
+        expect(floutee).toBeLessThanOrEqual(1);
+        // Rien n'y a été dessiné : la nappe n'est ni floutée ni remontée.
+        if (dessins(nappe) === 0) {
+          expect(remontee).toBe(0);
           continue;
         }
-        vuLaFumee = true;
         remontees += 1;
+        vuLaFumee = true;
+        imagesAvecContenu += 1;
         // Les faisceaux y sont bien déposés — remplis s'ils sont droits, tracés
         // s'ils s'enroulent...
         expect(dessins(nappe)).toBeGreaterThan(0);
-        // ...la nappe est floutée en UNE passe, et remontée en UNE fois.
-        expect(floutee).toBe(1);
-        expect(nappe.flou.filter((operation) => operation === "drawImage").length).toBe(1);
+        // ...la nappe est floutée en UNE passe quand elle est rafraîchie, et
+        // remontée en UNE fois dans tous les cas.
+        if (floutee > 0) {
+          imagesFlouees += 1;
+          expect(remontee).toBe(1);
+        }
       }
       // Une remontée par nappe utilisée, et pas une de plus.
       expect(operations.filter((operation) => operation === "drawImage").length).toBe(remontees);
@@ -1479,6 +1492,9 @@ describe("faisceaux adoucis", () => {
       expect(operations.filter((operation) => operation.startsWith("filter:blur(")).length).toBe(0);
     }
 
+    // Le flou est bien rafraîchi régulièrement : au moins une image sur deux
+    // parmi celles qui portent de la fumée.
+    expect(imagesFlouees * 2).toBeGreaterThanOrEqual(imagesAvecContenu);
     // Le wash et les familles à faisceaux doivent finir par y passer.
     expect(vuLaFumee).toBe(true);
   });
@@ -1778,8 +1794,7 @@ describe("stabilite de la qualite", () => {
     expect(countOperations(0.8)).not.toBe(countOperations(0.45));
   });
 
-  test("toute qualite d'un meme palier donne l'image du palier, sur tous les temps", () => {
-    // La propriété qui compte : deux fps voisins (donc deux qualités voisines)
+  test("toute qualite d'un meme palier donne l'image du palier, sur tous les temps", () => {    // La propriété qui compte : deux fps voisins (donc deux qualités voisines)
     // ne doivent jamais changer ce qui est dessiné. C'est ce qui causait les
     // animations qui « sautent ».
     for (let i = 0; i < 40; i += 1) {
@@ -1791,6 +1806,40 @@ describe("stabilite de la qualite", () => {
       const first = renderAt(time, analysis(), DEFAULT_SETTINGS, low);
       const second = renderAt(time, analysis(), DEFAULT_SETTINGS, high);
       expect(second.join("|")).toBe(first.join("|"));
+    }
+  });
+});
+
+describe("résolution de rendu", () => {
+  test("le budget de pixels borne la surface rendue sur les grands écrans", () => {
+    // Écran 2880×1800 en `devicePixelRatio` 2 : le rendu plein tarif pèserait
+    // 20,7 Mpx par passe, soit dix fois le cas 1080p.
+    const ratio = renderPixelRatio(1, 2880, 1800, 2);
+    const surface = ratio * ratio * 2880 * 1800;
+    expect(surface).toBeLessThanOrEqual(MAX_RENDER_PIXELS * 1.001);
+    expect(ratio).toBeLessThan(1.2);
+    // 1080p sur un écran 1× : rendu 1:1, ni flou ni sur-échantillonné.
+    expect(renderPixelRatio(1, 1920, 1080, 1)).toBeCloseTo(1, 5);
+  });
+
+  test("la finesse suit la qualité sans marche brutale", () => {
+    // L'ancienne bascule « sous 0,5 → 1,25, sinon 2 » doublait la surface d'un
+    // coup en repassant de 0,45 à 0,6 : le fps chutait, la qualité redescendait,
+    // et le show battait entre deux paliers.
+    const ratios = QUALITY_STEPS.map((quality) => renderPixelRatio(quality, 1920, 1080, 2));
+    for (let index = 1; index < ratios.length; index += 1) {
+      expect(ratios[index]!).toBeGreaterThan(ratios[index - 1]!);
+      expect(ratios[index]! / ratios[index - 1]!).toBeLessThan(1.15);
+    }
+  });
+
+  test("le ratio reste borné quel que soit l'écran", () => {
+    for (const dpr of [0.5, 1, 2, 3]) {
+      for (const quality of [0, 0.3, 1]) {
+        const ratio = renderPixelRatio(quality, 1280, 720, dpr);
+        expect(ratio).toBeGreaterThanOrEqual(0.5);
+        expect(ratio).toBeLessThanOrEqual(Math.max(1, dpr));
+      }
     }
   });
 });

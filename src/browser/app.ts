@@ -23,6 +23,7 @@ import { dbgLog, type DebugCategory } from "../core/debug";
 import type { HazeTarget } from "../core/families";
 import { EMPTY_LIVE_AUDIO, type LiveAudioFeatures } from "../core/liveAudio";
 import type { ExternalPlaybackState } from "../core/playback";
+import { renderPixelRatio } from "../core/series";
 import type { ShowPlan } from "../core/show";
 import type { TrackView } from "../core/view";
 import { ControlLink, type TrackTimings } from "../shared/control";
@@ -226,12 +227,13 @@ export class App {
   quality = 1;
   /** Images consécutives passées à demander un autre palier de qualité. */
   qualityHold = 0;
-  /** Tranche de qualité courante : pilote la résolution du canvas. */
-  qualityBand = false;
   lastHudUpdate = 0;
   seeking = false;
   reducedMotion = false;
   mediaQuery: MediaQueryList | null = null;
+  /** Dernière surface CSS rendue, pour distinguer un redimensionnement de fenêtre d'un changement de palier. */
+  private lastCssWidth = 0;
+  private lastCssHeight = 0;
 
   constructor() {
     const canvas = el<HTMLCanvasElement>("stage");
@@ -332,16 +334,55 @@ export class App {
   };
 
   resize = (): void => {
-    const dpr = Math.min(window.devicePixelRatio || 1, this.quality < 0.5 ? 1.25 : 2);
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);
-    const pixelWidth = Math.round(width * dpr);
-    const pixelHeight = Math.round(height * dpr);
-    if (this.canvas.width !== pixelWidth || this.canvas.height !== pixelHeight) {
-      this.canvas.width = pixelWidth;
-      this.canvas.height = pixelHeight;
+    // Pendant le mode direct, le spectacle n'est qu'une ambiance derrière
+    // l'écran de dépôt : on la rend plus petite, elle est floue de toute façon et
+    // c'est elle qui saturait le fil principal au démarrage. Un show calé qui se
+    // prépare pendant le fondu n'est pas une ambiance : il garde sa finesse, même
+    // si les deux boucles tournent encore.
+    const ambient = this.liveMode && !this.syncedMode ? 0.7 : 1;
+    const quality = this.liveMode ? this.liveQuality : this.quality;
+    const ratio = renderPixelRatio(quality, width, height, window.devicePixelRatio || 1) * ambient;
+    const pixelWidth = Math.max(1, Math.round(width * ratio));
+    const pixelHeight = Math.max(1, Math.round(height * ratio));
+    if (this.canvas.width === pixelWidth && this.canvas.height === pixelHeight) return;
+    // Redimensionner un canvas efface son contenu : sans reprise, un changement
+    // de palier en plein spectacle faisait clignoter une image noire. On garde
+    // donc l'image courante et on la repose, mise à l'échelle, aussitôt.
+    // Seulement quand la fenêtre ne bouge pas : pendant un redimensionnement,
+    // l'image est de toute façon recalculée à chaque mouvement et la copie
+    // coûterait plus cher que le défaut.
+    const sameSurface = this.lastCssWidth === width && this.lastCssHeight === height;
+    this.lastCssWidth = width;
+    this.lastCssHeight = height;
+    const previous = sameSurface && this.canvas.width > 1 && this.canvas.height > 1 ? this.snapshot() : null;
+    this.canvas.width = pixelWidth;
+    this.canvas.height = pixelHeight;
+    if (previous !== null) {
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.globalCompositeOperation = "source-over";
+      this.ctx.globalAlpha = 1;
+      this.ctx.drawImage(previous, 0, 0, pixelWidth, pixelHeight);
+      this.ctx.restore();
     }
   };
+
+  /** Copie de l'image affichée, pour la conserver à travers un redimensionnement. */
+  private snapshot(): HTMLCanvasElement | null {
+    try {
+      const copy = document.createElement("canvas");
+      copy.width = this.canvas.width;
+      copy.height = this.canvas.height;
+      const ctx = copy.getContext("2d");
+      if (ctx === null) return null;
+      ctx.drawImage(this.canvas, 0, 0);
+      return copy;
+    } catch {
+      return null;
+    }
+  }
 }
 
 // Greffe les méthodes de chaque domaine sur le prototype, avant toute création.

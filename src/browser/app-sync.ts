@@ -400,11 +400,6 @@ export function installSync(Target: { prototype: App }): void {
           // mettrait dix secondes à voir que la machine souffre.
           this.fps += (1000 / delta - this.fps) * 0.2;
           this.updateQuality();
-          const band = this.quality < 0.5;
-          if (band !== this.qualityBand) {
-            this.qualityBand = band;
-            this.resize();
-          }
         }
       }
       lastTs = timestamp;

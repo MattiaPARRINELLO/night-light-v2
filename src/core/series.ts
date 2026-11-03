@@ -87,6 +87,45 @@ export function quantizeQuality(quality: number): number {
   return best;
 }
 
+/**
+ * Budget de pixels dessinés par image, tout écran confondu.
+ *
+ * Le spectacle est fait de dégradés, de flous et de faisceaux additifs : le coût
+ * d'une image suit le nombre de pixels remplis, pas le nombre d'objets. À
+ * 3840×2160 en `devicePixelRatio` 2, un plein écran pèse 33 Mpx par passe, et
+ * plusieurs passes se superposent — c'est ce qui faisait tomber le show sous
+ * 30 fps alors que le processeur n'était pas en cause. Plafonner la surface
+ * rendue (≈ 2560×1760) laisse l'image douce, ce qu'elle est déjà, et rend le
+ * coût indépendant de la taille de l'écran.
+ */
+export const MAX_RENDER_PIXELS = 4_500_000;
+
+/**
+ * Ratio de pixels rendus pour une surface CSS, une qualité et un écran.
+ *
+ * Trois bornes se composent, dans cet ordre :
+ * 1. le `devicePixelRatio` (jamais rendre plus fin que l'écran) ;
+ * 2. le budget de pixels, qui baisse le ratio sur les grandes surfaces ;
+ * 3. la qualité adaptative, qui module finement la finesse (0,75 → 1).
+ *
+ * La qualité module la résolution au lieu de la seule bascule historique
+ * « sous 0,5 → 1,25 » : cette marche faisait doubler la surface d'un coup en
+ * repassant de 0,45 à 0,6, donc chuter le fps, donc redescendre — un
+ * battement permanent entre deux paliers.
+ */
+export function renderPixelRatio(
+  quality: number,
+  cssWidth: number,
+  cssHeight: number,
+  devicePixelRatio: number,
+): number {
+  const area = Math.max(1, cssWidth * cssHeight);
+  const budget = Math.sqrt(MAX_RENDER_PIXELS / area);
+  const detail = 0.75 + 0.25 * clamp01(quality);
+  const screen = Math.max(1, devicePixelRatio);
+  return Math.max(0.5, Math.min(screen, budget) * detail);
+}
+
 export function mix(a: number, b: number, ratio: number): number {
   return a + (b - a) * ratio;
 }
