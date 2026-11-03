@@ -195,19 +195,25 @@ Une couche **permanente** (`src/core/families/bordure.ts`), dessinée par
 `render.ts` après les blinders, sur `permanent` : elle ne suit donc pas le fondu
 de scène.
 
-- **Géométrie** : `NOMBRE_DIODES_BORDURE = 72` diodes réparties sur le périmètre
-  d'un rectangle rentré de `1,2 %` du petit côté. `positionBordure` renvoie le
-  point, l'angle du segment et le côté (`haut`, `bas`, `gauche`, `droite`).
+- **Géométrie** : `NOMBRE_DIODES_BORDURE = 240` diodes réparties sur le
+  périmètre d'un rectangle rentré de `1,2 %` du petit côté : un vrai ruban LED,
+  dense. `positionBordure` renvoie le point, l'angle du segment et le côté
+  (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
+  qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.
+- **Fil continu** : le ruban est toujours visible — un halo extérieur, un cœur
+  de trait, puis les diodes. Même au silence, chaque diode garde une veilleuse
+  (`poidsMotif ≥ 0,3`), donc la bordure ne s'éteint jamais complètement.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
   rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
   `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
-  part allumée de chaque diode ; les diodes éteintes gardent une veilleuse.
-- **Couleur** : `couleurBordure(f, index) = lampHue(f, index)`, donc les diodes
-  voisines portent des membres différents de l'accord de la scène.
-- **Intensité** : rail permanent `0,03 + 0,08 × énergie`, part du motif modulée
-  par la respiration, éclat d'impact dosé par `settings.flashes`.
-- **Mode réduit** : plafond `0,3`, facteur `0,5` : jamais de chenillard rapide
-  ni d'éclat au-delà du seuil d'inconfort.
-- **Coût** : un trait pour le rail, deux remplissages par diode visible, aucune
-  transformation ni dégradé radial par diode.
+  part allumée de chaque diode, veilleuse comprise.
+- **Couleur** : `couleurBordure` donne **une seule teinte de fil** : la teinte
+  de la scène, avec une ondulation périodique de 8° sur le pourtour (aucun
+  raccord visible au bouclage) et une dérive lente dans le budget de la scène.
+  Pas de diodes multicolores : deux voisines sont presque identiques.
+- **Intensité** : rail permanent, part du motif modulée par la respiration,
+  éclat d'impact dosé par `settings.flashes`.
+- **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
+- **Coût** : deux traits pour le fil, un remplissage par diode échantillonnée,
+  aucune transformation ni dégradé radial par diode.

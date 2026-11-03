@@ -118,12 +118,14 @@ describe("géométrie de la bordure", () => {
 });
 
 describe("intensité de la bordure", () => {
-  test("la bordure reste éteinte au calme et s'allume sur un impact", () => {
+  test("la bordure reste une veilleuse au calme et s'allume sur un impact", () => {
     const view = new TrackView(analysis());
     const calme = frame("couplet", 12, { energy: 0.1, drop: 0, beat: 0 });
     const impact = frame("drop", 12, { energy: 0.95, drop: 1, beat: 1 });
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
-      expect(intensiteBordure(calme, view, index)).toBeLessThan(0.1);
+      const valeur = intensiteBordure(calme, view, index);
+      expect(valeur).toBeGreaterThan(0.05);
+      expect(valeur).toBeLessThan(0.15);
     }
     expect(intensiteBordure(impact, view, 0)).toBeGreaterThan(intensiteBordure(calme, view, 0));
   });
@@ -176,7 +178,7 @@ describe("motifs de la bordure", () => {
     const view = new TrackView(analysis());
     const f = frame("montee", 12, { energy: 0.5, build: 0.2 });
     expect(Math.min(...poidsParCote(f, view, "haut", "haut"))).toBeGreaterThan(0.9);
-    expect(Math.max(...poidsParCote(f, view, "haut", "bas"))).toBeLessThan(0.1);
+    expect(Math.max(...poidsParCote(f, view, "haut", "bas"))).toBeLessThan(0.35);
   });
 
   test("le chenillard déplace le point lumineux", () => {
@@ -228,16 +230,40 @@ describe("motifs de la bordure", () => {
     const f = frame("drop", 12, { energy: 0.9 });
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
       expect(poidsMotif(f, view, index, "plein")).toBe(1);
-      expect(poidsMotif(f, view, index, "rail")).toBeLessThan(0.3);
+      expect(poidsMotif(f, view, index, "rail")).toBeLessThan(0.5);
     }
   });
 
-  test("les diodes voisines n'ont pas toutes la même couleur", () => {
+  test("la bande est dense et toujours visible, même au calme", () => {
+    expect(NOMBRE_DIODES_BORDURE).toBeGreaterThanOrEqual(200);
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.05 });
+    const motifs = [
+      "rail",
+      "haut",
+      "cote",
+      "alternance",
+      "chenillard",
+      "respiration",
+      "plein",
+    ] as const;
+    for (const motif of motifs) {
+      for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 11) {
+        expect(poidsMotif(f, view, index, motif)).toBeGreaterThan(0.2);
+        expect(intensiteBordure(f, view, index)).toBeGreaterThan(0.05);
+      }
+    }
+  });
+
+  test("les diodes voisines gardent une seule famille de couleur", () => {
     const f = frame("refrain", 12, { energy: 0.8 });
-    const teintes = new Set(
-      Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => couleurBordure(f, index).toFixed(1)),
+    const teintes = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      couleurBordure(f, index),
     );
-    expect(teintes.size).toBeGreaterThan(1);
+    expect(teintes.some((teinte) => teinte !== teintes[0])).toBe(true);
+    expect(Math.max(...teintes) - Math.min(...teintes)).toBeLessThan(40);
+    // Pas de raccord visible au bouclage du pourtour.
+    expect(Math.abs(teintes[0]! - teintes[teintes.length - 1]!)).toBeLessThan(1);
   });
 });
 
@@ -297,5 +323,17 @@ describe("transitions et mode réduit de la bordure", () => {
     const view = new TrackView(analysis());
     const f = frame("couplet", 12, { energy: 0.2, drop: 1 });
     expect(intensiteBordure(f, view, 0, 1)).toBeGreaterThan(intensiteBordure(f, view, 0, 0));
+  });
+});
+
+describe("densité du ruban", () => {
+  test("le ruban reste dessiné même au calme", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.05 });
+    const { ctx, operations } = fakeContext();
+    dessinerBordure(ctx, f, view, 1);
+    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(
+      NOMBRE_DIODES_BORDURE * 0.5,
+    );
   });
 });

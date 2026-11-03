@@ -1,7 +1,7 @@
+import { shiftHue } from "../color";
 import { clamp01, hash01, mix, smoothstep } from "../series";
 import type { TrackView } from "../view";
 import { tempsTempsFort } from "./concert-rig";
-import { contrastHue, lampHue } from "./harmony";
 import type { FrameState } from "./types";
 import { paint } from "./util";
 
@@ -15,8 +15,8 @@ import { paint } from "./util";
  * d'une image à l'autre.
  */
 
-/** Nombre de diodes réparties sur le périmètre. */
-export const NOMBRE_DIODES_BORDURE = 72;
+/** Nombre de diodes réparties sur le périmètre : un vrai ruban LED, dense. */
+export const NOMBRE_DIODES_BORDURE = 240;
 
 /** Retrait de la bordure par rapport au bord, en fraction du petit côté. */
 const MARGE_BORDURE = 0.012;
@@ -125,11 +125,19 @@ export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
   return motifPourBloc(f, Math.floor(tempsTempsFort(f, view) / 8));
 }
 
+/** Part d'une diode qui reste visible même quand le motif l'éteint. */
+const VEILLEUSE = 0.3;
+
+function avecVeilleuse(brut: number): number {
+  return VEILLEUSE + (1 - VEILLEUSE) * clamp01(brut);
+}
+
 /**
  * Part allumée de la diode `index` dans un motif, 0..1.
  *
- * Un motif n'est pas un interrupteur : les diodes éteintes gardent une veilleuse
- * très faible, et le chenillard comme la respiration sont des fonctions lisses.
+ * Un motif n'est pas un interrupteur, et la bande n'est jamais éteinte : même
+ * la diode que le motif laisse de côté garde une veilleuse. Le chenillard comme
+ * la respiration sont des fonctions lisses.
  */
 export function poidsMotif(
   f: FrameState,
@@ -142,11 +150,11 @@ export function poidsMotif(
 
   switch (motif) {
     case "haut":
-      return diode.cote === "haut" ? 1 : 0.04;
+      return avecVeilleuse(diode.cote === "haut" ? 1 : 0);
     case "cote": {
       const bloc = Math.floor(temps / 8);
       const choix = hash01(bloc * 7919 + f.seed) < 0.5 ? "gauche" : "droite";
-      return diode.cote === choix ? 1 : 0.04;
+      return avecVeilleuse(diode.cote === choix ? 1 : 0);
     }
     case "alternance": {
       // Bascule de côté lissée sur ~0,2 s : sans ce fondu, tout un bord
@@ -156,9 +164,9 @@ export function poidsMotif(
       const local = position - blocAlt;
       const courant = blocAlt % 2 === 0 ? "gauche" : "droite";
       const precedent = (blocAlt - 1) % 2 === 0 ? "gauche" : "droite";
-      const cible = diode.cote === courant ? 1 : 0.04;
-      const avant = diode.cote === precedent ? 1 : 0.04;
-      return mix(avant, cible, smoothstep(0, 0.2, local));
+      const cible = diode.cote === courant ? 1 : 0;
+      const avant = diode.cote === precedent ? 1 : 0;
+      return avecVeilleuse(mix(avant, cible, smoothstep(0, 0.2, local)));
     }
     case "chenillard": {
       // Course lente, profil gaussien : le point chaud s'élargit au lieu de
@@ -166,21 +174,31 @@ export function poidsMotif(
       const position = modulo(temps * 0.2, 1);
       const ecart = Math.abs(index / NOMBRE_DIODES_BORDURE - position);
       const distance = Math.min(ecart, 1 - ecart);
-      return Math.exp(-(distance * distance) / (2 * 0.11 * 0.11));
+      return avecVeilleuse(Math.exp(-(distance * distance) / (2 * 0.11 * 0.11)));
     }
     case "respiration":
-      return 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(f.t * 0.8));
+      return avecVeilleuse(0.6 + 0.4 * (0.5 + 0.5 * Math.sin(f.t * 0.8)));
     case "plein":
       return 1;
     case "rail":
     default:
-      return 0.15;
+      return avecVeilleuse(0);
   }
 }
 
-/** Teinte de la diode : celle de la scène, parcourue comme les autres lampes. */
+/**
+ * Teinte du ruban.
+ *
+ * Une seule couleur de fil, pas un arc-en-ciel : une ondulation très douce sur
+ * le pourtour (8° d'amplitude, périodique donc sans raccord visible) et une
+ * dérive lente dans le budget de teinte de la scène. Deux diodes voisines sont
+ * donc presque identiques — c'est un fil, pas une guirlande.
+ */
 export function couleurBordure(f: FrameState, index: number): number {
-  return lampHue(f, index);
+  const progression = (index % NOMBRE_DIODES_BORDURE) / NOMBRE_DIODES_BORDURE;
+  const ondulation = Math.sin(progression * Math.PI * 2) * 8;
+  const derive = Math.sin(f.t * 0.05 + f.scene.index) * Math.min(f.palette.spread, 18) * 0.35;
+  return shiftHue(f.palette.hue, ondulation + derive);
 }
 
 /**
@@ -225,11 +243,12 @@ export function intensiteBordure(
 }
 
 /**
- * Dessine la bordure : le rail continu, puis chaque diode allumée.
+ * Dessine le ruban : un fil continu, puis les diodes qui le composent.
  *
- * Aucune transformation de contexte et aucun dégradé par diode : le coût reste
- * une passe de trait plus deux remplissages par diode visible, quel que soit
- * l'écran.
+ * Le fil est toujours là — deux traits (halo extérieur, cœur) — et les diodes
+ * ne font que renforcer localement. Aucune transformation de contexte et aucun
+ * dégradé par diode : le coût reste borné par le pas d'échantillonnage, qui
+ * suit la qualité.
  */
 export function dessinerBordure(
   ctx: CanvasRenderingContext2D,
@@ -239,36 +258,42 @@ export function dessinerBordure(
 ): void {
   const { width: w, height: h } = f;
   const marge = Math.min(w, h) * MARGE_BORDURE;
+  const petitCote = Math.min(w, h);
   const energie = clamp01(f.energy);
+  const teinte = couleurBordure(f, 0);
 
-  // Rail continu : présent même quand aucune diode n'est allumée, il donne son
-  // architecture à la scène.
-  ctx.strokeStyle = paint(contrastHue(f), 0.2, 0.5, 0.1 + 0.08 * energie);
-  ctx.lineWidth = Math.max(0.8, Math.min(w, h) * 0.0009);
-  ctx.beginPath();
-  ctx.moveTo(marge, marge);
-  ctx.lineTo(w - marge, marge);
-  ctx.lineTo(w - marge, h - marge);
-  ctx.lineTo(marge, h - marge);
-  ctx.closePath();
-  ctx.stroke();
+  const traceRuban = () => {
+    ctx.beginPath();
+    ctx.moveTo(marge, marge);
+    ctx.lineTo(w - marge, marge);
+    ctx.lineTo(w - marge, h - marge);
+    ctx.lineTo(marge, h - marge);
+    ctx.closePath();
+    ctx.stroke();
+  };
 
-  const base = Math.max(1, Math.min(w, h) * 0.0018);
-  for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
+  // Halo : la lumière que le ruban diffuse dans la salle.
+  ctx.strokeStyle = paint(teinte, 0.55, 0.55, 0.1 + 0.1 * energie);
+  ctx.lineWidth = Math.max(2, petitCote * 0.007);
+  traceRuban();
+
+  // Cœur du fil : présent même quand aucune diode n'est renforcée.
+  ctx.strokeStyle = paint(teinte, 0.75, 0.8, 0.4 + 0.25 * energie);
+  ctx.lineWidth = Math.max(1.2, petitCote * 0.0016);
+  traceRuban();
+
+  // Diodes : on garde les positions de la grille complète, mais on n'en dessine
+  // qu'une sur `pas` selon la qualité — l'écart ne bouge donc jamais.
+  const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
+  const base = Math.max(0.9, petitCote * 0.0014);
+  for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
-    if (intensite <= 0.01) continue;
     const { x, y } = positionBordure(index, w, h);
-    const teinte = couleurBordure(f, index);
+    const couleur = couleurBordure(f, index);
 
-    // Halo court, puis cœur : deux remplissages, jamais un gradient radial.
-    ctx.fillStyle = paint(teinte, 0.8, 0.6, intensite * 0.22);
+    ctx.fillStyle = paint(couleur, 0.8, 0.7, 0.35 + 0.65 * intensite);
     ctx.beginPath();
-    ctx.arc(x, y, base * 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = paint(teinte, 0.85, 0.9, intensite);
-    ctx.beginPath();
-    ctx.arc(x, y, base * (0.8 + 0.5 * intensite), 0, Math.PI * 2);
+    ctx.arc(x, y, base * (0.8 + 0.6 * intensite), 0, Math.PI * 2);
     ctx.fill();
   }
 }
