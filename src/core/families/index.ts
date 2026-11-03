@@ -13,6 +13,15 @@ export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./type
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
 export { CONCERT_FAMILIES } from "./concert-rig";
+export {
+  couleurBordure,
+  intensiteBordure,
+  motifBordure,
+  NOMBRE_DIODES_BORDURE,
+  poidsMotif,
+  positionBordure,
+} from "./bordure";
+export type { DiodeBordure, MotifBordure } from "./bordure";
 export { contrastHue, lampHue, sceneChord } from "./harmony";
 export { beatSwing, colorFlip, elementEnvelope, elementEnvelopeForEnergy } from "./tempo";
 export { rowPositions } from "./geometry";

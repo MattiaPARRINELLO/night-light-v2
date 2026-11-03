@@ -84,17 +84,29 @@ Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
 
 - `NOMBRE_DIODES_BORDURE` (72) réparties uniformément sur le périmètre d'un
   rectangle rentré de ~1,2 % du petit côté ; `positionBordure(index, w, h)`
-  renvoie le point et l'orientation du segment.
-- `intensiteBordure(f, view, index)` :
-  - rail de base permanent, faible : `0,05 + 0,20 · énergie` ;
-  - renfort par rôle (`refrain`, `drop`, `montee`) et par `f.drop` ;
-  - chenillard lumineux qui parcourt le périmètre, cadencé par les temps forts,
-    dont la vitesse et la largeur suivent l'énergie ;
-  - en `drop`, éclat bref de tout le pourtour, dosé par `settings.flashes` ;
-  - mode réduit : plafond `0,3`, pas de chenillard ni d'éclat.
+  renvoie le point, l'orientation du segment et le côté (`haut`, `bas`,
+  `gauche`, `droite`).
+- La bordure ne s'allume **jamais forcément en entier**. Un motif décide quelles
+  diodes vivent, et il change de lui-même au fil du morceau :
+  - `rail` : veilleuse discrète sur tout le pourtour ;
+  - `haut` : seulement le bord supérieur ;
+  - `cote` : un seul côté, qui alterne avec son opposé (`alternance`) ;
+  - `chenillard` : un segment lumineux court le long du périmètre ;
+  - `respiration` : tout le pourtour pulse lentement ensemble ;
+  - `plein` : tout s'allume, réservé aux impacts et aux passages très forts.
+- `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, énergie,
+  bloc de temps forts, graine) ; `poidsMotif(f, view, index, motif)` donne la
+  part allumée de chaque diode. Un changement de motif est fondu sur quelques
+  dixièmes de seconde, jamais un interrupteur.
+- `intensiteBordure(f, view, index, budgetFlash)` combine le poids du motif, un
+  rail permanent faible, la respiration et l'éclat d'impact. En mode réduit :
+  plafond `0,3`, pas de chenillard rapide ni d'éclat.
+- **Multicolore** : `couleurBordure(f, index)` prend la teinte de la diode dans
+  l'accord de la scène (`lampHue`), donc deux diodes voisines n'ont pas la même
+  couleur, sans jamais sortir de l'identité du morceau.
 - `dessinerBordure(ctx, f, view, budgetFlash)` : rail continu en trait fin, puis
-  diodes (cœur + halo court) en `lighter`. Coût borné : pas de gradient
-  radial par diode, seulement des remplissages.
+  diodes (cœur + halo court) en `lighter`. Coût borné : pas de gradient radial
+  par diode, seulement des remplissages.
 - Appel dans `render.ts` à côté de `dessinerBlinders`, sur `permanent`, en
   `lighter`.
 
