@@ -231,8 +231,10 @@ export function installLive(Target: { prototype: App }): void {
       this.liveLastTs = timestamp;
       // Le fps se mesure sur les rafraîchissements, pas sur les images
       // effectivement dessinées : sinon le bridage de l'ambiance ferait croire à
-      // une machine à la peine et la qualité s'effondrerait pour rien.
-      if (delta > 0) {
+      // une machine à la peine et la qualité s'effondrerait pour rien. Pendant un
+      // fondu, on ne mesure pas non plus : les deux couches rendent à la fois et
+      // la chute est passagère.
+      if (delta > 0 && this.crossfade === null) {
         const instant = 1000 / delta;
         this.liveFps += (instant - this.liveFps) * 0.06;
         const wanted = quantizeQuality(this.liveFps / 52);

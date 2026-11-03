@@ -111,7 +111,12 @@ export function installLoop(Target: { prototype: App }): void {
       }
       const delta = timestamp - this.lastTs;
       this.lastTs = timestamp;
-      if (delta > 0) {
+      // Pendant un fondu, deux spectacles sont rendus par image : le fps mesuré
+      // s'effondre pour une raison passagère. Le laisser piloter la qualité
+      // faisait perdre un palier au show qui venait d'entrer — et il restait
+      // plus sombre après la transition, alors que la charge, elle, était
+      // retombée.
+      if (delta > 0 && this.crossfade === null) {
         const instant = 1000 / delta;
         this.fps += (instant - this.fps) * 0.06;
         this.updateQuality();
