@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  blinderBordure,
   couleurBordure,
   dessinerBordure,
   intensiteBordure,
   motifBordure,
+  moyenneBordure,
   NOMBRE_DIODES_BORDURE,
   poidsMotif,
   positionBordure,
+  teinteBordure,
   type MotifBordure,
 } from "../../src/core/families";
 import { fakeContext } from "../support/fake_canvas";
@@ -87,7 +90,9 @@ describe("géométrie de la bordure", () => {
   test("les diodes font le tour du cadre, rentrées du petit côté", () => {
     const largeur = 1280;
     const hauteur = 720;
-    const marge = Math.min(largeur, hauteur) * 0.012;
+    // Le ruban est collé au bord : les centres restent dans le cadre, seuls
+    // les halos débordent.
+    const marge = 0;
     const points = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, i) =>
       positionBordure(i, largeur, hauteur),
     );
@@ -106,7 +111,7 @@ describe("géométrie de la bordure", () => {
   test("le pourtour tient aussi en portrait", () => {
     const largeur = 400;
     const hauteur = 900;
-    const marge = Math.min(largeur, hauteur) * 0.012;
+    const marge = 0;
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
       const p = positionBordure(index, largeur, hauteur);
       expect(p.x).toBeGreaterThanOrEqual(marge - 1e-6);
@@ -118,12 +123,14 @@ describe("géométrie de la bordure", () => {
 });
 
 describe("intensité de la bordure", () => {
-  test("la bordure reste éteinte au calme et s'allume sur un impact", () => {
+  test("la bordure reste une veilleuse au calme et s'allume sur un impact", () => {
     const view = new TrackView(analysis());
     const calme = frame("couplet", 12, { energy: 0.1, drop: 0, beat: 0 });
     const impact = frame("drop", 12, { energy: 0.95, drop: 1, beat: 1 });
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
-      expect(intensiteBordure(calme, view, index)).toBeLessThan(0.1);
+      const valeur = intensiteBordure(calme, view, index);
+      expect(valeur).toBeGreaterThan(0.05);
+      expect(valeur).toBeLessThan(0.35);
     }
     expect(intensiteBordure(impact, view, 0)).toBeGreaterThan(intensiteBordure(calme, view, 0));
   });
@@ -176,7 +183,7 @@ describe("motifs de la bordure", () => {
     const view = new TrackView(analysis());
     const f = frame("montee", 12, { energy: 0.5, build: 0.2 });
     expect(Math.min(...poidsParCote(f, view, "haut", "haut"))).toBeGreaterThan(0.9);
-    expect(Math.max(...poidsParCote(f, view, "haut", "bas"))).toBeLessThan(0.1);
+    expect(Math.max(...poidsParCote(f, view, "haut", "bas"))).toBeLessThan(0.35);
   });
 
   test("le chenillard déplace le point lumineux", () => {
@@ -228,16 +235,40 @@ describe("motifs de la bordure", () => {
     const f = frame("drop", 12, { energy: 0.9 });
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
       expect(poidsMotif(f, view, index, "plein")).toBe(1);
-      expect(poidsMotif(f, view, index, "rail")).toBeLessThan(0.3);
+      expect(poidsMotif(f, view, index, "rail")).toBeLessThan(0.5);
     }
   });
 
-  test("les diodes voisines n'ont pas toutes la même couleur", () => {
+  test("la bande est dense et toujours visible, même au calme", () => {
+    expect(NOMBRE_DIODES_BORDURE).toBeGreaterThanOrEqual(200);
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.05 });
+    const motifs = [
+      "rail",
+      "haut",
+      "cote",
+      "alternance",
+      "chenillard",
+      "respiration",
+      "plein",
+    ] as const;
+    for (const motif of motifs) {
+      for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 11) {
+        expect(poidsMotif(f, view, index, motif)).toBeGreaterThanOrEqual(0.05);
+        expect(intensiteBordure(f, view, index)).toBeGreaterThan(0.03);
+      }
+    }
+  });
+
+  test("les diodes voisines gardent une seule famille de couleur", () => {
     const f = frame("refrain", 12, { energy: 0.8 });
-    const teintes = new Set(
-      Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => couleurBordure(f, index).toFixed(1)),
+    const teintes = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      couleurBordure(f, index),
     );
-    expect(teintes.size).toBeGreaterThan(1);
+    expect(teintes.some((teinte) => teinte !== teintes[0])).toBe(true);
+    expect(Math.max(...teintes) - Math.min(...teintes)).toBeLessThan(40);
+    // Pas de raccord visible au bouclage du pourtour.
+    expect(Math.abs(teintes[0]! - teintes[teintes.length - 1]!)).toBeLessThan(1);
   });
 });
 
@@ -249,7 +280,7 @@ describe("dessin de la bordure", () => {
     dessinerBordure(premier.ctx, f, view, 1);
     const second = fakeContext();
     dessinerBordure(second.ctx, f, view, 1);
-    expect(premier.operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
+    expect(premier.operations.filter((op) => op === "stroke").length).toBeGreaterThan(0);
     expect(second.operations).toEqual(premier.operations);
   });
 
@@ -258,7 +289,7 @@ describe("dessin de la bordure", () => {
     const f = frame("drop", 12, { energy: 1, drop: 1, beat: 1, reduced: true });
     const { ctx, operations } = fakeContext();
     dessinerBordure(ctx, f, view, 1);
-    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
+    expect(operations.filter((op) => op === "stroke").length).toBeGreaterThan(0);
   });
 });
 
@@ -267,12 +298,14 @@ describe("transitions et mode réduit de la bordure", () => {
     const view = new TrackView(analysis());
     for (const role of ["refrain", "couplet", "montee"] as const) {
       const base = frame(role, 10, { energy: 0.8 });
-      let precedent = intensiteBordure(base, view, 0);
+      // Budget 0 : on teste la continuité du ruban seul, pas les éclats de blinder.
+      let precedent = intensiteBordure(base, view, 0, 0);
       let sautMax = 0;
       for (let t = 10 + 1 / 60; t < 30; t += 1 / 60) {
         const courant = intensiteBordure(
           { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
           view,
+          0,
           0,
         );
         sautMax = Math.max(sautMax, Math.abs(courant - precedent));
@@ -297,5 +330,180 @@ describe("transitions et mode réduit de la bordure", () => {
     const view = new TrackView(analysis());
     const f = frame("couplet", 12, { energy: 0.2, drop: 1 });
     expect(intensiteBordure(f, view, 0, 1)).toBeGreaterThan(intensiteBordure(f, view, 0, 0));
+  });
+});
+
+describe("densité du ruban", () => {
+  test("le ruban reste dessiné même au calme", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.05 });
+    const { ctx, operations } = fakeContext();
+    dessinerBordure(ctx, f, view, 1);
+    expect(operations.filter((op) => op === "stroke").length).toBeGreaterThan(
+      NOMBRE_DIODES_BORDURE * 0.5,
+    );
+    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(
+      NOMBRE_DIODES_BORDURE * 0.5,
+    );
+  });
+});
+
+describe("le ruban sert aussi de blinders", () => {
+  test("un impact allume le ruban comme un filament, avec inertie", () => {
+    const vue = new TrackView(
+      analysis({
+        beats: [],
+        bass: [
+          [0, 0.1],
+          [120, 0.1],
+        ],
+        builds: [{ start: 10, end: 12, strength: 1 }],
+      }),
+    );
+    const impact = frame("drop", 12, { energy: 0.9, beat: 0, bass: 0 });
+    const debut = blinderBordure(impact, vue, 0);
+    const milieu = blinderBordure({ ...impact, t: 12.11 }, vue, 0);
+    const fin = blinderBordure({ ...impact, t: 14.5 }, vue, 0);
+    expect(debut).toBeGreaterThan(0.5);
+    expect(milieu).toBeLessThan(debut);
+    expect(fin).toBeLessThan(0.01);
+  });
+
+  test("budget de flash nul et mode réduit éteignent le blinder", () => {
+    const view = new TrackView(analysis());
+    const impact = frame("drop", 12, { energy: 0.9, bass: 0.9 });
+    expect(blinderBordure(impact, view, 0, 0)).toBe(0);
+    expect(blinderBordure({ ...impact, reduced: true }, view, 0)).toBe(0);
+  });
+
+  test("le blinder du ruban est de couleur, pas tungstène", () => {
+    const view = new TrackView(analysis());
+    const impact = frame("drop", 12, { energy: 0.9, bass: 0.9 });
+    const eclat = teinteBordure(impact, view, 0);
+    const calme = teinteBordure(
+      frame("couplet", 12, { energy: 0.1, bass: 0, drop: 0 }),
+      view,
+      0,
+    );
+    // Même teinte de scène, seulement plus saturée et plus lumineuse.
+    expect(Math.abs(eclat.hue - calme.hue)).toBeLessThan(2);
+    expect(eclat.saturation).toBeGreaterThan(calme.saturation);
+    expect(eclat.lightness).toBeGreaterThan(calme.lightness);
+  });
+});
+
+describe("sensibilité du blinder de ruban", () => {
+  test("un petit blinder pulse sur chaque beat, avec une attaque douce", () => {
+    const view = new TrackView(analysis());
+    const surBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0.9 });
+    const horsBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0 });
+    const debut = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0.9, beatAge: 0 });
+    expect(blinderBordure(surBeat, view, 0)).toBeGreaterThan(0.25);
+    expect(blinderBordure(horsBeat, view, 0)).toBe(0);
+    // Pas de saut d'une image : l'attaque part de zéro.
+    expect(blinderBordure(debut, view, 0)).toBe(0);
+  });
+
+  test("un couplet énergique déclenche aussi le gros blinder", () => {
+    const view = new TrackView(analysis());
+    const fort = frame("couplet", 12, { energy: 0.8, bass: 0.9 });
+    expect(blinderBordure(fort, view, 0)).toBeGreaterThan(0.4);
+  });
+
+  test("une montée déclenche plus tôt", () => {
+    const view = new TrackView(analysis());
+    const montee = frame("montee", 12, { energy: 0.8, build: 0.35 });
+    expect(blinderBordure(montee, view, 0)).toBeGreaterThan(0.4);
+  });
+});
+
+describe("visibilité des motifs", () => {
+  test("la respiration fait respirer le corps du ruban", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.8 });
+    const moyenne = (t: number) => {
+      const etat = { ...f, t };
+      let total = 0;
+      for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 30) {
+        total += poidsMotif(etat, view, index, "respiration");
+      }
+      return total / 8;
+    };
+    const valeurs: number[] = [];
+    for (let t = 0; t < 20; t += 0.5) valeurs.push(moyenne(t));
+    expect(Math.max(...valeurs) - Math.min(...valeurs)).toBeGreaterThan(0.1);
+  });
+
+  test("le chenillard laisse des zones très sombres et très vives", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12, { energy: 0.8 });
+    const poids = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, "chenillard"),
+    );
+    expect(Math.max(...poids) - Math.min(...poids)).toBeGreaterThan(0.4);
+  });
+
+  test("le plein éclaire tout le corps", () => {
+    const view = new TrackView(analysis());
+    const f = frame("drop", 12, { energy: 0.9 });
+    expect(moyenneBordure(f, view)).toBeCloseTo(1, 2);
+  });
+});
+
+describe("stabilité du motif", () => {
+  test("l'énergie qui oscille autour d'un seuil ne fait pas clignoter le motif", () => {
+    const view = new TrackView(analysis());
+    const base = frame("couplet", 12, { energy: 0.3 });
+    const motifs = new Set<string>();
+    for (let i = 0; i < 40; i += 1) {
+      const energie = 0.28 + (i % 2) * 0.04;
+      motifs.add(motifBordure({ ...base, energy: energie }, view));
+    }
+    expect(motifs.size).toBe(1);
+    expect(moyenneBordure({ ...base, energy: 0.28 }, view)).toBe(
+      moyenneBordure({ ...base, energy: 0.32 }, view),
+    );
+  });
+});
+
+describe("attaque du gros blinder", () => {
+  test("l'éclat monte en ~50 ms au lieu de sauter d'une image", () => {
+    const view = new TrackView(analysis());
+    const base = frame("drop", 12, { energy: 0.9, bass: 0.9, beatAge: 0.05, dropAge: 0.05 });
+    const debut = frame("drop", 12, { energy: 0.9, bass: 0.9, beatAge: 0, dropAge: 0 });
+    expect(blinderBordure(base, view, 0)).toBeGreaterThan(0.4);
+    expect(blinderBordure(debut, view, 0)).toBe(0);
+  });
+});
+
+describe("coins du ruban", () => {
+  test("les tronçons passent par le coin au lieu de le couper", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.6 });
+    const { ctx, operations } = fakeContext();
+    dessinerBordure(ctx, f, view, 1);
+    const marge = Math.min(f.width, f.height) * 0.003;
+    const coin = `${marge.toFixed(1)},${marge.toFixed(1)}`;
+    // Le coin haut-gauche n'apparaît comme `lineTo` que si un tronçon y passe.
+    expect(operations).toContain(`lineTo:${coin}`);
+  });
+});
+
+describe("contraste allumé / éteint", () => {
+  test("les motifs laissent de vraies zones sombres", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12, { energy: 0.8 });
+    for (const motif of ["chenillard", "alternance", "haut", "cote"] as const) {
+      const poids = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+        poidsMotif(f, view, index, motif),
+      );
+      expect(Math.max(...poids) - Math.min(...poids)).toBeGreaterThan(0.6);
+    }
+    const respiration = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, "respiration"),
+    );
+    // La respiration est globale : toutes les diodes ensemble, c'est le temps
+    // qui fait le contraste, pas la position.
+    expect(new Set(respiration).size).toBe(1);
   });
 });

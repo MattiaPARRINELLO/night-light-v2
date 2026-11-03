@@ -82,31 +82,40 @@ existantes appelant la valeur `"auto"`.
 
 Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
 
-- `NOMBRE_DIODES_BORDURE` (72) réparties uniformément sur le périmètre d'un
-  rectangle rentré de ~1,2 % du petit côté ; `positionBordure(index, w, h)`
-  renvoie le point, l'orientation du segment et le côté (`haut`, `bas`,
-  `gauche`, `droite`).
-- La bordure ne s'allume **jamais forcément en entier**. Un motif décide quelles
-  diodes vivent, et il change de lui-même au fil du morceau :
+- `NOMBRE_DIODES_BORDURE` (240) réparties uniformément sur le périmètre d'un
+  rectangle collé au bord (retrait de ~0,3 % du petit côté) : c'est un ruban LED dense, pas une
+  guirlande. `positionBordure(index, w, h)` renvoie le point, l'orientation du
+  segment et le côté (`haut`, `bas`, `gauche`, `droite`). Le dessin
+  échantillonne ce ruban selon la qualité sans déplacer les positions.
+- La bordure est un **fil continu toujours visible** : halo extérieur, cœur de
+  trait, puis diodes. Même au repos, chaque diode garde une veilleuse
+  (`poidsMotif ≥ 0,3`). Elle ne s'allume donc jamais « tout d'un coup » : un
+  motif décide seulement quelles diodes sont **renforcées**, et il change de
+  lui-même au fil du morceau :
   - `rail` : veilleuse discrète sur tout le pourtour ;
   - `haut` : seulement le bord supérieur ;
   - `cote` : un seul côté, qui alterne avec son opposé (`alternance`) ;
   - `chenillard` : un segment lumineux court le long du périmètre ;
   - `respiration` : tout le pourtour pulse lentement ensemble ;
   - `plein` : tout s'allume, réservé aux impacts et aux passages très forts.
-- `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, énergie,
-  bloc de temps forts, graine) ; `poidsMotif(f, view, index, motif)` donne la
+- `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, bloc de
+  temps forts, graine — jamais l'énergie courante, qui provoquerait du
+  clignotement autour des seuils) ; `poidsMotif(f, view, index, motif)` donne la
   part allumée de chaque diode. Un changement de motif est fondu sur quelques
   dixièmes de seconde, jamais un interrupteur.
 - `intensiteBordure(f, view, index, budgetFlash)` combine le poids du motif, un
-  rail permanent faible, la respiration et l'éclat d'impact. En mode réduit :
-  plafond `0,3`, pas de chenillard rapide ni d'éclat.
-- **Multicolore** : `couleurBordure(f, index)` prend la teinte de la diode dans
-  l'accord de la scène (`lampHue`), donc deux diodes voisines n'ont pas la même
-  couleur, sans jamais sortir de l'identité du morceau.
-- `dessinerBordure(ctx, f, view, budgetFlash)` : rail continu en trait fin, puis
-  diodes (cœur + halo court) en `lighter`. Coût borné : pas de gradient radial
-  par diode, seulement des remplissages.
+  rail permanent faible, la respiration, l'éclat d'impact et la part de
+  **blinder de couleur** (`intensiteBlinder`, même inertie de filament que la
+  barre tungstène, mais sans changer la teinte). En mode réduit : plafond
+  `0,3`, pas de chenillard, pas d'éclat, pas de blinder.
+- **Une seule couleur de fil** : `couleurBordure(f, index)` prend la teinte de
+  la scène, avec une ondulation périodique de 8° sur le pourtour (aucun raccord
+  au bouclage) et une dérive lente dans son budget de teinte. Pas de diodes
+  multicolores : deux voisines sont presque identiques.
+- `dessinerBordure(ctx, f, view, budgetFlash)` : bloom en trois passes, tube
+  diffuseur, cœur clair, puis tronçons et petits émetteurs colorés (halo court,
+  variation déterministe). Pas de cœur blanc : le rendu doit lire comme une
+  vraie bande LED, pas comme une guirlande.
 - Appel dans `render.ts` à côté de `dessinerBlinders`, sur `permanent`, en
   `lighter`.
 

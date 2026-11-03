@@ -195,19 +195,47 @@ Une couche **permanente** (`src/core/families/bordure.ts`), dessinée par
 `render.ts` après les blinders, sur `permanent` : elle ne suit donc pas le fondu
 de scène.
 
-- **Géométrie** : `NOMBRE_DIODES_BORDURE = 72` diodes réparties sur le périmètre
-  d'un rectangle rentré de `1,2 %` du petit côté. `positionBordure` renvoie le
-  point, l'angle du segment et le côté (`haut`, `bas`, `gauche`, `droite`).
+- **Géométrie** : `NOMBRE_DIODES_BORDURE = 240` diodes réparties sur le
+  périmètre d'un rectangle collé au bord (retrait de `0,3 %` du petit côté) : un vrai ruban LED,
+  dense. `positionBordure` renvoie le point, l'angle du segment et le côté
+  (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
+  qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.
+- **Rendu en couches, comme un vrai ruban** :
+  1. **piste permanente** — un trait à peine visible qui donne l'axe du cadre ;
+  2. **corps** — un tronçon par diode, dont l'alpha va de 0,03 à 0,88 selon le
+     motif : c'est lui qui porte le contraste allumé/éteint ;
+  3. **cœur** — un trait plus fin et plus clair au centre, pour le rendu néon ;
+  4. **diffusion locale** — un halo court uniquement autour des zones allumées ;
+  5. **émetteurs** — de petites diodes colorées, échantillonnées selon la
+     qualité, avec une variation déterministe de brillance entre voisines.
+  Aucun cœur blanc : la diode reste de la couleur du ruban. Même au silence,
+  chaque tronçon garde une veilleuse (`poidsMotif ≥ 0,08`), donc la bordure
+  reste lisible sans jamais s'allumer en entier.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
-  rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
+  rôle et de la graine — **jamais de l'énergie courante**, qui oscille et ferait
+  clignoter la bande d'une image à l'autre autour d'un seuil. L'énergie ne
+  module que l'intensité. Motifs : `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
   `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
-  part allumée de chaque diode ; les diodes éteintes gardent une veilleuse.
-- **Couleur** : `couleurBordure(f, index) = lampHue(f, index)`, donc les diodes
-  voisines portent des membres différents de l'accord de la scène.
-- **Intensité** : rail permanent `0,03 + 0,08 × énergie`, part du motif modulée
-  par la respiration, éclat d'impact dosé par `settings.flashes`.
-- **Mode réduit** : plafond `0,3`, facteur `0,5` : jamais de chenillard rapide
-  ni d'éclat au-delà du seuil d'inconfort.
-- **Coût** : un trait pour le rail, deux remplissages par diode visible, aucune
-  transformation ni dégradé radial par diode.
+  part allumée de chaque diode, veilleuse comprise.
+- **Couleur** : `couleurBordure` donne **une seule teinte de fil** : la teinte
+  de la scène, avec une ondulation périodique de 8° sur le pourtour (aucun
+  raccord visible au bouclage) et une dérive lente dans le budget de la scène.
+  Pas de diodes multicolores : deux voisines sont presque identiques.
+- **Blinder de couleur** : le ruban sert aussi de barre de blinders. Sur un
+  impact (drop, refrain, finale, fin de montée), `blinderBordure` reprend
+  l'inertie du filament (`intensiteBlinder`, décalage par bloc, budget de
+  flashs) et ajoute son éclat à l'intensité. Attaque lissée sur ~50 ms (petit
+  comme gros blinder), pour qu'aucune diode ne passe de 0 au maximum en une
+  seule image. Un **petit blinder** pulse en plus
+  sur chaque beat (`f.beat × (0,3 + 0,4 × basse)`), léger et présent même hors
+  impact ; le gros éclat prend le maximum des deux. Il est plus sensible que la barre
+  tungstène : drop, refrain, finale, fin de montée et couplet énergique
+  (énergie > 0,55), avec un gain de 1,2. Il reste **de la couleur de la
+  scène** : pas de tungstène, seulement plus de saturation et de luminosité.
+  Jamais en mode réduit.
+- **Intensité** : rail permanent, part du motif modulée par la respiration,
+  éclat d'impact et blinder de couleur dosés par `settings.flashes`.
+- **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
+- **Coût** : deux tronçons et un halo local par diode, plus deux remplissages
+  pour les émetteurs échantillonnés, sans transformation ni dégradé radial.
