@@ -407,6 +407,9 @@ export class App {
       this.ctx.drawImage(previous, 0, 0, pixelWidth, pixelHeight);
       this.ctx.restore();
     }
+    // Un fondu en cours rend hors écran : ses deux surfaces doivent suivre la
+    // même taille, sinon ses couches se retrouvent dans un coin de l'image.
+    if (this.crossfade !== null) this.resizeCrossfade();
   };
 
   /** Copie de l'image affichée, pour la conserver à travers un redimensionnement ou un fondu. */
