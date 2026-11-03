@@ -23,6 +23,7 @@ declare module "./app" {
       options?: { delayMs?: number; source?: HTMLCanvasElement | null },
     ): CrossfadeState | null;
     fadeTarget(layer: FadeLayer): CanvasRenderingContext2D;
+    resizeCrossfade(): void;
     composeCrossfade(): void;
     finishCrossfade(): void;
     cancelCrossfade(): void;
@@ -132,6 +133,43 @@ export function installTransition(Target: { prototype: App }): void {
       if (fade.to === layer) return fade.toCtx;
     }
     return this.ctx;
+  };
+
+  /**
+   * Recale les surfaces du fondu sur la taille réelle de la toile.
+   *
+   * Trois choses changent la taille du canvas en pleine transition : le passage
+   * du mode ambiance au mode spectacle, un palier de qualité, un
+   * redimensionnement de fenêtre. Sans ce recalage, les couches hors écran
+   * gardaient leurs anciennes dimensions et le spectacle rendu dedans
+   * n'occupait plus qu'un coin de l'image composée.
+   */
+  Target.prototype.resizeCrossfade = function (this: App): void {
+    const fade = this.crossfade;
+    if (fade === null) return;
+    const width = Math.max(1, this.canvas.width);
+    const height = Math.max(1, this.canvas.height);
+    const surfaces = [
+      { canvas: fade.fromCanvas, ctx: fade.fromCtx },
+      { canvas: fade.toCanvas, ctx: fade.toCtx },
+    ];
+    for (const surface of surfaces) {
+      if (surface.canvas.width === width && surface.canvas.height === height) continue;
+      // Redimensionner efface tout : on garde l'image de la couche, remise à
+      // l'échelle, pour qu'aucun frame noir ne s'intercale.
+      const previous = document.createElement("canvas");
+      previous.width = Math.max(1, surface.canvas.width);
+      previous.height = Math.max(1, surface.canvas.height);
+      const previousCtx = previous.getContext("2d");
+      if (previousCtx !== null) previousCtx.drawImage(surface.canvas, 0, 0);
+      surface.canvas.width = width;
+      surface.canvas.height = height;
+      if (previousCtx === null) continue;
+      surface.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      surface.ctx.globalCompositeOperation = "source-over";
+      surface.ctx.globalAlpha = 1;
+      surface.ctx.drawImage(previous, 0, 0, width, height);
+    }
   };
 
   Target.prototype.composeCrossfade = function (this: App): void {

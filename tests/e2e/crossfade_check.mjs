@@ -103,7 +103,19 @@ try {
     app.backToDrop({ fade: true, reason: "test de sortie" });
     const exitSamples = [];
     let exitEndedAt = 0;
+    let exitSurfacesAligned = true;
     for (let i = 0; i < 500; i += 1) {
+      if (i === 0 && app.crossfade !== null) {
+        // Les surfaces hors écran doivent suivre le redimensionnement de la
+        // toile (passage en mode ambiance) : sinon le fondu se dessine petit
+        // dans un coin.
+        const fade = app.crossfade;
+        exitSurfacesAligned =
+          fade.fromCanvas.width === app.canvas.width &&
+          fade.fromCanvas.height === app.canvas.height &&
+          fade.toCanvas.width === app.canvas.width &&
+          fade.toCanvas.height === app.canvas.height;
+      }
       const canvas = app.canvas;
       const ctx = canvas.getContext("2d");
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -160,6 +172,7 @@ try {
       exitZeroFrames: exitSamples.filter((value) => value === 0).length,
       exitMinLit: Math.min(...exitSamples),
       exitMs: exitEndedAt === 0 ? null : exitEndedAt - exitStarted,
+      exitSurfacesAligned,
       liveAtEnd,
       dropVisible,
       repriseFrames: repriseSamples.length,
@@ -192,6 +205,7 @@ try {
   if (result.exitMs === null) failures.push("la sortie en fondu ne s'est pas terminée");
   if (!result.liveAtEnd) failures.push("le direct n'a pas repris après la sortie");
   if (!result.dropVisible) failures.push("l'écran de dépôt n'est pas revenu après la sortie");
+  if (!result.exitSurfacesAligned) failures.push("surfaces du fondu désalignées après redimensionnement");
   if (result.repriseZeroFrames > 0) failures.push(`${result.repriseZeroFrames} frame(s) noir(s) en reprise`);
   if (result.repriseMs === null) failures.push("la reprise en fondu ne s'est pas terminée");
   if (!result.repriseSynced) failures.push("le show n'a pas repris après la réorientation du fondu");
