@@ -643,3 +643,19 @@ describe("comète, vumètre, pluie, scintillement et strobe", () => {
     expect(Math.max(...coupe)).toBeLessThan(0.1);
   });
 });
+
+describe("les beats reprennent le dessus", () => {
+  test("à beat égal, tout le ruban monte vers l'allumé", () => {
+    const view = new TrackView(analysis());
+    const sans = moyenneBordure(frame("couplet", 12, { energy: 0.5, beat: 0 }), view);
+    const avec = moyenneBordure(frame("couplet", 12, { energy: 0.5, beat: 0.9 }), view);
+    expect(avec).toBeGreaterThan(sans + 0.1);
+  });
+
+  test("le mode réduit plafonne la reprise du beat", () => {
+    const view = new TrackView(analysis());
+    const sans = moyenneBordure(frame("couplet", 12, { energy: 0.5, beat: 0, reduced: true }), view);
+    const avec = moyenneBordure(frame("couplet", 12, { energy: 0.5, beat: 0.9, reduced: true }), view);
+    expect(avec - sans).toBeLessThan(0.3);
+  });
+});

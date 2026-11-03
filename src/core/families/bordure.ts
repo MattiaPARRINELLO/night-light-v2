@@ -352,7 +352,14 @@ function poidsCourant(f: FrameState, view: TrackView, index: number, budgetFlash
   const fondu = smoothstep(0, 0.12, local);
   const avant = poidsMotif(f, view, index, motifPourBloc(f, bloc - 1), budgetFlash);
   const apres = poidsMotif(f, view, index, motifPourBloc(f, bloc), budgetFlash);
-  return mix(avant, apres, fondu);
+  const motif = mix(avant, apres, fondu);
+
+  // Le beat reprend le dessus sur le motif : à chaque temps fort, tout le
+  // ruban monte vers l'allumé, puis le motif réapparaît en s'éteignant. La
+  // fusion est partielle (75 %) pour que les deux restent lisibles.
+  const battement = clamp01(f.beat);
+  const fusion = f.reduced ? Math.min(0.25, battement * 0.25) : battement * 0.75;
+  return mix(motif, 1, fusion);
 }
 
 /**
