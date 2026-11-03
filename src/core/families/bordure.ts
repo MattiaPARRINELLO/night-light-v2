@@ -151,7 +151,7 @@ export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
 }
 
 /** Part d'une diode qui reste visible même quand le motif l'éteint. */
-const VEILLEUSE = 0.3;
+const VEILLEUSE = 0.08;
 
 function avecVeilleuse(brut: number): number {
   return VEILLEUSE + (1 - VEILLEUSE) * clamp01(brut);
@@ -418,46 +418,16 @@ export function dessinerBordure(
   };
 
   const tube = Math.max(4.5, petitCote * 0.009);
-  // Le corps du ruban suit la moyenne du motif : le tube respire, et un
-  // chenillard laisse réellement des zones plus sombres sur le pourtour.
-  const eclairage = 0.25 + 0.75 * moyenneBordure(f, view);
 
-  // 1. Bloom : trois passes de plus en plus larges et de plus en plus faibles.
-  // C'est la lumière que le ruban jette sur le cadre et dans la salle.
-  const blooms = [
-    [3.6, 0.028],
-    [2.1, 0.055],
-    [1.35, 0.1],
-  ] as const;
-  for (const [facteur, alpha] of blooms) {
-    ctx.strokeStyle = paint(
-      fil.hue,
-      fil.saturation * 0.7,
-      0.55,
-      alpha * (0.35 + 0.65 * eclairage) * (0.7 + 0.6 * energie),
-    );
-    ctx.lineWidth = tube * facteur;
-    traceRuban();
-  }
-
-  // 2. Tube diffuseur : le plastique laiteux qui rend la bande continue.
-  ctx.strokeStyle = paint(
-    fil.hue,
-    fil.saturation * 0.85,
-    0.72,
-    (0.2 + 0.22 * energie) * eclairage,
-  );
-  ctx.lineWidth = tube;
+  // Piste permanente, volontairement presque éteinte : elle donne l'axe du
+  // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
+  // uniformément allumé et la différence allumé/éteint disparaît.
+  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.45, 0.35, (0.03 + 0.03 * energie) * (0.4 + 0.6 * moyenneBordure(f, view)));
+  ctx.lineWidth = Math.max(1.2, tube * 0.35);
   traceRuban();
 
-  // 3. Cœur du tube, plus fin et plus clair.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, (0.22 + 0.26 * energie) * eclairage);
-  ctx.lineWidth = tube * 0.45;
-  traceRuban();
-
-  // 4. Émetteurs : de vraies diodes, petites, colorées et régulièrement
-  // espacées. Le tronçon assure la continuité, le point donne la granularité de
-  // la bande réelle — sans redevenir un chapelet de points blancs.
+  // Le corps du ruban est dessiné diode par diode : les zones que le motif
+  // laisse de côté retombent à une veilleuse très faible.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
@@ -466,15 +436,32 @@ export function dessinerBordure(
     // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
     const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
-    // Tronçon suivant le périmètre : les morceaux se raccordent exactement et
-    // passent par le coin au lieu de le couper en diagonale.
+
+    // Diffusion locale : uniquement autour des zones allumées.
+    if (intensite > 0.12) {
+      ctx.strokeStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.55, 0.12 * intensite);
+      ctx.lineWidth = tube * (1.9 + 0.9 * intensite);
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
+    }
+
+    // Corps : c'est lui qui porte le contraste allumé/éteint.
     ctx.strokeStyle = paint(
       couleur.hue,
       couleur.saturation,
       couleur.lightness,
-      (0.04 + 0.96 * intensite) * variation,
+      (0.03 + 0.85 * intensite) * variation,
     );
     ctx.lineWidth = tube * (0.45 + 0.75 * intensite);
+    tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
+
+    // Cœur du tube, plus fin et plus clair, pour le côté néon.
+    ctx.strokeStyle = paint(
+      couleur.hue,
+      couleur.saturation,
+      0.88,
+      (0.02 + 0.7 * intensite) * variation,
+    );
+    ctx.lineWidth = Math.max(0.8, tube * 0.28 * (0.7 + 0.5 * intensite));
     tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
 
     // Les émetteurs, eux, peuvent être échantillonnés : ce sont les points.

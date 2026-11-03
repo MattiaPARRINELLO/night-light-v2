@@ -254,8 +254,8 @@ describe("motifs de la bordure", () => {
     ] as const;
     for (const motif of motifs) {
       for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 11) {
-        expect(poidsMotif(f, view, index, motif)).toBeGreaterThan(0.2);
-        expect(intensiteBordure(f, view, index)).toBeGreaterThan(0.05);
+        expect(poidsMotif(f, view, index, motif)).toBeGreaterThanOrEqual(0.05);
+        expect(intensiteBordure(f, view, index)).toBeGreaterThan(0.03);
       }
     }
   });
@@ -486,5 +486,24 @@ describe("coins du ruban", () => {
     const coin = `${marge.toFixed(1)},${marge.toFixed(1)}`;
     // Le coin haut-gauche n'apparaît comme `lineTo` que si un tronçon y passe.
     expect(operations).toContain(`lineTo:${coin}`);
+  });
+});
+
+describe("contraste allumé / éteint", () => {
+  test("les motifs laissent de vraies zones sombres", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12, { energy: 0.8 });
+    for (const motif of ["chenillard", "alternance", "haut", "cote"] as const) {
+      const poids = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+        poidsMotif(f, view, index, motif),
+      );
+      expect(Math.max(...poids) - Math.min(...poids)).toBeGreaterThan(0.6);
+    }
+    const respiration = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, "respiration"),
+    );
+    // La respiration est globale : toutes les diodes ensemble, c'est le temps
+    // qui fait le contraste, pas la position.
+    expect(new Set(respiration).size).toBe(1);
   });
 });

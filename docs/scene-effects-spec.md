@@ -201,15 +201,16 @@ de scène.
   (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
   qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.
 - **Rendu en couches, comme un vrai ruban** :
-  1. **bloom** — trois traits de largeurs décroissantes pour la lumière diffusée
-     dans la salle ;
-  2. **tube diffuseur** — le plastique laiteux qui rend la bande continue ;
-  3. **cœur** — un trait plus fin et plus clair au centre du tube ;
-  4. **émetteurs** — de petites diodes colorées, régulièrement espacées, avec un
-     halo court et une variation déterministe de brillance entre voisines.
+  1. **piste permanente** — un trait à peine visible qui donne l'axe du cadre ;
+  2. **corps** — un tronçon par diode, dont l'alpha va de 0,03 à 0,88 selon le
+     motif : c'est lui qui porte le contraste allumé/éteint ;
+  3. **cœur** — un trait plus fin et plus clair au centre, pour le rendu néon ;
+  4. **diffusion locale** — un halo court uniquement autour des zones allumées ;
+  5. **émetteurs** — de petites diodes colorées, échantillonnées selon la
+     qualité, avec une variation déterministe de brillance entre voisines.
   Aucun cœur blanc : la diode reste de la couleur du ruban. Même au silence,
-  chaque tronçon garde une veilleuse (`poidsMotif ≥ 0,3`), donc la bordure ne
-  s'éteint jamais.
+  chaque tronçon garde une veilleuse (`poidsMotif ≥ 0,08`), donc la bordure
+  reste lisible sans jamais s'allumer en entier.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
   rôle et de la graine — **jamais de l'énergie courante**, qui oscille et ferait
   clignoter la bande d'une image à l'autre autour d'un seuil. L'énergie ne
@@ -236,5 +237,5 @@ de scène.
 - **Intensité** : rail permanent, part du motif modulée par la respiration,
   éclat d'impact et blinder de couleur dosés par `settings.flashes`.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
-- **Coût** : cinq traits pour le bloom/tube/cœur, puis un tronçon et deux
-  remplissages par diode échantillonnée, sans transformation ni dégradé radial.
+- **Coût** : deux tronçons et un halo local par diode, plus deux remplissages
+  pour les émetteurs échantillonnés, sans transformation ni dégradé radial.
