@@ -123,12 +123,42 @@ export function positionBordure(index: number, largeur: number, hauteur: number)
  * En mode réduit, ni chenillard ni plein : seulement un rail ou une respiration,
  * pour ne jamais faire courir un point lumineux.
  */
-function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
+/** Temps (secondes) du temps fort `index`, ou `null` sans grille. */
+function tempsDuTempsFort(view: TrackView, index: number): number | null {
+  if (view.beats.length === 0) return null;
+  const borne = Math.max(0, Math.min(Math.floor(index), view.beats.length - 1));
+  return view.beats[borne] ?? null;
+}
+
+/**
+ * Basses moyennes d'un bloc de huit temps.
+ *
+ * On échantillonne la courbe sur tout le bloc : une basse qui dure se lit dans
+ * la moyenne, alors qu'un seul coup isolé ne la déclenche pas. Le résultat ne
+ * dépend que du bloc, donc il ne clignote pas d'une image à l'autre.
+ */
+function bassesDuBloc(view: TrackView, bloc: number): number {
+  const debut = tempsDuTempsFort(view, bloc * 8);
+  if (debut === null) return 0;
+  const duree = Math.max(1e-3, view.beatPeriod * 8);
+  let total = 0;
+  const echantillons = 6;
+  for (let index = 0; index < echantillons; index += 1) {
+    total += view.bassAt(debut + (duree * index) / (echantillons - 1));
+  }
+  return total / echantillons;
+}
+
+/** Une basse continue est « grosse » au-delà de ce seuil. */
+const SEUIL_BASSES_FORTES = 0.82;
+
+function motifPourBloc(f: FrameState, view: TrackView, bloc: number): MotifBordure {
   // Le motif ne dépend QUE du bloc et du rôle : jamais de l'énergie courante,
   // qui oscille et ferait clignoter la bande d'une image à l'autre autour d'un
   // seuil. L'énergie ne module que l'intensité, pas le choix du motif.
   if (f.reduced) return "respiration";
   const tirage = hash01(bloc * 7919 + f.seed + f.scene.index * 131);
+  const bassesFortes = bassesDuBloc(view, bloc) > SEUIL_BASSES_FORTES;
 
   // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
   // plein et des motifs qui laissent le ruban s'éteindre par endroits.
@@ -146,7 +176,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     if (tirage < 0.82) return "vague";
     if (tirage < 0.89) return "pluie";
     if (tirage < 0.95) return "scintillement";
-    return grosDrop ? "strobe" : "plein";
+    return grosDrop || bassesFortes ? "strobe" : "plein";
   }
   if (f.scene.role === "refrain") {
     if (tirage < 0.16) return "chenillard";
@@ -158,7 +188,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     if (tirage < 0.82) return "milieu";
     if (tirage < 0.9) return "vague";
     if (tirage < 0.96) return "pluie";
-    return "vumetre";
+    return bassesFortes ? "strobe" : "vumetre";
   }
   if (f.scene.role === "montee") {
     if (tirage < 0.26) return "haut";
@@ -187,7 +217,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
  * l'autre, mais deux lectures du même instant donnent le même motif.
  */
 export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
-  return motifPourBloc(f, Math.floor(tempsTempsFort(f, view) / 8));
+  return motifPourBloc(f, view, Math.floor(tempsTempsFort(f, view) / 8));
 }
 
 /** Part d'une diode qui reste visible même quand le motif l'éteint. */
@@ -353,8 +383,8 @@ function poidsCourant(f: FrameState, view: TrackView, index: number, budgetFlash
   const bloc = Math.floor(temps / 8);
   const local = temps / 8 - bloc;
   const fondu = smoothstep(0, 0.12, local);
-  const avant = poidsMotif(f, view, index, motifPourBloc(f, bloc - 1), budgetFlash);
-  const apres = poidsMotif(f, view, index, motifPourBloc(f, bloc), budgetFlash);
+  const avant = poidsMotif(f, view, index, motifPourBloc(f, view, bloc - 1), budgetFlash);
+  const apres = poidsMotif(f, view, index, motifPourBloc(f, view, bloc), budgetFlash);
   const motif = mix(avant, apres, fondu);
 
   // Le beat reprend le dessus sur le motif : à chaque temps fort, tout le

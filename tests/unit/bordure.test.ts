@@ -680,3 +680,49 @@ describe("strobe réservé aux gros drops", () => {
     expect(motifDrop(0.3).has("strobe")).toBe(false);
   });
 });
+
+describe("strobe et grosses basses continues", () => {
+  const vueGrosseBasse = () =>
+    new TrackView(
+      analysis({
+        bass: [
+          [0, 0.95],
+          [120, 0.95],
+        ],
+      }),
+    );
+
+  test("des basses continues fortes autorisent le strobe sur un drop moyen", () => {
+    const view = vueGrosseBasse();
+    const motifs = new Set<string>();
+    for (let t = 0; t < 120; t += 2) {
+      motifs.add(motifBordure(frame("drop", t, { energy: 0.8, buildStrength: 0.3 }), view));
+    }
+    expect(motifs.has("strobe")).toBe(true);
+  });
+
+  test("des basses continues fortes autorisent le strobe en refrain", () => {
+    const view = vueGrosseBasse();
+    const motifs = new Set<string>();
+    for (let t = 0; t < 120; t += 2) {
+      motifs.add(motifBordure(frame("refrain", t, { energy: 0.8 }), view));
+    }
+    expect(motifs.has("strobe")).toBe(true);
+  });
+
+  test("des basses faibles ne déclenchent pas le strobe", () => {
+    const view = new TrackView(
+      analysis({
+        bass: [
+          [0, 0.2],
+          [120, 0.2],
+        ],
+      }),
+    );
+    const motifs = new Set<string>();
+    for (let t = 0; t < 120; t += 2) {
+      motifs.add(motifBordure(frame("drop", t, { energy: 0.8, buildStrength: 0.3 }), view));
+    }
+    expect(motifs.has("strobe")).toBe(false);
+  });
+});
