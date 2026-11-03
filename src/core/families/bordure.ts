@@ -411,13 +411,13 @@ export function dessinerBordure(
     fil.hue,
     fil.saturation * 0.85,
     0.72,
-    (0.1 + 0.2 * energie) * eclairage,
+    (0.2 + 0.22 * energie) * eclairage,
   );
   ctx.lineWidth = tube;
   traceRuban();
 
   // 3. Cœur du tube, plus fin et plus clair.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, (0.12 + 0.22 * energie) * eclairage);
+  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, (0.22 + 0.26 * energie) * eclairage);
   ctx.lineWidth = tube * 0.45;
   traceRuban();
 
@@ -425,7 +425,7 @@ export function dessinerBordure(
   // espacées. Le tronçon assure la continuité, le point donne la granularité de
   // la bande réelle — sans redevenir un chapelet de points blancs.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
-  for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
+  for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
     const { x, y } = positionBordure(index, w, h);
     const couleur = teinteBordure(f, view, index, budgetFlash);
@@ -433,7 +433,8 @@ export function dessinerBordure(
     // exactement pareil, comme sur un vrai ruban.
     const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
     // Tronçon entre deux positions fractionnaires : les morceaux se raccordent
-    // exactement, coins compris.
+    // exactement, coins compris. On trace TOUS les tronçons, quel que soit le
+    // pas : sinon la bande devient pointillée quand la qualité baisse.
     const debut = pointBordure(index - 0.6, w, h);
     const fin = pointBordure(index + 0.6, w, h);
 
@@ -448,6 +449,9 @@ export function dessinerBordure(
     ctx.moveTo(debut.x, debut.y);
     ctx.lineTo(fin.x, fin.y);
     ctx.stroke();
+
+    // Les émetteurs, eux, peuvent être échantillonnés : ce sont les points.
+    if (index % pas !== 0) continue;
 
     // Halo de la diode (diffusion dans le tube).
     const rayon = tube * 0.26 * (0.5 + intensite) * variation;

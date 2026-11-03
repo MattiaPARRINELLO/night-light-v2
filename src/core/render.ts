@@ -829,10 +829,8 @@ export function renderFrame(input: RenderInput): void {
   ctx.globalCompositeOperation = "lighter";
   dessinerBlinders(ctx, permanent, view, settings.flashes);
 
-  // Bordure LED : couche permanente elle aussi, avec ses propres motifs. Elle
-  // ne suit pas le fondu de scène, sinon un impact s'éteindrait au moment où il
-  // doit frapper.
-  dessinerBordure(ctx, permanent, view, settings.flashes);
+  // Bordure LED : dessinée APRÈS la vignette (plus bas), pour ne pas être
+  // assombrie sur les bords de l'écran.
 
   drawDust(ctx, permanent);
 
@@ -851,6 +849,13 @@ export function renderFrame(input: RenderInput): void {
   const vignette = vignetteFor(ctx, width, height);
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
+
+  // La bordure LED passe en dernier : collée au bord, elle doit rester nette et
+  // pleine au lieu d'être mangée par la vignette.
+  ctx.globalCompositeOperation = "lighter";
+  dessinerBordure(ctx, permanent, view, settings.flashes);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
 }
 
 /** Vignettes déjà créées, par contexte puis par dimensions. */
