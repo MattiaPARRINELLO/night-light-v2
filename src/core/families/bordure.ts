@@ -383,7 +383,7 @@ export function dessinerBordure(
     ctx.stroke();
   };
 
-  const tube = Math.max(3, petitCote * 0.006);
+  const tube = Math.max(4.5, petitCote * 0.009);
   // Le corps du ruban suit la moyenne du motif : le tube respire, et un
   // chenillard laisse réellement des zones plus sombres sur le pourtour.
   const eclairage = 0.25 + 0.75 * moyenneBordure(f, view);
@@ -450,7 +450,7 @@ export function dessinerBordure(
     ctx.stroke();
 
     // Halo de la diode (diffusion dans le tube).
-    const rayon = tube * 0.22 * (0.5 + intensite) * variation;
+    const rayon = tube * 0.26 * (0.5 + intensite) * variation;
     ctx.fillStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.62, 0.25 * intensite);
     ctx.beginPath();
     ctx.arc(x, y, rayon * 2.6, 0, Math.PI * 2);
