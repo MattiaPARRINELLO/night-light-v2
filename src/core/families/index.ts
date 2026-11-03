@@ -49,13 +49,29 @@ export {
 } from "./concert-rig";
 export type { CouleurFilament, GesteLyre, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
 
-const FAMILIES: Record<FamilyId, FamilyDraw> = {
-  ...AMBIENT_FAMILIES,
-  ...PROJECTOR_FAMILIES,
-  ...RIDEAU_FAMILIES,
-  ...SHAPE_FAMILIES,
-  ...FIGURE_FAMILIES,
-  ...CONCERT_FAMILIES,
+/**
+ * Familles rangées par provenance.
+ *
+ * Ce découpage est la source unique de l'inventaire des effets : le studio
+ * (`core/effects.ts`) le lit pour découvrir les familles, sans liste recopiée.
+ * Ajouter une famille dans l'un de ces modules la fait apparaître partout.
+ */
+export const FAMILY_GROUPS = {
+  ambiance: AMBIENT_FAMILIES,
+  projecteurs: PROJECTOR_FAMILIES,
+  rideaux: RIDEAU_FAMILIES,
+  formes: SHAPE_FAMILIES,
+  figures: FIGURE_FAMILIES,
+  concert: CONCERT_FAMILIES,
+} as const;
+
+export const FAMILIES: Record<FamilyId, FamilyDraw> = {
+  ...FAMILY_GROUPS.ambiance,
+  ...FAMILY_GROUPS.projecteurs,
+  ...FAMILY_GROUPS.rideaux,
+  ...FAMILY_GROUPS.formes,
+  ...FAMILY_GROUPS.figures,
+  ...FAMILY_GROUPS.concert,
 };
 
 export function drawFamily(

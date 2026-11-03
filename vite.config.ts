@@ -32,6 +32,7 @@ export default defineConfig({
       input: {
         index: "index.html",
         dashboard: "dashboard.html",
+        effets: "effets.html",
       },
     },
   },
