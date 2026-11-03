@@ -317,6 +317,64 @@ describe("cinématiques des lyres et des barres", () => {
       }
     }
   });
+
+  test("le geste auto reproduit le comportement historique", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    for (let index = 0; index < NOMBRE_LYRES; index += 1) {
+      expect(orientationLyre(f, view, index, "refrain", "auto")).toEqual(
+        orientationLyre(f, view, index, "refrain"),
+      );
+    }
+  });
+
+  test("la poursuite n'allume qu'une tête à la fois et avance", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    const teteActive = (t: number) =>
+      Array.from({ length: NOMBRE_LYRES }, (_, index) =>
+        orientationLyre(
+          { ...f, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          index,
+          "refrain",
+          "poursuite",
+        ).intensite,
+      )
+        .map((valeur, index) => (valeur > 0.5 ? index : -1))
+        .filter((index) => index >= 0);
+    expect(teteActive(12).length).toBeGreaterThan(0);
+    expect(teteActive(12).length).toBeLessThanOrEqual(2);
+    expect(teteActive(12)).not.toEqual(teteActive(13));
+  });
+
+  test("chaque geste reste continu d'une image à l'autre", () => {
+    const view = new TrackView(analysis());
+    const gestes = ["poursuite", "eventail", "croisement", "vague"] as const;
+    for (const geste of gestes) {
+      const base = frame("refrain", 10);
+      let precedent = orientationLyre(base, view, 0, "refrain", geste);
+      let angleMax = 0;
+      let intensiteMax = 0;
+      for (let t = 10 + 1 / 60; t < 20; t += 1 / 60) {
+        const courant = orientationLyre(
+          { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          0,
+          "refrain",
+          geste,
+        );
+        angleMax = Math.max(angleMax, Math.abs(courant.angle - precedent.angle));
+        intensiteMax = Math.max(intensiteMax, Math.abs(courant.intensite - precedent.intensite));
+        precedent = courant;
+      }
+      expect(angleMax).toBeLessThan(0.02);
+      // La poursuite déplace volontairement le point chaud plus vite que les
+      // autres gestes : 0,0236 par image à 60 Hz reste une course lente, pas un
+      // clignotement.
+      expect(intensiteMax).toBeLessThan(geste === "poursuite" ? 0.04 : 0.02);
+    }
+  });
 });
 
 describe("rôles du plan de spectacle", () => {

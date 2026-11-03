@@ -36,7 +36,7 @@ export {
   TAU_FILAMENT,
   tempsTempsFort,
 } from "./concert-rig";
-export type { CouleurFilament, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
+export type { CouleurFilament, GesteLyre, MotifBlinder, OrientationLyre, PointScene } from "./concert-rig";
 
 const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...AMBIENT_FAMILIES,
