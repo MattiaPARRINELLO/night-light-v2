@@ -31,6 +31,10 @@ export type MotifBordure =
   | "alternance"
   | "chenillard"
   | "respiration"
+  | "progression"
+  | "haut-bas"
+  | "milieu"
+  | "vague"
   | "plein";
 
 export interface DiodeBordure {
@@ -122,28 +126,40 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   const tirage = hash01(bloc * 7919 + f.seed + f.scene.index * 131);
 
   // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
-  // plein, chenillard et alternance, pour que la bande respire et s'éteigne par
-  // endroits même au plus fort du morceau.
+  // plein et des motifs qui laissent le ruban s'éteindre par endroits.
   if (f.scene.role === "drop") {
-    if (tirage < 0.4) return "plein";
-    if (tirage < 0.75) return "chenillard";
-    return "alternance";
+    if (tirage < 0.22) return "plein";
+    if (tirage < 0.4) return "chenillard";
+    if (tirage < 0.55) return "alternance";
+    if (tirage < 0.7) return "progression";
+    if (tirage < 0.82) return "haut-bas";
+    if (tirage < 0.92) return "milieu";
+    return "vague";
   }
   if (f.scene.role === "refrain") {
-    if (tirage < 0.3) return "chenillard";
-    if (tirage < 0.55) return "alternance";
-    if (tirage < 0.8) return "respiration";
+    if (tirage < 0.18) return "chenillard";
+    if (tirage < 0.34) return "alternance";
+    if (tirage < 0.48) return "respiration";
+    if (tirage < 0.62) return "progression";
+    if (tirage < 0.74) return "haut-bas";
+    if (tirage < 0.86) return "milieu";
+    if (tirage < 0.94) return "vague";
     return "plein";
   }
   if (f.scene.role === "montee") {
-    if (tirage < 0.5) return "haut";
-    if (tirage < 0.8) return "chenillard";
+    if (tirage < 0.32) return "haut";
+    if (tirage < 0.55) return "chenillard";
+    if (tirage < 0.75) return "progression";
+    if (tirage < 0.9) return "haut-bas";
     return "plein";
   }
-  if (f.scene.role === "intro") return tirage < 0.6 ? "rail" : "respiration";
-  if (tirage < 0.35) return "rail";
-  if (tirage < 0.7) return "cote";
-  return "respiration";
+  if (f.scene.role === "intro") return tirage < 0.45 ? "rail" : tirage < 0.75 ? "respiration" : "progression";
+  if (tirage < 0.24) return "rail";
+  if (tirage < 0.42) return "cote";
+  if (tirage < 0.58) return "respiration";
+  if (tirage < 0.72) return "progression";
+  if (tirage < 0.84) return "milieu";
+  return "vague";
 }
 
 /**
@@ -179,6 +195,15 @@ export function poidsMotif(
 ): number {
   const diode = positionBordure(index, f.width, f.height);
   const temps = tempsTempsFort(f, view);
+  const marge = Math.min(f.width, f.height) * MARGE_BORDURE;
+  const largeurUtile = Math.max(f.width - 2 * marge, 1);
+  const hauteurUtile = Math.max(f.height - 2 * marge, 1);
+  // Position spatiale le long du bord, 0..1. Les bords haut et bas se lisent de
+  // gauche à droite, les côtés de haut en bas.
+  const u =
+    diode.cote === "gauche" || diode.cote === "droite"
+      ? (diode.y - marge) / hauteurUtile
+      : (diode.x - marge) / largeurUtile;
 
   switch (motif) {
     case "haut":
@@ -210,6 +235,31 @@ export function poidsMotif(
     }
     case "respiration":
       return avecVeilleuse(0.6 + 0.4 * (0.5 + 0.5 * Math.sin(f.t * 0.8)));
+    case "progression": {
+      // Remplissage qui part du coin haut-gauche, fait le tour, puis se vide :
+      // le front oscille (0 → 1 → 0) pour ne jamais se réinitialiser d'un coup.
+      const front = 0.5 - 0.5 * Math.cos((temps * Math.PI) / 8);
+      const position = index / NOMBRE_DIODES_BORDURE;
+      return avecVeilleuse(1 - smoothstep(front - 0.03, front + 0.03, position));
+    }
+    case "haut-bas": {
+      // D'abord le bord haut de gauche à droite, puis le bord bas.
+      if (diode.cote !== "haut" && diode.cote !== "bas") return avecVeilleuse(0);
+      const front = 1 - Math.cos((temps * Math.PI) / 8);
+      const etape = (diode.cote === "bas" ? 1 : 0) + u;
+      return avecVeilleuse(1 - smoothstep(front - 0.05, front + 0.05, etape));
+    }
+    case "milieu": {
+      // La lumière part du milieu de chaque bord et gagne les extrémités.
+      const front = 0.5 - 0.5 * Math.cos((temps * Math.PI) / 8);
+      const distance = Math.abs(u - 0.5) * 2;
+      return avecVeilleuse(1 - smoothstep(front - 0.04, front + 0.04, distance));
+    }
+    case "vague": {
+      // Deux ondes courent le long du pourtour ; le bouclage est continu.
+      const position = index / NOMBRE_DIODES_BORDURE;
+      return avecVeilleuse(0.5 + 0.5 * Math.sin(position * Math.PI * 4 - temps * 1.1));
+    }
     case "plein":
       return 1;
     case "rail":

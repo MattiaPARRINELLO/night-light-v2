@@ -526,3 +526,53 @@ describe("moments forts", () => {
     expect([...motifs].some((motif) => motif !== "plein")).toBe(true);
   });
 });
+
+describe("remplissages progressifs", () => {
+  const poids = (f: FrameState, view: TrackView, motif: MotifBordure) =>
+    Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, motif),
+    );
+
+  test("la progression allume le pourtour petit à petit", () => {
+    const view = new TrackView(analysis());
+    const debut = poids(frame("couplet", 0.5, { energy: 0.8 }), view, "progression");
+    const milieu = poids(frame("couplet", 6, { energy: 0.8 }), view, "progression");
+    expect(debut.filter((valeur) => valeur > 0.5).length).toBeLessThan(
+      milieu.filter((valeur) => valeur > 0.5).length,
+    );
+    expect(debut[0]).toBeGreaterThan(0.5);
+    expect(debut[NOMBRE_DIODES_BORDURE - 1]).toBeLessThan(0.2);
+  });
+
+  test("le remplissage haut-bas commence par le haut", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 1, { energy: 0.8 });
+    const haut = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "haut",
+    );
+    const bas = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "bas",
+    );
+    expect(Math.max(...bas.map((index) => poidsMotif(f, view, index, "haut-bas")))).toBeLessThan(0.2);
+    expect(Math.max(...haut.map((index) => poidsMotif(f, view, index, "haut-bas")))).toBeGreaterThan(0.5);
+  });
+
+  test("le motif milieu part du centre des bords", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 2, { energy: 0.8 });
+    const centre = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => index).filter(
+      (index) => positionBordure(index, 1280, 720).cote === "haut",
+    );
+    const valeurs = centre.map((index) => poidsMotif(f, view, index, "milieu"));
+    // Le centre du bord haut est allumé, les extrémités non.
+    expect(Math.max(...valeurs)).toBeGreaterThan(0.5);
+    expect(Math.min(...valeurs)).toBeLessThan(0.2);
+  });
+
+  test("la vague ondule le long du pourtour", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 3, { energy: 0.8 });
+    const valeurs = poids(f, view, "vague");
+    expect(Math.max(...valeurs) - Math.min(...valeurs)).toBeGreaterThan(0.5);
+  });
+});
