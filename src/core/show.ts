@@ -34,7 +34,10 @@ export type FamilyId =
   // FAMILY_LABELS et dans l'un des réservoirs ci-dessous.
   | "lyres-suspendues"
   | "barres-led"
-  | "pont-concert";
+  | "pont-concert"
+  | "lyres-poursuite"
+  | "lyres-duo"
+  | "lyres-eventail";
 
 /**
  * Rôle d'une scène dans la dramaturgie du concert.
@@ -213,6 +216,9 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-suspendues": "lyres suspendues",
   "barres-led": "barres LED",
   "pont-concert": "pont concert",
+  "lyres-poursuite": "lyres en poursuite",
+  "lyres-duo": "lyres et barres en duo",
+  "lyres-eventail": "éventail de lyres",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -252,6 +258,9 @@ export const RHYTHMIC_FAMILIES: FamilyId[] = [
   "lyres-suspendues",
   "barres-led",
   "pont-concert",
+  "lyres-poursuite",
+  "lyres-duo",
+  "lyres-eventail",
 ];
 export const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -279,9 +288,19 @@ export const ENERGETIC_FAMILIES: FamilyId[] = [
   "lyres-suspendues",
   "barres-led",
   "pont-concert",
+  "lyres-poursuite",
+  "lyres-duo",
+  "lyres-eventail",
 ];
 /** Familles du plateau de concert (impact, refrain, montée). */
-export const CONCERT_FAMILIES: FamilyId[] = ["lyres-suspendues", "barres-led", "pont-concert"];
+export const CONCERT_FAMILIES: FamilyId[] = [
+  "lyres-suspendues",
+  "barres-led",
+  "pont-concert",
+  "lyres-poursuite",
+  "lyres-duo",
+  "lyres-eventail",
+];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [
   "particles",

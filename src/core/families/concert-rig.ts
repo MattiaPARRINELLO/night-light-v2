@@ -840,7 +840,12 @@ export function dessinerBlinders(
  * à haute énergie : trois sous-cônes décalés d'un angle fin qui oscille à
  * `sin(time · 4)`.
  */
-const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
+function dessinerLyres(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  geste: GesteLyre,
+): void {
   const { width: w, height: h } = f;
   // Pas de terme de beat : les huit têtes ne clignotent pas ensemble sur le
   // kick. Leur intensité est déjà modulée, tête par tête, lentement.
@@ -849,7 +854,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
 
   for (let index = 0; index < NOMBRE_LYRES; index += 1) {
     const { x, y } = positionLyre(index, w, h);
-    const orientation = orientationLyre(f, view, index);
+    const orientation = orientationLyre(f, view, index, f.scene.role, geste);
     const portee = Math.min(
       Math.hypot(w, h) * 1.25,
       (h * 1.04 - y) / Math.max(Math.sin(orientation.angle), 0.32),
@@ -908,7 +913,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
     ctx.arc(x, y, 2.2 + f.energy * 1.4, 0, Math.PI * 2);
     ctx.fill();
   }
-};
+}
 
 /**
  * Seize barres LED : vague d'inclinaison ou rideau de lumière.
@@ -917,7 +922,7 @@ const lyresSuspendues: FamilyDraw = (ctx, f, view) => {
  * refrain et en drop, toutes les lames tombent parallèlement et l'intensité
  * suit le spectre bas/médium : c'est le rideau qui ferme la scène.
  */
-const barresLed: FamilyDraw = (ctx, f, view) => {
+function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView): void {
   const { width: w, height: h } = f;
   // Même règle que pour les lyres : la rampe ne clignote pas sur le kick.
   const alpha = (0.07 + 0.26 * f.energy) * f.alpha;
@@ -972,6 +977,29 @@ const barresLed: FamilyDraw = (ctx, f, view) => {
     ctx.arc(x, y, 1.8 + f.energy * 1.1, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+/** Familles historiques : geste automatique, piloté par le rôle de la scène. */
+const lyresSuspendues: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "auto");
+const barresLed: FamilyDraw = (ctx, f, view) => dessinerBarres(ctx, f, view);
+
+/** Poursuite : une seule tête éclairée court le long du pont. */
+const lyresPoursuite: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "poursuite");
+
+/**
+ * Duo : les lyres du haut croisent leurs faisceaux pendant que les barres du
+ * milieu déroulent leur vague. C'est la scène où les deux étages du plateau
+ * jouent ensemble, au lieu de s'alterner.
+ */
+const lyresDuo: FamilyDraw = (ctx, f, view) => {
+  dessinerLyres(ctx, f, view, "croisement");
+  dessinerBarres(ctx, { ...f, alpha: f.alpha * 0.85 }, view);
+};
+
+/** Éventail large au-dessus du rideau de barres LED. */
+const lyresEventail: FamilyDraw = (ctx, f, view) => {
+  dessinerLyres(ctx, f, view, "eventail");
+  dessinerBarres(ctx, { ...f, alpha: f.alpha * 0.85 }, view);
 };
 
 /**
@@ -991,4 +1019,7 @@ export const CONCERT_FAMILIES = {
   "lyres-suspendues": lyresSuspendues,
   "barres-led": barresLed,
   "pont-concert": pontConcert,
+  "lyres-poursuite": lyresPoursuite,
+  "lyres-duo": lyresDuo,
+  "lyres-eventail": lyresEventail,
 } as const;

@@ -12,6 +12,7 @@ export type { BeamLayer, BeamSpec, FamilyDraw, FrameState, HazeLayer, HazeTarget
 export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
+export { CONCERT_FAMILIES } from "./concert-rig";
 export { contrastHue, lampHue, sceneChord } from "./harmony";
 export { beatSwing, colorFlip, elementEnvelope, elementEnvelopeForEnergy } from "./tempo";
 export { rowPositions } from "./geometry";

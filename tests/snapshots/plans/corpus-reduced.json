@@ -49,7 +49,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.796,
-          "variant": "couronne"
+          "variant": "portique"
         },
         {
           "accent": 332.5,
@@ -85,7 +85,7 @@
           "role": "drop",
           "saturation": 0.96,
           "start": 30.07,
-          "variant": "shutters"
+          "variant": "tunnel"
         },
         {
           "accent": 353.898,
@@ -121,7 +121,7 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 49.76,
-          "variant": "mandala"
+          "variant": "rideaux"
         }
       ],
       "seed": 1233980852,
@@ -181,7 +181,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.796,
-          "variant": "couronne"
+          "variant": "portique"
         },
         {
           "accent": 332.5,
@@ -217,7 +217,7 @@
           "role": "drop",
           "saturation": 0.96,
           "start": 30.07,
-          "variant": "shutters"
+          "variant": "tunnel"
         },
         {
           "accent": 353.898,
@@ -253,7 +253,7 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 49.76,
-          "variant": "mandala"
+          "variant": "rideaux"
         }
       ],
       "seed": 1233980852,
@@ -333,7 +333,7 @@
           "role": "drop",
           "saturation": 0.96,
           "start": 28.143,
-          "variant": "lyre"
+          "variant": "treillis"
         },
         {
           "accent": 13.951,
@@ -351,7 +351,7 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 43.119,
-          "variant": "parade"
+          "variant": "crossfire"
         }
       ],
       "seed": 1773180794,
@@ -410,7 +410,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.587,
-          "variant": "crossfire"
+          "variant": "curtain"
         },
         {
           "accent": 301.012,
@@ -446,7 +446,7 @@
           "role": "couplet",
           "saturation": 0.96,
           "start": 33.065,
-          "variant": "barres-led"
+          "variant": "lyres-duo"
         },
         {
           "accent": 316.881,
@@ -464,7 +464,7 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 44.582,
-          "variant": "couronne"
+          "variant": "portique"
         }
       ],
       "seed": 3402730341,
@@ -539,7 +539,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 24.752,
-          "variant": "bars"
+          "variant": "beams"
         },
         {
           "accent": 336.943,
@@ -615,7 +615,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 0,
-          "variant": "mandala"
+          "variant": "rideaux"
         },
         {
           "accent": 199.502,

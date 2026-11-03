@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   angleBatten,
+  CONCERT_FAMILIES,
   couleurBlinder,
   decroissanceFilament,
+  drawFamily,
   intensiteBlinder,
   motifBlinder,
   NOMBRE_BATTENS,
@@ -16,6 +18,7 @@ import {
   positionLyre,
   TAU_FILAMENT,
 } from "../../src/core/families";
+import { fakeContext } from "../support/fake_canvas";
 import type { FrameState } from "../../src/core/families";
 import { buildShowPlan, type SceneRole } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
@@ -403,5 +406,22 @@ describe("rôles du plan de spectacle", () => {
     const impact = plan.scenes.find((scene) => Math.abs(scene.start - 100) < 0.6);
     expect(impact?.role).toBe("drop");
     expect(impact?.family).toBe("pont-concert");
+  });
+});
+
+describe("familles de lyres", () => {
+  test("les trois nouvelles familles de lyres sont déclarées", () => {
+    expect(Object.keys(CONCERT_FAMILIES)).toEqual(
+      expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
+    );
+  });
+
+  test("les familles de lyres se dessinent sans erreur", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12);
+    for (const family of ["lyres-poursuite", "lyres-duo", "lyres-eventail"] as const) {
+      const { ctx } = fakeContext();
+      expect(() => drawFamily(ctx, f, view, family)).not.toThrow();
+    }
   });
 });

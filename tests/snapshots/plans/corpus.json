@@ -22,7 +22,7 @@
           "end": 11.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "tunnel",
+          "family": "beams",
           "hue": 190.085,
           "intensity": 0.558,
           "lightness": 0.68,
@@ -31,7 +31,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 0,
-          "variant": "shutters"
+          "variant": "tunnel"
         },
         {
           "accent": 315.898,
@@ -58,7 +58,7 @@
           "end": 30.07,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "rings",
+          "family": "rideaux",
           "hue": 182.5,
           "intensity": 0.65,
           "lightness": 0.68,
@@ -67,7 +67,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 23.522,
-          "variant": "rings"
+          "variant": "rideaux"
         },
         {
           "accent": 323.665,
@@ -99,7 +99,7 @@
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyre",
+          "family": "lyres-eventail",
           "hue": 353.898,
           "intensity": 0.969,
           "lightness": 0.76,
@@ -108,7 +108,7 @@
           "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyre"
+          "variant": "lyres-eventail"
         },
         {
           "accent": 326.965,
@@ -159,7 +159,7 @@
           "end": 11.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "tunnel",
+          "family": "beams",
           "hue": 190.085,
           "intensity": 0.558,
           "lightness": 0.68,
@@ -168,7 +168,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 0,
-          "variant": "shutters"
+          "variant": "tunnel"
         },
         {
           "accent": 315.898,
@@ -195,7 +195,7 @@
           "end": 30.07,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "rings",
+          "family": "rideaux",
           "hue": 182.5,
           "intensity": 0.65,
           "lightness": 0.68,
@@ -204,7 +204,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 23.522,
-          "variant": "rings"
+          "variant": "rideaux"
         },
         {
           "accent": 323.665,
@@ -236,7 +236,7 @@
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyre",
+          "family": "lyres-eventail",
           "hue": 353.898,
           "intensity": 0.969,
           "lightness": 0.76,
@@ -245,7 +245,7 @@
           "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyre"
+          "variant": "lyres-eventail"
         },
         {
           "accent": 326.965,
@@ -298,7 +298,7 @@
           "end": 11.726,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyre",
+          "family": "gobos",
           "hue": 221.141,
           "intensity": 0.551,
           "lightness": 0.68,
@@ -316,7 +316,7 @@
           "end": 28.143,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "mirror",
+          "family": "pluie",
           "hue": 172,
           "intensity": 0.589,
           "lightness": 0.68,
@@ -325,7 +325,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.726,
-          "variant": "particles"
+          "variant": "tunnel"
         },
         {
           "accent": 26.45,
@@ -357,7 +357,7 @@
           "end": 60,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "rings",
+          "family": "mirror",
           "hue": 346,
           "intensity": 0.975,
           "lightness": 0.76,
@@ -366,7 +366,7 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 43.119,
-          "variant": "parade"
+          "variant": "spiral"
         }
       ],
       "seed": 1773180794,
@@ -398,7 +398,7 @@
           "end": 11.587,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "spots",
+          "family": "gobos",
           "hue": 157.385,
           "intensity": 0.578,
           "lightness": 0.68,
@@ -416,7 +416,7 @@
           "end": 27.074,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "pluie",
+          "family": "waves",
           "hue": 110,
           "intensity": 0.588,
           "lightness": 0.68,
@@ -425,7 +425,7 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.587,
-          "variant": "parade"
+          "variant": "curtain"
         },
         {
           "accent": 301.012,
@@ -457,7 +457,7 @@
           "end": 44.582,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "crossfire",
+          "family": "vortex",
           "hue": 352.267,
           "intensity": 0.955,
           "lightness": 0.76,
@@ -475,7 +475,7 @@
           "end": 60,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "pendule",
+          "family": "shutters",
           "hue": 316.881,
           "intensity": 0.958,
           "lightness": 0.76,
@@ -550,7 +550,7 @@
           "end": 38.058,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "mirror",
+          "family": "lyres-eventail",
           "hue": 157,
           "intensity": 0.695,
           "lightness": 0.68,
@@ -591,7 +591,7 @@
           "end": 60,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "gobos",
+          "family": "couronne",
           "hue": 289.103,
           "intensity": 0.961,
           "lightness": 0.76,
@@ -631,7 +631,7 @@
           "end": 15.302,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "gobos",
+          "family": "barres-led",
           "hue": 14.8,
           "intensity": 0.561,
           "lightness": 0.68,
@@ -672,7 +672,7 @@
           "end": 42.26,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyre",
+          "family": "lyres-poursuite",
           "hue": 210.208,
           "intensity": 0.758,
           "lightness": 0.68,
