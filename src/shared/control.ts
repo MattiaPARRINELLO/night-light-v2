@@ -16,6 +16,7 @@
 
 import type { Analysis } from "../types";
 import type { JobTimings } from "../core/api";
+import type { FamilyId, Mood, SceneRole } from "../core/show";
 
 export const CONTROL_CHANNEL = "night-light-control";
 /** Version du protocole. Incrémentée à toute rupture de compatibilité. */
@@ -138,8 +139,39 @@ export interface ShowState {
   resolve: { title: string; artist: string; detail: string; at: number } | null;
   /** Chronologie détecté → trouvé → téléchargé → analysé → calé → premier frame. */
   timings: TrackTimings | null;
+  /** Effet forcé depuis le studio, s'il y en a un à l'écran. */
+  effect: { family: FamilyId; label: string } | null;
   /** Dernières lignes du journal de debug, pour le journal du dashboard. */
   log: string[];
+}
+
+/**
+ * Effet imposé à l'écran de show depuis le studio.
+ *
+ * Il porte à la fois l'apparence (famille, palette, rôle) et la petite timeline
+ * synthétique qui l'anime : l'écran de projection n'a donc pas besoin d'un
+ * morceau analysé pour jouer l'effet.
+ */
+export interface EffectOverride {
+  family: FamilyId;
+  variant: FamilyId;
+  role: SceneRole;
+  mood: Mood;
+  hue: number;
+  /** Écart entre la teinte principale et la complémentaire, en degrés. */
+  spread: number;
+  saturation: number;
+  lightness: number;
+  tempo: number;
+  energy: number;
+  bass: number;
+  high: number;
+  impacts: boolean;
+  seed: number;
+  speed: number;
+  intensity: number;
+  flashes: number;
+  reduced: boolean;
 }
 
 /** Ce que le dashboard demande à l'écran de show. */
@@ -152,6 +184,8 @@ export type DashboardCommand =
   | { type: "force-show" }
   | { type: "cancel-analysis" }
   | { type: "debug-overlay"; on: boolean }
+  /** Force un effet du studio sur l'écran de show, ou rend la main au show. */
+  | { type: "set-effect"; effect: EffectOverride | null }
   /** Le dashboard réclame l'analyse complète du morceau en cours. */
   | { type: "request-analysis" }
   | {
@@ -192,38 +226,133 @@ function supported(message: ControlMessage): boolean {
  * `BroadcastChannel` ne se renvoie pas ses propres messages, ce qui est
  * exactement ce qu'on veut : chaque page ne reçoit que ce que dit l'autre.
  */
+/** État de la liaison avec le relais serveur. */
+export type ControlStatus = "connecting" | "open" | "offline";
+
+/** Adresse du relais : même origine que la page, donc téléphone comme PC. */
+function controlSocketUrl(): string {
+  const configured = import.meta.env.VITE_CONTROL_WS as string | undefined;
+  if (typeof configured === "string" && configured.trim() !== "") return configured.trim();
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${location.host}/api/control`;
+}
+
+/**
+ * Lien de contrôle : publie l'état d'un côté, envoie des commandes de l'autre.
+ *
+ * Deux transports, dans cet ordre :
+ *   1. un WebSocket vers `/api/control`, qui traverse les appareils (téléphone
+ *      → PC) via le relais serveur ;
+ *   2. `BroadcastChannel`, qui reste le repli instantané quand les deux pages
+ *      vivent dans le même navigateur et que le serveur est injoignable.
+ *
+ * L'émission choisit un seul transport (le WebSocket dès qu'il est ouvert),
+ * pour ne pas doubler les commandes sur une machine locale. La réception, elle,
+ * écoute les deux : chaque page ignore de toute façon les messages qu'elle ne
+ * sait pas traiter.
+ */
 export class ControlLink {
   private readonly channel: BroadcastChannel;
+  private socket: WebSocket | null = null;
+  private handler: ((message: ControlMessage) => void) | null = null;
+  private statusHandler: ((status: ControlStatus) => void) | null = null;
+  private closed = false;
+  private retry = 0;
+  private retryTimer: number | null = null;
 
   constructor() {
     this.channel = new BroadcastChannel(CONTROL_CHANNEL);
+    this.channel.onmessage = (event: MessageEvent<ControlMessage>) => this.receive(event.data);
+    this.connect();
   }
 
   close(): void {
+    this.closed = true;
+    if (this.retryTimer !== null) window.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.socket?.close();
+    this.socket = null;
     this.channel.close();
   }
 
   onMessage(handler: (message: ControlMessage) => void): void {
-    this.channel.onmessage = (event: MessageEvent<ControlMessage>) => {
-      const message = event.data;
-      if (!supported(message)) return;
-      handler(message);
-    };
+    this.handler = handler;
+  }
+
+  /** Préviens l'interface de l'état de la liaison distante. */
+  onStatus(handler: (status: ControlStatus) => void): void {
+    this.statusHandler = handler;
+    handler(this.socket === null ? "connecting" : this.socket.readyState === WebSocket.OPEN ? "open" : "connecting");
+  }
+
+  private connect(): void {
+    if (this.closed) return;
+    try {
+      const socket = new WebSocket(controlSocketUrl());
+      this.socket = socket;
+      socket.addEventListener("open", () => {
+        if (this.socket !== socket) return;
+        this.retry = 0;
+        this.statusHandler?.("open");
+      });
+      socket.addEventListener("message", (event: MessageEvent<unknown>) => {
+        if (typeof event.data !== "string") return;
+        try {
+          this.receive(JSON.parse(event.data) as ControlMessage);
+        } catch {
+          // Un message illisible est ignoré : le canal reste ouvert.
+        }
+      });
+      const drop = (): void => {
+        if (this.socket !== socket) return;
+        this.socket = null;
+        this.statusHandler?.("offline");
+        this.scheduleReconnect();
+      };
+      socket.addEventListener("close", drop);
+      socket.addEventListener("error", () => socket.close());
+    } catch {
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closed || this.retryTimer !== null) return;
+    const delay = Math.min(5000, 400 * 2 ** this.retry);
+    this.retry += 1;
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  private receive(message: ControlMessage): void {
+    if (!supported(message)) return;
+    this.handler?.(message);
+  }
+
+  /** Un seul transport par message : WebSocket s'il est ouvert, sinon canal local. */
+  private transmit(message: ControlMessage): void {
+    if (this.socket !== null && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(message));
+      return;
+    }
+    this.channel.postMessage(message);
   }
 
   /** Publie l'état complet (côté show). */
   publishState(state: ShowState): void {
-    this.channel.postMessage({ version: CONTROL_VERSION, at: Date.now(), state } satisfies ControlMessage);
+    this.transmit({ version: CONTROL_VERSION, at: Date.now(), state } satisfies ControlMessage);
   }
 
   /** Renvoie une seule fois l'analyse complète au dashboard (côté show). */
   publishAnalysis(payload: AnalysisPayload): void {
-    this.channel.postMessage({ version: CONTROL_VERSION, at: Date.now(), analysisPayload: payload } satisfies ControlMessage);
+    this.transmit({ version: CONTROL_VERSION, at: Date.now(), analysisPayload: payload } satisfies ControlMessage);
   }
 
-  /** Envoie une commande (côté dashboard). */
+  /** Envoie une commande (côté dashboard ou studio). */
   send(command: DashboardCommand): void {
-    this.channel.postMessage({ version: CONTROL_VERSION, at: Date.now(), command } satisfies ControlMessage);
+    this.transmit({ version: CONTROL_VERSION, at: Date.now(), command } satisfies ControlMessage);
   }
 }
 
@@ -260,6 +389,7 @@ export function emptyShowState(): ShowState {
     notice: null,
     resolve: null,
     timings: null,
+    effect: null,
     log: [],
   };
 }

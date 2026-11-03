@@ -56,6 +56,16 @@
               <small id="fx-current-id">—</small>
             </div>
             <div class="fx-stage-actions">
+              <button
+                class="fx-project-btn"
+                id="fx-project"
+                type="button"
+                aria-pressed="false"
+                title="Envoyer cet effet à l'écran de projection"
+              >
+                <span class="fx-project-dot" aria-hidden="true"></span>
+                Projeter
+              </button>
               <button class="fx-icon-btn" id="fx-reset" type="button" title="Relancer l'effet depuis le début">
                 <span aria-hidden="true">↺</span>
                 <span class="visually-hidden">Relancer</span>
@@ -76,6 +86,7 @@
           </div>
           <div class="fx-stage-foot">
             <span id="fx-state">en lecture</span>
+            <span id="fx-link">show hors ligne</span>
             <span id="fx-fps">— fps</span>
             <span id="fx-clock">0:00</span>
           </div>

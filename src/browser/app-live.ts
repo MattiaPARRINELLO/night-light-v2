@@ -269,6 +269,13 @@ export function installLive(Target: { prototype: App }): void {
   };
 
   Target.prototype.renderLive = function (this: App, time: number): void {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    // Un effet forcé depuis le studio prend la toile, même sans morceau.
+    if (this.renderEffectOverride(this.liveQuality, width, height, this.hazeFor(this.liveQuality, width, height))) {
+      this.liveFrame += 1;
+      return;
+    }
     const view = this.liveView;
     const plan = this.livePlan;
     if (view === null || plan === null) return;

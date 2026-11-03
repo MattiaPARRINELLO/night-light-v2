@@ -317,6 +317,61 @@ body.effects * {
   display: flex;
   gap: 7px;
   pointer-events: auto;
+  align-items: center;
+}
+
+.fx-project-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 15px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  background: rgba(8, 12, 22, 0.72);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition:
+    background 0.16s var(--ease),
+    border-color 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
+}
+
+.fx-project-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(160, 180, 235, 0.44);
+}
+
+.fx-project-btn.is-on {
+  border-color: rgba(34, 211, 238, 0.5);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.85), rgba(34, 211, 238, 0.7));
+  box-shadow: 0 8px 26px rgba(34, 211, 238, 0.24);
+}
+
+.fx-project-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+}
+
+.fx-project-btn.is-on .fx-project-dot {
+  background: #b8f6ff;
+  box-shadow: 0 0 10px #67e8f9;
+}
+
+#fx-link.is-online {
+  color: #7ee7c7;
+}
+
+#fx-link.is-connecting {
+  color: var(--accent-warm);
 }
 
 .fx-icon-btn {

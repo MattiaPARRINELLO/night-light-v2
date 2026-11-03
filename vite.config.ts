@@ -6,6 +6,9 @@ const proxy = {
   "/api": {
     target: apiTarget,
     changeOrigin: true,
+    // Le canal de contrôle passe par un WebSocket : sans cette option, le proxy
+    // HTTP de Vite refuserait la mise à niveau et le téléphone resterait muet.
+    ws: true,
   },
 };
 

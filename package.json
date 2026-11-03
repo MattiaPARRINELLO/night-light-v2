@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "bun scripts/dev.mjs",
+    "dev:lan": "NIGHTLIGHT_LAN=1 bun scripts/dev.mjs",
     "api": "uv run uvicorn server.main:app --host 127.0.0.1 --port 8787",
     "web": "portless nightlight vite",
     "build": "vite build",

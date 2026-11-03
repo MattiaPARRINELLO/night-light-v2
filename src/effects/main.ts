@@ -22,6 +22,7 @@ import { renderFrame } from "../core/render";
 import type { HazeLayer, HazeTarget } from "../core/families";
 import type { FamilyId, Mood, SceneRole } from "../core/show";
 import type { RenderSettings } from "../types";
+import { ControlLink, type EffectOverride } from "../shared/control";
 
 const STORAGE_KEY = "night-light-effects";
 
@@ -179,6 +180,13 @@ class Studio {
   private toastTimer: number | null = null;
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  /** Liaison distante : le show peut vivre sur un autre appareil. */
+  private readonly link = new ControlLink();
+  private projecting = false;
+  private projectTimer: number | null = null;
+  private showOnline = false;
+  private lastShowStateAt = 0;
+
   private readonly hazeCanvases = {
     fine: [document.createElement("canvas"), document.createElement("canvas")] as const,
     large: [document.createElement("canvas"), document.createElement("canvas")] as const,
@@ -209,6 +217,7 @@ class Studio {
     this.buildGallery();
     this.bindControls();
     this.bindActions();
+    this.bindProjection();
     this.bindKeyboard();
     this.applyStateToDom();
     this.selectFamily(this.state.family, { reset: true, silent: true });
@@ -443,6 +452,104 @@ class Studio {
     el<HTMLButtonElement>("fx-fullscreen").addEventListener("click", () => void this.toggleFullscreen());
   }
 
+  /* ------------------------------------------------------------ projection */
+
+  /**
+   * Branche le studio sur le canal de contrôle.
+   *
+   * L'écran de projection peut être sur un autre appareil : le relais serveur
+   * fait le pont, et l'état publié par le show sert de témoin de présence.
+   */
+  private bindProjection(): void {
+    this.link.onStatus((status) => {
+      if (status === "offline") this.setShowOnline(false);
+    });
+    this.link.onMessage((message) => {
+      if (message.state === undefined) return;
+      this.lastShowStateAt = Date.now();
+      this.setShowOnline(true);
+    });
+    el<HTMLButtonElement>("fx-project").addEventListener("click", () => this.toggleProjection());
+    window.setInterval(() => {
+      if (this.showOnline && Date.now() - this.lastShowStateAt > 3500) this.setShowOnline(false);
+    }, 1000);
+    this.updateLinkLabel();
+  }
+
+  private setShowOnline(online: boolean): void {
+    if (this.showOnline === online) return;
+    this.showOnline = online;
+    this.updateLinkLabel();
+    // Un écran qui vient d'apparaître (ou de se recharger) n'a pas encore
+    // l'effet courant : on le lui renvoie tout de suite.
+    if (online && this.projecting) this.pushEffect();
+  }
+
+  private updateLinkLabel(): void {
+    const node = el<HTMLElement>("fx-link");
+    node.classList.toggle("is-online", this.showOnline);
+    node.classList.toggle("is-connecting", !this.showOnline && this.projecting);
+    if (this.showOnline) {
+      node.textContent = this.projecting ? "projection en cours" : "show en ligne";
+    } else {
+      node.textContent = this.projecting ? "show introuvable" : "show hors ligne";
+    }
+  }
+
+  /** Instantané de l'effet tel que l'écran de projection doit le jouer. */
+  private currentOverride(): EffectOverride {
+    const state = this.state;
+    return {
+      family: state.family,
+      variant: state.variant,
+      role: state.role,
+      mood: state.mood,
+      hue: state.hue,
+      spread: state.spread,
+      saturation: state.saturation / 100,
+      lightness: state.lightness / 100,
+      tempo: state.tempo,
+      energy: state.energy / 100,
+      bass: state.bass / 100,
+      high: state.high / 100,
+      impacts: state.impacts,
+      seed: state.seed,
+      speed: state.speed,
+      intensity: state.intensity / 100,
+      flashes: state.flashes / 100,
+      reduced: state.reduced,
+    };
+  }
+
+  private pushEffect(): void {
+    this.link.send({ type: "set-effect", effect: this.currentOverride() });
+  }
+
+  private toggleProjection(): void {
+    this.projecting = !this.projecting;
+    const button = el<HTMLButtonElement>("fx-project");
+    button.classList.toggle("is-on", this.projecting);
+    button.setAttribute("aria-pressed", String(this.projecting));
+
+    if (this.projecting) {
+      this.link.send({ type: "hello" });
+      this.pushEffect();
+      // Battement de cœur : garde le show en mode piloté et renvoie l'effet.
+      // L'écran ignore une commande identique, donc l'horloge ne repart pas.
+      this.projectTimer = window.setInterval(() => {
+        this.link.send({ type: "hello" });
+        this.pushEffect();
+      }, 2000);
+      this.toast(this.showOnline ? "Effet envoyé à l'écran de projection." : "En attente de l'écran de show…");
+    } else {
+      if (this.projectTimer !== null) window.clearInterval(this.projectTimer);
+      this.projectTimer = null;
+      this.link.send({ type: "set-effect", effect: null });
+      this.toast("Écran de projection rendu au show.");
+    }
+    this.updateLinkLabel();
+  }
+
   private bindKeyboard(): void {
     window.addEventListener("keydown", (event) => {
       const target = event.target;
@@ -462,6 +569,8 @@ class Studio {
         this.randomize();
       } else if (event.key.toLowerCase() === "f") {
         void this.toggleFullscreen();
+      } else if (event.key.toLowerCase() === "p") {
+        this.toggleProjection();
       }
     });
   }
@@ -484,6 +593,7 @@ class Studio {
   private changed(): void {
     saveState(this.state);
     this.updateCurrentLabels();
+    if (this.projecting) this.pushEffect();
   }
 
   private timelineParams(): EffectTimelineParams {
