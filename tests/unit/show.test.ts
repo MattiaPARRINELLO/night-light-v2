@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_LABELS, minHueStepEff, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_BRANCH_RESERVOIRS, FAMILY_LABELS, familyFor, minHueStepEff, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -948,5 +948,24 @@ describe("répétition des passages (couplet / refrain)", () => {
     // En mode réduit, on ne force pas : l'énergie mesurée reprend la main.
     const reduit = scenesIn(buildShowPlan(timide, true), 20, 40);
     for (const scene of reduit) expect(scene.mood).not.toBe("explosif");
+  });
+});
+
+describe("familles de lyres dans le tirage", () => {
+  test("le refrain atteint les familles de lyres et le réservoir drop les contient", () => {
+    const caractere = { energy: 0.9, density: 6, brightness: 0.3 };
+    const vues = new Set<string>();
+    for (let turn = 0; turn < 20; turn += 1) {
+      vues.add(familyFor(caractere, false, 7, turn, "refrain"));
+    }
+    expect(vues.has("lyres-suspendues")).toBe(true);
+    expect(vues.has("barres-led")).toBe(true);
+    expect(vues.has("lyres-poursuite") || vues.has("lyres-duo") || vues.has("lyres-eventail")).toBe(true);
+    expect(FAMILY_BRANCH_RESERVOIRS.drop).toEqual(
+      expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
+    );
+    expect(RHYTHMIC_FAMILIES).toEqual(
+      expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
+    );
   });
 });

@@ -638,7 +638,13 @@ export function familyFor(
 ): FamilyId {
   const branch = familyBranchFor(caractere, reduced, role, false, calm);
   if (branch === "refrain") {
-    return Math.floor(turn) % 2 === 0 ? "lyres-suspendues" : "barres-led";
+    return pickFamily(
+      ["lyres-suspendues", "barres-led", "lyres-poursuite", "lyres-duo", "lyres-eventail"],
+      seed,
+      turn,
+      excluded,
+      used,
+    );
   }
   if (branch === "montee") return "barres-led";
   return pickFamily(FAMILY_BRANCH_RESERVOIRS[branch], seed, turn, excluded, used);

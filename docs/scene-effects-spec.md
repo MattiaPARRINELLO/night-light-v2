@@ -65,7 +65,7 @@ réservoir. L'ordre des règles va du plus spécifique au plus général :
 | 1 | mode réduit, énergie < 0,22 | familles calmes | restrictions du mode réduit |
 | 2 | mode réduit, densité < 0,6 att/s | familles calmes | idem |
 | 3 | mode réduit | `beams`, `waves`, `rings`, `particles` | palette réduite |
-| 4 | rôle `refrain` | `lyres-suspendues` / `barres-led` en alternance | ballyhoo de concert |
+| 4 | rôle `refrain` | `lyres-suspendues`, `barres-led`, `lyres-poursuite`, `lyres-duo`, `lyres-eventail` | ballyhoo et duo de concert |
 | 5 | rôle `montee` | `barres-led` | vague de montée |
 | 6 | énergie < 0,22 | familles calmes | passage sans percussion |
 | 7 | brillance > **0,30** | particules, projecteurs, spirale, anneaux, faisceaux, miroirs, défilé | spectre clair, figure aérienne |
@@ -132,7 +132,13 @@ Un `drop` ne se contente plus du rôle : il reçoit une signature déterministe 
 - 54 combinaisons ; une signature n'est **jamais réutilisée dans le même
   plan**, donc deux drops à moins de 15 s diffèrent forcément.
 - `pont-concert` est réservé aux montées de force ≥ 0,6 ; en dessous, les
-  familles `lyres-suspendues` et `barres-led` alternent.
+  familles de concert du réservoir alternent, dont `lyres-poursuite`,
+  `lyres-duo` et `lyres-eventail`.
+- `orientationLyre` accepte un geste optionnel (`"auto"` par défaut, donc
+  comportement historique inchangé) : `poursuite` (une tête court le long du
+  pont), `eventail` (ouverture large), `croisement` (les faisceaux se croisent)
+  et `vague` (onde d'inclinaison). Ces gestes ne sont utilisés que par les
+  nouvelles familles.
 - Le mode réduit ne produit ni signature ni pont forcé.
 - Les cycles, enveloppes et géométries existants ne changent pas : seule la
   cible (angle, rideau, motif) est choisie.
