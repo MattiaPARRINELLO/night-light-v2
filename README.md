@@ -542,11 +542,13 @@ morceau chargé. Un second clic rend la main au spectacle en cours.
 Pour ouvrir le studio depuis un téléphone sur le même réseau :
 
 ```bash
-bun run dev:lan     # affiche http://<ip-du-pc>:5173/effets.html
+bun run dev:lan     # Portless reste actif, et affiche http://<ip-du-pc>:<port>/effets.html
 ```
 
-L'API reste sur `127.0.0.1` : seul le proxy Vite est exposé au réseau local, et il relaie
-`/api` ainsi que le WebSocket de contrôle.
+Portless continue de servir `https://nightlight.localhost` sur le PC ; Vite écoute en plus sur
+toutes les interfaces et le script affiche l'URL LAN avec le port réellement choisi par
+Portless. L'API reste sur `127.0.0.1` : seul le proxy Vite est exposé au réseau local, et il
+relaie `/api` ainsi que le WebSocket de contrôle.
 
 ### L'écran de show sait vivre seul
 
