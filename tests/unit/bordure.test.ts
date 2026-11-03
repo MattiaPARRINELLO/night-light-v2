@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   couleurBordure,
+  dessinerBordure,
   intensiteBordure,
   motifBordure,
   NOMBRE_DIODES_BORDURE,
@@ -9,6 +10,7 @@ import {
   positionBordure,
   type MotifBordure,
 } from "../../src/core/families";
+import { fakeContext } from "../support/fake_canvas";
 import type { FrameState } from "../../src/core/families";
 import { buildShowPlan, type SceneRole } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
@@ -236,5 +238,26 @@ describe("motifs de la bordure", () => {
       Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) => couleurBordure(f, index).toFixed(1)),
     );
     expect(teintes.size).toBeGreaterThan(1);
+  });
+});
+
+describe("dessin de la bordure", () => {
+  test("dessinerBordure dépose des diodes et reste pure", () => {
+    const view = new TrackView(analysis());
+    const f = frame("drop", 12, { energy: 1, drop: 1, beat: 1 });
+    const premier = fakeContext();
+    dessinerBordure(premier.ctx, f, view, 1);
+    const second = fakeContext();
+    dessinerBordure(second.ctx, f, view, 1);
+    expect(premier.operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
+    expect(second.operations).toEqual(premier.operations);
+  });
+
+  test("en mode réduit, la bordure reste discrète", () => {
+    const view = new TrackView(analysis());
+    const f = frame("drop", 12, { energy: 1, drop: 1, beat: 1, reduced: true });
+    const { ctx, operations } = fakeContext();
+    dessinerBordure(ctx, f, view, 1);
+    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
   });
 });

@@ -15,6 +15,7 @@ export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBea
 export { CONCERT_FAMILIES } from "./concert-rig";
 export {
   couleurBordure,
+  dessinerBordure,
   intensiteBordure,
   motifBordure,
   NOMBRE_DIODES_BORDURE,

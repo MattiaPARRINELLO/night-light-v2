@@ -1,8 +1,9 @@
 import { clamp01, hash01, smoothstep } from "../series";
 import type { TrackView } from "../view";
 import { tempsTempsFort } from "./concert-rig";
-import { lampHue } from "./harmony";
+import { contrastHue, lampHue } from "./harmony";
 import type { FrameState } from "./types";
+import { paint } from "./util";
 
 /**
  * Bordure de diodes qui fait le tour de l'écran.
@@ -184,4 +185,53 @@ export function intensiteBordure(
   const eclat = clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
   const brut = rail + poids * (0.2 + 0.65 * energie) * respiration + eclat * Math.max(poids, 0.15);
   return f.reduced ? Math.min(0.3, brut * 0.5) : clamp01(brut);
+}
+
+/**
+ * Dessine la bordure : le rail continu, puis chaque diode allumée.
+ *
+ * Aucune transformation de contexte et aucun dégradé par diode : le coût reste
+ * une passe de trait plus deux remplissages par diode visible, quel que soit
+ * l'écran.
+ */
+export function dessinerBordure(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  budgetFlash = 1,
+): void {
+  const { width: w, height: h } = f;
+  const marge = Math.min(w, h) * MARGE_BORDURE;
+  const energie = clamp01(f.energy);
+
+  // Rail continu : présent même quand aucune diode n'est allumée, il donne son
+  // architecture à la scène.
+  ctx.strokeStyle = paint(contrastHue(f), 0.2, 0.5, 0.1 + 0.08 * energie);
+  ctx.lineWidth = Math.max(0.8, Math.min(w, h) * 0.0009);
+  ctx.beginPath();
+  ctx.moveTo(marge, marge);
+  ctx.lineTo(w - marge, marge);
+  ctx.lineTo(w - marge, h - marge);
+  ctx.lineTo(marge, h - marge);
+  ctx.closePath();
+  ctx.stroke();
+
+  const base = Math.max(1, Math.min(w, h) * 0.0018);
+  for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
+    const intensite = intensiteBordure(f, view, index, budgetFlash);
+    if (intensite <= 0.01) continue;
+    const { x, y } = positionBordure(index, w, h);
+    const teinte = couleurBordure(f, index);
+
+    // Halo court, puis cœur : deux remplissages, jamais un gradient radial.
+    ctx.fillStyle = paint(teinte, 0.8, 0.6, intensite * 0.22);
+    ctx.beginPath();
+    ctx.arc(x, y, base * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = paint(teinte, 0.85, 0.9, intensite);
+    ctx.beginPath();
+    ctx.arc(x, y, base * (0.8 + 0.5 * intensite), 0, Math.PI * 2);
+    ctx.fill();
+  }
 }

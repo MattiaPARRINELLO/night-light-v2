@@ -188,3 +188,26 @@ hors budget sur le corpus, et 0 paire sous le seuil effectif sur 6 morceaux ×
 | `sections = []` | aucun rôle de section ; caractère et raison d'événement seuls |
 | couverture partielle | les courbes valent 0 hors fenêtre ; `coverage` est recopié dans le plan, le rendu sait où la donnée est fiable |
 | courbe vide sur une fenêtre | énergie → 0,3, brillance → 0,5 (milieu d'échelle documenté) |
+
+## 9. Bordure LED
+
+Une couche **permanente** (`src/core/families/bordure.ts`), dessinée par
+`render.ts` après les blinders, sur `permanent` : elle ne suit donc pas le fondu
+de scène.
+
+- **Géométrie** : `NOMBRE_DIODES_BORDURE = 72` diodes réparties sur le périmètre
+  d'un rectangle rentré de `1,2 %` du petit côté. `positionBordure` renvoie le
+  point, l'angle du segment et le côté (`haut`, `bas`, `gauche`, `droite`).
+- **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
+  rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
+  (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
+  `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
+  part allumée de chaque diode ; les diodes éteintes gardent une veilleuse.
+- **Couleur** : `couleurBordure(f, index) = lampHue(f, index)`, donc les diodes
+  voisines portent des membres différents de l'accord de la scène.
+- **Intensité** : rail permanent `0,03 + 0,08 × énergie`, part du motif modulée
+  par la respiration, éclat d'impact dosé par `settings.flashes`.
+- **Mode réduit** : plafond `0,3`, facteur `0,5` : jamais de chenillard rapide
+  ni d'éclat au-delà du seuil d'inconfort.
+- **Coût** : un trait pour le rail, deux remplissages par diode visible, aucune
+  transformation ni dégradé radial par diode.
