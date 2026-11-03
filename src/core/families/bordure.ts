@@ -30,11 +30,16 @@ export type MotifBordure =
   | "cote"
   | "alternance"
   | "chenillard"
+  | "comete"
   | "respiration"
   | "progression"
   | "haut-bas"
   | "milieu"
   | "vague"
+  | "vumetre"
+  | "pluie"
+  | "scintillement"
+  | "strobe"
   | "plein";
 
 export interface DiodeBordure {
@@ -128,38 +133,47 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
   // plein et des motifs qui laissent le ruban s'éteindre par endroits.
   if (f.scene.role === "drop") {
-    if (tirage < 0.22) return "plein";
-    if (tirage < 0.4) return "chenillard";
-    if (tirage < 0.55) return "alternance";
-    if (tirage < 0.7) return "progression";
-    if (tirage < 0.82) return "haut-bas";
-    if (tirage < 0.92) return "milieu";
-    return "vague";
+    if (tirage < 0.12) return "plein";
+    if (tirage < 0.24) return "chenillard";
+    if (tirage < 0.35) return "comete";
+    if (tirage < 0.46) return "vumetre";
+    if (tirage < 0.56) return "progression";
+    if (tirage < 0.66) return "haut-bas";
+    if (tirage < 0.74) return "milieu";
+    if (tirage < 0.82) return "vague";
+    if (tirage < 0.89) return "pluie";
+    if (tirage < 0.95) return "scintillement";
+    return "strobe";
   }
   if (f.scene.role === "refrain") {
-    if (tirage < 0.18) return "chenillard";
-    if (tirage < 0.34) return "alternance";
-    if (tirage < 0.48) return "respiration";
-    if (tirage < 0.62) return "progression";
+    if (tirage < 0.16) return "chenillard";
+    if (tirage < 0.3) return "comete";
+    if (tirage < 0.42) return "alternance";
+    if (tirage < 0.54) return "respiration";
+    if (tirage < 0.64) return "progression";
     if (tirage < 0.74) return "haut-bas";
-    if (tirage < 0.86) return "milieu";
-    if (tirage < 0.94) return "vague";
-    return "plein";
+    if (tirage < 0.82) return "milieu";
+    if (tirage < 0.9) return "vague";
+    if (tirage < 0.96) return "pluie";
+    return "vumetre";
   }
   if (f.scene.role === "montee") {
-    if (tirage < 0.32) return "haut";
-    if (tirage < 0.55) return "chenillard";
-    if (tirage < 0.75) return "progression";
-    if (tirage < 0.9) return "haut-bas";
+    if (tirage < 0.26) return "haut";
+    if (tirage < 0.46) return "chenillard";
+    if (tirage < 0.62) return "progression";
+    if (tirage < 0.76) return "haut-bas";
+    if (tirage < 0.88) return "comete";
     return "plein";
   }
   if (f.scene.role === "intro") return tirage < 0.45 ? "rail" : tirage < 0.75 ? "respiration" : "progression";
-  if (tirage < 0.24) return "rail";
-  if (tirage < 0.42) return "cote";
-  if (tirage < 0.58) return "respiration";
-  if (tirage < 0.72) return "progression";
-  if (tirage < 0.84) return "milieu";
-  return "vague";
+  if (tirage < 0.2) return "rail";
+  if (tirage < 0.36) return "cote";
+  if (tirage < 0.5) return "respiration";
+  if (tirage < 0.62) return "progression";
+  if (tirage < 0.72) return "milieu";
+  if (tirage < 0.82) return "vague";
+  if (tirage < 0.9) return "pluie";
+  return "comete";
 }
 
 /**
@@ -192,6 +206,7 @@ export function poidsMotif(
   view: TrackView,
   index: number,
   motif: MotifBordure = motifBordure(f, view),
+  budgetFlash = 1,
 ): number {
   const diode = positionBordure(index, f.width, f.height);
   const temps = tempsTempsFort(f, view);
@@ -260,6 +275,45 @@ export function poidsMotif(
       const position = index / NOMBRE_DIODES_BORDURE;
       return avecVeilleuse(0.5 + 0.5 * Math.sin(position * Math.PI * 4 - temps * 1.1));
     }
+    case "comete": {
+      // Une tête vive, une traînée qui s'éteint derrière elle. La tête est
+      // symétrique : la diode s'allume en douceur quand la comète l'approche,
+      // au lieu de sauter de 0 à 1 à son passage.
+      const tete = modulo(temps * 0.08, 1);
+      const position = index / NOMBRE_DIODES_BORDURE;
+      const d = modulo(position - tete + 0.5, 1) - 0.5;
+      const teteVive = Math.exp(-(d * d) / (2 * 0.06 * 0.06));
+      const queue = d < 0 ? Math.exp(d / 0.2) : 0;
+      return avecVeilleuse(Math.max(teteVive, queue));
+    }
+    case "vumetre": {
+      // Chaque bord est une barre : les basses en bas, les aigus en haut, les
+      // médiums sur les côtés.
+      const niveau =
+        diode.cote === "haut" ? f.high : diode.cote === "bas" ? f.bass : f.mid;
+      const front = clamp01(niveau);
+      return avecVeilleuse(1 - smoothstep(front - 0.04, front + 0.04, u));
+    }
+    case "pluie": {
+      // Des gouttes déterministes : chaque diode a sa phase et s'éteint vite.
+      const offset = hash01(index * 97 + f.seed);
+      const phase = modulo(temps * 0.2 + offset, 1);
+      return avecVeilleuse(Math.exp(-phase / 0.18));
+    }
+    case "scintillement": {
+      // Micro-éclats sur les aigus, par paliers de temps et par diode.
+      const etape = Math.floor(temps * 2);
+      const local = temps * 2 - etape;
+      const tirage = hash01(index * 131 + etape * 7919 + f.seed);
+      const eclat = tirage > 0.72 ? Math.exp(-local * 3) : 0;
+      return avecVeilleuse(eclat * clamp01(f.high));
+    }
+    case "strobe": {
+      // Strobe rapide, dosé par le budget de flashs. En mode réduit, le motif
+      // n'est jamais choisi.
+      const allumage = modulo(temps * 8, 1) < 0.5 ? 1 : 0;
+      return avecVeilleuse(allumage * clamp01(budgetFlash));
+    }
     case "plein":
       return 1;
     case "rail":
@@ -291,13 +345,13 @@ export function couleurBordure(f: FrameState, index: number): number {
  * suivant, la valeur est exactement continue (le motif sortant devient le motif
  * précédent, et le fondu repart de zéro).
  */
-function poidsCourant(f: FrameState, view: TrackView, index: number): number {
+function poidsCourant(f: FrameState, view: TrackView, index: number, budgetFlash = 1): number {
   const temps = tempsTempsFort(f, view);
   const bloc = Math.floor(temps / 8);
   const local = temps / 8 - bloc;
   const fondu = smoothstep(0, 0.12, local);
-  const avant = poidsMotif(f, view, index, motifPourBloc(f, bloc - 1));
-  const apres = poidsMotif(f, view, index, motifPourBloc(f, bloc));
+  const avant = poidsMotif(f, view, index, motifPourBloc(f, bloc - 1), budgetFlash);
+  const apres = poidsMotif(f, view, index, motifPourBloc(f, bloc), budgetFlash);
   return mix(avant, apres, fondu);
 }
 
@@ -377,7 +431,7 @@ export function intensiteBordure(
   budgetFlash = 1,
 ): number {
   const energie = clamp01(f.energy);
-  const poids = poidsCourant(f, view, index);
+  const poids = poidsCourant(f, view, index, budgetFlash);
   const rail = 0.03 + 0.08 * energie;
   const respiration = 0.85 + 0.15 * Math.sin(f.t * 1.1);
   const eclat = f.reduced ? 0 : clamp01(f.drop) * clamp01(budgetFlash) * 0.5;

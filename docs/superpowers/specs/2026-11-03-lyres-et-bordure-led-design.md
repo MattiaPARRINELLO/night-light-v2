@@ -101,6 +101,12 @@ Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
   - `haut-bas` : le bord haut se remplit de gauche à droite, puis le bord bas ;
   - `milieu` : la lumière part du centre de chaque bord et gagne les extrémités ;
   - `vague` : deux ondes courent le long du ruban ;
+  - `comete` : une tête vive avec une traînée qui s'éteint derrière ;
+  - `vumetre` : chaque bord est une barre, basses en bas, aigus en haut ;
+  - `pluie` : des gouttes déterministes s'allument puis s'éteignent ;
+  - `scintillement` : micro-éclats sur les aigus ;
+  - `strobe` : claquement rapide, dosé par le budget de flashs, jamais en mode
+    réduit ;
   - `plein` : tout s'allume, réservé aux impacts et aux passages très forts.
 - `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, bloc de
   temps forts, graine — jamais l'énergie courante, qui provoquerait du
