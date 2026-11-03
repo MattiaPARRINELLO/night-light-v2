@@ -216,7 +216,9 @@ de scène.
   clignoter la bande d'une image à l'autre autour d'un seuil. L'énergie ne
   module que l'intensité. Motifs : `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
-  `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
+  `plein`. Un `drop` n'est jamais un mur continu : ses blocs alternent entre
+  `plein`, `chenillard` et `alternance`, donc le bandeau s'éteint par endroits
+  même au plus fort. `poidsMotif` rend la
   part allumée de chaque diode, veilleuse comprise.
 - **Couleur** : `couleurBordure` donne **une seule teinte de fil** : la teinte
   de la scène, avec une ondulation périodique de 8° sur le pourtour (aucun
