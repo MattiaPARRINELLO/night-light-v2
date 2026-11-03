@@ -52,7 +52,14 @@ function modulo(value: number, total: number): number {
  * est calculée sur le petit côté : en portrait comme en paysage, la bordure
  * reste entièrement dans le cadre.
  */
-export function positionBordure(index: number, largeur: number, hauteur: number): DiodeBordure {
+/**
+ * Point du ruban à une position fractionnaire du périmètre.
+ *
+ * Les tronçons sont dessinés entre deux positions fractionnaires voisines
+ * (`index ± 0,55`) : ils se raccordent exactement, y compris dans les coins où
+ * le sens change. Un tronçon centré sur sa diode laissait un trou à chaque angle.
+ */
+function pointBordure(position: number, largeur: number, hauteur: number): DiodeBordure {
   const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
   const largeurUtile = Math.max(largeur - 2 * marge, 0);
   const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
@@ -61,22 +68,22 @@ export function positionBordure(index: number, largeur: number, hauteur: number)
     return { x: largeur / 2, y: hauteur / 2, angle: 0, cote: "haut" };
   }
 
-  const position = modulo(index, NOMBRE_DIODES_BORDURE) * (perimetre / NOMBRE_DIODES_BORDURE);
+  const p = modulo(position, NOMBRE_DIODES_BORDURE) * (perimetre / NOMBRE_DIODES_BORDURE);
 
-  if (position < largeurUtile) {
-    return { x: marge + position, y: marge, angle: 0, cote: "haut" };
+  if (p < largeurUtile) {
+    return { x: marge + p, y: marge, angle: 0, cote: "haut" };
   }
-  if (position < largeurUtile + hauteurUtile) {
+  if (p < largeurUtile + hauteurUtile) {
     return {
       x: largeur - marge,
-      y: marge + (position - largeurUtile),
+      y: marge + (p - largeurUtile),
       angle: Math.PI / 2,
       cote: "droite",
     };
   }
-  if (position < 2 * largeurUtile + hauteurUtile) {
+  if (p < 2 * largeurUtile + hauteurUtile) {
     return {
-      x: largeur - marge - (position - largeurUtile - hauteurUtile),
+      x: largeur - marge - (p - largeurUtile - hauteurUtile),
       y: hauteur - marge,
       angle: Math.PI,
       cote: "bas",
@@ -84,10 +91,21 @@ export function positionBordure(index: number, largeur: number, hauteur: number)
   }
   return {
     x: marge,
-    y: hauteur - marge - (position - 2 * largeurUtile - hauteurUtile),
+    y: hauteur - marge - (p - 2 * largeurUtile - hauteurUtile),
     angle: -Math.PI / 2,
     cote: "gauche",
   };
+}
+
+/**
+ * Position de la diode `index` sur le périmètre.
+ *
+ * Le parcours part du coin haut-gauche et tourne dans le sens horaire. La marge
+ * est calculée sur le petit côté : en portrait comme en paysage, la bordure
+ * reste entièrement dans le cadre.
+ */
+export function positionBordure(index: number, largeur: number, hauteur: number): DiodeBordure {
+  return pointBordure(index, largeur, hauteur);
 }
 
 /**
@@ -407,17 +425,17 @@ export function dessinerBordure(
   // espacées. Le tronçon assure la continuité, le point donne la granularité de
   // la bande réelle — sans redevenir un chapelet de points blancs.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
-  const perimetre = 2 * (w - 2 * marge + (h - 2 * marge));
-  const demi = Math.max(1.4, (perimetre / NOMBRE_DIODES_BORDURE) * 0.55);
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
-    const { x, y, angle } = positionBordure(index, w, h);
+    const { x, y } = positionBordure(index, w, h);
     const couleur = teinteBordure(f, view, index, budgetFlash);
     // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
     const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
-    const dx = Math.cos(angle) * demi;
-    const dy = Math.sin(angle) * demi;
+    // Tronçon entre deux positions fractionnaires : les morceaux se raccordent
+    // exactement, coins compris.
+    const debut = pointBordure(index - 0.6, w, h);
+    const fin = pointBordure(index + 0.6, w, h);
 
     ctx.strokeStyle = paint(
       couleur.hue,
@@ -427,8 +445,8 @@ export function dessinerBordure(
     );
     ctx.lineWidth = tube * (0.45 + 0.75 * intensite);
     ctx.beginPath();
-    ctx.moveTo(x - dx, y - dy);
-    ctx.lineTo(x + dx, y + dy);
+    ctx.moveTo(debut.x, debut.y);
+    ctx.lineTo(fin.x, fin.y);
     ctx.stroke();
 
     // Halo de la diode (diffusion dans le tube).
