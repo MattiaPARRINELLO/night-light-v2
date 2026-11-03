@@ -6,6 +6,7 @@ import {
   dessinerBordure,
   intensiteBordure,
   motifBordure,
+  moyenneBordure,
   NOMBRE_DIODES_BORDURE,
   poidsMotif,
   positionBordure,
@@ -410,5 +411,38 @@ describe("sensibilité du blinder de ruban", () => {
     const view = new TrackView(analysis());
     const montee = frame("montee", 12, { energy: 0.8, build: 0.35 });
     expect(blinderBordure(montee, view, 0)).toBeGreaterThan(0.4);
+  });
+});
+
+describe("visibilité des motifs", () => {
+  test("la respiration fait respirer le corps du ruban", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.8 });
+    const moyenne = (t: number) => {
+      const etat = { ...f, t };
+      let total = 0;
+      for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 30) {
+        total += poidsMotif(etat, view, index, "respiration");
+      }
+      return total / 8;
+    };
+    const valeurs: number[] = [];
+    for (let t = 0; t < 20; t += 0.5) valeurs.push(moyenne(t));
+    expect(Math.max(...valeurs) - Math.min(...valeurs)).toBeGreaterThan(0.1);
+  });
+
+  test("le chenillard laisse des zones très sombres et très vives", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12, { energy: 0.8 });
+    const poids = Array.from({ length: NOMBRE_DIODES_BORDURE }, (_, index) =>
+      poidsMotif(f, view, index, "chenillard"),
+    );
+    expect(Math.max(...poids) - Math.min(...poids)).toBeGreaterThan(0.4);
+  });
+
+  test("le plein éclaire tout le corps", () => {
+    const view = new TrackView(analysis());
+    const f = frame("drop", 12, { energy: 0.9 });
+    expect(moyenneBordure(f, view)).toBeCloseTo(1, 2);
   });
 });

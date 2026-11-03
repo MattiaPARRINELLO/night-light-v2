@@ -303,6 +303,26 @@ export function intensiteBordure(
 }
 
 /**
+ * Luminosité d'ensemble du ruban, 0..1.
+ *
+ * Moyenne du poids des diodes sur le pourtour : c'est elle qui fait respirer le
+ * tube diffuseur et le cœur du fil. Sans elle, un tracé constant écraserait les
+ * motifs — un chenillard ou une respiration deviendraient invisibles.
+ */
+export function moyenneBordure(f: FrameState, view: TrackView): number {
+  const echantillons = 8;
+  let total = 0;
+  for (let index = 0; index < echantillons; index += 1) {
+    total += poidsCourant(
+      f,
+      view,
+      Math.floor((index * NOMBRE_DIODES_BORDURE) / echantillons),
+    );
+  }
+  return total / echantillons;
+}
+
+/**
  * Dessine le ruban : un fil continu, puis les diodes qui le composent.
  *
  * Le fil est toujours là — deux traits (halo extérieur, cœur) — et les diodes
@@ -333,6 +353,9 @@ export function dessinerBordure(
   };
 
   const tube = Math.max(3, petitCote * 0.006);
+  // Le corps du ruban suit la moyenne du motif : le tube respire, et un
+  // chenillard laisse réellement des zones plus sombres sur le pourtour.
+  const eclairage = 0.25 + 0.75 * moyenneBordure(f, view);
 
   // 1. Bloom : trois passes de plus en plus larges et de plus en plus faibles.
   // C'est la lumière que le ruban jette sur le cadre et dans la salle.
@@ -346,19 +369,24 @@ export function dessinerBordure(
       fil.hue,
       fil.saturation * 0.7,
       0.55,
-      alpha * (0.5 + 0.9 * energie),
+      alpha * (0.35 + 0.65 * eclairage) * (0.7 + 0.6 * energie),
     );
     ctx.lineWidth = tube * facteur;
     traceRuban();
   }
 
   // 2. Tube diffuseur : le plastique laiteux qui rend la bande continue.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.85, 0.72, 0.35 + 0.3 * energie);
+  ctx.strokeStyle = paint(
+    fil.hue,
+    fil.saturation * 0.85,
+    0.72,
+    (0.1 + 0.2 * energie) * eclairage,
+  );
   ctx.lineWidth = tube;
   traceRuban();
 
   // 3. Cœur du tube, plus fin et plus clair.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, 0.35 + 0.35 * energie);
+  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.85, (0.12 + 0.22 * energie) * eclairage);
   ctx.lineWidth = tube * 0.45;
   traceRuban();
 
@@ -382,17 +410,17 @@ export function dessinerBordure(
       couleur.hue,
       couleur.saturation,
       couleur.lightness,
-      (0.16 + 0.55 * intensite) * variation,
+      (0.04 + 0.96 * intensite) * variation,
     );
-    ctx.lineWidth = tube * 0.5 * (0.8 + 0.5 * intensite);
+    ctx.lineWidth = tube * (0.45 + 0.75 * intensite);
     ctx.beginPath();
     ctx.moveTo(x - dx, y - dy);
     ctx.lineTo(x + dx, y + dy);
     ctx.stroke();
 
     // Halo de la diode (diffusion dans le tube).
-    const rayon = tube * 0.18 * (0.8 + 0.6 * intensite) * variation;
-    ctx.fillStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.62, 0.14 * intensite);
+    const rayon = tube * 0.22 * (0.5 + intensite) * variation;
+    ctx.fillStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.62, 0.25 * intensite);
     ctx.beginPath();
     ctx.arc(x, y, rayon * 2.6, 0, Math.PI * 2);
     ctx.fill();
@@ -402,7 +430,7 @@ export function dessinerBordure(
       couleur.hue,
       couleur.saturation,
       0.68 + 0.17 * intensite,
-      clamp01(0.35 + 0.65 * intensite),
+      clamp01(0.2 + 0.8 * intensite),
     );
     ctx.beginPath();
     ctx.arc(x, y, rayon, 0, Math.PI * 2);

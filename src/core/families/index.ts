@@ -19,6 +19,7 @@ export {
   dessinerBordure,
   intensiteBordure,
   motifBordure,
+  moyenneBordure,
   NOMBRE_DIODES_BORDURE,
   poidsMotif,
   positionBordure,
