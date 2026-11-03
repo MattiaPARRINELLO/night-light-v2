@@ -201,8 +201,9 @@ de scène.
   (`haut`, `bas`, `gauche`, `droite`). Le dessin échantillonne ce ruban selon la
   qualité (une diode sur 1, 2 ou 3) sans déplacer les positions.
 - **Fil continu** : le ruban est toujours visible — un halo extérieur, un cœur
-  de trait, puis les diodes. Même au silence, chaque diode garde une veilleuse
-  (`poidsMotif ≥ 0,3`), donc la bordure ne s'éteint jamais complètement.
+  de trait, puis des tronçons qui portent l'intensité du motif. Aucun point
+  blanc : le rendu reste un trait. Même au silence, chaque tronçon garde une
+  veilleuse (`poidsMotif ≥ 0,3`), donc la bordure ne s'éteint jamais.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
   rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
@@ -215,11 +216,13 @@ de scène.
 - **Blinder de couleur** : le ruban sert aussi de barre de blinders. Sur un
   impact (drop, refrain, finale, fin de montée), `blinderBordure` reprend
   l'inertie du filament (`intensiteBlinder`, décalage par bloc, budget de
-  flashs) et ajoute son éclat à l'intensité. Il reste **de la couleur de la
+  flashs) et ajoute son éclat à l'intensité. Il est plus sensible que la barre
+  tungstène : drop, refrain, finale, fin de montée et couplet énergique
+  (énergie > 0,55), avec un gain de 1,2. Il reste **de la couleur de la
   scène** : pas de tungstène, seulement plus de saturation et de luminosité.
   Jamais en mode réduit.
 - **Intensité** : rail permanent, part du motif modulée par la respiration,
   éclat d'impact et blinder de couleur dosés par `settings.flashes`.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
-- **Coût** : deux traits pour le fil, un remplissage par diode échantillonnée,
+- **Coût** : deux traits pour le fil, un tronçon tracé par diode échantillonnée,
   aucune transformation ni dégradé radial par diode.

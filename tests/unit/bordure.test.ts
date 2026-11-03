@@ -277,7 +277,7 @@ describe("dessin de la bordure", () => {
     dessinerBordure(premier.ctx, f, view, 1);
     const second = fakeContext();
     dessinerBordure(second.ctx, f, view, 1);
-    expect(premier.operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
+    expect(premier.operations.filter((op) => op === "stroke").length).toBeGreaterThan(0);
     expect(second.operations).toEqual(premier.operations);
   });
 
@@ -286,7 +286,7 @@ describe("dessin de la bordure", () => {
     const f = frame("drop", 12, { energy: 1, drop: 1, beat: 1, reduced: true });
     const { ctx, operations } = fakeContext();
     dessinerBordure(ctx, f, view, 1);
-    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
+    expect(operations.filter((op) => op === "stroke").length).toBeGreaterThan(0);
   });
 });
 
@@ -336,7 +336,7 @@ describe("densité du ruban", () => {
     const f = frame("couplet", 12, { energy: 0.05 });
     const { ctx, operations } = fakeContext();
     dessinerBordure(ctx, f, view, 1);
-    expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(
+    expect(operations.filter((op) => op === "stroke").length).toBeGreaterThan(
       NOMBRE_DIODES_BORDURE * 0.5,
     );
   });
@@ -383,5 +383,21 @@ describe("le ruban sert aussi de blinders", () => {
     expect(Math.abs(eclat.hue - calme.hue)).toBeLessThan(2);
     expect(eclat.saturation).toBeGreaterThan(calme.saturation);
     expect(eclat.lightness).toBeGreaterThan(calme.lightness);
+  });
+});
+
+describe("sensibilité du blinder de ruban", () => {
+  test("un couplet énergique déclenche le blinder, un couplet calme non", () => {
+    const view = new TrackView(analysis());
+    const fort = frame("couplet", 12, { energy: 0.8, bass: 0.9 });
+    const calme = frame("couplet", 12, { energy: 0.3, bass: 0.9 });
+    expect(blinderBordure(fort, view, 0)).toBeGreaterThan(0.4);
+    expect(blinderBordure(calme, view, 0)).toBe(0);
+  });
+
+  test("une montée déclenche plus tôt", () => {
+    const view = new TrackView(analysis());
+    const montee = frame("montee", 12, { energy: 0.8, build: 0.35 });
+    expect(blinderBordure(montee, view, 0)).toBeGreaterThan(0.4);
   });
 });

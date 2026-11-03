@@ -241,9 +241,12 @@ export function blinderBordure(
     role === "drop" ||
     role === "refrain" ||
     role === "finale" ||
-    (role === "montee" && clamp01(f.build) > 0.4);
+    (role === "montee" && clamp01(f.build) > 0.25) ||
+    (role === "couplet" && clamp01(f.energy) > 0.55);
   if (!autorise) return 0;
-  return clamp01(intensiteBlinder(f, view, index % 12) * clamp01(budgetFlash));
+  // Léger gain : le ruban réagit plus tôt que la barre tungstène, qui reste la
+  // source principale quand elle est présente.
+  return clamp01(intensiteBlinder(f, view, index % 12) * 1.2 * clamp01(budgetFlash));
 }
 
 /**
@@ -335,18 +338,30 @@ export function dessinerBordure(
   ctx.lineWidth = Math.max(2.5, petitCote * 0.005);
   traceRuban();
 
-  // Diodes : on garde les positions de la grille complète, mais on n'en dessine
-  // qu'une sur `pas` selon la qualité — l'écart ne bouge donc jamais.
+  // Le ruban est un trait continu, pas une file de points : chaque tronçon
+  // porte l'intensité de sa position dans le motif, sans cœur blanc.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
-  const base = Math.max(1.8, petitCote * 0.0032);
+  const perimetre = 2 * (w - 2 * marge + (h - 2 * marge));
+  // Longueur fixe par diode (sans le pas) : les positions restent identiques
+  // quand la qualité change, comme pour toutes les autres familles.
+  const demi = Math.max(1.4, (perimetre / NOMBRE_DIODES_BORDURE) * 0.55);
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
-    const { x, y } = positionBordure(index, w, h);
+    const { x, y, angle } = positionBordure(index, w, h);
     const couleur = teinteBordure(f, view, index, budgetFlash);
+    const dx = Math.cos(angle) * demi;
+    const dy = Math.sin(angle) * demi;
 
-    ctx.fillStyle = paint(couleur.hue, couleur.saturation, couleur.lightness, 0.35 + 0.65 * intensite);
+    ctx.strokeStyle = paint(
+      couleur.hue,
+      couleur.saturation,
+      couleur.lightness,
+      0.25 + 0.6 * intensite,
+    );
+    ctx.lineWidth = Math.max(2.5, petitCote * 0.005) * (0.7 + 0.6 * intensite);
     ctx.beginPath();
-    ctx.arc(x, y, base * (0.8 + 0.6 * intensite), 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(x - dx, y - dy);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
   }
 }
