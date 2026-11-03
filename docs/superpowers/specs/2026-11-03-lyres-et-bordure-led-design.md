@@ -98,8 +98,9 @@ Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
   - `chenillard` : un segment lumineux court le long du périmètre ;
   - `respiration` : tout le pourtour pulse lentement ensemble ;
   - `plein` : tout s'allume, réservé aux impacts et aux passages très forts.
-- `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, énergie,
-  bloc de temps forts, graine) ; `poidsMotif(f, view, index, motif)` donne la
+- `motifBordure(f, view)` choisit le motif de façon déterministe (rôle, bloc de
+  temps forts, graine — jamais l'énergie courante, qui provoquerait du
+  clignotement autour des seuils) ; `poidsMotif(f, view, index, motif)` donne la
   part allumée de chaque diode. Un changement de motif est fondu sur quelques
   dixièmes de seconde, jamais un interrupteur.
 - `intensiteBordure(f, view, index, budgetFlash)` combine le poids du motif, un

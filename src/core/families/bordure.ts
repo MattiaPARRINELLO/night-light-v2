@@ -97,8 +97,10 @@ export function positionBordure(index: number, largeur: number, hauteur: number)
  * pour ne jamais faire courir un point lumineux.
  */
 function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
-  const energie = clamp01(f.energy);
-  if (f.reduced) return energie > 0.5 ? "respiration" : "rail";
+  // Le motif ne dépend QUE du bloc et du rôle : jamais de l'énergie courante,
+  // qui oscille et ferait clignoter la bande d'une image à l'autre autour d'un
+  // seuil. L'énergie ne module que l'intensité, pas le choix du motif.
+  if (f.reduced) return "respiration";
   if (f.scene.role === "drop") return "plein";
   const tirage = hash01(bloc * 7919 + f.seed + f.scene.index * 131);
 
@@ -109,12 +111,14 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return "plein";
   }
   if (f.scene.role === "montee") {
-    if (clamp01(f.build) > 0.6) return "plein";
-    return tirage < 0.5 ? "haut" : "chenillard";
+    if (tirage < 0.5) return "haut";
+    if (tirage < 0.8) return "chenillard";
+    return "plein";
   }
-  if (energie < 0.3) return "rail";
-  if (energie > 0.75) return tirage < 0.5 ? "plein" : "chenillard";
-  return tirage < 0.4 ? "cote" : tirage < 0.7 ? "respiration" : "rail";
+  if (f.scene.role === "intro") return tirage < 0.6 ? "rail" : "respiration";
+  if (tirage < 0.35) return "rail";
+  if (tirage < 0.7) return "cote";
+  return "respiration";
 }
 
 /**
@@ -237,8 +241,12 @@ export function blinderBordure(
   budgetFlash = 1,
 ): number {
   if (f.reduced) return 0;
-  // Petit blinder : un pulse bref sur chaque beat, présent même hors impact.
-  const petit = clamp01(f.beat) * clamp01(budgetFlash) * (0.3 + 0.4 * clamp01(f.bass));
+  // Petit blinder : un pulse bref sur chaque beat, avec une attaque douce de
+  // ~60 ms. Sans elle, la diode passait de 0 au maximum en une seule image — un
+  // clignotement, pas un blinder.
+  const attaque = smoothstep(0, 0.06, Number.isFinite(f.beatAge) ? f.beatAge : 1);
+  const petit =
+    clamp01(f.beat) * attaque * clamp01(budgetFlash) * (0.18 + 0.25 * clamp01(f.bass));
   // Gros blinder : le ruban prend le relais sur les moments qui le méritent.
   const role = f.scene.role;
   const autorise =
@@ -247,8 +255,13 @@ export function blinderBordure(
     role === "finale" ||
     (role === "montee" && clamp01(f.build) > 0.25) ||
     (role === "couplet" && clamp01(f.energy) > 0.55);
+  const ageImpact = Math.min(
+    Number.isFinite(f.beatAge) ? f.beatAge : Infinity,
+    Number.isFinite(f.dropAge) ? f.dropAge : Infinity,
+  );
+  const attaqueImpact = Number.isFinite(ageImpact) ? smoothstep(0, 0.05, ageImpact) : 1;
   const impact = autorise
-    ? intensiteBlinder(f, view, index % 12) * 1.2 * clamp01(budgetFlash)
+    ? intensiteBlinder(f, view, index % 12) * 1.2 * clamp01(budgetFlash) * attaqueImpact
     : 0;
   return clamp01(Math.max(petit, impact));
 }

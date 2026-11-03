@@ -130,7 +130,7 @@ describe("intensité de la bordure", () => {
     for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
       const valeur = intensiteBordure(calme, view, index);
       expect(valeur).toBeGreaterThan(0.05);
-      expect(valeur).toBeLessThan(0.15);
+      expect(valeur).toBeLessThan(0.35);
     }
     expect(intensiteBordure(impact, view, 0)).toBeGreaterThan(intensiteBordure(calme, view, 0));
   });
@@ -393,12 +393,15 @@ describe("le ruban sert aussi de blinders", () => {
 });
 
 describe("sensibilité du blinder de ruban", () => {
-  test("un petit blinder pulse sur chaque beat", () => {
+  test("un petit blinder pulse sur chaque beat, avec une attaque douce", () => {
     const view = new TrackView(analysis());
     const surBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0.9 });
     const horsBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0 });
+    const debut = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0.9, beatAge: 0 });
     expect(blinderBordure(surBeat, view, 0)).toBeGreaterThan(0.25);
     expect(blinderBordure(horsBeat, view, 0)).toBe(0);
+    // Pas de saut d'une image : l'attaque part de zéro.
+    expect(blinderBordure(debut, view, 0)).toBe(0);
   });
 
   test("un couplet énergique déclenche aussi le gros blinder", () => {
@@ -444,5 +447,31 @@ describe("visibilité des motifs", () => {
     const view = new TrackView(analysis());
     const f = frame("drop", 12, { energy: 0.9 });
     expect(moyenneBordure(f, view)).toBeCloseTo(1, 2);
+  });
+});
+
+describe("stabilité du motif", () => {
+  test("l'énergie qui oscille autour d'un seuil ne fait pas clignoter le motif", () => {
+    const view = new TrackView(analysis());
+    const base = frame("couplet", 12, { energy: 0.3 });
+    const motifs = new Set<string>();
+    for (let i = 0; i < 40; i += 1) {
+      const energie = 0.28 + (i % 2) * 0.04;
+      motifs.add(motifBordure({ ...base, energy: energie }, view));
+    }
+    expect(motifs.size).toBe(1);
+    expect(moyenneBordure({ ...base, energy: 0.28 }, view)).toBe(
+      moyenneBordure({ ...base, energy: 0.32 }, view),
+    );
+  });
+});
+
+describe("attaque du gros blinder", () => {
+  test("l'éclat monte en ~50 ms au lieu de sauter d'une image", () => {
+    const view = new TrackView(analysis());
+    const base = frame("drop", 12, { energy: 0.9, bass: 0.9, beatAge: 0.05, dropAge: 0.05 });
+    const debut = frame("drop", 12, { energy: 0.9, bass: 0.9, beatAge: 0, dropAge: 0 });
+    expect(blinderBordure(base, view, 0)).toBeGreaterThan(0.4);
+    expect(blinderBordure(debut, view, 0)).toBe(0);
   });
 });

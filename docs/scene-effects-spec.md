@@ -211,7 +211,9 @@ de scène.
   chaque tronçon garde une veilleuse (`poidsMotif ≥ 0,3`), donc la bordure ne
   s'éteint jamais.
 - **Motif** : `motifBordure` choisit par blocs de 8 temps forts, à partir du
-  rôle, de l'énergie et de la graine — `rail`, `haut`, `cote`, `alternance`
+  rôle et de la graine — **jamais de l'énergie courante**, qui oscille et ferait
+  clignoter la bande d'une image à l'autre autour d'un seuil. L'énergie ne
+  module que l'intensité. Motifs : `rail`, `haut`, `cote`, `alternance`
   (un côté puis l'autre toutes les 4 pulsations), `chenillard`, `respiration`,
   `plein` (réservé aux impacts et aux passages très forts). `poidsMotif` rend la
   part allumée de chaque diode, veilleuse comprise.
@@ -222,7 +224,9 @@ de scène.
 - **Blinder de couleur** : le ruban sert aussi de barre de blinders. Sur un
   impact (drop, refrain, finale, fin de montée), `blinderBordure` reprend
   l'inertie du filament (`intensiteBlinder`, décalage par bloc, budget de
-  flashs) et ajoute son éclat à l'intensité. Un **petit blinder** pulse en plus
+  flashs) et ajoute son éclat à l'intensité. Attaque lissée sur ~50 ms (petit
+  comme gros blinder), pour qu'aucune diode ne passe de 0 au maximum en une
+  seule image. Un **petit blinder** pulse en plus
   sur chaque beat (`f.beat × (0,3 + 0,4 × basse)`), léger et présent même hors
   impact ; le gros éclat prend le maximum des deux. Il est plus sensible que la barre
   tungstène : drop, refrain, finale, fin de montée et couplet énergique
