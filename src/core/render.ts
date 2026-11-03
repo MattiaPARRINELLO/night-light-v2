@@ -808,15 +808,22 @@ export function renderFrame(input: RenderInput): void {
       { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) },
       { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) },
     ];
+    // Le flou de chaque nappe coûte à lui seul plusieurs millisecondes par image
+    // (le filtre est synchrone, contrairement aux remplissages). La fumée se
+    // déplace lentement et le flou est déjà une moyenne : le rafraîchir une
+    // image sur deux ne se voit pas, et divise son coût par deux.
+    const refresh = frame % 2 === 0;
     for (const { nappe, rayon } of nappes) {
       if (!nappe.used) continue;
-      nappe.blurPass.setTransform(1, 0, 0, 1, 0, 0);
-      nappe.blurPass.globalCompositeOperation = "source-over";
-      nappe.blurPass.globalAlpha = 1;
-      nappe.blurPass.clearRect(0, 0, nappe.blurPass.canvas.width, nappe.blurPass.canvas.height);
-      nappe.blurPass.filter = `blur(${(rayon * nappe.scale).toFixed(2)}px)`;
-      nappe.blurPass.drawImage(nappe.ctx.canvas, 0, 0);
-      nappe.blurPass.filter = "none";
+      if (refresh) {
+        nappe.blurPass.setTransform(1, 0, 0, 1, 0, 0);
+        nappe.blurPass.globalCompositeOperation = "source-over";
+        nappe.blurPass.globalAlpha = 1;
+        nappe.blurPass.clearRect(0, 0, nappe.blurPass.canvas.width, nappe.blurPass.canvas.height);
+        nappe.blurPass.filter = `blur(${(rayon * nappe.scale).toFixed(2)}px)`;
+        nappe.blurPass.drawImage(nappe.ctx.canvas, 0, 0);
+        nappe.blurPass.filter = "none";
+      }
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 1;
       ctx.drawImage(nappe.blurPass.canvas, 0, 0, width, height);

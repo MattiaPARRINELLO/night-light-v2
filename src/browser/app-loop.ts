@@ -95,8 +95,8 @@ export function installLoop(Target: { prototype: App }): void {
     }
     // La nappe fine garde plus de résolution : un trait de sept pixels au
     // dixième de sa taille n'existe plus.
-    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.6 : 0.45, width, height);
-    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.5 : quality >= 0.6 ? 0.4 : 0.32, width, height);
+    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.5 : 0.4, width, height);
+    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.42 : quality >= 0.6 ? 0.36 : 0.3, width, height);
     return this.haze;
   };
 
@@ -115,14 +115,6 @@ export function installLoop(Target: { prototype: App }): void {
         const instant = 1000 / delta;
         this.fps += (instant - this.fps) * 0.06;
         this.updateQuality();
-        // La résolution du canvas dépend de la qualité : sans ce rappel, un
-        // passage sous la barre des 0,5 ne changerait jamais le dpr et le
-        // spectacle continuerait à rendre en haute résolution alors qu'il rame.
-        const band = this.quality < 0.5;
-        if (band !== this.qualityBand) {
-          this.qualityBand = band;
-          this.resize();
-        }
       }
       this.tick();
     };
@@ -151,12 +143,17 @@ export function installLoop(Target: { prototype: App }): void {
     if (wanted < this.quality && this.fps < 30) {
       this.quality = wanted;
       this.qualityHold = 0;
+      this.resize();
       return;
     }
     this.qualityHold += 1;
     if (this.qualityHold < QUALITY_HOLD_FRAMES) return;
     this.quality = wanted;
     this.qualityHold = 0;
+    // La résolution suit désormais chaque palier (pas seulement le passage sous
+    // 0,5) : c'est ce couplage qui évite de rendre en pleine résolution alors
+    // que la machine vient de descendre d'un cran.
+    this.resize();
   };
 
   Target.prototype.stopLoop = function (this: App): void {

@@ -7,7 +7,7 @@ import type { App } from "./app";
 import { dbgThrottled } from "../core/debug";
 import { normalizeLiveLevels, smoothLiveFeatures } from "../core/liveAudio";
 import { renderFrame } from "../core/render";
-import { clamp01, quantizeQuality } from "../core/series";
+import { quantizeQuality } from "../core/series";
 import { TrackView } from "../core/view";
 import { num } from "./format";
 import { el } from "./ui";
@@ -18,7 +18,6 @@ declare module "./app" {
     bindLiveCapture(): void;
     openExternalCapture(): void;
     closeExternalCapture(): void;
-    startLiveRender(): void;
     stopLiveRender(): void;
     ensureLiveView(): Promise<void>;
     startLiveMode(): Promise<void>;
@@ -31,53 +30,14 @@ declare module "./app" {
 }
 
 export function installLive(Target: { prototype: App }): void {
-  Target.prototype.startLiveRender = function (this: App): void {
-    this.stopLiveRender();
-    const canvas = el<HTMLCanvasElement>("live-stage");
-    canvas.hidden = false;
-    const context = canvas.getContext("2d");
-    if (context === null) return;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    const loop = () => {
-      this.liveRaf = requestAnimationFrame(loop);
-      if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) resize();
-      const w = canvas.width;
-      const h = canvas.height;
-      context.fillStyle = "rgba(0,0,0,0.18)";
-      context.fillRect(0, 0, w, h);
-      const rms = clamp01(Number(this.liveLevels.rms ?? 0));
-      const energy = clamp01(Number(this.liveLevels.energy ?? rms));
-      const bass = clamp01(Number(this.liveLevels.bass ?? 0.33));
-      const mid = clamp01(Number(this.liveLevels.mid ?? 0.33));
-      const high = clamp01(Number(this.liveLevels.high ?? 0.34));
-      const transient = clamp01(Number(this.liveLevels.transient ?? 0));
-      const bars = 48;
-      for (let i = 0; i < bars; i++) {
-        const section = i / bars;
-        const tone = section < 0.33 ? bass : section < 0.66 ? mid : high;
-        const barHeight = h * (0.08 + tone * 0.75 * energy) * (1 + transient * 0.35);
-        const x = (i / bars) * w;
-        const bw = w / bars - 4;
-        context.fillStyle = `hsla(${200 + section * 120}, 80%, ${55 + tone * 35}%, ${0.5 + energy * 0.35})`;
-        context.fillRect(x + 2, h - barHeight, bw, barHeight);
-      }
-      // Pulse central modulé par les basses.
-      const radius = h * (0.08 + bass * 0.35 * energy);
-      const gradient = context.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, radius);
-      gradient.addColorStop(0, `rgba(255,255,255,${0.1 + transient * 0.25})`);
-      gradient.addColorStop(1, "rgba(0,0,0,0)");
-      context.fillStyle = gradient;
-      context.beginPath();
-      context.arc(w / 2, h / 2, radius, 0, Math.PI * 2);
-      context.fill();
-    };
-    loop();
-  };
+  /** Cadence de l'ambiance de l'écran de dépôt : 30 img/s, largement assez. */
+  const AMBIENT_FRAME_MS = 1000 / 30;
+
+  // Le visualiseur en barres qui peignait autrefois `#live-stage` a été retiré :
+  // sa toile est peinte SOUS `#stage`, qu'un contexte opaque repeint
+  // intégralement à chaque image. Il dessinait donc 48 barres et un dégradé
+  // plein écran par image sans qu'un pixel n'atteigne l'écran — un second
+  // spectacle invisible tournait pendant toute la capture.
 
   Target.prototype.stopLiveRender = function (this: App): void {
     if (this.liveRaf !== 0) cancelAnimationFrame(this.liveRaf);
@@ -165,10 +125,9 @@ export function installLive(Target: { prototype: App }): void {
     this.liveCapture = source;
     btn.textContent = "Arrêter la capture";
     level.textContent = "Capture en cours…";
-    // Le visualiseur en barres n'a de sens qu'en mode live : pendant un show,
-    // il se superposerait au spectacle. La capture, elle, doit continuer —
-    // l'audio vient du lecteur externe, pas du navigateur, donc pas de boucle.
-    if (this.liveMode) this.startLiveRender();
+    // Aucun visualiseur n'est ouvert ici : voir la note de `stopLiveRender`.
+    // La capture doit vivre même pendant un show — l'audio vient du lecteur
+    // externe, pas du navigateur, donc pas de boucle.
   };
 
   Target.prototype.closeExternalCapture = function (this: App): void {
@@ -235,6 +194,7 @@ export function installLive(Target: { prototype: App }): void {
   Target.prototype.startLiveMode = async function (this: App): Promise<void> {
     this.liveMode = true;
     this.liveTimeStart = performance.now();
+    this.resize();
     this.debugSync.phase = "LIVE";
     this.debugSync.match = "";
     this.debugSync.attempts = 0;
@@ -253,6 +213,11 @@ export function installLive(Target: { prototype: App }): void {
   Target.prototype.startLiveLoop = function (this: App): void {
     if (this.liveMainRaf !== 0) return;
     this.liveLastTs = 0;
+    // L'écran de dépôt ne montre que l'ambiance derrière son panneau : le
+    // spectacle y était rendu à pleine cadence pour rien, et c'était la première
+    // cause de saccade perçue au démarrage.
+    const dropScreen = document.getElementById("screen-drop");
+    let lastDraw = 0;
     const loop = (timestamp: number): void => {
       this.liveMainRaf = requestAnimationFrame(loop);
       if (!this.liveMode) return;
@@ -262,6 +227,9 @@ export function installLive(Target: { prototype: App }): void {
       }
       const delta = timestamp - this.liveLastTs;
       this.liveLastTs = timestamp;
+      // Le fps se mesure sur les rafraîchissements, pas sur les images
+      // effectivement dessinées : sinon le bridage de l'ambiance ferait croire à
+      // une machine à la peine et la qualité s'effondrerait pour rien.
       if (delta > 0) {
         const instant = 1000 / delta;
         this.liveFps += (instant - this.liveFps) * 0.06;
@@ -272,9 +240,14 @@ export function installLive(Target: { prototype: App }): void {
           if (this.liveQualityHold >= 24) {
             this.liveQuality = wanted;
             this.liveQualityHold = 0;
+            this.resize();
           }
         }
       }
+      if (document.hidden) return;
+      const ambient = dropScreen?.classList.contains("is-active") ?? false;
+      if (ambient && timestamp - lastDraw < AMBIENT_FRAME_MS) return;
+      lastDraw = timestamp;
       this.tickLive();
     };
     this.liveMainRaf = requestAnimationFrame(loop);
