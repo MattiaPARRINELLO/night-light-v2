@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  blinderBordure,
   couleurBordure,
   dessinerBordure,
   intensiteBordure,
@@ -8,6 +9,7 @@ import {
   NOMBRE_DIODES_BORDURE,
   poidsMotif,
   positionBordure,
+  teinteBordure,
   type MotifBordure,
 } from "../../src/core/families";
 import { fakeContext } from "../support/fake_canvas";
@@ -293,12 +295,14 @@ describe("transitions et mode réduit de la bordure", () => {
     const view = new TrackView(analysis());
     for (const role of ["refrain", "couplet", "montee"] as const) {
       const base = frame(role, 10, { energy: 0.8 });
-      let precedent = intensiteBordure(base, view, 0);
+      // Budget 0 : on teste la continuité du ruban seul, pas les éclats de blinder.
+      let precedent = intensiteBordure(base, view, 0, 0);
       let sautMax = 0;
       for (let t = 10 + 1 / 60; t < 30; t += 1 / 60) {
         const courant = intensiteBordure(
           { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
           view,
+          0,
           0,
         );
         sautMax = Math.max(sautMax, Math.abs(courant - precedent));
@@ -335,5 +339,49 @@ describe("densité du ruban", () => {
     expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(
       NOMBRE_DIODES_BORDURE * 0.5,
     );
+  });
+});
+
+describe("le ruban sert aussi de blinders", () => {
+  test("un impact allume le ruban comme un filament, avec inertie", () => {
+    const vue = new TrackView(
+      analysis({
+        beats: [],
+        bass: [
+          [0, 0.1],
+          [120, 0.1],
+        ],
+        builds: [{ start: 10, end: 12, strength: 1 }],
+      }),
+    );
+    const impact = frame("drop", 12, { energy: 0.9 });
+    const debut = blinderBordure(impact, vue, 0);
+    const milieu = blinderBordure({ ...impact, t: 12.11 }, vue, 0);
+    const fin = blinderBordure({ ...impact, t: 14.5 }, vue, 0);
+    expect(debut).toBeGreaterThan(0.5);
+    expect(milieu).toBeLessThan(debut);
+    expect(fin).toBeLessThan(0.01);
+  });
+
+  test("budget de flash nul et mode réduit éteignent le blinder", () => {
+    const view = new TrackView(analysis());
+    const impact = frame("drop", 12, { energy: 0.9, bass: 0.9 });
+    expect(blinderBordure(impact, view, 0, 0)).toBe(0);
+    expect(blinderBordure({ ...impact, reduced: true }, view, 0)).toBe(0);
+  });
+
+  test("le blinder du ruban est de couleur, pas tungstène", () => {
+    const view = new TrackView(analysis());
+    const impact = frame("drop", 12, { energy: 0.9, bass: 0.9 });
+    const eclat = teinteBordure(impact, view, 0);
+    const calme = teinteBordure(
+      frame("couplet", 12, { energy: 0.1, bass: 0, drop: 0 }),
+      view,
+      0,
+    );
+    // Même teinte de scène, seulement plus saturée et plus lumineuse.
+    expect(Math.abs(eclat.hue - calme.hue)).toBeLessThan(2);
+    expect(eclat.saturation).toBeGreaterThan(calme.saturation);
+    expect(eclat.lightness).toBeGreaterThan(calme.lightness);
   });
 });

@@ -1,7 +1,7 @@
 import { shiftHue } from "../color";
 import { clamp01, hash01, mix, smoothstep } from "../series";
 import type { TrackView } from "../view";
-import { tempsTempsFort } from "./concert-rig";
+import { tempsTempsFort, intensiteBlinder } from "./concert-rig";
 import type { FrameState } from "./types";
 import { paint } from "./util";
 
@@ -220,12 +220,60 @@ function poidsCourant(f: FrameState, view: TrackView, index: number): number {
 }
 
 /**
+ * Part de blinder du ruban.
+ *
+ * Le ruban n'est pas qu'un décor : il sert aussi de barre de blinders. Sur un
+ * impact, il reprend l'inertie du filament tungstène (`intensiteBlinder`), avec
+ * le même décalage par bloc, et le budget de flashs de l'utilisateur. En mode
+ * réduit, il ne flashe jamais.
+ */
+export function blinderBordure(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  budgetFlash = 1,
+): number {
+  if (f.reduced) return 0;
+  // Le ruban ne flashe pas sur chaque mesure d'un couplet : il prend le relais
+  // des blinders sur les moments qui les méritent.
+  const role = f.scene.role;
+  const autorise =
+    role === "drop" ||
+    role === "refrain" ||
+    role === "finale" ||
+    (role === "montee" && clamp01(f.build) > 0.4);
+  if (!autorise) return 0;
+  return clamp01(intensiteBlinder(f, view, index % 12) * clamp01(budgetFlash));
+}
+
+/**
+ * Couleur du ruban à un instant donné.
+ *
+ * Une seule teinte de fil, qui reste celle de la scène même quand le blinder
+ * frappe : le blinder du ruban est **de couleur**, pas tungstène. Il gagne
+ * seulement en saturation et en luminosité au moment de l'éclat.
+ */
+export function teinteBordure(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  budgetFlash = 1,
+): { hue: number; saturation: number; lightness: number } {
+  const blinder = blinderBordure(f, view, index, budgetFlash);
+  return {
+    hue: couleurBordure(f, index),
+    saturation: 0.75 + 0.2 * blinder,
+    lightness: 0.8 + 0.12 * blinder,
+  };
+}
+
+/**
  * Intensité de la diode `index` à l'instant courant.
  *
  * Le rail de base reste toujours un peu visible ; le motif décide de la part
- * réellement allumée, et l'éclat d'impact est dosé par le budget de flashs de
- * l'utilisateur. En mode réduit, ni chenillard ni éclat : tout est plafonné
- * sous le seuil d'inconfort lumineux.
+ * réellement allumée ; le blinder ajoute son éclat chaud sur les impacts. En
+ * mode réduit, ni chenillard ni éclat : tout est plafonné sous le seuil
+ * d'inconfort lumineux.
  */
 export function intensiteBordure(
   f: FrameState,
@@ -238,7 +286,12 @@ export function intensiteBordure(
   const rail = 0.03 + 0.08 * energie;
   const respiration = 0.85 + 0.15 * Math.sin(f.t * 1.1);
   const eclat = f.reduced ? 0 : clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
-  const brut = rail + poids * (0.2 + 0.65 * energie) * respiration + eclat * Math.max(poids, 0.15);
+  const blinder = blinderBordure(f, view, index, budgetFlash);
+  const brut =
+    rail +
+    poids * (0.2 + 0.65 * energie) * respiration +
+    eclat * Math.max(poids, 0.15) +
+    blinder;
   return f.reduced ? Math.min(0.3, brut * 0.5) : clamp01(brut);
 }
 
@@ -260,7 +313,7 @@ export function dessinerBordure(
   const marge = Math.min(w, h) * MARGE_BORDURE;
   const petitCote = Math.min(w, h);
   const energie = clamp01(f.energy);
-  const teinte = couleurBordure(f, 0);
+  const fil = teinteBordure(f, view, 0, budgetFlash);
 
   const traceRuban = () => {
     ctx.beginPath();
@@ -273,12 +326,12 @@ export function dessinerBordure(
   };
 
   // Halo : la lumière que le ruban diffuse dans la salle.
-  ctx.strokeStyle = paint(teinte, 0.55, 0.55, 0.1 + 0.1 * energie);
+  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.7, 0.55, 0.1 + 0.1 * energie);
   ctx.lineWidth = Math.max(2, petitCote * 0.007);
   traceRuban();
 
   // Cœur du fil : présent même quand aucune diode n'est renforcée.
-  ctx.strokeStyle = paint(teinte, 0.75, 0.8, 0.4 + 0.25 * energie);
+  ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.8, 0.4 + 0.25 * energie);
   ctx.lineWidth = Math.max(1.2, petitCote * 0.0016);
   traceRuban();
 
@@ -289,9 +342,9 @@ export function dessinerBordure(
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
     const { x, y } = positionBordure(index, w, h);
-    const couleur = couleurBordure(f, index);
+    const couleur = teinteBordure(f, view, index, budgetFlash);
 
-    ctx.fillStyle = paint(couleur, 0.8, 0.7, 0.35 + 0.65 * intensite);
+    ctx.fillStyle = paint(couleur.hue, couleur.saturation, couleur.lightness, 0.35 + 0.65 * intensite);
     ctx.beginPath();
     ctx.arc(x, y, base * (0.8 + 0.6 * intensite), 0, Math.PI * 2);
     ctx.fill();

@@ -103,8 +103,10 @@ Nouveau module `src/core/families/bordure.ts`, exporté par `families/index.ts`.
   part allumée de chaque diode. Un changement de motif est fondu sur quelques
   dixièmes de seconde, jamais un interrupteur.
 - `intensiteBordure(f, view, index, budgetFlash)` combine le poids du motif, un
-  rail permanent faible, la respiration et l'éclat d'impact. En mode réduit :
-  plafond `0,3`, pas de chenillard rapide ni d'éclat.
+  rail permanent faible, la respiration, l'éclat d'impact et la part de
+  **blinder de couleur** (`intensiteBlinder`, même inertie de filament que la
+  barre tungstène, mais sans changer la teinte). En mode réduit : plafond
+  `0,3`, pas de chenillard, pas d'éclat, pas de blinder.
 - **Une seule couleur de fil** : `couleurBordure(f, index)` prend la teinte de
   la scène, avec une ondulation périodique de 8° sur le pourtour (aucun raccord
   au bouclage) et une dérive lente dans son budget de teinte. Pas de diodes

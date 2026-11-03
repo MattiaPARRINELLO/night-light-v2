@@ -212,8 +212,14 @@ de scène.
   de la scène, avec une ondulation périodique de 8° sur le pourtour (aucun
   raccord visible au bouclage) et une dérive lente dans le budget de la scène.
   Pas de diodes multicolores : deux voisines sont presque identiques.
+- **Blinder de couleur** : le ruban sert aussi de barre de blinders. Sur un
+  impact (drop, refrain, finale, fin de montée), `blinderBordure` reprend
+  l'inertie du filament (`intensiteBlinder`, décalage par bloc, budget de
+  flashs) et ajoute son éclat à l'intensité. Il reste **de la couleur de la
+  scène** : pas de tungstène, seulement plus de saturation et de luminosité.
+  Jamais en mode réduit.
 - **Intensité** : rail permanent, part du motif modulée par la respiration,
-  éclat d'impact dosé par `settings.flashes`.
+  éclat d'impact et blinder de couleur dosés par `settings.flashes`.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
 - **Coût** : deux traits pour le fil, un remplissage par diode échantillonnée,
   aucune transformation ni dégradé radial par diode.
