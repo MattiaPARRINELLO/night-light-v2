@@ -19,7 +19,7 @@ import { paint } from "./util";
 export const NOMBRE_DIODES_BORDURE = 240;
 
 /** Retrait de la bordure par rapport au bord, en fraction du petit côté. */
-const MARGE_BORDURE = 0.012;
+const MARGE_BORDURE = 0.018;
 
 export type MotifBordure =
   | "rail"
@@ -327,18 +327,18 @@ export function dessinerBordure(
 
   // Halo : la lumière que le ruban diffuse dans la salle.
   ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.7, 0.55, 0.1 + 0.1 * energie);
-  ctx.lineWidth = Math.max(2, petitCote * 0.007);
+  ctx.lineWidth = Math.max(5, petitCote * 0.018);
   traceRuban();
 
   // Cœur du fil : présent même quand aucune diode n'est renforcée.
   ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.8, 0.4 + 0.25 * energie);
-  ctx.lineWidth = Math.max(1.2, petitCote * 0.0016);
+  ctx.lineWidth = Math.max(2.5, petitCote * 0.005);
   traceRuban();
 
   // Diodes : on garde les positions de la grille complète, mais on n'en dessine
   // qu'une sur `pas` selon la qualité — l'écart ne bouge donc jamais.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
-  const base = Math.max(0.9, petitCote * 0.0014);
+  const base = Math.max(1.8, petitCote * 0.0032);
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += pas) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
     const { x, y } = positionBordure(index, w, h);
