@@ -445,7 +445,12 @@ describe("visibilité des motifs", () => {
 
   test("le plein éclaire tout le corps", () => {
     const view = new TrackView(analysis());
-    const f = frame("drop", 12, { energy: 0.9 });
+    let f = frame("drop", 12, { energy: 0.9 });
+    for (let t = 1; t < 60; t += 2) {
+      f = frame("drop", t, { energy: 0.9 });
+      if (motifBordure(f, view) === "plein") break;
+    }
+    expect(motifBordure(f, view)).toBe("plein");
     expect(moyenneBordure(f, view)).toBeCloseTo(1, 2);
   });
 });
@@ -505,5 +510,19 @@ describe("contraste allumé / éteint", () => {
     // La respiration est globale : toutes les diodes ensemble, c'est le temps
     // qui fait le contraste, pas la position.
     expect(new Set(respiration).size).toBe(1);
+  });
+});
+
+describe("moments forts", () => {
+  test("un drop n'est pas un mur de lumière continu", () => {
+    const view = new TrackView(analysis());
+    const motifs = new Set<string>();
+    for (let t = 0; t < 80; t += 4) {
+      motifs.add(motifBordure(frame("drop", t, { energy: 0.9 }), view));
+    }
+    // Plusieurs motifs se succèdent : le bandeau s'éteint par endroits même au
+    // plus fort du morceau.
+    expect(motifs.size).toBeGreaterThan(1);
+    expect([...motifs].some((motif) => motif !== "plein")).toBe(true);
   });
 });

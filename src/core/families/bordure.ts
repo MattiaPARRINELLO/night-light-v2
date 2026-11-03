@@ -119,9 +119,16 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   // qui oscille et ferait clignoter la bande d'une image à l'autre autour d'un
   // seuil. L'énergie ne module que l'intensité, pas le choix du motif.
   if (f.reduced) return "respiration";
-  if (f.scene.role === "drop") return "plein";
   const tirage = hash01(bloc * 7919 + f.seed + f.scene.index * 131);
 
+  // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
+  // plein, chenillard et alternance, pour que la bande respire et s'éteigne par
+  // endroits même au plus fort du morceau.
+  if (f.scene.role === "drop") {
+    if (tirage < 0.4) return "plein";
+    if (tirage < 0.75) return "chenillard";
+    return "alternance";
+  }
   if (f.scene.role === "refrain") {
     if (tirage < 0.3) return "chenillard";
     if (tirage < 0.55) return "alternance";
