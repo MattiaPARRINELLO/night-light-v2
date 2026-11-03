@@ -16,6 +16,7 @@ declare module "./app" {
   interface App {
     bindShow(): void;
     startShow(analysis: Analysis): Promise<void>;
+    startShowCrossfade(): void;
     buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
     refreshPlan(): void;
@@ -122,9 +123,18 @@ export function installShow(Target: { prototype: App }): void {
     // de morceau » face au lecteur, ce qui coupait le show local net.
     this.stopSyncedMode();
 
-    this.stopLiveMode();
+    const useCrossfade = this.transitionMode === "crossfade";
+    if (useCrossfade) {
+      // Le direct reste affiché le temps du fondu : il fournit l'image sortante.
+      // Il n'est arrêté qu'à la fin (voir `finishCrossfade`).
+      this.liveMode = true;
+    } else {
+      this.stopLiveMode();
+      this.liveMode = false;
+    }
+    // L'audio vient du navigateur : garder la capture ouverte ferait réagir le
+    // direct à sa propre lecture.
     this.closeExternalCapture();
-    this.liveMode = false;
     const title = this.pendingTitle;
     this.debugSync.phase = "SHOW_LOCAL";
     this.debugSync.expectedTitle = title;
@@ -137,7 +147,8 @@ export function installShow(Target: { prototype: App }): void {
     };
     this.view = new TrackView(analysis);
     this.plan = this.buildPlan(analysis);
-    this.beginTransition();
+    if (useCrossfade) this.startShowCrossfade();
+    else this.beginTransition();
     this.audio.load(audioUrl(this.jobId));
     const detectedPosition = this.nowPlaying?.positionSec;
     if (this.nowPlaying?.status === "playing" && Number.isFinite(detectedPosition)) {
@@ -184,6 +195,33 @@ export function installShow(Target: { prototype: App }): void {
       );
       showScreen("error");
     }
+  };
+
+  /**
+   * Entrée dans le show local en fondu depuis le direct.
+   *
+   * Le show local n'est pas calé sur un lecteur : il n'y a donc pas de temps
+   * fort à attendre, le fondu part de l'image affichée. Si un fondu est déjà en
+   * cours (retour au direct d'un morceau précédent), on repart de la
+   * composition visible pour ne pas le couper.
+   */
+  Target.prototype.startShowCrossfade = function (this: App): void {
+    const enCours = this.crossfade !== null && this.crossfade.active;
+    const base = enCours ? this.snapshot() : null;
+    this.cancelCrossfade();
+    const state = this.createCrossfade(base === null ? "live" : "snapshot", "show", 1500, { source: base });
+    if (state === null) {
+      // Pas de canvas hors écran : ouverture historique depuis le noir.
+      this.liveMode = false;
+      this.stopLiveMode();
+      this.beginTransition();
+      return;
+    }
+    this.transitionStart = 0;
+    // Même raison que pour le show calé : l'image de départ est figée, le
+    // direct ne doit plus dessiner par-dessus la composition.
+    if (base !== null) this.stopLiveMode();
+    this.debug("show", "fondu d'entrée du show local armé", { repriseEnCours: base !== null });
   };
 
   Target.prototype.effectiveReduced = function (this: App): boolean {

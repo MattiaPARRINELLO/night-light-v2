@@ -205,10 +205,11 @@ export function installLoop(Target: { prototype: App }): void {
     const plan = this.plan;
     if (view === null || plan === null) return;
     const clamped = clamp(time, 0, view.duration);
+    const target = this.fadeTarget("show");
     try {
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
-        ctx: this.ctx,
+        ctx: target,
         width: this.canvas.clientWidth,
         height: this.canvas.clientHeight,
         dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
@@ -223,6 +224,7 @@ export function installLoop(Target: { prototype: App }): void {
       });
       this.frame += 1;
       this.drawTransitionIfNeeded(clamped, plan);
+      this.composeCrossfade();
       this.markFirstFrame();
     } catch (error) {
       // Le rendu a échoué : on descend d'un palier. La valeur reste quantifiée,

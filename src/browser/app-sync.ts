@@ -33,9 +33,6 @@ declare module "./app" {
     updateSyncedAnalysis(analysis: Analysis): boolean;
     startCrossfade(analysis: Analysis, initialMs: number): void;
     crossfadeDelayMs(analysis: Analysis, initialMs: number): number;
-    composeCrossfade(): void;
-    finishCrossfade(): void;
-    cancelCrossfade(): void;
     startSyncedLoop(): void;
     stopSyncedMode(): void;
     foldSyncCorrection(nowEpochMs: number): void;
@@ -286,20 +283,19 @@ export function installSync(Target: { prototype: App }): void {
   };
 
   Target.prototype.startCrossfade = function (this: App, analysis: Analysis, initialMs: number): void {
+    // Un fondu déjà en cours — typiquement la sortie du morceau précédent vers
+    // le direct — ne doit pas être coupé : on repart de l'image affichée à cet
+    // instant et on la dissout directement dans le nouveau show. Comme on est
+    // déjà en pleine transition, l'attente du temps fort n'a plus de sens.
+    const enCours = this.crossfade !== null && this.crossfade.active;
+    const base = enCours ? this.snapshot() : null;
     this.cancelCrossfade();
-    const width = Math.max(1, this.canvas.width);
-    const height = Math.max(1, this.canvas.height);
-    const makeCanvas = (): HTMLCanvasElement => {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      return canvas;
-    };
-    const liveCanvas = makeCanvas();
-    const syncedCanvas = makeCanvas();
-    const liveCtx = liveCanvas.getContext("2d");
-    const syncedCtx = syncedCanvas.getContext("2d");
-    if (liveCtx === null || syncedCtx === null) {
+    const delayMs = base === null ? this.crossfadeDelayMs(analysis, initialMs) : 0;
+    const state = this.createCrossfade(base === null ? "live" : "snapshot", "show", 1500, {
+      delayMs,
+      source: base,
+    });
+    if (state === null) {
       // Pas de canvas hors écran : on retombe sur l'ouverture historique.
       this.liveMode = false;
       this.stopLiveMode();
@@ -310,78 +306,14 @@ export function installSync(Target: { prototype: App }): void {
     // Aucun voile noir ne doit s'interposer : le fondu enchaîné remplace la
     // transition depuis le noir.
     this.transitionStart = 0;
-    const state = {
-      active: false,
-      startedAt: 0,
-      durationMs: 1500,
-      liveCanvas,
-      liveCtx,
-      syncedCanvas,
-      syncedCtx,
-      timer: null as number | null,
-    };
-    this.crossfade = state;
-    const delayMs = this.crossfadeDelayMs(analysis, initialMs);
+    // Image sortante figée : le direct n'a plus à peindre sur la toile
+    // principale, il alternerait avec la composition du fondu.
+    if (base !== null) this.stopLiveMode();
     this.debug("sync", "fondu enchaîné armé", {
       attenteMs: delayMs,
       positionSec: Number((initialMs / 1000).toFixed(2)),
+      repriseEnCours: base !== null,
     });
-    state.timer = window.setTimeout(() => {
-      state.timer = null;
-      if (this.crossfade !== state) return;
-      // Premier composite : on part de l'image live déjà affichée à l'écran.
-      try {
-        liveCtx.setTransform(1, 0, 0, 1, 0, 0);
-        liveCtx.clearRect(0, 0, width, height);
-        liveCtx.drawImage(this.canvas, 0, 0);
-      } catch {
-        // Si la copie échoue, le premier frame live arrive juste après.
-      }
-      state.active = true;
-      state.startedAt = performance.now();
-      this.debug("sync", "fondu enchaîné démarré", { dureeMs: state.durationMs });
-    }, delayMs);
-  };
-
-  Target.prototype.composeCrossfade = function (this: App): void {
-    const fade = this.crossfade;
-    if (fade === null || !fade.active) return;
-    // Machine à la peine pendant le fondu : on le termine en 0,6 s.
-    if (Math.min(this.quality, this.liveQuality) < 0.5 && fade.durationMs > 600) {
-      fade.durationMs = 600;
-      this.debug("sync", "fondu enchaîné raccourci · qualité < 0,5");
-    }
-    const elapsed = performance.now() - fade.startedAt;
-    const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, fade.durationMs)));
-    // ease-in-out (smoothstep) : pas de saut de luminance aux deux extrémités.
-    const alpha = progress * progress * (3 - 2 * progress);
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.globalCompositeOperation = "source-over";
-    this.ctx.globalAlpha = 1;
-    this.ctx.drawImage(fade.liveCanvas, 0, 0);
-    this.ctx.globalAlpha = alpha;
-    this.ctx.drawImage(fade.syncedCanvas, 0, 0);
-    this.ctx.globalAlpha = 1;
-    if (progress >= 1) this.finishCrossfade();
-  };
-
-  Target.prototype.finishCrossfade = function (this: App): void {
-    const fade = this.crossfade;
-    if (fade === null) return;
-    if (fade.timer !== null) window.clearTimeout(fade.timer);
-    this.crossfade = null;
-    // Le live n'est arrêté qu'ici, une fois le fondu terminé.
-    this.stopLiveMode();
-    this.stopLiveRender();
-    this.liveMode = false;
-    this.debug("sync", "fondu enchaîné terminé · live arrêté");
-  };
-
-  Target.prototype.cancelCrossfade = function (this: App): void {
-    const fade = this.crossfade;
-    if (fade === null) return;
-    if (fade.timer !== null) window.clearTimeout(fade.timer);
-    this.crossfade = null;
   };
 
   Target.prototype.startSyncedLoop = function (this: App): void {
@@ -418,7 +350,10 @@ export function installSync(Target: { prototype: App }): void {
     this.syncedPaused = false;
     this.pendingSynced = null;
     this.syncedTitle = "";
-    this.cancelCrossfade();
+    // Un fondu qui fait ENTRER un show n'a plus de sens quand ce show s'arrête ;
+    // celui qui fait SORTIR vers le direct, si : il porte la transition en cours
+    // et c'est le retour au live qui doit rester lisse.
+    if (this.crossfade !== null && this.crossfade.to === "show") this.cancelCrossfade();
     this.syncedMode = false;
   };
 
@@ -431,11 +366,11 @@ export function installSync(Target: { prototype: App }): void {
    */
   Target.prototype.abandonSyncedShowForTrackChange = function (this: App, playerTitle: string): boolean {
     if (!this.syncedMode || !isDifferentTrack(this.syncedTitle, playerTitle)) return false;
-    this.debug("sync", "changement de morceau détecté · retour en Live", {
+    this.debug("sync", "changement de morceau détecté · retour en Live en fondu", {
       attendu: this.syncedTitle,
       lecteur: playerTitle,
     });
-    this.backToDrop();
+    this.backToDrop({ fade: true, reason: `changement de morceau · ${playerTitle}` });
     // Le dashboard doit suivre le direct, pas rester sur l'ancien morceau : on
     // lui donne tout de suite la nouvelle référence, et on efface les positions
     // du show abandonné (elles n'ont plus de sens hors synchronisation).
@@ -503,10 +438,18 @@ export function installSync(Target: { prototype: App }): void {
     const view = this.syncedView;
     const plan = this.syncedPlan;
     if (view === null || plan === null) return;
+    // Le morceau est terminé : plutôt que de figer la dernière image, on dissout
+    // le show dans le direct. La resynchronisation ne verrait la fin que deux
+    // secondes plus tard, et la dernière scène resterait figée à l'écran.
+    if (time >= view.duration) {
+      this.debug("sync", "fin de morceau · retour au direct en fondu");
+      this.backToDrop({ fade: true, reason: "fin de morceau" });
+      return;
+    }
     const coverage = plan.coverage;
     const outside = coverage !== undefined && (time < coverage[0] || time > coverage[1]);
     const fade = this.crossfade;
-    const target = fade === null ? this.ctx : fade.syncedCtx;
+    const target = this.fadeTarget("show");
     try {
       target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
@@ -555,6 +498,19 @@ export function installSync(Target: { prototype: App }): void {
       this.debugSync.latencyMs = this.syncedLatencyMs;
 
       if (this.abandonSyncedShowForTrackChange(state.title)) return;
+
+      if (state.status === "stopped") {
+        // Le lecteur s'est arrêté (fin de morceau ou stop manuel) : on rend
+        // l'écran au direct en fondu plutôt que de laisser la dernière image.
+        this.debugSync.phase = "LIVE";
+        this.debugSync.match = "lecteur arrêté · retour au direct";
+        this.debug("sync", "lecteur arrêté · retour au direct en fondu", {
+          titre: showTitle,
+          positionSec: Number((state.positionMs / 1000).toFixed(2)),
+        });
+        this.backToDrop({ fade: true, reason: "lecteur arrêté" });
+        return;
+      }
 
       const player = {
         source: state.source,

@@ -13,6 +13,7 @@
  *   - `app-control`  lien tableau de bord, réglages, latence, overlay de debug
  *   - `app-effects`  effet forcé depuis le studio, par-dessus tous les modes
  *   - `app-loop`     boucle de rendu, qualité, nappes de fumée, transitions, HUD
+ *   - `app-transition` fondus entre le direct et le show (entrée, sortie, réorientation)
  *
  * L'état vit ici pour rester la source de vérité unique ; la logique vit dans
  * des fichiers courts et lisibles.
@@ -40,6 +41,7 @@ import { installLoop } from "./app-loop";
 import { installResolve } from "./app-resolve";
 import { installShow } from "./app-show";
 import { installSync } from "./app-sync";
+import { installTransition } from "./app-transition";
 
 interface Session {
   jobId: string;
@@ -50,15 +52,26 @@ interface Session {
 
 export type TransitionMode = "black" | "crossfade";
 
-/** Deux rendus hors écran, composités pendant un fondu enchaîné. */
+/** Couche d'image que peut faire entrer ou sortir un fondu. */
+export type FadeLayer = "live" | "show";
+
+/**
+ * Fondu entre deux couches.
+ *
+ * `from` peut être une couche encore rendue (`live`/`show`) ou une copie figée
+ * (`snapshot`) : c'est ce qui permet de réorienter un fondu déjà en cours sans
+ * couper l'image affichée.
+ */
 export interface CrossfadeState {
   active: boolean;
   startedAt: number;
   durationMs: number;
-  liveCanvas: HTMLCanvasElement;
-  liveCtx: CanvasRenderingContext2D;
-  syncedCanvas: HTMLCanvasElement;
-  syncedCtx: CanvasRenderingContext2D;
+  from: FadeLayer | "snapshot";
+  to: FadeLayer;
+  fromCanvas: HTMLCanvasElement;
+  fromCtx: CanvasRenderingContext2D;
+  toCanvas: HTMLCanvasElement;
+  toCtx: CanvasRenderingContext2D;
   timer: number | null;
 }
 
@@ -318,15 +331,30 @@ export class App {
     dbgLog(category, message, data);
   }
 
-  /** Repasse au mode direct et à l'écran de dépôt. */
-  backToDrop(): void {
+  /**
+   * Repasse au mode direct et à l'écran de dépôt.
+   *
+   * `fade` fait sortir le show en fondu vers le direct au lieu de couper net :
+   * la dernière image du spectacle est figée puis dissoute dans l'ambiance
+   * live. C'est le passage utilisé à la fin d'un morceau et au changement de
+   * piste ; les retours manuels (erreur, choix de morceau) restent instantanés.
+   */
+  backToDrop(options: { fade?: boolean; reason?: string } = {}): void {
+    // Copie de l'image AVANT tout arrêt : c'est elle qui portera le fondu.
+    const sortie = options.fade === true && this.syncedMode ? this.snapshot() : null;
+    this.stopSyncedMode();
     this.stopLoop();
     this.audio.pause();
     void this.releaseSession();
-    this.stopSyncedMode();
     this.liveMode = true;
-    this.debug("live", "retour au mode live");
+    this.debug("live", "retour au mode live", {
+      raison: options.reason ?? "manuel",
+      fondu: sortie !== null,
+    });
     this.bindLatencyControls();
+    // Le fondu doit exister avant le premier rendu live, sinon celui-ci peint
+    // directement sur la toile et la sortie n'a plus d'image à dissoudre.
+    if (sortie !== null) this.createCrossfade("snapshot", "live", 2200, { source: sortie });
     void this.startLiveMode();
     el<HTMLButtonElement>("btn-cancel-analysis").hidden = false;
     setUploadState({ phase: "Préparation", progress: 0, detail: "Envoi du fichier…" });
@@ -350,11 +378,11 @@ export class App {
     const height = Math.max(1, this.canvas.clientHeight);
     // Pendant le mode direct, le spectacle n'est qu'une ambiance derrière
     // l'écran de dépôt : on la rend plus petite, elle est floue de toute façon et
-    // c'est elle qui saturait le fil principal au démarrage. Un show calé qui se
-    // prépare pendant le fondu n'est pas une ambiance : il garde sa finesse, même
-    // si les deux boucles tournent encore.
-    const ambient = this.liveMode && !this.syncedMode ? 0.7 : 1;
-    const quality = this.liveMode ? this.liveQuality : this.quality;
+    // c'est elle qui saturait le fil principal au démarrage. Un show calé ou un
+    // show local qui se prépare pendant le fondu n'est pas une ambiance : il
+    // garde sa finesse, même si les deux boucles tournent encore.
+    const ambient = this.liveMode && !this.syncedMode && this.view === null ? 0.7 : 1;
+    const quality = this.liveMode && this.view === null ? this.liveQuality : this.quality;
     const ratio = renderPixelRatio(quality, width, height, window.devicePixelRatio || 1) * ambient;
     const pixelWidth = Math.max(1, Math.round(width * ratio));
     const pixelHeight = Math.max(1, Math.round(height * ratio));
@@ -381,8 +409,8 @@ export class App {
     }
   };
 
-  /** Copie de l'image affichée, pour la conserver à travers un redimensionnement. */
-  private snapshot(): HTMLCanvasElement | null {
+  /** Copie de l'image affichée, pour la conserver à travers un redimensionnement ou un fondu. */
+  snapshot(): HTMLCanvasElement | null {
     try {
       const copy = document.createElement("canvas");
       copy.width = this.canvas.width;
@@ -406,3 +434,4 @@ installShow(App);
 installControl(App);
 installEffects(App);
 installLoop(App);
+installTransition(App);

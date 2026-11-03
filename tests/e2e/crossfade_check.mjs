@@ -95,14 +95,78 @@ try {
       }
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
-    const showMs = app.showTimeMs(Date.now());
+    const measuredAt = Date.now();
+    const showMs = app.showTimeMs(measuredAt);
+    const expectedMs = 3000 + (measuredAt - started);
+    // Sortie du show vers le direct : même exigence, aucun frame noir.
+    const exitStarted = Date.now();
+    app.backToDrop({ fade: true, reason: "test de sortie" });
+    const exitSamples = [];
+    let exitEndedAt = 0;
+    for (let i = 0; i < 500; i += 1) {
+      const canvas = app.canvas;
+      const ctx = canvas.getContext("2d");
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let lit = 0;
+      for (let p = 0; p < data.length; p += 4 * 97) {
+        if (data[p] + data[p + 1] + data[p + 2] > 18) lit += 1;
+      }
+      exitSamples.push(lit);
+      if (app.crossfade === null && i > 2) {
+        exitEndedAt = Date.now();
+        break;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    const liveAtEnd = app.liveMode;
+    const dropVisible = document.getElementById("screen-drop")?.classList.contains("is-active") ?? false;
+
+    // Le morceau suivant arrive AU MILIEU de la sortie vers le direct : c'est le
+    // cas qui doit réorienter le fondu sans couper.
+    await app.startSyncedShow(analysis, 3000);
+    while (app.crossfade !== null) await new Promise((resolve) => requestAnimationFrame(resolve));
+    app.backToDrop({ fade: true, reason: "test de reprise" });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const repriseStarted = Date.now();
+    await app.startSyncedShow(analysis, 3000);
+    if (app.syncedTimer !== null) window.clearInterval(app.syncedTimer);
+    app.syncedTimer = null;
+    const repriseSamples = [];
+    let repriseEndedAt = 0;
+    for (let i = 0; i < 500; i += 1) {
+      const canvas = app.canvas;
+      const ctx = canvas.getContext("2d");
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let lit = 0;
+      for (let p = 0; p < data.length; p += 4 * 97) {
+        if (data[p] + data[p + 1] + data[p + 2] > 18) lit += 1;
+      }
+      repriseSamples.push(lit);
+      if (app.crossfade === null && i > 2) {
+        repriseEndedAt = Date.now();
+        break;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+
     return {
       frames: samples.length,
       zeroFrames: samples.filter((value) => value === 0).length,
       minLit: Math.min(...samples),
       crossfadeMs: endedAt === 0 ? null : endedAt - started,
       showMs,
-      expectedMs: 3000 + (Date.now() - started),
+      expectedMs,
+      exitFrames: exitSamples.length,
+      exitZeroFrames: exitSamples.filter((value) => value === 0).length,
+      exitMinLit: Math.min(...exitSamples),
+      exitMs: exitEndedAt === 0 ? null : exitEndedAt - exitStarted,
+      liveAtEnd,
+      dropVisible,
+      repriseFrames: repriseSamples.length,
+      repriseZeroFrames: repriseSamples.filter((value) => value === 0).length,
+      repriseMinLit: Math.min(...repriseSamples),
+      repriseMs: repriseEndedAt === 0 ? null : repriseEndedAt - repriseStarted,
+      repriseSynced: app.syncedMode,
     };
   });
 
@@ -111,9 +175,26 @@ try {
     `fondu : ${result.frames} frames · frames noirs ${result.zeroFrames} · ` +
       `luminosité min ${result.minLit} · durée ${result.crossfadeMs ?? "?"} ms · écart ${driftMs} ms`,
   );
+  console.log(
+    `sortie : ${result.exitFrames} frames · frames noirs ${result.exitZeroFrames} · ` +
+      `luminosité min ${result.exitMinLit} · durée ${result.exitMs ?? "?"} ms · ` +
+      `direct ${result.liveAtEnd ? "actif" : "inactif"} · dépôt ${result.dropVisible ? "visible" : "masqué"}`,
+  );
+  console.log(
+    `reprise : ${result.repriseFrames} frames · frames noirs ${result.repriseZeroFrames} · ` +
+      `luminosité min ${result.repriseMinLit} · durée ${result.repriseMs ?? "?"} ms · ` +
+      `show ${result.repriseSynced ? "calé" : "absent"}`,
+  );
   if (result.zeroFrames > 0) failures.push(`${result.zeroFrames} frame(s) entièrement noir(s)`);
   if (result.crossfadeMs === null) failures.push("le fondu ne s'est pas terminé");
   if (Math.abs(driftMs) > 150) failures.push(`position analysée décalée de ${driftMs} ms`);
+  if (result.exitZeroFrames > 0) failures.push(`${result.exitZeroFrames} frame(s) noir(s) en sortie`);
+  if (result.exitMs === null) failures.push("la sortie en fondu ne s'est pas terminée");
+  if (!result.liveAtEnd) failures.push("le direct n'a pas repris après la sortie");
+  if (!result.dropVisible) failures.push("l'écran de dépôt n'est pas revenu après la sortie");
+  if (result.repriseZeroFrames > 0) failures.push(`${result.repriseZeroFrames} frame(s) noir(s) en reprise`);
+  if (result.repriseMs === null) failures.push("la reprise en fondu ne s'est pas terminée");
+  if (!result.repriseSynced) failures.push("le show n'a pas repris après la réorientation du fondu");
   await browser.close();
 } catch (error) {
   failures.push(`exception : ${error && error.stack ? error.stack : String(error)}`);
