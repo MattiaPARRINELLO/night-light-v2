@@ -133,6 +133,9 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
   // plein et des motifs qui laissent le ruban s'éteindre par endroits.
   if (f.scene.role === "drop") {
+    // Le strobe « fort et sale » est réservé aux gros drops : une montée qui
+    // n'a pas assez de force ne le déclenche jamais.
+    const grosDrop = clamp01(f.buildStrength) >= 0.8;
     if (tirage < 0.12) return "plein";
     if (tirage < 0.24) return "chenillard";
     if (tirage < 0.35) return "comete";
@@ -143,7 +146,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     if (tirage < 0.82) return "vague";
     if (tirage < 0.89) return "pluie";
     if (tirage < 0.95) return "scintillement";
-    return "strobe";
+    return grosDrop ? "strobe" : "plein";
   }
   if (f.scene.role === "refrain") {
     if (tirage < 0.16) return "chenillard";

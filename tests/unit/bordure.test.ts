@@ -659,3 +659,24 @@ describe("les beats reprennent le dessus", () => {
     expect(avec - sans).toBeLessThan(0.3);
   });
 });
+
+describe("strobe réservé aux gros drops", () => {
+  const motifDrop = (buildStrength: number) => {
+    const view = new TrackView(analysis());
+    const motifs = new Set<string>();
+    for (let t = 0; t < 120; t += 2) {
+      motifs.add(
+        motifBordure(frame("drop", t, { energy: 0.9, buildStrength }), view),
+      );
+    }
+    return motifs;
+  };
+
+  test("un gros drop peut strober", () => {
+    expect(motifDrop(1).has("strobe")).toBe(true);
+  });
+
+  test("un drop moyen ne strobe jamais", () => {
+    expect(motifDrop(0.3).has("strobe")).toBe(false);
+  });
+});
