@@ -414,6 +414,7 @@ Deux régressions sont couvertes par ces tests :
 ```
 index.html              écran de show : la toile, rien d'autre
 dashboard.html          tableau de bord : tout ce qui se règle et se lit
+effets.html             studio d'effets : galerie, scène et projection sur le show
 src/
   main.ts               démarrage
   types.ts              schéma de l'analyse et réglages de rendu
@@ -421,6 +422,7 @@ src/
     series.ts           échantillonnage et aides numériques (purs)
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
+    effects.ts          inventaire des effets et timeline synthétique du studio
     families/           les vingt-neuf familles d'effets (une par fichier)
       concert-rig.ts    structure, lyres, barres LED et blinders
       index.ts          agrégation de la table des familles
@@ -432,7 +434,7 @@ src/
     playback.ts         position du lecteur, dérive, corrélation (purs)
     debug.ts            journal de debug partagé (console + overlay)
   shared/
-    control.ts          protocole show ↔ dashboard (BroadcastChannel)
+    control.ts          protocole show ↔ dashboard/studio (WebSocket + BroadcastChannel)
   browser/
     app.ts              orchestration (dépôt, analyse, show, raccourcis)
     app-drop.ts         dépôt du fichier et écran d'analyse
@@ -441,13 +443,17 @@ src/
     app-sync.ts         calage sur la position du lecteur, repli en live
     app-show.ts         lancement du show, bascule vers le rendu analysé
     app-control.ts      réglages poussés depuis le dashboard, overlay de debug
+    app-effects.ts      effet forcé depuis le studio, par-dessus le show
     app-loop.ts         boucle de rendu, qualité adaptative, HUD
     audio.ts            lecture et position musicale
     format.ts           formatage court partagé (overlay, rendu)
     ui.ts               accès DOM
   styles/               base, dépôt, HUD
+  dashboard/            tableau de bord (page, graphiques, styles)
+  effects/              studio d'effets (page, galerie, styles)
 server/
   config.py             réglages lus dans l'environnement
+  relay.py              relais WebSocket du contrôle entre appareils
   sniff.py              détection du format réel par octets
   analysis.py           moteur librosa (décodage, courbes, rythme, section, montées)
   analysis_cache.py     cache persistant des analyses (clé morceau + version d'analyseur)
@@ -463,7 +469,6 @@ tests/                  tests front & serveur (unit/), vérification navigateur 
 scripts/                démarrage dev, lancement des tests, mesures et outillage d'analyse
 bench/                  chronométrage manuel d'une analyse, hors API
 userscripts/            file Deezer (script navigateur)
-src/dashboard/          tableau de bord (page, graphiques, styles)
 docs/                   spec et audit des effets, harnais de tests, mesures, rapports
 ```
 
@@ -480,6 +485,7 @@ docs/                   spec et audit des effets, harnais de tests, mesures, rap
 | `DEEZER_ARL` | *(vide)* | cookie ARL Deezer pour la récupération d'un morceau (vide : récupération désactivée) |
 | `API_PORT` | `8787` | port de l'API |
 | `WEB_PORT` | `5173` | port de l'interface |
+| `NIGHTLIGHT_LAN` | *(vide)* | `1` publie l'interface sur le réseau local (mode `dev:lan`, téléphone) |
 | `ALLOW_NETWORK` | *(vide)* | lève le refus de démarrer sur une adresse non locale (voir Sécurité) |
 
 ## Le tableau de bord (`/dashboard`)
@@ -500,21 +506,49 @@ bun run dev        # puis http://localhost:5173/dashboard (voir WEB_PORT)
 | | latence (+ presets filaire / Bluetooth, calage) |
 | | forcer Live / Show, couper la capture, overlay |
 
-### Comment les deux pages se parlent
+### Comment les pages se parlent
 
-`BroadcastChannel` sur l'origine courante (`src/shared/control.ts`) :
+Deux transports dans `src/shared/control.ts` :
 
-- le show **publie** son état complet 5 fois par seconde ;
-- le dashboard **envoie** des commandes (`set-latency`, `set-settings`, `capture`,
-  `force-live`, `force-show`, `debug-overlay`, `analysis-ready`…).
+- un **WebSocket** vers `/api/control`, relayé par le serveur (`server/relay.py`) : c'est lui
+  qui traverse les appareils, par exemple un téléphone qui pilote un écran de show sur le PC ;
+- `BroadcastChannel`, conservé comme repli instantané quand les deux pages vivent dans le
+  même navigateur et que le serveur est injoignable.
 
-Aucun état sur le serveur, aucun rechargement : deux onglets du même navigateur suffisent, sur
-deux écrans. Le protocole est versionné — deux versions différentes s'ignorent au lieu de se
-comprendre de travers.
+L'émission choisit un seul transport (le WebSocket dès qu'il est ouvert) pour ne pas doubler
+les commandes. Le show **publie** son état complet 5 fois par seconde ; le dashboard et le
+studio **envoient** des commandes (`set-latency`, `set-settings`, `capture`, `force-live`,
+`force-show`, `debug-overlay`, `analysis-ready`, `set-effect`…).
+
+Aucun état applicatif n'est conservé sur le serveur : le relais diffuse les messages tels
+quels et n'entend jamais l'expéditeur. Le protocole est versionné — deux versions différentes
+s'ignorent au lieu de se comprendre de travers.
 
 Le dashboard fait lui-même l'analyse : il dépose ou résout le morceau, puis transmet l'analyse
 à l'écran de show, qui se charge du calage sur le lecteur. Le fichier audio ne traverse donc
 jamais le canal.
+
+### Le studio d'effets (`/effets.html`)
+
+Le studio découvre automatiquement toutes les familles du moteur (`src/core/effects.ts`) et
+permet d'en projeter une sur l'écran de show, avec ses réglages : palette, tempo, énergie,
+basses, aigus, vitesse, rôle, humeur, graine, intensité, flashs.
+
+Le bouton **Projeter** (raccourci `P`) envoie l'effet à l'écran de projection. Il fonctionne
+depuis un téléphone comme depuis le PC : l'émission passe par le relais WebSocket. Tant qu'un
+effet est projeté, le show reste en mode kiosque et rend une timeline synthétique, même sans
+morceau chargé. Un second clic rend la main au spectacle en cours.
+
+Pour ouvrir le studio depuis un téléphone sur le même réseau :
+
+```bash
+bun run dev:lan     # Portless reste actif, et affiche http://<ip-du-pc>:<port>/effets.html
+```
+
+Portless continue de servir `https://nightlight.localhost` sur le PC ; Vite écoute en plus sur
+toutes les interfaces et le script affiche l'URL LAN avec le port réellement choisi par
+Portless. L'API reste sur `127.0.0.1` : seul le proxy Vite est exposé au réseau local, et il
+relaie `/api` ainsi que le WebSocket de contrôle.
 
 ### L'écran de show sait vivre seul
 

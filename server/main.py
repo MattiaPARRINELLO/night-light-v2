@@ -55,6 +55,7 @@ from .playback_position import get_playback_state, match_playback
 from .queue.deezer import lookup_for_queue_track, track_query
 from .queue.manager import QueueManager
 from .queue.models import QueueTrack
+from .relay import attach_control_relay
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
 from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
@@ -637,6 +638,9 @@ app = FastAPI(
     description="Analyse audio locale pour un light show musical personnel.",
     lifespan=lifespan,
 )
+# Relais du canal de contrôle : indispensable quand le téléphone pilote un
+# écran de show ouvert sur un autre appareil.
+attach_control_relay(app)
 
 
 @app.exception_handler(Exception)
@@ -959,6 +963,13 @@ def mount_frontend() -> None:
         @app.get("/dashboard", include_in_schema=False)
         async def dashboard_page() -> FileResponse:
             return FileResponse(dashboard)
+
+    effets = dist / "effets.html"
+    if effets.is_file():
+
+        @app.get("/effets", include_in_schema=False)
+        async def effets_page() -> FileResponse:
+            return FileResponse(effets)
 
     app.mount("/", StaticFiles(directory=str(dist), html=True), name="frontend")
 

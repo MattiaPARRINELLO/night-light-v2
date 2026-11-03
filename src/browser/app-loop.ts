@@ -195,6 +195,12 @@ export function installLoop(Target: { prototype: App }): void {
   };
 
   Target.prototype.renderAt = function (this: App, time: number): void {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    if (this.renderEffectOverride(this.quality, width, height, this.hazeFor(this.quality, width, height))) {
+      this.frame += 1;
+      return;
+    }
     const view = this.view;
     const plan = this.plan;
     if (view === null || plan === null) return;

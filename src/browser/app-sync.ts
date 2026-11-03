@@ -486,6 +486,12 @@ export function installSync(Target: { prototype: App }): void {
   };
 
   Target.prototype.renderSynced = function (this: App): void {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    if (this.renderEffectOverride(this.quality, width, height, this.hazeFor(this.quality, width, height))) {
+      this.frame += 1;
+      return;
+    }
     const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
     const pending = this.pendingSynced;
     if (pending !== null && time >= pending.switchAt) {

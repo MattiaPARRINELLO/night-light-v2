@@ -15,6 +15,7 @@ describe("protocole de contrôle", () => {
     expect(state.mode).toBe("live");
     expect(state.controlled).toBe(false);
     expect(state.analysis).toBeNull();
+    expect(state.effect).toBeNull();
     expect(state.log).toEqual([]);
     // Les valeurs audio de repli sont normalisées : pas de NaN dans l'interface.
     for (const value of [state.audio.rms, state.audio.energy, state.smooth.rms]) {
@@ -50,6 +51,29 @@ describe("protocole de contrôle", () => {
       { type: "cancel-analysis" },
       { type: "debug-overlay", on: true },
       { type: "request-analysis" },
+      {
+        type: "set-effect",
+        effect: {
+          family: "beams",
+          variant: "tunnel",
+          role: "drop",
+          mood: "explosif",
+          hue: 200,
+          spread: 60,
+          saturation: 0.8,
+          lightness: 0.6,
+          tempo: 120,
+          energy: 0.7,
+          bass: 0.5,
+          high: 0.4,
+          impacts: true,
+          seed: 7,
+          speed: 1,
+          intensity: 1,
+          flashes: 0.9,
+          reduced: false,
+        },
+      },
       {
         type: "analysis-ready",
         jobId: "abc",

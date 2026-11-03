@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05060a" />
+    <meta
+      name="description"
+      content="Studio d'effets de Night Light : tous les effets visuels, découverts automatiquement, lançables un par un avec leurs réglages."
+    />
+    <title>Night Light — Studio d'effets</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A1%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/styles/base.css" />
+    <link rel="stylesheet" href="/src/effects/effects.css" />
+  </head>
+  <body class="effects">
+    <div class="fx-app">
+      <!-- Galerie : elle est remplie à partir de l'inventaire découvert. -->
+      <aside class="fx-rail" aria-label="Tous les effets">
+        <header class="fx-rail-head">
+          <a class="fx-brand" href="/dashboard.html">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>
+              <b>Night Light</b>
+              <small>Studio d'effets</small>
+            </span>
+          </a>
+          <span class="fx-count" id="fx-count">—</span>
+        </header>
+
+        <label class="fx-search">
+          <span class="visually-hidden">Filtrer les effets</span>
+          <input id="fx-search" type="search" placeholder="Filtrer les effets…" autocomplete="off" spellcheck="false" />
+        </label>
+
+        <div id="fx-gallery" class="fx-gallery"></div>
+
+        <p class="fx-empty" id="fx-empty" hidden>Aucun effet ne correspond à ce filtre.</p>
+        <p class="fx-note">
+          La liste est dérivée du registre des familles. Un nouvel effet ajouté au moteur apparaît ici sans autre
+          modification.
+        </p>
+      </aside>
+
+      <main class="fx-main">
+        <section class="fx-stage-wrap" id="fx-stage-wrap" aria-label="Scène de l'effet">
+          <canvas id="fx-stage" aria-label="Aperçu plein écran de l'effet sélectionné"></canvas>
+          <div class="fx-stage-head">
+            <div class="fx-stage-title">
+              <span class="fx-stage-kicker" id="fx-current-category">—</span>
+              <b id="fx-current-name">—</b>
+              <small id="fx-current-id">—</small>
+            </div>
+            <div class="fx-stage-actions">
+              <button
+                class="fx-project-btn"
+                id="fx-project"
+                type="button"
+                aria-pressed="false"
+                title="Envoyer cet effet à l'écran de projection"
+              >
+                <span class="fx-project-dot" aria-hidden="true"></span>
+                Projeter
+              </button>
+              <button class="fx-icon-btn" id="fx-reset" type="button" title="Relancer l'effet depuis le début">
+                <span aria-hidden="true">↺</span>
+                <span class="visually-hidden">Relancer</span>
+              </button>
+              <button class="fx-icon-btn" id="fx-random" type="button" title="Effet aléatoire">
+                <span aria-hidden="true">⚄</span>
+                <span class="visually-hidden">Effet aléatoire</span>
+              </button>
+              <button class="fx-icon-btn" id="fx-play" type="button" title="Lecture / pause" aria-pressed="true">
+                <span aria-hidden="true" id="fx-play-icon">❚❚</span>
+                <span class="visually-hidden">Lecture / pause</span>
+              </button>
+              <button class="fx-icon-btn" id="fx-fullscreen" type="button" title="Plein écran">
+                <span aria-hidden="true">⛶</span>
+                <span class="visually-hidden">Plein écran</span>
+              </button>
+            </div>
+          </div>
+          <div class="fx-stage-foot">
+            <span id="fx-state">en lecture</span>
+            <span id="fx-link">show hors ligne</span>
+            <span id="fx-fps">— fps</span>
+            <span id="fx-clock">0:00</span>
+          </div>
+        </section>
+
+        <section class="fx-controls" aria-label="Réglages de l'effet">
+          <fieldset class="fx-group">
+            <legend>Apparence</legend>
+
+            <label class="fx-field">
+              <span><b>Teinte</b><output id="fx-hue-out">210°</output></span>
+              <input id="fx-hue" type="range" min="0" max="360" step="1" value="210" />
+            </label>
+            <label class="fx-field">
+              <span><b>Écart complémentaire</b><output id="fx-spread-out">60°</output></span>
+              <input id="fx-spread" type="range" min="0" max="180" step="1" value="60" />
+            </label>
+            <label class="fx-field">
+              <span><b>Saturation</b><output id="fx-saturation-out">80 %</output></span>
+              <input id="fx-saturation" type="range" min="0" max="100" step="1" value="80" />
+            </label>
+            <label class="fx-field">
+              <span><b>Luminosité</b><output id="fx-lightness-out">60 %</output></span>
+              <input id="fx-lightness" type="range" min="0" max="100" step="1" value="60" />
+            </label>
+          </fieldset>
+
+          <fieldset class="fx-group">
+            <legend>Mouvement</legend>
+
+            <label class="fx-field">
+              <span><b>Tempo</b><output id="fx-tempo-out">120 BPM</output></span>
+              <input id="fx-tempo" type="range" min="40" max="200" step="1" value="120" />
+            </label>
+            <label class="fx-field">
+              <span><b>Énergie</b><output id="fx-energy-out">70 %</output></span>
+              <input id="fx-energy" type="range" min="0" max="100" step="1" value="70" />
+            </label>
+            <label class="fx-field">
+              <span><b>Basses</b><output id="fx-bass-out">55 %</output></span>
+              <input id="fx-bass" type="range" min="0" max="100" step="1" value="55" />
+            </label>
+            <label class="fx-field">
+              <span><b>Aigus</b><output id="fx-high-out">45 %</output></span>
+              <input id="fx-high" type="range" min="0" max="100" step="1" value="45" />
+            </label>
+            <label class="fx-field">
+              <span><b>Vitesse de lecture</b><output id="fx-speed-out">1,00×</output></span>
+              <input id="fx-speed" type="range" min="0.25" max="2" step="0.05" value="1" />
+            </label>
+            <label class="fx-field fx-switch-field">
+              <span><b>Cycle montée → impact</b><small>Fait vraiment retomber les drops.</small></span>
+              <input id="fx-impacts" type="checkbox" checked />
+            </label>
+          </fieldset>
+
+          <fieldset class="fx-group">
+            <legend>Rendu</legend>
+
+            <label class="fx-field">
+              <span><b>Intensité</b><output id="fx-intensity-out">100 %</output></span>
+              <input id="fx-intensity" type="range" min="20" max="150" step="1" value="100" />
+            </label>
+            <label class="fx-field">
+              <span><b>Flashs</b><output id="fx-flashes-out">90 %</output></span>
+              <input id="fx-flashes" type="range" min="0" max="150" step="1" value="90" />
+            </label>
+            <label class="fx-field">
+              <span><b>Qualité</b><output id="fx-quality-out">100 %</output></span>
+              <input id="fx-quality" type="range" min="25" max="100" step="1" value="100" />
+            </label>
+            <label class="fx-field fx-switch-field">
+              <span><b>Mode réduit</b><small>Moins d'éléments, jamais de flash.</small></span>
+              <input id="fx-reduced" type="checkbox" />
+            </label>
+            <label class="fx-field fx-switch-field">
+              <span><b>Fumée</b><small>Diffusion des faisceaux.</small></span>
+              <input id="fx-haze" type="checkbox" checked />
+            </label>
+          </fieldset>
+
+          <fieldset class="fx-group">
+            <legend>Scène</legend>
+
+            <label class="fx-field fx-select-field">
+              <span><b>Variante</b><small>Seconde famille qui surgit au milieu de la phrase.</small></span>
+              <select id="fx-variant"></select>
+            </label>
+            <label class="fx-field fx-select-field">
+              <span><b>Rôle</b><small>Pilote les cinématiques de concert et la bordure.</small></span>
+              <select id="fx-role">
+                <option value="intro">Introduction</option>
+                <option value="couplet">Couplet</option>
+                <option value="refrain" selected>Refrain</option>
+                <option value="montee">Montée</option>
+                <option value="drop">Impact</option>
+                <option value="finale">Finale</option>
+              </select>
+            </label>
+            <label class="fx-field fx-select-field">
+              <span><b>Humeur</b><small>Accord de couleurs de la scène.</small></span>
+              <select id="fx-mood">
+                <option value="calme">Calme</option>
+                <option value="pulse" selected>Pulsé</option>
+                <option value="explosif">Explosif</option>
+                <option value="aerien">Aérien</option>
+                <option value="sombre">Sombre</option>
+              </select>
+            </label>
+            <label class="fx-field fx-seed-field">
+              <span><b>Graine</b><small>Change les tirages internes de l'effet.</small></span>
+              <span class="fx-seed-row">
+                <input id="fx-seed" type="number" min="0" max="99999" step="1" value="7" />
+                <button class="fx-mini-btn" id="fx-seed-random" type="button">Tirer</button>
+              </span>
+            </label>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <p class="fx-toast" id="fx-toast" hidden role="status"></p>
+
+    <script type="module" src="/src/effects/main.ts"></script>
+  </body>
+</html>

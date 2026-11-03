@@ -11,6 +11,7 @@
  *   - `app-sync`     show synchronisé sur un lecteur externe
  *   - `app-show`     show analysé local (lecture, commandes, clavier)
  *   - `app-control`  lien tableau de bord, réglages, latence, overlay de debug
+ *   - `app-effects`  effet forcé depuis le studio, par-dessus tous les modes
  *   - `app-loop`     boucle de rendu, qualité, nappes de fumée, transitions, HUD
  *
  * L'état vit ici pour rester la source de vérité unique ; la logique vit dans
@@ -26,12 +27,14 @@ import type { ExternalPlaybackState } from "../core/playback";
 import { renderPixelRatio } from "../core/series";
 import type { ShowPlan } from "../core/show";
 import type { TrackView } from "../core/view";
-import { ControlLink, type TrackTimings } from "../shared/control";
+import type { EffectTimeline } from "../core/effects";
+import { ControlLink, type EffectOverride, type TrackTimings } from "../shared/control";
 import { DEFAULT_SETTINGS, type Analysis, type RenderSettings } from "../types";
 import { el, setStatus, setUploadState, showScreen } from "./ui";
 
 import { installControl } from "./app-control";
 import { installDrop } from "./app-drop";
+import { installEffects } from "./app-effects";
 import { installLive } from "./app-live";
 import { installLoop } from "./app-loop";
 import { installResolve } from "./app-resolve";
@@ -127,6 +130,15 @@ export class App {
   liveAudio: LiveAudioFeatures = EMPTY_LIVE_AUDIO;
   liveView: TrackView | null = null;
   livePlan: ShowPlan | null = null;
+
+  /**
+   * Effet forcé depuis le studio : il prend le pas sur le show en cours, quel
+   * que soit le mode (direct, synchronisé ou show local).
+   */
+  effectOverride: EffectOverride | null = null;
+  effectTimeline: EffectTimeline | null = null;
+  effectStartMs = 0;
+  effectFrame = 0;
 
   syncedView: TrackView | null = null;
   syncedPlan: ShowPlan | null = null;
@@ -392,4 +404,5 @@ installLive(App);
 installSync(App);
 installShow(App);
 installControl(App);
+installEffects(App);
 installLoop(App);

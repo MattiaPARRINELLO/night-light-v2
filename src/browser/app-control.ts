@@ -7,6 +7,7 @@
 import type { App } from "./app";
 import { dbgLog, debugLog } from "../core/debug";
 import { estimatePlayerPositionMs } from "../core/playback";
+import { FAMILY_LABELS } from "../core/show";
 import { ControlLink, type DashboardCommand, type ShowMode, type ShowState } from "../shared/control";
 import { num, seconds } from "./format";
 
@@ -93,6 +94,9 @@ export function installControl(Target: { prototype: App }): void {
       }
       case "debug-overlay":
         this.setDebugOverlay(command.on);
+        break;
+      case "set-effect":
+        this.applyEffectOverride(command.effect);
         break;
       case "analysis-ready":
         this.receiveAnalysis(command);
@@ -232,6 +236,10 @@ export function installControl(Target: { prototype: App }): void {
       notice: this.notice,
       resolve: this.resolveFailure === null ? null : { ...this.resolveFailure },
       timings: this.trackTimings === null ? null : { ...this.trackTimings },
+      effect:
+        this.effectOverride === null
+          ? null
+          : { family: this.effectOverride.family, label: FAMILY_LABELS[this.effectOverride.family] },
       log: debugLog.lines(10),
     };
     link.publishState(state);
