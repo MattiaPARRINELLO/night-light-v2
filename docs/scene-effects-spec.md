@@ -216,7 +216,9 @@ de scène.
 - **Blinder de couleur** : le ruban sert aussi de barre de blinders. Sur un
   impact (drop, refrain, finale, fin de montée), `blinderBordure` reprend
   l'inertie du filament (`intensiteBlinder`, décalage par bloc, budget de
-  flashs) et ajoute son éclat à l'intensité. Il est plus sensible que la barre
+  flashs) et ajoute son éclat à l'intensité. Un **petit blinder** pulse en plus
+  sur chaque beat (`f.beat × (0,3 + 0,4 × basse)`), léger et présent même hors
+  impact ; le gros éclat prend le maximum des deux. Il est plus sensible que la barre
   tungstène : drop, refrain, finale, fin de montée et couplet énergique
   (énergie > 0,55), avec un gain de 1,2. Il reste **de la couleur de la
   scène** : pas de tungstène, seulement plus de saturation et de luminosité.

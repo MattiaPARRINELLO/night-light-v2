@@ -354,7 +354,7 @@ describe("le ruban sert aussi de blinders", () => {
         builds: [{ start: 10, end: 12, strength: 1 }],
       }),
     );
-    const impact = frame("drop", 12, { energy: 0.9 });
+    const impact = frame("drop", 12, { energy: 0.9, beat: 0, bass: 0 });
     const debut = blinderBordure(impact, vue, 0);
     const milieu = blinderBordure({ ...impact, t: 12.11 }, vue, 0);
     const fin = blinderBordure({ ...impact, t: 14.5 }, vue, 0);
@@ -387,12 +387,18 @@ describe("le ruban sert aussi de blinders", () => {
 });
 
 describe("sensibilité du blinder de ruban", () => {
-  test("un couplet énergique déclenche le blinder, un couplet calme non", () => {
+  test("un petit blinder pulse sur chaque beat", () => {
+    const view = new TrackView(analysis());
+    const surBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0.9 });
+    const horsBeat = frame("couplet", 12, { energy: 0.5, bass: 0.8, beat: 0 });
+    expect(blinderBordure(surBeat, view, 0)).toBeGreaterThan(0.25);
+    expect(blinderBordure(horsBeat, view, 0)).toBe(0);
+  });
+
+  test("un couplet énergique déclenche aussi le gros blinder", () => {
     const view = new TrackView(analysis());
     const fort = frame("couplet", 12, { energy: 0.8, bass: 0.9 });
-    const calme = frame("couplet", 12, { energy: 0.3, bass: 0.9 });
     expect(blinderBordure(fort, view, 0)).toBeGreaterThan(0.4);
-    expect(blinderBordure(calme, view, 0)).toBe(0);
   });
 
   test("une montée déclenche plus tôt", () => {

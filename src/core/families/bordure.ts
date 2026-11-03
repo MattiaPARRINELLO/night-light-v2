@@ -234,8 +234,9 @@ export function blinderBordure(
   budgetFlash = 1,
 ): number {
   if (f.reduced) return 0;
-  // Le ruban ne flashe pas sur chaque mesure d'un couplet : il prend le relais
-  // des blinders sur les moments qui les méritent.
+  // Petit blinder : un pulse bref sur chaque beat, présent même hors impact.
+  const petit = clamp01(f.beat) * clamp01(budgetFlash) * (0.3 + 0.4 * clamp01(f.bass));
+  // Gros blinder : le ruban prend le relais sur les moments qui le méritent.
   const role = f.scene.role;
   const autorise =
     role === "drop" ||
@@ -243,10 +244,10 @@ export function blinderBordure(
     role === "finale" ||
     (role === "montee" && clamp01(f.build) > 0.25) ||
     (role === "couplet" && clamp01(f.energy) > 0.55);
-  if (!autorise) return 0;
-  // Léger gain : le ruban réagit plus tôt que la barre tungstène, qui reste la
-  // source principale quand elle est présente.
-  return clamp01(intensiteBlinder(f, view, index % 12) * 1.2 * clamp01(budgetFlash));
+  const impact = autorise
+    ? intensiteBlinder(f, view, index % 12) * 1.2 * clamp01(budgetFlash)
+    : 0;
+  return clamp01(Math.max(petit, impact));
 }
 
 /**
