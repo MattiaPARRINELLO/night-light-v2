@@ -201,7 +201,9 @@ export function installLive(Target: { prototype: App }): void {
     await this.ensureLiveView();
     this.startExternalCapture(true);
     this.startLiveLoop();
-    this.beginTransition();
+    // Un fondu en cours porte déjà l'entrée : un voile noir par-dessus le
+    // couperait net.
+    if (this.crossfade === null) this.beginTransition();
     this.debug("live", "mode live démarré · capture du son du PC ouverte");
   };
 
@@ -279,8 +281,7 @@ export function installLive(Target: { prototype: App }): void {
     const view = this.liveView;
     const plan = this.livePlan;
     if (view === null || plan === null) return;
-    const fade = this.crossfade;
-    const target = fade !== null && fade.active ? fade.liveCtx : this.ctx;
+    const target = this.fadeTarget("live");
     try {
       target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
@@ -299,7 +300,8 @@ export function installLive(Target: { prototype: App }): void {
         liveAudio: this.liveAudio,
       });
       this.liveFrame += 1;
-      if (fade === null) this.drawTransitionIfNeeded(time, plan);
+      this.drawTransitionIfNeeded(time, plan);
+      this.composeCrossfade();
       if (this.liveFrame % 120 === 0) {
         dbgThrottled(
           "live-render",
