@@ -37,3 +37,21 @@ export function shouldAutoResolve(data: NowPlayingResponse | null): boolean {
     data.title.trim() !== ""
   );
 }
+
+/**
+ * Le flux SSE now-playing n'émet que sur changement de morceau ; le serveur
+ * ajoute un battement (`event: ping`) toutes les 2 s. Au-delà de ce silence,
+ * le flux est considéré mort et le polling prend le relais même si le
+ * navigateur le croit encore ouvert (proxy qui a coupé sans FIN).
+ */
+export const SSE_SILENCE_MS = 5000;
+
+/** Faut-il basculer sur le polling de secours du lecteur externe ? */
+export function shouldFallbackToPolling(options: {
+  readyState: number;
+  lastEventAt: number;
+  now: number;
+}): boolean {
+  if (options.readyState === 2) return true; // EventSource.CLOSED
+  return options.now - options.lastEventAt > SSE_SILENCE_MS;
+}

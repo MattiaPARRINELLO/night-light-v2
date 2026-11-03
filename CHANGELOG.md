@@ -133,6 +133,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **Flux SSE du lecteur** : le serveur n'émettait que sur changement de morceau,
+  donc le client prenait 5 s de silence pour une coupure et basculait en polling
+  (`SSE morceau indisponible · polling de secours`) à chaque plage stable. Le
+  flux envoie désormais un battement `event: ping` toutes les 2 s ; le repli
+  n'est déclenché que sur une vraie perte (flux fermé ou silence anormal).
 - **CI navigateur** : cinq scripts e2e (`browser_check`, `fallback_check`,
   `family_check`, `scene_fade_check`, `shots`) calculaient la racine du dépôt un
   niveau trop bas, donc ne trouvaient pas `.venv/bin/uvicorn` ; la racine est
