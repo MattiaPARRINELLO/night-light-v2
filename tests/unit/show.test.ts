@@ -964,6 +964,9 @@ describe("familles de lyres dans le tirage", () => {
     expect(FAMILY_BRANCH_RESERVOIRS.drop).toEqual(
       expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
     );
+    expect(FAMILY_BRANCH_RESERVOIRS.refrain).toEqual(
+      expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
+    );
     expect(RHYTHMIC_FAMILIES).toEqual(
       expect.arrayContaining(["lyres-poursuite", "lyres-duo", "lyres-eventail"]),
     );

@@ -1,4 +1,4 @@
-import { clamp01, hash01, smoothstep } from "../series";
+import { clamp01, hash01, mix, smoothstep } from "../series";
 import type { TrackView } from "../view";
 import { tempsTempsFort } from "./concert-rig";
 import { contrastHue, lampHue } from "./harmony";
@@ -88,16 +88,15 @@ export function positionBordure(index: number, largeur: number, hauteur: number)
 }
 
 /**
- * Motif courant de la bordure.
+ * Motif d'un bloc de huit temps forts.
  *
- * Il change par blocs de huit temps forts, à partir du rôle, de l'énergie et
- * de la graine : la bordure ne prend donc jamais la même forme d'un passage à
- * l'autre, mais deux lectures du même instant donnent le même motif.
+ * En mode réduit, ni chenillard ni plein : seulement un rail ou une respiration,
+ * pour ne jamais faire courir un point lumineux.
  */
-export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
-  if (f.scene.role === "drop") return "plein";
+function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   const energie = clamp01(f.energy);
-  const bloc = Math.floor(tempsTempsFort(f, view) / 8);
+  if (f.reduced) return energie > 0.5 ? "respiration" : "rail";
+  if (f.scene.role === "drop") return "plein";
   const tirage = hash01(bloc * 7919 + f.seed + f.scene.index * 131);
 
   if (f.scene.role === "refrain") {
@@ -113,6 +112,17 @@ export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
   if (energie < 0.3) return "rail";
   if (energie > 0.75) return tirage < 0.5 ? "plein" : "chenillard";
   return tirage < 0.4 ? "cote" : tirage < 0.7 ? "respiration" : "rail";
+}
+
+/**
+ * Motif courant de la bordure.
+ *
+ * Il change par blocs de huit temps forts, à partir du rôle, de l'énergie et
+ * de la graine : la bordure ne prend donc jamais la même forme d'un passage à
+ * l'autre, mais deux lectures du même instant donnent le même motif.
+ */
+export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
+  return motifPourBloc(f, Math.floor(tempsTempsFort(f, view) / 8));
 }
 
 /**
@@ -139,14 +149,24 @@ export function poidsMotif(
       return diode.cote === choix ? 1 : 0.04;
     }
     case "alternance": {
-      const choix = Math.floor(temps / 4) % 2 === 0 ? "gauche" : "droite";
-      return diode.cote === choix ? 1 : 0.04;
+      // Bascule de côté lissée sur ~0,2 s : sans ce fondu, tout un bord
+      // s'éteindrait entre deux images.
+      const position = temps / 4;
+      const blocAlt = Math.floor(position);
+      const local = position - blocAlt;
+      const courant = blocAlt % 2 === 0 ? "gauche" : "droite";
+      const precedent = (blocAlt - 1) % 2 === 0 ? "gauche" : "droite";
+      const cible = diode.cote === courant ? 1 : 0.04;
+      const avant = diode.cote === precedent ? 1 : 0.04;
+      return mix(avant, cible, smoothstep(0, 0.2, local));
     }
     case "chenillard": {
-      const position = modulo(temps * 0.35, 1);
+      // Course lente, profil gaussien : le point chaud s'élargit au lieu de
+      // sauter d'une diode à l'autre image après image.
+      const position = modulo(temps * 0.2, 1);
       const ecart = Math.abs(index / NOMBRE_DIODES_BORDURE - position);
       const distance = Math.min(ecart, 1 - ecart);
-      return 1 - smoothstep(0.01, 0.07, distance);
+      return Math.exp(-(distance * distance) / (2 * 0.11 * 0.11));
     }
     case "respiration":
       return 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(f.t * 0.8));
@@ -164,12 +184,30 @@ export function couleurBordure(f: FrameState, index: number): number {
 }
 
 /**
+ * Poids effectif d'une diode, fondus de motif compris.
+ *
+ * Le motif d'un bloc arrive en fondu sur le premier dixième du bloc : le
+ * pourtour se transforme au lieu de basculer d'un coup. Au passage d'un bloc au
+ * suivant, la valeur est exactement continue (le motif sortant devient le motif
+ * précédent, et le fondu repart de zéro).
+ */
+function poidsCourant(f: FrameState, view: TrackView, index: number): number {
+  const temps = tempsTempsFort(f, view);
+  const bloc = Math.floor(temps / 8);
+  const local = temps / 8 - bloc;
+  const fondu = smoothstep(0, 0.12, local);
+  const avant = poidsMotif(f, view, index, motifPourBloc(f, bloc - 1));
+  const apres = poidsMotif(f, view, index, motifPourBloc(f, bloc));
+  return mix(avant, apres, fondu);
+}
+
+/**
  * Intensité de la diode `index` à l'instant courant.
  *
  * Le rail de base reste toujours un peu visible ; le motif décide de la part
  * réellement allumée, et l'éclat d'impact est dosé par le budget de flashs de
- * l'utilisateur. En mode réduit, tout est plafonné sous le seuil d'inconfort
- * lumineux.
+ * l'utilisateur. En mode réduit, ni chenillard ni éclat : tout est plafonné
+ * sous le seuil d'inconfort lumineux.
  */
 export function intensiteBordure(
   f: FrameState,
@@ -178,11 +216,10 @@ export function intensiteBordure(
   budgetFlash = 1,
 ): number {
   const energie = clamp01(f.energy);
-  const motif = motifBordure(f, view);
-  const poids = poidsMotif(f, view, index, motif);
+  const poids = poidsCourant(f, view, index);
   const rail = 0.03 + 0.08 * energie;
   const respiration = 0.85 + 0.15 * Math.sin(f.t * 1.1);
-  const eclat = clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
+  const eclat = f.reduced ? 0 : clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
   const brut = rail + poids * (0.2 + 0.65 * energie) * respiration + eclat * Math.max(poids, 0.15);
   return f.reduced ? Math.min(0.3, brut * 0.5) : clamp01(brut);
 }

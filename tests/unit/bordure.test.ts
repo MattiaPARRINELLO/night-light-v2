@@ -261,3 +261,41 @@ describe("dessin de la bordure", () => {
     expect(operations.filter((op) => op === "fill").length).toBeGreaterThan(0);
   });
 });
+
+describe("transitions et mode réduit de la bordure", () => {
+  test("les changements de motif et de côté sont fondus", () => {
+    const view = new TrackView(analysis());
+    for (const role of ["refrain", "couplet", "montee"] as const) {
+      const base = frame(role, 10, { energy: 0.8 });
+      let precedent = intensiteBordure(base, view, 0);
+      let sautMax = 0;
+      for (let t = 10 + 1 / 60; t < 30; t += 1 / 60) {
+        const courant = intensiteBordure(
+          { ...base, t, beatIndex: Math.floor(t / 0.5), beatPhase: view.beatPhase(t) },
+          view,
+          0,
+        );
+        sautMax = Math.max(sautMax, Math.abs(courant - precedent));
+        precedent = courant;
+      }
+      expect(sautMax).toBeLessThan(0.06);
+    }
+  });
+
+  test("le mode réduit n'utilise ni chenillard ni éclat", () => {
+    const view = new TrackView(analysis());
+    const f = frame("refrain", 12, { energy: 0.9, reduced: true });
+    for (let t = 0; t < 40; t += 0.5) {
+      const motif = motifBordure({ ...f, t, beatIndex: Math.floor(t / 0.5) }, view);
+      expect(["rail", "respiration"]).toContain(motif);
+    }
+    const impact = frame("drop", 12, { energy: 1, drop: 1, reduced: true });
+    expect(intensiteBordure(impact, view, 0, 0)).toBe(intensiteBordure(impact, view, 0, 1));
+  });
+
+  test("le budget de flash dose l'éclat, pas le motif", () => {
+    const view = new TrackView(analysis());
+    const f = frame("couplet", 12, { energy: 0.2, drop: 1 });
+    expect(intensiteBordure(f, view, 0, 1)).toBeGreaterThan(intensiteBordure(f, view, 0, 0));
+  });
+});

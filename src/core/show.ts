@@ -341,7 +341,13 @@ export type FamilyBranch = (typeof FAMILY_BRANCHES)[number];
 export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]> = {
   "reduit-calme": CALM_FAMILIES,
   "reduit-rythmique": REDUCED_RHYTHMIC_FAMILIES,
-  refrain: ["lyres-suspendues", "barres-led"],
+  refrain: [
+    "lyres-suspendues",
+    "barres-led",
+    "lyres-poursuite",
+    "lyres-duo",
+    "lyres-eventail",
+  ],
   montee: ["barres-led"],
   drop: CONCERT_FAMILIES,
   calme: CALM_FAMILIES,
@@ -638,13 +644,7 @@ export function familyFor(
 ): FamilyId {
   const branch = familyBranchFor(caractere, reduced, role, false, calm);
   if (branch === "refrain") {
-    return pickFamily(
-      ["lyres-suspendues", "barres-led", "lyres-poursuite", "lyres-duo", "lyres-eventail"],
-      seed,
-      turn,
-      excluded,
-      used,
-    );
+    return pickFamily(FAMILY_BRANCH_RESERVOIRS.refrain, seed, turn, excluded, used);
   }
   if (branch === "montee") return "barres-led";
   return pickFamily(FAMILY_BRANCH_RESERVOIRS[branch], seed, turn, excluded, used);
