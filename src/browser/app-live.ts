@@ -168,6 +168,7 @@ export function installLive(Target: { prototype: App }): void {
     this.livePlan = {
       duration: 1_000_000,
       seed: 1,
+      profile: "standard",
       scenes: [
         {
           index: 0,
@@ -285,6 +286,25 @@ export function installLive(Target: { prototype: App }): void {
     if (view === null || plan === null) return;
     const target = this.fadeTarget("live");
     try {
+      const fade = this.crossfade;
+      if (fade !== null && fade.active && fade.fromPlan !== null && fade.from === "show") {
+        fade.fromCtx.setTransform(1, 0, 0, 1, 0, 0);
+        renderFrame({
+          ctx: fade.fromCtx,
+          width: this.canvas.clientWidth,
+          height: this.canvas.clientHeight,
+          dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
+          time,
+          view,
+          plan: fade.fromPlan,
+          settings: this.settings,
+          reducedMotion: this.reducedMotion,
+          quality: this.liveQuality,
+          frame: this.liveFrame,
+          haze: this.hazeFor(this.liveQuality, this.canvas.clientWidth, this.canvas.clientHeight),
+          liveAudio: this.liveAudio,
+        });
+      }
       target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
         ctx: target,
@@ -304,6 +324,7 @@ export function installLive(Target: { prototype: App }): void {
       this.liveFrame += 1;
       this.drawTransitionIfNeeded(time, plan);
       this.composeCrossfade();
+      this.applyBlackout();
       if (this.liveFrame % 120 === 0) {
         dbgThrottled(
           "live-render",

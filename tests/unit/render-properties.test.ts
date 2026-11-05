@@ -71,6 +71,11 @@ function fakeContext(): { ctx: CanvasRenderingContext2D; operations: string[] } 
       operations.push(`alpha:${value}`);
     },
     setTransform: () => operations.push("setTransform"),
+    save: () => operations.push("save"),
+    restore: () => operations.push("restore"),
+    translate: () => operations.push("translate"),
+    rotate: () => operations.push("rotate"),
+    scale: () => operations.push("scale"),
     clearRect: () => operations.push("clearRect"),
     drawImage: () => operations.push("drawImage"),
     fillRect: (x: number, y: number, w: number, h: number) =>

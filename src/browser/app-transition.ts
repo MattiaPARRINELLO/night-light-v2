@@ -89,6 +89,7 @@ export function installTransition(Target: { prototype: App }): void {
       fromCtx: sortie.ctx,
       toCanvas: entree.canvas,
       toCtx: entree.ctx,
+      fromPlan: null,
       timer: null,
     };
     if (source !== null) fillSurface(sortie.ctx, source, width, height);

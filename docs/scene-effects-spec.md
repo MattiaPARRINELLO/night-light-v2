@@ -244,3 +244,94 @@ de scène.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
 - **Coût** : deux tronçons et un halo local par diode, plus deux remplissages
   pour les émetteurs échantillonnés, sans transformation ni dégradé radial.
+
+## 10. Profil hard (mode rave)
+
+Le profil `hard` est le **mode rave** de l'interface : une décision **de morceau**, pas de
+scène. Il est résolu une fois dans `buildShowPlan` (`resolveShowProfile`) puis recopié dans
+`plan.profile`. Les humeurs de scène restent celles du modèle existant ; le profil ne fait
+que changer leur vocabulaire.
+
+### Détection (`auto`)
+
+Mesures sur les fenêtres où l'énergie dépasse 0,45, échantillonnées toutes les 0,5 s :
+
+| mesure | seuil |
+| --- | --- |
+| énergie médiane | ≥ 0,70 |
+| basses médianes − aigus médians | ≥ 0,30 |
+| part de fenêtres sous 0,30 d'aigus | ≥ 0,50 |
+
+Les bandes étant normalisées indépendamment par l'analyseur, l'écart basses − aigus mesure
+la **forme du mix** (basses tenues, aigus en éclats), pas un niveau absolu. Le réglage
+`RenderSettings.hard` vaut `auto` par défaut ; `on` force le profil, `off` l'interdit.
+
+### Effets sur le plan
+
+- palette tirée de `HARD_TRACK_PALETTES` (rouge/glace, violet/acide, braise/cyan,
+  magenta/arc), spread 52–58° ;
+- réservoir `HARD_FAMILIES` pour les scènes hors calme, hors refrain/montée/impact ;
+- fond tiré de `HARD_BACKDROPS` (grille, tunnel, vagues) ;
+- saturation des scènes non calmes portée à 1, luminosité des humeurs fortes abaissée
+  (0,64 explosif, 0,58 pulsé), intensité +0,06 ;
+- fondus d'entrée et de sortie raccourcis (0,35–0,50 s au lieu de 0,7–1,2 s / 0,9 s).
+
+Le mode réduit force `standard` : c'est un mode de confort, il ne doit pas hériter d'un
+vocabulaire agressif.
+
+### Effets sur le rendu
+
+- fond plus noir (`drawBackground`) et halo central réduit ;
+- attaque de flash de temps fort à 20 ms, de drop à 80 ms, gain d'opacité de 12 %
+  (`FLASH_ATTACK_*_HARD_SEC`, `HARD_FLASH_BOOST`) ;
+- **stroboscope hard** (`hardStrobeAlpha`) : chaque temps fort est admis
+  (`flashAdmitted(..., hard)`), puis le clignotement suit `hardStrobeDivisions`, de 4 à
+  12 éclats **par temps** selon l'énergie et l'impact, soit ~9 à 28 Hz à 140 BPM. Chaque
+  éclat alterne entre la teinte principale et la complémentaire, et les flashs de temps
+  fort ainsi que le wash d'impact sont colorés dans l'accord de la scène. La phase
+  repart de zéro à chaque temps (`beatPhase`), donc pas de trou « strobe, pause, strobe »
+  quand la vitesse change. Il s'ajoute au flash de temps fort et s'éteint sans basse ni
+  kick, en mode réduit, ou si `settings.flashes = 0` ;
+- **cycle du strobe hard** (`core/strobe.ts`) : 8 temps forts, soit 4 temps de plein
+  strobe, 2 temps de creux où le plein écran se tait et où la bordure LED strobe seule,
+  puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek.
+  Pendant le plein strobe, `hardStrobeFamily` reste `lyres-eventail`, et
+  `drawRaveLayers` empile par-dessus `crossfire`, `burst` et `spots` (tirs croisés,
+  rayons centraux, projecteurs mobiles), avec saturation 1, luminosité +0,04 et budget
+  de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence quatre rangées de huit
+  lyres, avec quatre gestes (éventail, croisement, vague, cercle) et une échelle
+  croissante pour la profondeur, plus deux ou trois rangées lointaines réduites et
+  discrètes, et deux colonnes latérales tournées vers le centre.
+  `drawRaveFloor` ajoute un sol de club en perspective, avec lignes de fuite et lignes
+  horizontales qui défilent ;
+- bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
+  couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit ;
+- **mouvement de rave** : caméra (`raveCamera`) avec zoom pulsé sur le kick, rotation et
+  balayage lents autour du centre ; l'éventail de lyres passe de 0,17 à 1,15 rad/s, le
+  burst tourne en continu (×11), les tirs croisés et les projecteurs balaient le cadre.
+  Le fond, la vignette et la bordure restent fixes : c'est la lumière qui bouge, pas
+  l'image entière ;
+- **lasers scan** (`drawRaveLasers`) : jusqu'à 36 faisceaux fins, moitié depuis la scène,
+  moitié depuis le plafond, avec 2 à 3 images de rémanence ; ils balaient le cadre et
+  changent de teinte le long de la rangée ;
+- **confettis** (`drawRaveConfetti`) : pluie de particules colorées pendant les drops ;
+- **CO2** (`drawRaveCo2`) : quatre jets **discrets** d'une seconde, suivis d'une seconde
+  de pause, déclenchés uniquement par un impact (`drop > 0,12`). Ils sortent compressés
+  d'une buse, s'épanouissent en cône en montant, et les bouffées sont étalées sur le
+  premier tiers du jet pour que la gerbe dure ;
+- **onde de choc** (`drawRaveShockwave`) : anneau qui part du centre sur les 0,9 s qui
+  suivent un impact ;
+- **panneaux LED** (`drawRavePanels`) : deux bandes verticales sur les bords, en
+  chenillard et damier sur les pics ;
+- **mur de blinders** : en rave, les douze cellules passent en `tous` sur les pics et en
+  `chenillard` sinon, avec un pulse sur chaque kick et une teinte arc-en-ciel ;
+- **coupes glitch** (`drawGlitchCuts`) : trois bandes horizontales décalées sur les drops
+  (`drop > 0,3`), déterministes et sans état ;
+- **balayage arc-en-ciel** : `lampHue` décale la teinte de `f.t × 55 + index × 22` en mode
+  rave, et les strobes tournent de `f.t × 60`.
+- **chorégraphie par phrase** (`ravePhase`) : `build` (pas de strobe ni CO2), `impact`
+  (CO2, glitch, onde de choc, strobe forcé), `after` (confettis, lasers, cycle de strobe),
+  `trough` (lyres seules, panneaux atténués) ;
+- **bascule calée** : `refreshPlan(true)` ne reconstruit pas tout de suite en show analysé.
+  Il stocke `pendingPlanAt`, calculé sur le prochain impact (≤ 1,4 s) ou le prochain temps
+  fort, et `applyPendingPlanIfDue` lance le fondu animé à cet instant.

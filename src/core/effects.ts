@@ -267,6 +267,7 @@ export function buildEffectTimeline(params: EffectTimelineParams): EffectTimelin
     duration,
     seed,
     scenes: [],
+    profile: "standard",
     barStarts,
     track,
     backdrop: "particles",

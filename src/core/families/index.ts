@@ -36,6 +36,7 @@ export {
   couleurBlinder,
   decroissanceFilament,
   dessinerBlinders,
+  dessinerLyresRave,
   dessinerStructure,
   intensiteBlinder,
   motifBlinder,

@@ -1,5 +1,5 @@
-import type { Analysis, Section } from "../types";
-import { clamp01, hash01, hashString } from "./series";
+import type { Analysis, HardMode, Section } from "../types";
+import { clamp01, hash01, hashString, sampleAt } from "./series";
 
 export type FamilyId =
   | "beams"
@@ -139,6 +139,17 @@ export const SCENE_REASON_LABELS: Record<SceneReason, string> = {
 
 export type Mood = "calme" | "pulse" | "explosif" | "aerien" | "sombre";
 
+/**
+ * Profil esthétique d'un morceau, décidé une fois pour tout le plan.
+ *
+ * `standard` garde l'identité historique : palettes franches, familles
+ * mélangées, respiration entre les scènes. `hard` réserve un vocabulaire plus
+ * sombre et plus tranchant aux morceaux de rap agressif (trap, phonk, type
+ * « PTSD ») : palette rouge/glacée, familles de stroboscope, coupes plus
+ * courtes. Le profil ne remplace pas l'humeur de scène : il colore tout le plan.
+ */
+export type ShowProfile = "standard" | "hard";
+
 export interface Palette {
   name: string;
   /** Teinte dominante, 0..360. */
@@ -161,6 +172,8 @@ export interface ShowPlan {
   duration: number;
   seed: number;
   scenes: Scene[];
+  /** Profil esthétique du morceau : standard ou hard. */
+  profile: ShowProfile;
   /** Fenêtre analysée disponible ; absente pour une analyse complète. */
   coverage?: [number, number];
   /** Barres de mesure détectées dans le morceau, en secondes. */
@@ -317,6 +330,38 @@ export const REDUCED_RHYTHMIC_FAMILIES: FamilyId[] = ["beams", "waves", "rings",
 export const ALL_FAMILIES: FamilyId[] = [...CALM_FAMILIES, ...RHYTHMIC_FAMILIES];
 
 /**
+ * Réservoir du profil hard.
+ *
+ * Uniquement des familles qui découpent l'image et suivent le rythme : barres,
+ * volets, tirs croisés, rayons, maillages, poursuites de lyres. Aucune nappe
+ * pastel ni figure ronde : le profil doit se lire comme un mur de lumière
+ * agressif, pas comme une soirée lounge plus sombre.
+ */
+export const HARD_FAMILIES: FamilyId[] = [
+  "shutters",
+  "bars",
+  "grid",
+  "crossfire",
+  "burst",
+  "treillis",
+  "vortex",
+  "rideaux",
+  "portique",
+  "pendule",
+  "lyres-poursuite",
+  "barres-led",
+  "lyres-duo",
+];
+
+/**
+ * Fonds compatibles avec le profil hard.
+ *
+ * Le fond est permanent : il ne doit donc pas ramollir les scènes dures. Une
+ * grille, un tunnel ou des vagues très lentes tiennent l'écran sans distraire.
+ */
+export const HARD_BACKDROPS: FamilyId[] = ["grid", "tunnel", "waves"];
+
+/**
  * Branche de l'arbre de décision de `familyFor`.
  *
  * Le nom de la branche est une donnée d'instrumentation : il est exporté pour
@@ -330,6 +375,7 @@ export const FAMILY_BRANCHES = [
   "montee",
   "drop",
   "calme",
+  "hard",
   "brillance",
   "densite",
   "energie",
@@ -351,6 +397,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
   montee: ["barres-led"],
   drop: CONCERT_FAMILIES,
   calme: CALM_FAMILIES,
+  hard: HARD_FAMILIES,
   brillance: BRIGHT_FAMILIES,
   densite: RHYTHMIC_FAMILIES,
   energie: ENERGETIC_FAMILIES,
@@ -375,6 +422,20 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
   { name: "violet-jaune", hue: 268, accent: 52, spread: 46 },
   { name: "cyan-rose", hue: 186, accent: 336, spread: 42 },
   { name: "jaune-bleu", hue: 48, accent: 222, spread: 40 },
+];
+
+/**
+ * Palettes du profil hard.
+ *
+ * Deux pôles très écartés (rouge/glace, violet/acide, braise/cyan) et un spread
+ * plus serré que les palettes standard : la couleur reste lisible sur un fond
+ * noir, et le contraste porte l'agressivité sans multiplier les teintes.
+ */
+const HARD_TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
+  { name: "sang-glace", hue: 352, accent: 186, spread: 54 },
+  { name: "violet-acide", hue: 284, accent: 90, spread: 58 },
+  { name: "braise-nuit", hue: 14, accent: 196, spread: 52 },
+  { name: "magenta-arc", hue: 324, accent: 172, spread: 56 },
 ];
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
@@ -411,6 +472,84 @@ const MIN_SCENE_SPAN = 5;
  * changement de scène raté.
  */
 const MIN_VARIATION_SPAN = 8;
+
+/**
+ * Mesures du profil hard, sur les fenêtres fortes du morceau.
+ *
+ * Les bandes `bass` et `high` sont normalisées indépendamment par l'analyseur :
+ * comparer leurs valeurs absolues n'a pas de sens. En revanche, un mix de rap
+ * sombre tient ses basses près du maximum pendant que les aigus ne montent que
+ * par éclats (hats, cymbales). L'écart médian `bass − high` sur les fenêtres
+ * fortes capture donc bien « mur de 808 » contre « mix clair et équilibré ».
+ */
+export interface HardnessMetrics {
+  /** Médiane d'énergie des fenêtres fortes, 0..1. */
+  energy: number;
+  /** Médiane des basses sur ces fenêtres, 0..1. */
+  bass: number;
+  /** Médiane des aigus sur ces fenêtres, 0..1. */
+  high: number;
+  /** Écart médian basses − aigus, -1..1. */
+  bassDominance: number;
+  /** Part des fenêtres fortes sous le plafond de brillance, 0..1. */
+  darkShare: number;
+}
+
+/** Énergie minimale d'une fenêtre pour peser dans le profil hard. */
+export const HARD_LOUD_FLOOR = 0.45;
+/** Énergie médiane minimale du morceau pour être candidat. */
+export const HARD_MIN_ENERGY = 0.7;
+/** Écart médian basses − aigus au-delà duquel le mix est franchement sombre. */
+export const HARD_BASS_DOMINANCE = 0.3;
+/** Part minimale de fenêtres sombres parmi les fenêtres fortes. */
+export const HARD_DARK_SHARE = 0.5;
+/** Plafond d'aigus d'une fenêtre « sombre ». */
+export const HARD_BRIGHTNESS_CEILING = 0.3;
+
+/**
+ * Mesure le profil hard d'une analyse.
+ *
+ * Fonction pure : même analyse ⇒ mêmes mesures. Les fenêtres sont échantillonnées
+ * toutes les 0,5 s pour rester indépendantes de la fréquence des courbes.
+ */
+export function hardnessMetrics(analysis: Analysis): HardnessMetrics {
+  const step = 0.5;
+  const energies: number[] = [];
+  const basses: number[] = [];
+  const highs: number[] = [];
+  for (let time = 0; time <= analysis.duration; time += step) {
+    const energy = sampleAt(analysis.energy, time);
+    if (energy < HARD_LOUD_FLOOR) continue;
+    energies.push(energy);
+    basses.push(sampleAt(analysis.bass, time));
+    highs.push(sampleAt(analysis.high, time));
+  }
+  if (energies.length === 0) {
+    return { energy: 0, bass: 0, high: 0, bassDominance: 0, darkShare: 0 };
+  }
+  const energy = quantile(energies, 0.5);
+  const bass = quantile(basses, 0.5);
+  const high = quantile(highs, 0.5);
+  const darkShare = highs.filter((value) => value <= HARD_BRIGHTNESS_CEILING).length / highs.length;
+  return { energy, bass, high, bassDominance: bass - high, darkShare };
+}
+
+/** Détecte automatiquement un profil hard à partir de l'analyse seule. */
+export function detectShowProfile(analysis: Analysis): ShowProfile {
+  const metrics = hardnessMetrics(analysis);
+  return metrics.energy >= HARD_MIN_ENERGY &&
+    metrics.bassDominance >= HARD_BASS_DOMINANCE &&
+    metrics.darkShare >= HARD_DARK_SHARE
+    ? "hard"
+    : "standard";
+}
+
+/** Résout le profil selon le réglage utilisateur : auto, forcé ou désactivé. */
+export function resolveShowProfile(analysis: Analysis, mode: HardMode = "auto"): ShowProfile {
+  if (mode === "on") return "hard";
+  if (mode === "off") return "standard";
+  return detectShowProfile(analysis);
+}
 
 /**
  * Seuils de l'arbre de décision de `familyFor`.
@@ -602,6 +741,7 @@ export function familyBranchFor(
   role: SceneRole,
   concertDrop = false,
   calm?: boolean,
+  hard = false,
 ): FamilyBranch {
   const { energy, density, brightness } = caractere;
   if (reduced) {
@@ -617,6 +757,9 @@ export function familyBranchFor(
   // L'humeur finale fait foi : une scène lissée en « calme » par l'hystérésis
   // reste dans un réservoir calme, même si son énergie frôle le seuil.
   if (calm ?? energy < CALM_ENERGY_THRESHOLD) return "calme";
+  // Le profil hard prend le pas sur la brillance : c'est le morceau entier qui
+  // est sombre, pas une scène plus claire que les autres.
+  if (hard) return "hard";
   if (brightness > BRIGHTNESS_THRESHOLD) return "brillance";
   if (density > DENSITY_THRESHOLD) return "densite";
   if (energy > ENERGY_THRESHOLD) return "energie";
@@ -641,8 +784,9 @@ export function familyFor(
   excluded: readonly FamilyId[] = [],
   calm?: boolean,
   used?: ReadonlyMap<FamilyId, number>,
+  hard = false,
 ): FamilyId {
-  const branch = familyBranchFor(caractere, reduced, role, false, calm);
+  const branch = familyBranchFor(caractere, reduced, role, false, calm, hard);
   if (branch === "refrain") {
     return pickFamily(FAMILY_BRANCH_RESERVOIRS.refrain, seed, turn, excluded, used);
   }
@@ -718,7 +862,8 @@ function signatureKey(signature: DropSignature): string {
  * forts sont franchement saturés, les passages calmes se permettent une couleur
  * plus retenue (mais jamais grise — c'est une soirée, pas un aquarium).
  */
-function paletteSaturation(mood: Mood): number {
+function paletteSaturation(mood: Mood, hard = false): number {
+  if (hard && mood !== "calme" && mood !== "sombre") return 1;
   if (mood === "sombre") return 0.55;
   // Calme lumineux : une salle éclairée en pastel, pas un aquarium gris. La
   // saturation baisse (pastel) mais la lumière reste franche.
@@ -734,10 +879,15 @@ function paletteSaturation(mood: Mood): number {
  * qui « allume la salle » — et les passages calmes s'éclairent par le voile de
  * scène (`calmGlow`), sans jamais devenir un plein blanc.
  */
-function paletteLightness(mood: Mood): number {
+function paletteLightness(mood: Mood, hard = false): number {
   if (mood === "sombre") return 0.38;
   if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
+  // Le mode rave cherche le néon : saturation maximale, mais une luminosité
+  // moyenne plutôt que pastel. À 0,6 de lightness, une teinte HSL garde toute
+  // sa chroma au lieu de virer au blanc.
+  if (hard && mood === "explosif") return 0.64;
+  if (hard && mood === "pulse") return 0.58;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
   return 0.6;
@@ -1191,6 +1341,11 @@ export interface ShowPlanOptions {
    * jour où le serveur rendra un vrai découpage.
    */
   dramaturgy?: boolean;
+  /**
+   * Profil hard : `auto` (détection sur le morceau), `on` (forcé) ou `off`.
+   * Par défaut `auto`.
+   */
+  hard?: HardMode;
 }
 
 /**
@@ -1209,7 +1364,12 @@ export function buildShowPlan(
   seedOverride?: number,
   options: ShowPlanOptions = {},
 ): ShowPlan {
-  const dramaturgy = options.dramaturgy === true;  const seed =
+  const dramaturgy = options.dramaturgy === true;
+  // Le mode réduit est un mode de confort : il garde son vocabulaire calme,
+  // même quand le réglage force le profil hard.
+  const profile = reduced ? "standard" : resolveShowProfile(analysis, options.hard ?? "auto");
+  const hard = profile === "hard";
+  const seed =
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
   const duration = Math.max(analysis.duration, 0.001);
@@ -1219,15 +1379,19 @@ export function buildShowPlan(
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
   // l'autre, et tenue du premier au dernier plan.
-  const track = TRACK_PALETTES[Math.floor(hash01(seed * 13 + 5) * TRACK_PALETTES.length)] ?? TRACK_PALETTES[0]!;
+  const palettes = hard ? HARD_TRACK_PALETTES : TRACK_PALETTES;
+  const track = palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
   // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
   // remarque à peine. Choisie une fois, tenue du début à la fin.
   // Un fond fait partie de l'écran du début à la fin : s'il anime une figure
   // centrée et pulsée (les anneaux), elle tourne en boucle pendant tout le
   // morceau et finit par gêner. Le fond se prend donc parmi les familles
-  // calmes qui n'imposent pas cet effet de cercle permanent.
-  const backdropFamilies = CALM_FAMILIES.filter((family) => family !== "rings");
+  // calmes qui n'imposent pas cet effet de cercle permanent. Le profil hard
+  // garde ses propres fonds, déjà compatibles avec ses scènes dures.
+  const backdropFamilies = hard
+    ? HARD_BACKDROPS
+    : CALM_FAMILIES.filter((family) => family !== "rings");
   const fond = backdropFamilies[Math.floor(hash01(seed * 31 + 7) * backdropFamilies.length)] ?? "waves";
 
   const segments: Array<{
@@ -1355,6 +1519,7 @@ export function buildShowPlan(
             [],
             mood === "calme",
             familyUse,
+            hard,
           )
         : familyFor(
             caractere,
@@ -1365,12 +1530,13 @@ export function buildShowPlan(
             [fond, ...excluded],
             mood === "calme",
             familyUse,
+            hard,
           );
       if (grouped) groupFamilies.set(group, family);
     }
 
     const calm = CALM_FAMILIES.includes(family);
-    const pool = calm ? ALL_FAMILIES : CALM_FAMILIES;
+    const pool = hard && !calm ? HARD_FAMILIES : calm ? ALL_FAMILIES : CALM_FAMILIES;
     const others = pool.filter((candidate) => candidate !== family);
     const variantCandidate =
       others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
@@ -1385,7 +1551,9 @@ export function buildShowPlan(
     // scène calme ne devient pas agitée pour autant.
     let principale = family;
     if (principale === fond) {
-      const memeClasse = CALM_FAMILIES.filter((candidate) => candidate !== fond);
+      const memeClasse = (hard ? HARD_FAMILIES : CALM_FAMILIES).filter(
+        (candidate) => candidate !== fond,
+      );
       const pickSeed = grouped ? hashString(`${seed}|${group}|fond`) : seed * 17 + turn;
       principale = memeClasse[Math.floor(hash01(pickSeed) * memeClasse.length)] ?? "waves";
     }
@@ -1439,19 +1607,21 @@ export function buildShowPlan(
         hue,
         accent: (track.accent + derive + 360) % 360,
         spread: track.spread,
-        saturation: paletteSaturation(mood),
-        lightness: paletteLightness(mood),
+        saturation: paletteSaturation(mood, hard),
+        lightness: paletteLightness(mood, hard),
       },
-      intensity: clamp01(moodIntensity(mood, caractere.energy)),
+      intensity: clamp01(
+        moodIntensity(mood, caractere.energy) + (hard && mood !== "calme" ? 0.06 : 0),
+      ),
       fadeIn:
         event.reason === "drop"
           ? 0.05
           : index === 0
-            ? 0.7
+            ? hard ? 0.45 : 0.7
             : event.weight >= 1
-              ? 1.2
-              : 0.7,
-      fadeOut: 0.9,
+              ? hard ? 0.5 : 1.2
+              : hard ? 0.35 : 0.7,
+      fadeOut: hard ? 0.45 : 0.9,
       mood,
       role,
       reason: event.reason,
@@ -1512,20 +1682,20 @@ export function buildShowPlan(
       index: 0,
       start: 0,
       end: duration,
-      family: "beams",
-      variant: "tunnel",
-      backdrop: "waves",
+      family: hard && !reduced ? "shutters" : "beams",
+      variant: hard && !reduced ? "bars" : "tunnel",
+      backdrop: fond,
       palette: {
         name: track.name,
         hue: track.hue,
         accent: track.accent,
         spread: track.spread,
-        saturation: 0.88,
-        lightness: 0.64,
+        saturation: hard ? 1 : 0.88,
+        lightness: hard ? 0.55 : 0.64,
       },
-      intensity: 0.6,
-      fadeIn: 0.7,
-      fadeOut: 0.9,
+      intensity: hard ? 0.7 : 0.6,
+      fadeIn: hard ? 0.45 : 0.7,
+      fadeOut: hard ? 0.45 : 0.9,
       mood: "pulse",
       role: "intro",
       reason: "ouverture",
@@ -1550,6 +1720,7 @@ export function buildShowPlan(
     duration,
     seed,
     scenes,
+    profile,
     barStarts: barStarts(analysis),
     track,
     backdrop: fond,

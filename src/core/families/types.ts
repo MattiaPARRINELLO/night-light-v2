@@ -38,6 +38,8 @@ export interface FrameState {
   /** Poids de la scène dans le fondu, 0..1. */
   alpha: number;
   reduced: boolean;
+  /** Profil esthétique du morceau : les familles peuvent durcir leur geste. */
+  hard?: boolean;
   /** Qualité adaptative 0..1 : pilote le nombre d'éléments dessinés. */
   quality: number;
   seed: number;

@@ -197,6 +197,7 @@ export function installSync(Target: { prototype: App }): void {
     this.debugSync.match = "show lancé à la position du lecteur";
 
     this.syncedView = new TrackView(analysis);
+    this.pendingPlanAt = null;
     this.syncedPlan = this.buildPlan(analysis);
     this.pendingSynced = null;
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
@@ -430,6 +431,7 @@ export function installSync(Target: { prototype: App }): void {
       return;
     }
     const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    this.applyPendingPlanIfDue(time);
     const pending = this.pendingSynced;
     if (pending !== null && time >= pending.switchAt) {
       this.syncedView = pending.view;
@@ -452,14 +454,33 @@ export function installSync(Target: { prototype: App }): void {
     const outside = coverage !== undefined && (time < coverage[0] || time > coverage[1]);
     const fade = this.crossfade;
     const target = this.fadeTarget("show");
+    const renderTime = Math.min(time, view.duration);
     try {
+      if (fade !== null && fade.active && fade.fromPlan !== null && fade.from === "live") {
+        fade.fromCtx.setTransform(1, 0, 0, 1, 0, 0);
+        renderFrame({
+          ctx: fade.fromCtx,
+          width: this.canvas.clientWidth,
+          height: this.canvas.clientHeight,
+          dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
+          time: renderTime,
+          view,
+          plan: fade.fromPlan,
+          settings: this.settings,
+          reducedMotion: this.reducedMotion,
+          quality: this.quality,
+          frame: this.frame,
+          haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
+          liveAudio: outside ? this.liveAudio : undefined,
+        });
+      }
       target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
         ctx: target,
         width: this.canvas.clientWidth,
         height: this.canvas.clientHeight,
         dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
-        time: Math.min(time, view.duration),
+        time: renderTime,
         view,
         plan,
         settings: this.settings,
@@ -471,10 +492,11 @@ export function installSync(Target: { prototype: App }): void {
       });
       this.frame += 1;
       if (fade === null) {
-        this.drawTransitionIfNeeded(Math.min(time, view.duration), plan);
+        this.drawTransitionIfNeeded(renderTime, plan);
       } else if (fade.active) {
         this.composeCrossfade();
       }
+      this.applyBlackout();
       this.markFirstFrame();
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));

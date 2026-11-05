@@ -14,9 +14,9 @@
  * version, elles se ignorent au lieu de se comprendre de travers.
  */
 
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 import type { JobTimings } from "../core/api";
-import type { FamilyId, Mood, SceneRole } from "../core/show";
+import type { FamilyId, Mood, SceneRole, ShowProfile } from "../core/show";
 
 export const CONTROL_CHANNEL = "night-light-control";
 /** Version du protocole. Incrémentée à toute rupture de compatibilité. */
@@ -53,6 +53,12 @@ export interface ShowState {
   page: "show";
   screen: ScreenName;
   mode: ShowMode;
+  /**
+   * Profil réellement appliqué au plan en cours, `null` hors show analysé.
+   * Le dashboard s'en sert pour afficher l'état du mode hard, y compris quand
+   * la détection automatique l'a activé sans réglage explicite.
+   */
+  profile: ShowProfile | null;
   /** false tant que le show n'a pas reçu de signe de vie du dashboard. */
   controlled: boolean;
   capture: {
@@ -121,6 +127,10 @@ export interface ShowState {
     flashes: number;
     reduced: boolean;
     noflash: boolean;
+    /** Profil esthétique : automatique, hard forcé ou standard. */
+    hard: HardMode;
+    /** Écran noir instantané, sans couper la musique. */
+    blackout: boolean;
     /** Entrée dans le show : voile noir historique ou fondu enchaîné. */
     transition: "black" | "crossfade";
   };
@@ -364,6 +374,7 @@ export function emptyShowState(): ShowState {
     page: "show",
     screen: "drop",
     mode: "live",
+    profile: null,
     controlled: false,
     capture: { open: false, state: "inactive", source: "", error: "", rate: 0, messages: 0, lastAt: 0 },
     audio: { rms: 0, energy: 0, bass: 1 / 3, mid: 1 / 3, high: 1 / 3, transient: 0 },
@@ -382,7 +393,7 @@ export function emptyShowState(): ShowState {
       correlation: null,
     },
     analysis: null,
-    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, transition: "crossfade" },
+    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, hard: "auto", blackout: false, transition: "crossfade" },
     limits: null,
     debugOverlay: false,
     error: null,

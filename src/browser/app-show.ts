@@ -10,7 +10,7 @@ import { clamp, formatTime } from "../core/series";
 import { buildShowPlan, type ShowPlan } from "../core/show";
 import { TrackView } from "../core/view";
 import { el, setPlaying, setShowError, setStatus, showScreen } from "./ui";
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 
 declare module "./app" {
   interface App {
@@ -19,7 +19,9 @@ declare module "./app" {
     startShowCrossfade(): void;
     buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
-    refreshPlan(): void;
+    rebuildPlan(transition: boolean): void;
+    refreshPlan(transition?: boolean): void;
+    applyPendingPlanIfDue(time: number): void;
     togglePlay(): Promise<void>;
     restart(): Promise<void>;
     toggleFullscreen(): Promise<void>;
@@ -28,11 +30,33 @@ declare module "./app" {
   }
 }
 
+/**
+ * Instant musical de la prochaine bascule de plan.
+ *
+ * On vise un impact s'il tombe dans les 1,4 s, sinon le temps fort suivant :
+ * le fondu démarre ainsi sur la musique, jamais au milieu d'un temps.
+ */
+function nextRaveSwitchTime(view: TrackView, now: number): number {
+  const impacts = [
+    ...(view.analysis.drops ?? []).map((drop) => drop.time),
+    ...view.analysis.builds.map((build) => build.end),
+  ]
+    .filter((time) => time > now + 0.03)
+    .sort((left, right) => left - right);
+  const nearest = impacts[0];
+  if (nearest !== undefined && nearest - now <= 1.4) return nearest;
+  const beat = view.beats.find((time) => time > now + 0.03);
+  return beat ?? now + 0.12;
+}
+
 export function installShow(Target: { prototype: App }): void {
   /** Construit le plan en mesurant le temps réellement passé dans `buildShowPlan`. */
   Target.prototype.buildPlan = function (this: App, analysis: Analysis, seed?: number): ShowPlan {
     const startedAt = performance.now();
-    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed, { dramaturgy: true });
+    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed, {
+      dramaturgy: true,
+      hard: this.settings.hard,
+    });
     const durationMs = performance.now() - startedAt;
     this.debug("show", "plan de spectacle construit", {
       dureeMs: Number(durationMs.toFixed(2)),
@@ -69,11 +93,23 @@ export function installShow(Target: { prototype: App }): void {
     });
     el<HTMLInputElement>("chk-reduced").addEventListener("change", () => {
       this.settings.reduced = el<HTMLInputElement>("chk-reduced").checked;
-      this.refreshPlan();
+      this.refreshPlan(true);
+    });
+    const hardMode = el<HTMLSelectElement>("hard-mode");
+    hardMode.value = this.settings.hard;
+    hardMode.addEventListener("change", () => {
+      this.settings.hard = hardMode.value as HardMode;
+      // Rend le clavier au show : sans ça, la touche H restait avalée par le
+      // menu qui gardait le focus après le choix.
+      hardMode.blur();
+      this.refreshPlan(true);
     });
     el<HTMLInputElement>("chk-noflash").addEventListener("change", () => {
       this.noflash = el<HTMLInputElement>("chk-noflash").checked;
       this.settings.flashes = this.noflash ? 0 : this.flashSlider;
+    });
+    el<HTMLInputElement>("chk-blackout").addEventListener("change", () => {
+      this.settings.blackout = el<HTMLInputElement>("chk-blackout").checked;
     });
 
     const seek = el<HTMLInputElement>("seek");
@@ -146,6 +182,7 @@ export function installShow(Target: { prototype: App }): void {
       startedAt: Date.now(),
     };
     this.view = new TrackView(analysis);
+    this.pendingPlanAt = null;
     this.plan = this.buildPlan(analysis);
     if (useCrossfade) this.startShowCrossfade();
     else this.beginTransition();
@@ -228,10 +265,65 @@ export function installShow(Target: { prototype: App }): void {
     return this.settings.reduced || this.reducedMotion;
   };
 
-  Target.prototype.refreshPlan = function (this: App): void {
+  Target.prototype.refreshPlan = function (this: App, transition = false): void {
+    const activeLayer: "show" | "live" | null =
+      this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
+    // En show analysé, on attend le prochain temps fort (ou un impact proche)
+    // pour basculer : le changement tombe sur la musique, pas au milieu d'un temps.
+    if (transition && activeLayer === "show") {
+      const view = this.syncedMode ? this.syncedView : this.view;
+      if (view !== null) {
+        const now = this.syncedMode
+          ? this.showTimeMs(Date.now()) / 1000
+          : this.audio.currentTime;
+        this.pendingPlanAt = nextRaveSwitchTime(view, now);
+        return;
+      }
+    }
+    this.pendingPlanAt = null;
+    this.rebuildPlan(transition);
+  };
+
+  /** Construit les nouveaux plans, avec un fondu animé depuis les anciens. */
+  Target.prototype.rebuildPlan = function (this: App, transition = false): void {
+    const activeLayer: "show" | "live" | null =
+      this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
+    const oldPlan =
+      activeLayer === "show" ? (this.syncedMode ? this.syncedPlan : this.plan) : this.livePlan;
+    if (transition && activeLayer !== null && oldPlan !== null) {
+      this.cancelCrossfade();
+      // L'ancien plan continue d'être rendu dans la couche sortante : le fondu
+      // ne fige rien, les deux spectacles restent animés pendant la bascule.
+      const fade =
+        activeLayer === "show"
+          ? this.createCrossfade("live", "show", 900, { source: this.canvas })
+          : this.createCrossfade("show", "live", 900, { source: this.canvas });
+      if (fade !== null) fade.fromPlan = oldPlan;
+    }
+    // Show local : le plan porte `this.plan`. Show calé sur le lecteur : il vit
+    // dans `syncedPlan`. Les deux doivent être reconstruits, sinon un réglage
+    // comme le mode rave ne change rien pendant un morceau synchronisé.
     const analysis = this.view?.analysis;
-    if (analysis === undefined) return;
-    this.plan = this.buildPlan(analysis);
+    if (analysis !== undefined) this.plan = this.buildPlan(analysis, this.plan?.seed);
+    const syncedAnalysis = this.syncedView?.analysis;
+    if (syncedAnalysis !== undefined) {
+      this.syncedPlan = this.buildPlan(syncedAnalysis, this.syncedPlan?.seed);
+    }
+    // Direct : pas d'analyse pour détecter, mais un forçage manuel doit quand
+    // même allumer la scène de rave sur le son en cours.
+    if (this.livePlan !== null) {
+      this.livePlan = {
+        ...this.livePlan,
+        profile: this.settings.hard === "on" ? "hard" : "standard",
+      };
+    }
+  };
+
+  /** Applique la bascule de plan si son temps musical est arrivé. */
+  Target.prototype.applyPendingPlanIfDue = function (this: App, time: number): void {
+    if (this.pendingPlanAt === null || time + 0.02 < this.pendingPlanAt) return;
+    this.pendingPlanAt = null;
+    this.rebuildPlan(true);
   };
 
   Target.prototype.togglePlay = async function (this: App): Promise<void> {
@@ -272,7 +364,20 @@ export function installShow(Target: { prototype: App }): void {
   Target.prototype.bindKeyboard = function (this: App): void {
     window.addEventListener("keydown", (event) => {
       const target = event.target as HTMLElement | null;
-      if (target !== null && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // On ne vole jamais une frappe dans un champ de texte. Les curseurs, cases
+      // et menus laissent passer H et B.
+      const textField =
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement &&
+          !["checkbox", "radio", "range", "button", "submit"].includes(target.type)) ||
+        (target !== null && target.isContentEditable);
+      if (textField) return;
+      const key = event.key.toLowerCase();
+      const formControl =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+      if (formControl && key !== "h" && key !== "b") return;
       switch (event.key) {
         case "s":
         case "S": {
@@ -290,6 +395,24 @@ export function installShow(Target: { prototype: App }): void {
         case "R":
           void this.restart();
           break;
+        case "h":
+        case "H":
+          this.settings.hard = this.settings.hard === "on" ? "off" : "on";
+          this.refreshPlan(true);
+          setStatus(
+            this.settings.hard === "on"
+              ? "Mode rave activé (touche H pour revenir)."
+              : "Profil standard (touche H pour activer le mode rave).",
+          );
+          break;
+        case "b":
+        case "B": {
+          this.settings.blackout = !this.settings.blackout;
+          const blackout = document.getElementById("chk-blackout");
+          if (blackout instanceof HTMLInputElement) blackout.checked = this.settings.blackout;
+          setStatus(this.settings.blackout ? "Blackout." : "Lumière rétablie.");
+          break;
+        }
         case "f":
         case "F":
           void this.toggleFullscreen();

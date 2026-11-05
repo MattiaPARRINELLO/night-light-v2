@@ -27,6 +27,28 @@
             <p class="dash-sub">Console de contrôle · spectacle musical temps réel</p>
           </div>
           <a class="dash-link" href="/effets.html">Studio d'effets</a>
+          <button
+            class="hard-toggle"
+            id="hard-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Mode rave, raccourci H"
+          >
+            <span class="hard-toggle-dot" aria-hidden="true"></span>
+            <span id="hard-toggle-label">Rave off</span>
+            <kbd>H</kbd>
+          </button>
+          <button
+            class="hard-toggle blackout-toggle"
+            id="blackout-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Blackout, raccourci B"
+          >
+            <span class="hard-toggle-dot" aria-hidden="true"></span>
+            <span id="blackout-toggle-label">Blackout</span>
+            <kbd>B</kbd>
+          </button>
         </div>
 
         <nav class="status-band" aria-label="État du spectacle">
@@ -294,6 +316,14 @@
               <label class="switch"><input id="chk-reduced" type="checkbox" /><span>Intensité réduite</span></label>
               <label class="switch"><input id="chk-noflash" type="checkbox" /><span>Sans flashs</span></label>
             </div>
+            <label class="field">
+              <span class="field-label">Profil</span>
+              <select id="hard-mode">
+                <option value="auto" selected>Auto (détection)</option>
+                <option value="on">Rave (forcé)</option>
+                <option value="off">Standard</option>
+              </select>
+            </label>
             <label class="field">
               <span class="field-label">Entrée dans le show</span>
               <select id="transition-mode">

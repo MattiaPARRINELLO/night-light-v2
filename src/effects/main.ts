@@ -328,7 +328,7 @@ class Studio {
         time,
         view: this.previewTimeline.view,
         plan: this.previewTimeline.plan,
-        settings: { intensity: 1, flashes: 0.9, reduced: false },
+        settings: { intensity: 1, flashes: 0.9, reduced: false, hard: "off", blackout: false },
         reducedMotion: false,
         quality: 0.55,
         frame: job.index,
@@ -758,6 +758,8 @@ class Studio {
       intensity: this.state.intensity / 100,
       flashes: this.state.flashes / 100,
       reduced: this.state.reduced,
+      hard: "off",
+      blackout: false,
     };
   }
 

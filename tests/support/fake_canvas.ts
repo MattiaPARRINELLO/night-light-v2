@@ -3,8 +3,9 @@
  * une fonction du temps musical (indispensable pour rester synchronisé après
  * une pause ou un retour en arrière).
  *
- * Partagé par les tests qui dessinent des familles sans navigateur. Aucune
- * transformation de contexte n'est simulée : le rendu n'en utilise pas.
+ * Partagé par les tests qui dessinent des familles sans navigateur. Les
+ * transformations de contexte sont enregistrées comme les autres opérations,
+ * sans être appliquées aux coordonnées.
  */
 export function fakeContext() {
   const operations: string[] = [];
@@ -45,6 +46,12 @@ export function fakeContext() {
       operations.push(`alpha:${Number(value.toFixed(4))}`);
     },
     setTransform: () => operations.push("setTransform"),
+    save: () => operations.push("save"),
+    restore: () => operations.push("restore"),
+    translate: (x: number, y: number) =>
+      operations.push(`translate:${x.toFixed(1)},${y.toFixed(1)}`),
+    rotate: (angle: number) => operations.push(`rotate:${angle.toFixed(3)}`),
+    scale: (x: number, y: number) => operations.push(`scale:${x.toFixed(3)},${y.toFixed(3)}`),
     clearRect: () => operations.push("clearRect"),
     drawImage: () => operations.push("drawImage"),
     fillRect: (x: number, y: number, w: number, h: number) =>

@@ -20,7 +20,7 @@ import {
   type DashboardCommand,
   type ShowState,
 } from "../shared/control";
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 import { fmtTime, sampleCurve } from "./format";
 import { TrackChart } from "./trackChart";
 
@@ -311,6 +311,8 @@ class Dashboard {
    */
   private analysisLoadedAt = 0;
   private readonly chart: TrackChart;
+  /** Profil hard réellement actif ou forcé, pour le bouton rapide du header. */
+  private hardActive = false;
 
   constructor() {
     // Le tracé a sa propre boucle d'animation : la position lissée qu'il produit
@@ -694,6 +696,10 @@ class Dashboard {
     if (document.activeElement !== reduced) reduced.checked = state.settings.reduced;
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
     if (document.activeElement !== transition) transition.value = state.settings.transition;
+    const hardMode = el<HTMLSelectElement>("hard-mode");
+    if (document.activeElement !== hardMode) hardMode.value = state.settings.hard ?? "auto";
+    this.syncHardToggle(state);
+    this.syncBlackout(state);
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -1028,6 +1034,46 @@ class Dashboard {
     beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
   }
 
+  /** Reflète l'état réel du profil dans le bouton rapide du header. */
+  private syncHardToggle(state: ShowState): void {
+    this.hardActive = state.profile === "hard" || state.settings.hard === "on";
+    this.paintHardToggle();
+  }
+
+  private paintHardToggle(): void {
+    const button = el<HTMLButtonElement>("hard-toggle");
+    button.classList.toggle("is-on", this.hardActive);
+    button.setAttribute("aria-pressed", String(this.hardActive));
+    el<HTMLElement>("hard-toggle-label").textContent = this.hardActive ? "Rave on" : "Rave off";
+    button.title = this.hardActive
+      ? "Mode rave actif, touche H pour couper"
+      : "Mode rave inactif, touche H pour forcer";
+  }
+
+  /** Bascule rapide hard on/off. Le mode auto reste réglable dans le panneau. */
+  private toggleHard(): void {
+    const patch: Partial<ShowState["settings"]> = { hard: this.hardActive ? "off" : "on" };
+    this.send({ type: "set-settings", patch });
+    this.hardActive = patch.hard === "on";
+    this.paintHardToggle();
+  }
+
+  /** Reflète le blackout dans le bouton du header. */
+  private syncBlackout(state: ShowState): void {
+    const on = state.settings.blackout;
+    const button = el<HTMLButtonElement>("blackout-toggle");
+    button.classList.toggle("is-on", on);
+    button.setAttribute("aria-pressed", String(on));
+    el<HTMLElement>("blackout-toggle-label").textContent = on ? "Blackout on" : "Blackout";
+  }
+
+  private toggleBlackout(): void {
+    const next = !this.state.settings.blackout;
+    this.state.settings.blackout = next;
+    this.syncBlackout(this.state);
+    this.send({ type: "set-settings", patch: { blackout: next } });
+  }
+
   private bindControls(): void {
     // La bande d'état sert de sommaire : cliquer un fait mène au panneau qui le
     // détaille, et le fait clignoter une fois pour qu'on voie où on a atterri.
@@ -1048,7 +1094,37 @@ class Dashboard {
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
     const transition = el<HTMLSelectElement>("transition-mode");
+    const hardMode = el<HTMLSelectElement>("hard-mode");
     const latency = el<HTMLInputElement>("latency");
+
+    el<HTMLButtonElement>("hard-toggle").addEventListener("click", () => this.toggleHard());
+    el<HTMLButtonElement>("blackout-toggle").addEventListener("click", () => this.toggleBlackout());
+    window.addEventListener("keydown", (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const target = event.target;
+      // On ne vole jamais une frappe dans un champ de texte. Les curseurs, cases
+      // et menus laissent passer H et B.
+      const textField =
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement &&
+          !["checkbox", "radio", "range", "button", "submit"].includes(target.type)) ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (textField) return;
+      if (key === "h") {
+        event.preventDefault();
+        this.toggleHard();
+      }
+      if (key === "b") {
+        event.preventDefault();
+        this.toggleBlackout();
+      }
+    });
+
+    hardMode.addEventListener("change", () => {
+      this.send({ type: "set-settings", patch: { hard: hardMode.value as HardMode } });
+      hardMode.blur();
+    });
 
     transition.addEventListener("change", () => {
       this.send({

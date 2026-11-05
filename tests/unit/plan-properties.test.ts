@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, type FamilyId, type Scene } from "../../src/core/show";
+import { buildShowPlan, minHueStepEff, type FamilyId, type Scene } from "../../src/core/show";
 import type { Analysis } from "../../src/types";
 import { corpusAnalyses, longTrackAnalysis } from "../support/corpus";
 
@@ -242,16 +242,19 @@ describe("P9 — fenêtre de teinte et écart entre scènes voisines", () => {
     const violations: string[] = [];
     for (const { name, analysis } of tracks) {
       const plan = buildShowPlan(analysis, false);
+      // Le contrat réel est `minHueStepEff(spread)` : un morceau à palette
+      // resserrée (profil hard) accepte un écart plus petit.
+      const step = minHueStepEff(plan.track.spread);
       for (let index = 1; index < plan.scenes.length; index += 1) {
         const gap = circular(plan.scenes[index]!.palette.hue, plan.scenes[index - 1]!.palette.hue);
-        if (gap < MIN_HUE_STEP - 1e-6) {
+        if (gap < step - 1e-6) {
           violations.push(
-            `${name}: ${plan.scenes[index - 1]!.start.toFixed(1)}s→${plan.scenes[index]!.start.toFixed(1)}s = ${gap.toFixed(1)}°`,
+            `${name}: ${plan.scenes[index - 1]!.start.toFixed(1)}s→${plan.scenes[index]!.start.toFixed(1)}s = ${gap.toFixed(1)}° (seuil ${step.toFixed(1)}°)`,
           );
         }
       }
     }
-    expect(violations, `écarts < ${MIN_HUE_STEP}° : ${violations.join(" | ")}`).toEqual([]);
+    expect(violations, `écarts < seuil effectif : ${violations.join(" | ")}`).toEqual([]);
   });
 });
 

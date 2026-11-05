@@ -151,7 +151,14 @@ export function tempsTempsFort(f: FrameState, view: TrackView): number {
 }
 
 /** Geste imposé aux huit lyres, indépendamment du rôle de la scène. */
-export type GesteLyre = "auto" | "poursuite" | "eventail" | "croisement" | "vague";
+export type GesteLyre =
+  | "auto"
+  | "poursuite"
+  | "eventail"
+  | "croisement"
+  | "vague"
+  | "cercle"
+  | "croix";
 
 /**
  * Cinématique pan/tilt d'une lyre.
@@ -278,10 +285,14 @@ export function orientationLyre(
         break;
       }
       case "eventail": {
-        const ouvertureEventail = 0.2 * (0.85 + 0.15 * Math.sin(f.t * 0.17));
+        // En mode rave, l'éventail balaie vite au lieu de respirer lentement :
+        // c'est le mouvement de tête le plus lisible sur une scène de club.
+        const vitesse = f.hard ? 1.15 : 0.17;
+        const amplitude = f.hard ? 0.3 : 0.2;
+        const ouvertureEventail = amplitude * (0.85 + 0.15 * Math.sin(f.t * vitesse));
         angle = base + (i - centre) * ouvertureEventail;
         ouverture = 0.026;
-        intensite = 0.8;
+        intensite = f.hard ? 0.9 : 0.8;
         prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy) * 0.6;
         break;
       }
@@ -297,6 +308,25 @@ export function orientationLyre(
         ouverture = 0.022;
         intensite = 0.7;
         prisme = 0;
+        break;
+      }
+      case "cercle": {
+        // Les têtes tournent en cercle, chacune avec son décalage : la rangée
+        // décrit une spirale au lieu de balayer en bloc.
+        angle = base + Math.sin(f.t * 0.85 + i * 0.92) * 0.6;
+        ouverture = 0.02 + 0.008 * (0.5 + 0.5 * Math.sin(f.t * 1.3 + i));
+        intensite = 0.85;
+        prisme = f.reduced ? 0 : 0.5;
+        break;
+      }
+      case "croix": {
+        // Les têtes se croisent vers le centre : moitié gauche vers la droite,
+        // moitié droite vers la gauche, en respiration lente.
+        const versCentre = -((i - centre) / Math.max(centre, 1));
+        angle = base + versCentre * 0.55 * (0.7 + 0.3 * Math.sin(f.t * 1.15));
+        ouverture = 0.022;
+        intensite = 0.9;
+        prisme = f.reduced ? 0 : 0.4;
         break;
       }
     }
@@ -766,14 +796,30 @@ export function dessinerBlinders(
   // Douze cellules au lieu de quatre : on baisse légèrement chaque source pour
   // que la barre complète reste dans la même plage de luminosité.
   const gainBarre = 0.68;
+  const rave = f.hard === true && !f.reduced;
+  // En rave, le mur claque : toute la barre sur les pics, chenillard rapide
+  // sinon. Le motif n'est plus celui du rôle de scène.
+  const motif: MotifBlinder = rave
+    ? f.energy > 0.8
+      ? "tous"
+      : "chenillard"
+    : motifBlinder(f.scene.role, f.scene.drop);
 
   for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
-    const poids = poidsBlinder(f, index);
+    const poids = poidsBlinder(f, index, f.scene.role, motif);
     if (poids <= 0.02) continue;
-    const intensite = intensiteBlinder(f, view, index) * poids * gainBarre;
+    const ravePulse = rave ? clamp01(f.beat * (0.45 + 0.55 * f.bass)) : 0;
+    const intensite =
+      Math.max(intensiteBlinder(f, view, index), ravePulse) * poids * gainBarre * (rave ? 1.35 : 1);
     if (intensite <= 0.008) continue;
     const { x, y } = positionBlinder(index, w, h);
-    const couleur = couleurBlinder(intensite);
+    const couleur = rave
+      ? {
+          hue: shiftHue(f.palette.hue, index * 26 + f.t * 80),
+          saturation: 1,
+          lightness: 0.62,
+        }
+      : couleurBlinder(intensite);
     const rayon = Math.min(w, h) * (0.035 + 0.09 * intensite);
 
     // Halo circulaire : la lampe elle-même, avant l'étirement de l'objectif.
@@ -869,7 +915,7 @@ function dessinerLyres(
       width: largeur,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + 0.08,
+      lightness: f.palette.lightness + (f.hard ? 0.04 : 0.08),
       quality: f.quality,
       reduced: f.reduced,
       fumee: f.haze,
@@ -960,7 +1006,7 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
       width: Math.tan(ouverture) * portee,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + 0.1,
+      lightness: f.palette.lightness + (f.hard ? 0.05 : 0.1),
       alpha: alpha * modulation,
       quality: f.quality,
       reduced: f.reduced,
@@ -982,6 +1028,21 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
 /** Familles historiques : geste automatique, piloté par le rôle de la scène. */
 const lyresSuspendues: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "auto");
 const barresLed: FamilyDraw = (ctx, f, view) => dessinerBarres(ctx, f, view);
+
+/**
+ * Lyres seules, geste éventail : brique du mur de lyres du mode rave.
+ *
+ * Le rendu les empile sur plusieurs rangées, sans les barres LED de
+ * `lyres-eventail`, pour que la scène soit réellement remplie de têtes.
+ */
+export function dessinerLyresRave(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  geste: GesteLyre = "eventail",
+): void {
+  dessinerLyres(ctx, f, view, geste);
+}
 
 /** Poursuite : une seule tête éclairée court le long du pont. */
 const lyresPoursuite: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "poursuite");

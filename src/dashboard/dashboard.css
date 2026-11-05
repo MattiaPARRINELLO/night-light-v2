@@ -111,6 +111,64 @@ body.dashboard {
   border-color: var(--line-strong);
   color: var(--text);
 }
+
+.hard-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease), box-shadow .18s var(--ease);
+}
+.hard-toggle:hover {
+  background: rgba(255, 255, 255, .07);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.hard-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background .18s var(--ease), box-shadow .18s var(--ease);
+}
+.hard-toggle kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 10px;
+}
+.hard-toggle.is-on {
+  border-color: rgba(255, 92, 122, .65);
+  color: var(--text);
+  background: rgba(255, 92, 122, .12);
+  box-shadow: 0 0 18px rgba(255, 92, 122, .18);
+}
+.hard-toggle.is-on .hard-toggle-dot {
+  background: #ff5c7a;
+  box-shadow: 0 0 10px rgba(255, 92, 122, .9);
+}
+
+.blackout-toggle.is-on {
+  border-color: rgba(255, 255, 255, .55);
+  background: #000;
+  box-shadow: 0 0 18px rgba(255, 255, 255, .12);
+}
+.blackout-toggle.is-on .hard-toggle-dot {
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .9);
+}
 .brand-mark {
   width: 38px; height: 38px; border-radius: 12px;
   background:

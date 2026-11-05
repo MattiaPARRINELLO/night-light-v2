@@ -141,13 +141,17 @@ export function installControl(Target: { prototype: App }): void {
     if (patch.intensity !== undefined) this.settings.intensity = Math.max(0, Math.min(2, patch.intensity));
     if (patch.flashes !== undefined) this.flashSlider = Math.max(0, Math.min(2, patch.flashes));
     if (patch.reduced !== undefined) this.settings.reduced = patch.reduced;
+    if (patch.hard !== undefined) this.settings.hard = patch.hard;
+    if (patch.blackout !== undefined) this.settings.blackout = patch.blackout;
     if (patch.noflash !== undefined) this.noflash = patch.noflash;
+    const blackoutBox = document.getElementById("chk-blackout");
+    if (blackoutBox instanceof HTMLInputElement) blackoutBox.checked = this.settings.blackout;
     if (patch.transition !== undefined) {
       this.transitionMode = patch.transition === "black" ? "black" : "crossfade";
       localStorage.setItem("night-light-transition", this.transitionMode);
     }
     this.settings.flashes = this.noflash ? 0 : this.flashSlider;
-    this.refreshPlan();
+    this.refreshPlan(patch.hard !== undefined || patch.reduced !== undefined);
   };
 
   Target.prototype.setDebugOverlay = function (this: App, on: boolean): void {
@@ -189,6 +193,7 @@ export function installControl(Target: { prototype: App }): void {
       screen:
         (document.querySelector(".screen.is-active")?.id?.replace("screen-", "") as ShowState["screen"]) ?? "drop",
       mode: this.showMode(),
+      profile: (this.plan ?? this.syncedPlan ?? this.livePlan)?.profile ?? null,
       controlled,
       capture: {
         open: this.liveCapture !== null,
@@ -228,6 +233,8 @@ export function installControl(Target: { prototype: App }): void {
         flashes: this.flashSlider,
         reduced: this.settings.reduced,
         noflash: this.noflash,
+        hard: this.settings.hard,
+        blackout: this.settings.blackout,
         transition: this.transitionMode,
       },
       limits: this.limits === null ? null : { ...this.limits },

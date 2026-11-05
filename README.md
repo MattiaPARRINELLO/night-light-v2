@@ -94,7 +94,8 @@ lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé
    d'après les octets du fichier et pas d'après son extension (un MP3 renommé `.wav` est
    reconnu comme MP3).
 5. Pendant le show : lecture/pause (`Espace`), recommencer (`R`), plein écran (`F`),
-   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, intensité réduite, sans flashs,
+   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/rave,
+   mode rave (`H`), blackout instantané (`B`), intensité réduite, sans flashs,
    retour à l'écran de dépôt.
 6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
    et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
@@ -324,6 +325,54 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
 - les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
+
+### Le mode rave (profil hard)
+
+Le répertoire « gros son » — rap sombre, trap, phonk, morceaux du type *PTSD*, mais aussi
+les gros sons de club — ne réagit pas comme de l'électro claire : les basses tiennent
+l'image, les aigus arrivent par éclats, et un traitement de « soirée lumineuse » y paraît
+mou. Le plan bascule donc sur un profil `hard`, affiché partout comme le **mode rave**,
+quand le morceau est à la fois **fort**, **sombre** et **tenu dans les basses** (énergie
+médiane ≥ 0,70, écart médian basses − aigus ≥ 0,30, majorité de fenêtres fortes sous 0,30
+d'aigus). Le réglage **Profil** du HUD et le bouton **Rave / H** du dashboard permettent
+de le forcer ou de le couper quand l'analyse se trompe.
+
+Le profil change quatre choses, sans toucher aux humeurs de scène :
+
+- une palette néon, saturation maximale et luminosité moyenne (0,58 à 0,64) posée sur un
+  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec des écarts
+  de teintes larges pour multiplier les couleurs vives d'une même scène ;
+- un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,
+  rayons, maillages, poursuites de lyres — au lieu des nappes et figures rondes ;
+- des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus
+  courtes entre scènes ;
+- un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
+  gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, puis l'écran
+  clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
+  140 BPM. Les flashs et le strobe sont colorés dans l'accord de la scène, pas blancs :
+  chaque éclat alterne entre la teinte principale et la complémentaire. En mode rave,
+  la scène est en permanence un **mur de quatre rangées de lyres** (32 têtes), avec
+  quatre gestes différents : éventail, croisement, vague et cercle. Deux à trois
+  rangées lointaines, petites et discrètes, remplissent le fond de la scène. Deux
+  colonnes de lyres tournées vers le centre remplissent les bords, et un sol en
+  perspective donne la profondeur sous la scène. Sur le plein strobe s'ajoutent les tirs croisés des coins,
+  un burst de rayons, les projecteurs mobiles et les lasers.
+  Le cycle dure 8 temps : 4 temps de strobe plein, 2 temps de creux où seules les
+  barres LED strobe, puis 2 temps de reprise. Le budget de flashs et le mode réduit
+  restent maîtres : « Sans flashs » ou « Intensité réduite » coupent tout.
+- du mouvement de scène de club : caméra de rave (zoom pulsé sur le kick, rotation et
+  balayage lents), éventail de lyres qui balaie vite, burst en rotation continue, tirs
+  croisés et projecteurs mobiles qui parcourent le cadre ;
+- des lasers scan ultra-fins, jusqu'à 36 faisceaux depuis la scène et le plafond, avec
+  rémanence, un mur de blinders qui claque sur chaque kick, des coupes glitch sur les
+  gros drops, des confettis, deux jets de CO2, une onde de choc, deux panneaux LED
+  latéraux et un balayage arc-en-ciel sur les faisceaux ;
+- une **chorégraphie par phrase** : montée sans strobe ni CO2, impact avec CO2, glitch et
+  onde de choc, après-impact avec confettis et lasers larges, creux avec les lyres seules ;
+- une **bascule calée sur la musique** : le passage standard ↔ rave attend le prochain
+  impact s'il tombe dans 1,4 s, sinon le prochain temps fort.
+- le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
+  forcé.
 
 ### La transition
 
