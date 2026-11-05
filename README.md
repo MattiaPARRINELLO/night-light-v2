@@ -1,30 +1,63 @@
-# Night Light — light show musical
+# Night Light : light show musical
 
 [![CI](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/MattiaPARRINELLO/night-light-v2/actions/workflows/ci.yml)
 [![Licence : MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](./LICENSE)
 
-Application **personnelle** (une seule personne, aucune authentification) : tu déposes un
-morceau, le serveur l'analyse avec librosa, et le navigateur joue un spectacle lumineux
-synchronisé sur la musique.
+Application **personnelle** (une seule personne, aucune authentification) : Night Light
+écoute la musique qui joue sur le PC, identifie le morceau, le récupère si besoin, l'analyse
+avec librosa, et joue un spectacle lumineux calé sur la position réelle du lecteur. Tu
+changes de morceau, le show suit.
 
-![Trois instants du spectacle](./docs/images/spectacle-1.webp)
-![Anneaux et faisceaux](./docs/images/spectacle-2.webp)
-![Faisceaux croisés](./docs/images/spectacle-3.webp)
+![Démo du spectacle, calé sur la position du lecteur](./docs/images/demo-night-light.gif)
 
-```
-morceau (glisser-déposer)
-   → serveur Python : décodage, bandes, tempo, temps forts, énergie, montées
-   → interface (Canvas 2D) : faisceaux, tunnel, particules, vagues, grille, anneaux
-        pilotés par la position réelle de lecture (audio.currentTime)
-```
+L'image est une **fonction du temps musical**, pas une réaction au volume :
 
-Ce n'est **pas** un visualiseur qui réagit au volume : tout le spectacle est calculé à
-partir de l'analyse, et l'image est une fonction du temps musical. Après une pause, une
-reprise ou un retour en arrière, le spectacle reprend exactement là où la musique en est.
+- **écoute en direct du PC** : le son système (PipeWire/PulseAudio) alimente l'ambiance
+  immédiate, et le lecteur est suivi par MPRIS (`playerctl`) pour connaître titre, artiste
+  et position, sans toucher à ta bibliothèque ;
+- **identification, récupération, analyse** : le morceau joué est résolu dans le catalogue
+  Deezer et téléchargé en 128 kbps s'il n'est pas déjà en cache, puis analysé par librosa
+  (tempo, temps forts, attaques, énergie, bandes, sections, montées) ;
+- **rendu calé sur le temps musical** : chaque image Canvas 2D part de `audio.currentTime`
+  ou de la position du lecteur, donc pause, seek et changement de morceau se recalent
+  exactement.
 
 ---
 
-## Démarrer
+## Comment ça marche
+
+```
+musique qui joue sur le PC
+   │
+   ├─ audio système (PipeWire/PulseAudio) ──► ambiance live immédiate (Canvas)
+   │
+   └─ MPRIS / playerctl : titre, artiste, position
+         │
+         ▼
+      résolution du morceau (Deezer, streamrip, 128 kbps)
+         │  cache disque si déjà téléchargé
+         ▼
+      analyse librosa (22 050 Hz, STFT 2048 / hop 512)
+         │  tempo, temps forts, bandes, énergie, sections, montées
+         │  courbes [secondes, 0..1] à 20 Hz
+         ▼
+      show Canvas 2D calé sur la position du lecteur
+```
+
+Quatre décisions qui expliquent le reste :
+
+- **deux signaux, deux rôles** : l'audio système donne une ambiance immédiate, MPRIS
+  fournit le morceau et sa position ; le show programmé s'appuie sur l'analyse, pas sur le
+  volume capté ;
+- **analyse côté serveur et cache disque** : librosa coûte trop cher au navigateur,
+  l'analyse est faite une fois, conservée avec le morceau téléchargé, puis rejouable sans
+  réseau ;
+- **des courbes plutôt que des événements** : les bandes et l'énergie sont échantillonnées
+  à 20 Hz, ce qui rend n'importe quel instant lisible sans rejouer l'audio ;
+- **aucun état accumulé dans le rendu** : tout dérive de la position du lecteur, donc une
+  pause, un seek ou un changement de morceau n'a rien à corriger.
+
+## Lancer en local
 
 ```bash
 bun install            # dépendances de l'interface (Vite)
@@ -39,29 +72,39 @@ bun run dev            # API + interface via Portless → https://nightlight.loc
 Sans Portless : `bun run api` (API) et `bunx vite` (interface) séparément, puis ouvrir
 l'adresse affichée par Vite.
 
+Pour le mode direct, il faut un lecteur qui expose MPRIS et `playerctl` (voir
+[Synchronisation Show / lecture externe](#synchronisation-show--lecture-externe)).
+Sans lecteur, le dépôt de fichier reste disponible.
+
 Pour ne lancer que l'API (par exemple derrière un proxy existant), `bun run api` démarre
 `uvicorn` sur `127.0.0.1:8787`. Les autres réglages (`DEEZER_ARL`, limites, chemins…) se
 lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé par lui.
 
 ## Utiliser
 
-1. Ouvre l'application : plein écran, zone **« Dépose ta musique ici »** (glisser-déposer
-   ou bouton « Choisir un fichier »).
-2. Formats acceptés : **MP3, WAV, OGG, FLAC, M4A/AAC, AIFF, WebM** — vérifiés d'après les
-   octets du fichier, pas d'après son extension (un MP3 renommé `.wav` est reconnu comme MP3).
-3. L'écran d'analyse affiche le nom, la durée, la progression réelle (envoi puis phases
-   d'analyse) et, à la fin, le bouton **« Lancer le show »**.
-4. Pendant le show : lecture/pause (`Espace`), recommencer (`R`), plein écran (`F`),
+1. Lance un morceau dans un lecteur qui expose MPRIS : Deezer, VLC, Spotify, MPD, ou un
+   navigateur Chromium sous Linux.
+2. Night Light détecte le titre et l'artiste, récupère le morceau dans le catalogue Deezer
+   s'il n'est pas déjà en cache, l'analyse, puis démarre le show calé sur la position du
+   lecteur. Le morceau suivant est préparé de la même façon.
+3. Si le morceau n'est pas dans le catalogue (édition rare, live, fichier local), dépose-le
+   dans la zone **« Dépose ta musique ici »** (glisser-déposer ou bouton « Choisir un
+   fichier »).
+4. Formats acceptés au dépôt : **MP3, WAV, OGG, FLAC, M4A/AAC, AIFF, WebM**, vérifiés
+   d'après les octets du fichier et pas d'après son extension (un MP3 renommé `.wav` est
+   reconnu comme MP3).
+5. Pendant le show : lecture/pause (`Espace`), recommencer (`R`), plein écran (`F`),
    volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, intensité réduite, sans flashs,
    retour à l'écran de dépôt.
-5. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
+6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
    et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
 
-## Récupérer un morceau par son titre (Deezer)
+## Identification et récupération (Deezer)
 
-Un morceau peut aussi être retrouvé sans dépôt de fichier : l'API (`POST /api/resolve`)
-résout un couple titre/artiste, et le lecteur en cours peut être suivi automatiquement
-(MPRIS).
+C'est le chemin principal : à partir du titre et de l'artiste annoncés par MPRIS, l'API
+(`POST /api/resolve`) cherche le morceau dans le catalogue Deezer, le télécharge si besoin,
+le met en cache, puis lance l'analyse. Un morceau déjà téléchargé n'est pas récupéré une
+seconde fois.
 
 La recherche se fait **dans le catalogue Deezer**, par titre et artiste — pas dans des
 clips vidéo — et le morceau est téléchargé **en 128 kbps MP3**, le plus bas niveau de
@@ -100,8 +143,10 @@ force le niveau de qualité le plus bas. Aucun secret n'est écrit dans le dép�
 
 ## Confidentialité et sécurité
 
-- Le fichier part de ton navigateur vers **ton serveur local**, et c'est indiqué sur
-  l'écran de dépôt.
+- Le son est capturé et le morceau téléchargé sur **ta machine**. Seule la recherche du
+  titre interroge Deezer ; le fichier récupéré reste dans le cache local.
+- Au dépôt manuel, le fichier part de ton navigateur vers **ton serveur local**, et c'est
+  indiqué sur l'écran de dépôt.
 - Aucun fichier audio n'est jamais servi publiquement : il faut connaître l'identifiant de
   session, il est supprimé quand tu changes de morceau, à la fermeture du serveur, et au
   bout de `SESSION_TTL_SEC` (30 min) sans activité.
@@ -159,9 +204,17 @@ directement échantillonnables depuis le navigateur.
 
 ## Le spectacle
 
-Vingt-neuf familles visuelles tournantes. Le tirage suit la graine du morceau par une
+Trente-deux familles visuelles tournantes. Le tirage suit la graine du morceau par une
 permutation déterministe : deux morceaux différents ne déroulent pas les mêmes familles,
-et les deux scènes précédentes sont exclues pour éviter les répétitions. Les projecteurs se déclinent en figures de
+et les deux scènes précédentes sont exclues pour éviter les répétitions.
+
+<p>
+  <img src="./docs/images/spectacle-1.webp" width="32%" alt="Faisceaux et anneaux">
+  <img src="./docs/images/spectacle-2.webp" width="32%" alt="Anneaux concentriques">
+  <img src="./docs/images/spectacle-3.webp" width="32%" alt="Faisceaux croisés">
+</p>
+
+Les projecteurs se déclinent en figures de
 concert : faisceaux, projecteurs, miroirs, défilé, tirs croisés, rideau de lumière,
 rayonnement, formes projetées, pendules, couronne, pluie de lumière, portique, étoile,
 vortex, lyres, lyres suspendues, barres LED, pont concert. Les autres jouent sur la
@@ -358,7 +411,7 @@ voir [`docs/testing.md`](docs/testing.md).
 | [`docs/test-harness-report.md`](docs/test-harness-report.md) | rapport du harnais de tests D0–D9 (historique) |
 | [`docs/integration-report.md`](docs/integration-report.md) | rapport d'intégration des PR #29, #30 et #31 |
 
-## Vérifier
+## Tests
 
 ```bash
 bun run check           # tout : install, typecheck, lint, tests (arrêt au premier échec)
@@ -409,7 +462,7 @@ Deux régressions sont couvertes par ces tests :
   binaire (~0,5 s avec un faux lent).
 
 
-## Structure
+## Structure du dépôt
 
 ```
 index.html              écran de show : la toile, rien d'autre
@@ -423,7 +476,7 @@ src/
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
     effects.ts          inventaire des effets et timeline synthétique du studio
-    families/           les vingt-neuf familles d'effets (une par fichier)
+    families/           les trente-deux familles d'effets, groupées par provenance
       concert-rig.ts    structure, lyres, barres LED et blinders
       index.ts          agrégation de la table des familles
     render.ts           rendu d'une image complète
@@ -494,7 +547,7 @@ Deux pages, deux rôles. L'écran de show (`/`) n'est plus qu'une toile ; tout c
 se règle vit sur `/dashboard`, ouvert sur un autre écran :
 
 ```bash
-bun run dev        # puis http://localhost:5173/dashboard (voir WEB_PORT)
+bun run dev        # puis https://nightlight.localhost/dashboard
 ```
 
 | Sur l'écran de show | Sur le dashboard |
@@ -584,10 +637,10 @@ la différence entre le signal audio et le rendu visuel :
 
 - **Filaire** : preset 0 ms.
 - **Bluetooth** : preset +200 ms.
-- **Bouton « Caler »** : pendant un show synchronisé, tape quand tu entendes le beat ; la
+- **Bouton « Caler »** : pendant un show synchronisé, tape quand tu entends le beat ; la
   valeur s'ajuste approximativement. Deux taps supplémentaires affineraient en production.
 
-Valeurs sont persistées dans `localStorage` (`night-light-latency`).
+Les valeurs sont persistées dans `localStorage` (`night-light-latency`).
 
 ### Pourquoi certains morceaux n'ont presque pas de drops
 
