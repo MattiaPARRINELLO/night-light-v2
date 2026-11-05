@@ -72,6 +72,11 @@ export interface CrossfadeState {
   fromCtx: CanvasRenderingContext2D;
   toCanvas: HTMLCanvasElement;
   toCtx: CanvasRenderingContext2D;
+  /**
+   * Ancien plan à continuer d'animer pendant un fondu de profil.
+   * `null` pour les fondus direct/show classiques.
+   */
+  fromPlan: ShowPlan | null;
   timer: number | null;
 }
 

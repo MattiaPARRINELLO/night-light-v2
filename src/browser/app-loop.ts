@@ -223,6 +223,26 @@ export function installLoop(Target: { prototype: App }): void {
     const clamped = clamp(time, 0, view.duration);
     const target = this.fadeTarget("show");
     try {
+      // Bascule standard ↔ rave : l'ancien plan continue de vivre dans la couche
+      // sortante pendant que le nouveau se rend dans la couche entrante.
+      const fade = this.crossfade;
+      if (fade !== null && fade.active && fade.fromPlan !== null && fade.from === "live") {
+        fade.fromCtx.setTransform(1, 0, 0, 1, 0, 0);
+        renderFrame({
+          ctx: fade.fromCtx,
+          width: this.canvas.clientWidth,
+          height: this.canvas.clientHeight,
+          dpr: this.canvas.width / Math.max(1, this.canvas.clientWidth),
+          time: clamped,
+          view,
+          plan: fade.fromPlan,
+          settings: this.settings,
+          reducedMotion: this.reducedMotion,
+          quality: this.quality,
+          frame: this.frame,
+          haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
+        });
+      }
       target.setTransform(1, 0, 0, 1, 0, 0);
       renderFrame({
         ctx: target,

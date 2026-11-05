@@ -249,9 +249,17 @@ export function installShow(Target: { prototype: App }): void {
     // la scène d'un coup, au milieu d'un temps.
     const activeLayer: "show" | "live" | null =
       this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
-    if (transition && activeLayer !== null) {
+    const oldPlan =
+      activeLayer === "show" ? (this.syncedMode ? this.syncedPlan : this.plan) : this.livePlan;
+    if (transition && activeLayer !== null && oldPlan !== null) {
       this.cancelCrossfade();
-      this.createCrossfade("snapshot", activeLayer, 900);
+      // L'ancien plan continue d'être rendu dans la couche sortante : le fondu
+      // ne fige rien, les deux spectacles restent animés pendant la bascule.
+      const fade =
+        activeLayer === "show"
+          ? this.createCrossfade("live", "show", 900, { source: this.canvas })
+          : this.createCrossfade("show", "live", 900, { source: this.canvas });
+      if (fade !== null) fade.fromPlan = oldPlan;
     }
     // Show local : le plan porte `this.plan`. Show calé sur le lecteur : il vit
     // dans `syncedPlan`. Les deux doivent être reconstruits, sinon un réglage
