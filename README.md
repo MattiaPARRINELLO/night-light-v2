@@ -360,9 +360,10 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - du mouvement de scène de club : caméra de rave (zoom pulsé sur le kick, rotation et
   balayage lents), éventail de lyres qui balaie vite, burst en rotation continue, tirs
   croisés et projecteurs mobiles qui parcourent le cadre ;
-- des lasers scan ultra-fins, jusqu'à 36 faisceaux depuis la scène et le plafond, qui
-  balaient le cadre, un mur de blinders qui claque sur chaque kick, des coupes glitch
-  sur les gros drops et un balayage arc-en-ciel sur les faisceaux.
+- des lasers scan ultra-fins, jusqu'à 36 faisceaux depuis la scène et le plafond, avec
+  rémanence, un mur de blinders qui claque sur chaque kick, des coupes glitch sur les
+  gros drops, des confettis, deux jets de CO2, une onde de choc, deux panneaux LED
+  latéraux et un balayage arc-en-ciel sur les faisceaux.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 

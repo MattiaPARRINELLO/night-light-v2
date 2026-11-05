@@ -308,8 +308,14 @@ vocabulaire agressif.
   Le fond, la vignette et la bordure restent fixes : c'est la lumière qui bouge, pas
   l'image entière ;
 - **lasers scan** (`drawRaveLasers`) : jusqu'à 36 faisceaux fins, moitié depuis la scène,
-  moitié depuis le plafond, qui balaient le cadre et changent de teinte le long de la
-  rangée ;
+  moitié depuis le plafond, avec 2 à 3 images de rémanence ; ils balaient le cadre et
+  changent de teinte le long de la rangée ;
+- **confettis** (`drawRaveConfetti`) : pluie de particules colorées pendant les drops ;
+- **CO2** (`drawRaveCo2`) : deux jets latéraux qui montent et retombent sur l'impact ;
+- **onde de choc** (`drawRaveShockwave`) : anneau qui part du centre sur les 0,9 s qui
+  suivent un impact ;
+- **panneaux LED** (`drawRavePanels`) : deux bandes verticales sur les bords, en
+  chenillard et damier sur les pics ;
 - **mur de blinders** : en rave, les douze cellules passent en `tous` sur les pics et en
   `chenillard` sinon, avec un pulse sur chaque kick et une teinte arc-en-ciel ;
 - **coupes glitch** (`drawGlitchCuts`) : trois bandes horizontales décalées sur les drops

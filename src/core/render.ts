@@ -760,15 +760,15 @@ function drawRaveLayers(
 }
 
 /**
- * Lasers de rave : huit faisceaux ultra-fins partent de la scène et balaient le
- * cadre. Ils sont dessinés en deux traits, un halo large et un cœur net, pour
- * rester lisibles même par-dessus les lyres.
+ * Lasers de rave : jusqu'à 36 faisceaux ultra-fins partent de la scène et du
+ * plafond, avec deux ou trois images de rémanence pour densifier le balayage.
  */
 function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // Un vrai mur de lasers : jusqu'à 36 faisceaux en pleine qualité, moitié
   // depuis la scène, moitié depuis le plafond. La qualité adaptative divise le
   // nombre pour garder le rendu tenable sur une machine modeste.
   const count = Math.max(12, Math.round(36 * f.quality));
+  const trails = f.quality >= 0.75 ? 3 : 2;
   const reach = Math.hypot(f.width, f.height) * 1.6;
   const alpha = (0.16 + 0.3 * clamp01(f.beat)) * clamp01(0.5 + 0.5 * f.energy);
   if (alpha <= 0.01) return;
@@ -777,31 +777,138 @@ function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
     const originX = f.width * (0.05 + (0.9 * index) / Math.max(count - 1, 1));
     const originY = fromTop ? -f.height * 0.04 : f.height * 1.04;
     const baseAngle = fromTop ? Math.PI / 2 : -Math.PI / 2;
-    const phase = f.t * (0.55 + (index % 3) * 0.09) + index * 0.73;
-    const angle = baseAngle + Math.sin(phase) * 0.95;
-    const hue = shiftHue(f.palette.hue, index * (360 / count) + f.t * 70);
-    const endX = originX + Math.cos(angle) * reach;
-    const endY = originY + Math.sin(angle) * reach;
-    ctx.globalAlpha = 1;
-    // Halo.
-    ctx.strokeStyle = paint(hue, 1, 0.55, alpha * 0.45);
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    ctx.moveTo(originX, originY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    // Cœur du laser.
-    ctx.strokeStyle = paint(hue, 1, 0.72, alpha);
-    ctx.lineWidth = 1.1;
-    ctx.beginPath();
-    ctx.moveTo(originX, originY);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
-    // Point de départ brillant.
-    ctx.fillStyle = paint(hue, 0.3, 0.92, alpha * 1.6);
-    ctx.beginPath();
-    ctx.arc(originX, originY, 1.6 + f.beat * 1.6, 0, Math.PI * 2);
-    ctx.fill();
+    for (let trail = 0; trail < trails; trail += 1) {
+      const time = f.t - trail * 0.045;
+      const phase = time * (0.55 + (index % 3) * 0.09) + index * 0.73;
+      const angle = baseAngle + Math.sin(phase) * 0.95;
+      const hue = shiftHue(f.palette.hue, index * (360 / count) + time * 70);
+      const trailAlpha = alpha * (trail === 0 ? 1 : 0.3 / trail);
+      const endX = originX + Math.cos(angle) * reach;
+      const endY = originY + Math.sin(angle) * reach;
+      ctx.globalAlpha = 1;
+      // Halo.
+      ctx.strokeStyle = paint(hue, 1, 0.55, trailAlpha * 0.45);
+      ctx.lineWidth = trail === 0 ? 3.5 : 2.2;
+      ctx.beginPath();
+      ctx.moveTo(originX, originY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      // Cœur du laser.
+      ctx.strokeStyle = paint(hue, 1, 0.72, trailAlpha);
+      ctx.lineWidth = trail === 0 ? 1.1 : 0.7;
+      ctx.beginPath();
+      ctx.moveTo(originX, originY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      if (trail === 0) {
+        // Point de départ brillant.
+        ctx.fillStyle = paint(hue, 0.3, 0.92, trailAlpha * 1.6);
+        ctx.beginPath();
+        ctx.arc(originX, originY, 1.6 + f.beat * 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+/** Confettis et étincelles qui tombent pendant les drops. */
+function drawRaveConfetti(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  drop: number,
+): void {
+  if (f.hard !== true || f.reduced || drop < 0.05) return;
+  const count = Math.round(90 * f.quality);
+  const life = 1.8;
+  const intensity = clamp01(drop * 1.4);
+  for (let index = 0; index < count; index += 1) {
+    const seed = index * 7919 + f.seed;
+    const speed = 0.7 + hash01(seed + 3) * 0.6;
+    const phase = ((f.t * speed) / life + hash01(seed)) % 1;
+    const x =
+      f.width * (0.08 + 0.84 * hash01(seed + 1)) +
+      Math.sin(f.t * 3 + index) * f.width * 0.015;
+    const y = -f.height * 0.1 + phase * f.height * 1.2;
+    const size = (1.5 + hash01(seed + 4) * 2.5) * (0.6 + f.quality * 0.4);
+    const alpha = (1 - phase) * intensity * 0.85;
+    if (alpha <= 0.01) continue;
+    const hue = shiftHue(f.palette.hue, hash01(seed + 5) * 360 + f.t * 70);
+    ctx.fillStyle = paint(hue, 1, 0.65, alpha);
+    ctx.fillRect(x, y, size, size * 1.8);
+  }
+}
+
+/** Deux jets de CO2 qui piquent sur l'impact et retombent. */
+function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number): void {
+  if (f.hard !== true || f.reduced || drop < 0.12) return;
+  const intensity = clamp01(drop * 1.2);
+  for (const side of [-1, 1] as const) {
+    const originX = side < 0 ? f.width * 0.08 : f.width * 0.92;
+    const originY = f.height * 1.02;
+    for (let puff = 0; puff < 6; puff += 1) {
+      const rise = (f.t * 0.7 + puff * 0.14 + (side < 0 ? 0 : 0.5)) % 1;
+      const x =
+        originX -
+        side * rise * f.width * 0.12 +
+        Math.sin(f.t * 2 + puff) * f.width * 0.012;
+      const y = originY - rise * f.height * 0.75;
+      const radius = f.height * (0.05 + rise * 0.14);
+      const alpha = intensity * (1 - rise) * 0.2;
+      if (alpha <= 0.01) continue;
+      const puffGradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radius, 1));
+      puffGradient.addColorStop(0, paint(208, 0.18, 0.92, alpha));
+      puffGradient.addColorStop(1, paint(208, 0.12, 0.78, 0));
+      ctx.fillStyle = puffGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(radius, 1), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/** Onde de choc circulaire qui part du centre sur un impact. */
+function drawRaveShockwave(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  if (f.hard !== true || f.reduced) return;
+  const age = f.dropAge;
+  if (!Number.isFinite(age) || age < 0 || age > 0.9) return;
+  const progress = age / 0.9;
+  const radius = Math.min(f.width, f.height) * (0.08 + progress * 0.8);
+  const alpha = (1 - progress) * (0.55 + 0.35 * f.energy);
+  const hue = shiftHue(contrastHue(f), f.t * 60);
+  ctx.strokeStyle = paint(hue, 1, 0.62, alpha * 0.7);
+  ctx.lineWidth = 5 + 12 * (1 - progress);
+  ctx.beginPath();
+  ctx.arc(f.width * 0.5, f.height * 0.5, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = paint(hue, 0.3, 0.88, alpha);
+  ctx.lineWidth = 1.5 + 2 * (1 - progress);
+  ctx.beginPath();
+  ctx.arc(f.width * 0.5, f.height * 0.5, radius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/** Deux panneaux LED verticaux sur les bords, en motifs de chenillard. */
+function drawRavePanels(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  if (f.hard !== true || f.reduced) return;
+  const cols = Math.max(2, Math.round(4 * f.quality));
+  const rows = Math.max(8, Math.round(20 * f.quality));
+  const panelWidth = f.width * 0.055;
+  const temps = f.beatIndex + clamp01(f.beatPhase);
+  for (const side of [0, 1] as const) {
+    const originX = side === 0 ? 0 : f.width - panelWidth;
+    for (let col = 0; col < cols; col += 1) {
+      for (let row = 0; row < rows; row += 1) {
+        const chase = (row + Math.floor(temps * 2) + side * 3) % 7;
+        const on = chase < 2 || (f.energy > 0.85 && (row + col) % 2 === 0);
+        if (!on) continue;
+        const x = originX + (panelWidth * (col + 0.5)) / cols;
+        const y = (f.height * (row + 0.5)) / rows;
+        const alpha = 0.35 + 0.5 * clamp01(f.beat);
+        const hue = shiftHue(f.palette.hue, row * 14 + col * 22 + f.t * 80);
+        ctx.fillStyle = paint(hue, 1, 0.6, alpha);
+        ctx.fillRect(x - panelWidth * 0.07, y - f.height * 0.007, panelWidth * 0.14, f.height * 0.014);
+      }
+    }
   }
 }
 
@@ -1035,6 +1142,10 @@ export function renderFrame(input: RenderInput): void {
   }
   if (camera !== null) ctx.restore();
   drawGlitchCuts(ctx, base, drop);
+  drawRaveShockwave(ctx, base);
+  drawRaveConfetti(ctx, base, drop);
+  drawRaveCo2(ctx, base, drop);
+  drawRavePanels(ctx, base);
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
   // sur-couche et couvre tout l'écran. Jamais en mode réduit.
