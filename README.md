@@ -339,8 +339,9 @@ de le forcer ou de le couper quand l'analyse se trompe.
 
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 
-- une palette dédiée, très saturée et volontairement sombre (rouge/glace, violet/acide,
-  braise/cyan), avec un écart de teintes plus serré que les palettes standard ;
+- une palette néon, saturation maximale et luminosité haute (0,66 à 0,72) posée sur un
+  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec des écarts
+  de teintes larges pour multiplier les couleurs vives d'une même scène ;
 - un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,
   rayons, maillages, poursuites de lyres — au lieu des nappes et figures rondes ;
 - des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus

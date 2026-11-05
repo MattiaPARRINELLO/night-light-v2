@@ -432,10 +432,10 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
  * noir, et le contraste porte l'agressivité sans multiplier les teintes.
  */
 const HARD_TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
-  { name: "sang-glace", hue: 354, accent: 194, spread: 32 },
-  { name: "violet-acide", hue: 286, accent: 74, spread: 38 },
-  { name: "braise-nuit", hue: 16, accent: 204, spread: 34 },
-  { name: "magenta-arc", hue: 326, accent: 186, spread: 30 },
+  { name: "sang-glace", hue: 352, accent: 186, spread: 54 },
+  { name: "violet-acide", hue: 284, accent: 90, spread: 58 },
+  { name: "braise-nuit", hue: 14, accent: 196, spread: 52 },
+  { name: "magenta-arc", hue: 324, accent: 172, spread: 56 },
 ];
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
@@ -883,8 +883,12 @@ function paletteLightness(mood: Mood, hard = false): number {
   if (mood === "sombre") return 0.38;
   if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
-  if (mood === "explosif") return hard ? 0.6 : 0.76;
-  if (mood === "pulse") return hard ? 0.54 : 0.68;
+  // Le mode rave cherche le néon : saturation maximale et luminosité haute,
+  // posées sur un fond presque noir. C'est ce contraste qui fait « hyper vif ».
+  if (hard && mood === "explosif") return 0.72;
+  if (hard && mood === "pulse") return 0.66;
+  if (mood === "explosif") return 0.76;
+  if (mood === "pulse") return 0.68;
   return 0.6;
 }
 

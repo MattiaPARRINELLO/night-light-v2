@@ -726,21 +726,33 @@ function drawRaveLayers(
   f: FrameState,
   view: TrackView,
 ): void {
+  // Les couches de rave poussent le curseur couleur plus loin que la scène :
+  // saturation maximale, luminosité néon et budget de teinte élargi pour que
+  // les lasers, le burst et les projecteurs ne partagent pas tous la même gamme.
+  const rave: FrameState = {
+    ...f,
+    palette: {
+      ...f.palette,
+      saturation: 1,
+      lightness: Math.min(0.9, f.palette.lightness + 0.08),
+      spread: Math.min(150, f.palette.spread * 1.5),
+    },
+  };
   drawFamily(
     ctx,
-    { ...f, alpha: f.alpha * 0.85, quality: f.quality * 0.8 },
+    { ...rave, alpha: rave.alpha * 0.85, quality: rave.quality * 0.8 },
     view,
     "crossfire",
   );
   drawFamily(
     ctx,
-    { ...f, alpha: f.alpha * 0.7, quality: f.quality * 0.7 },
+    { ...rave, alpha: rave.alpha * 0.7, quality: rave.quality * 0.7 },
     view,
     "burst",
   );
   drawFamily(
     ctx,
-    { ...f, alpha: f.alpha * 0.6, quality: f.quality * 0.7 },
+    { ...rave, alpha: rave.alpha * 0.6, quality: rave.quality * 0.7 },
     view,
     "spots",
   );
