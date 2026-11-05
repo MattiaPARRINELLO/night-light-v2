@@ -352,9 +352,10 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
   140 BPM. Les flashs et le strobe sont colorés dans l'accord de la scène, pas blancs :
   chaque éclat alterne entre la teinte principale et la complémentaire. En mode rave,
   la scène est en permanence un **mur de quatre rangées de lyres** (32 têtes), avec
-  quatre gestes différents : éventail, croisement, vague et cercle. Deux colonnes de
-  lyres tournées vers le centre remplissent les bords, et un sol en perspective donne
-  la profondeur sous la scène. Sur le plein strobe s'ajoutent les tirs croisés des coins,
+  quatre gestes différents : éventail, croisement, vague et cercle. Deux à trois
+  rangées lointaines, petites et discrètes, remplissent le fond de la scène. Deux
+  colonnes de lyres tournées vers le centre remplissent les bords, et un sol en
+  perspective donne la profondeur sous la scène. Sur le plein strobe s'ajoutent les tirs croisés des coins,
   un burst de rayons, les projecteurs mobiles et les lasers.
   Le cycle dure 8 temps : 4 temps de strobe plein, 2 temps de creux où seules les
   barres LED strobe, puis 2 temps de reprise. Le budget de flashs et le mode réduit

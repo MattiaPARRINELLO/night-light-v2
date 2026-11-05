@@ -973,6 +973,21 @@ function drawRaveLyreWall(
     ctx.restore();
   };
 
+  // Rangées lointaines : petites, hautes et discrètes, elles remplissent le fond
+  // de la scène et donnent la profondeur derrière le mur frontal.
+  const farGestures = ["vague", "croisement", "eventail"] as const;
+  const farRows = f.quality >= 0.9 ? 3 : 2;
+  for (let row = 0; row < farRows; row += 1) {
+    const depth = row / Math.max(farRows - 1, 1);
+    const gesture = farGestures[row] ?? "vague";
+    drawRow(
+      gesture,
+      0.2 + 0.16 * depth,
+      -f.height * 0.16 + row * f.height * 0.075,
+      0.42 + 0.12 * depth,
+    );
+  }
+
   // Quatre rangées frontales, de la plus lointaine à la plus proche.
   const gestures = ["eventail", "croisement", "vague", "cercle"] as const;
   for (let row = 0; row < gestures.length; row += 1) {

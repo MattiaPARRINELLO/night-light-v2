@@ -300,7 +300,8 @@ vocabulaire agressif.
   rayons centraux, projecteurs mobiles), avec saturation 1, luminosité +0,04 et budget
   de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence quatre rangées de huit
   lyres, avec quatre gestes (éventail, croisement, vague, cercle) et une échelle
-  croissante pour la profondeur, plus deux colonnes latérales tournées vers le centre.
+  croissante pour la profondeur, plus deux ou trois rangées lointaines réduites et
+  discrètes, et deux colonnes latérales tournées vers le centre.
   `drawRaveFloor` ajoute un sol de club en perspective, avec lignes de fuite et lignes
   horizontales qui défilent ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
