@@ -293,6 +293,8 @@ vocabulaire agressif.
   strobe, 2 temps de creux où le plein écran se tait et où la bordure LED strobe seule,
   puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek.
   Pendant le plein strobe, `hardStrobeFamily` remplace la famille de la scène par
-  `lyres-eventail` : le strobe tombe sur un plateau de lyres, pas sur une nappe ;
+  `lyres-eventail`, et `drawRaveLayers` empile par-dessus `crossfire`, `burst` et
+  `spots` (tirs croisés, rayons centraux, projecteurs mobiles) : le strobe tombe sur
+  une scène de rave, pas sur une nappe ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

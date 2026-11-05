@@ -346,8 +346,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
   gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, puis l'écran
   clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
-  140 BPM. Pendant le plein strobe, la scène devient un plateau de **lyres en
-  éventail** (`lyres-eventail`) : le mur de faisceaux remplace la famille courante.
+  140 BPM. Pendant le plein strobe, la scène devient une scène de rave : le plateau de
+  **lyres en éventail** (`lyres-eventail`) est renforcé par les tirs croisés des coins,
+  un burst de rayons et les projecteurs mobiles des bords.
   Le cycle dure 8 temps : 4 temps de strobe plein, 2 temps de creux où seules les
   barres LED strobe, puis 2 temps de reprise. Le budget de flashs et le mode réduit
   restent maîtres : « Sans flashs » ou « Intensité réduite » coupent tout.

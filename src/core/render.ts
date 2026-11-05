@@ -713,6 +713,40 @@ export function flashAdmitted(view: TrackView, t: number, hard = false): boolean
 }
 
 /**
+ * Couches de rave ajoutées au plein strobe hard.
+ *
+ * Le plateau de lyres seul reste un concert de théâtre. Pour un moment qui doit
+ * ressembler à une rave, on empile trois sources : les tirs croisés des coins,
+ * les rayons du burst central et les projecteurs mobiles des bords. Chaque
+ * couche est atténuée pour que les lyres gardent la vedette, et la qualité
+ * adaptative réduit leur nombre comme pour une scène normale.
+ */
+function drawRaveLayers(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+): void {
+  drawFamily(
+    ctx,
+    { ...f, alpha: f.alpha * 0.85, quality: f.quality * 0.8 },
+    view,
+    "crossfire",
+  );
+  drawFamily(
+    ctx,
+    { ...f, alpha: f.alpha * 0.7, quality: f.quality * 0.7 },
+    view,
+    "burst",
+  );
+  drawFamily(
+    ctx,
+    { ...f, alpha: f.alpha * 0.6, quality: f.quality * 0.7 },
+    view,
+    "spots",
+  );
+}
+
+/**
  * Rend une image complète du spectacle. Fonction pure du temps musical :
  * mêmes entrées ⇒ image identique, ce qui garde la synchronisation après une
  * pause, une reprise ou un déplacement dans le morceau.
@@ -838,16 +872,18 @@ export function renderFrame(input: RenderInput): void {
   // Scène courante + scène sortante pendant le fondu (transition fluide).
   // En plein strobe hard, la scène cède la place au plateau de lyres : c'est le
   // mur de faisceaux qui doit clignoter, pas une nappe ou une figure seule.
+  const strobeFull = hard && hardStrobeAllowsFull(base);
   const sceneFamily = hardStrobeFamily(base, scene.family);
   drawFamily(ctx, base, view, sceneFamily);
+  if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
 
   // (Plus de couche de fond permanente : seul le halo et la poussière subsistent.)
 
   // Variation au milieu de la phrase : une autre famille surgit brièvement,
   // avec sa propre teinte. C'est ce qui empêche le spectacle de tourner en boucle.
-  // Elle se tait pendant le plein strobe : la scène doit rester un mur de lyres.
-  if (variation > 0.05 && sceneFamily === scene.family) {
+  // Elle se tait pendant le plein strobe : la scène doit rester un mur de faisceaux.
+  if (variation > 0.05 && !strobeFull) {
     const variationState: FrameState = {
       ...base,
       palette: {
