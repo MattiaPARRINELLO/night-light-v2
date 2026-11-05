@@ -847,13 +847,13 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
   const intensity = clamp01(drop * 1.6);
-  // Un jet toutes les 1,35 s, actif sur 42 % du cycle : entre deux jets, l'écran
-  // respire. C'est un jet, pas une colonne de fumée continue.
-  const cycle = 1.35;
+  // Un jet d'une seconde, puis une seconde de pause : quatre buses qui crachent
+  // une gerbe complète, pas un filet continu.
+  const cycle = 2;
   const local = (f.t % cycle) / cycle;
-  if (local >= 0.42) return;
-  const progress = local / 0.42;
-  const envelope = 1 - progress;
+  if (local >= 0.5) return;
+  const progress = local / 0.5;
+  const envelope = 1 - progress * 0.6;
   const burst = Math.floor(f.t / cycle);
 
   for (const side of [-1, 1] as const) {
@@ -862,7 +862,7 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
       const originY = f.height * 1.02;
 
       // Cœur de pression à la buse : très concentré au tout début du jet.
-      const coreAlpha = intensity * Math.max(0, 1 - local / 0.12) * 0.65;
+      const coreAlpha = intensity * Math.max(0, 1 - progress / 0.12) * 0.65;
       if (coreAlpha > 0.01) {
         const coreRadius = f.height * 0.035;
         const core = ctx.createRadialGradient(
@@ -881,11 +881,15 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
         ctx.fill();
       }
 
-      for (let puff = 0; puff < 16; puff += 1) {
+      for (let puff = 0; puff < 24; puff += 1) {
         const seed = puff * 97 + jet * 13 + (side > 0 ? 1 : 0) + f.seed + burst * 7;
+        // Les bouffées sortent étalées sur le premier tiers du jet : la gerbe
+        // dure une seconde au lieu d'être un unique paquet.
+        const delay = hash01(seed + 4) * 0.45;
+        if (progress < delay) continue;
         const lateral = (hash01(seed) - 0.5) * 2;
         const speed = 0.75 + hash01(seed + 1) * 0.5;
-        const p = clamp01(progress * speed);
+        const p = clamp01(((progress - delay) / Math.max(1 - delay, 0.01)) * speed);
         // Au début, toutes les bouffées sortent du même point ; elles ne
         // divergent qu'en montant, comme un vrai jet sous pression.
         const spread = (-side * 0.14 + lateral * 0.24) * p;
