@@ -289,5 +289,8 @@ vocabulaire agressif.
   repart de zéro à chaque temps (`beatPhase`), donc pas de trou « strobe, pause, strobe »
   quand la vitesse change. Il s'ajoute au flash de temps fort et s'éteint sans basse ni
   kick, en mode réduit, ou si `settings.flashes = 0` ;
+- **cycle du strobe hard** (`core/strobe.ts`) : 8 temps forts, soit 4 temps de plein
+  strobe, 2 temps de creux où le plein écran se tait et où la bordure LED strobe seule,
+  puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

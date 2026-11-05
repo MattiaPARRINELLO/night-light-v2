@@ -15,6 +15,7 @@ import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
 import { hslToRgb, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
+import { hardStrobeAllowsFull, hardStrobeBarsOnly } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
 
@@ -388,6 +389,9 @@ export function hardStrobeAlpha(
   drop: number,
 ): number {
   if (!f.hard || f.reduced || settings.flashes <= 0) return 0;
+  // Pendant le creux du cycle, le plein écran s'éteint et laisse la bordure LED
+  // tenir le rythme seule.
+  if (hardStrobeBarsOnly(f)) return 0;
   const gate = smoothstep(0.55, 0.85, f.energy);
   if (gate <= 0.01) return 0;
   // Le stroboscope reste allumé tant que la basse tient : sur un 808, le beat
@@ -945,7 +949,8 @@ export function renderFrame(input: RenderInput): void {
 
   drawDust(ctx, permanent);
 
-  const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
+  const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
+  const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
   if (flash > 0.002 && flashAdmitted(view, t, hard)) {
     ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);

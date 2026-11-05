@@ -12,6 +12,7 @@ import {
   type ShowProfile,
 } from "../../src/core/show";
 import { flashAdmitted, hardStrobeAlpha, hardStrobeDivisions } from "../../src/core/render";
+import { hardStrobeAllowsFull, hardStrobePhase } from "../../src/core/strobe";
 import type { FrameState } from "../../src/core/families";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -120,6 +121,7 @@ describe("profil hard", () => {
         beat: 1,
         bass: 1,
         beatPhase: 0,
+        beatIndex: 0,
         t: 0,
         ...overrides,
       }) as unknown as FrameState;
@@ -138,6 +140,32 @@ describe("profil hard", () => {
     ).toBe(0);
     // Sans basse ni kick, pas de strobe : l'écran revient à la scène.
     expect(hardStrobeAlpha(frame({ beat: 0, bass: 0 }), settings, 1)).toBe(0);
+  });
+
+  test("le cycle hard alterne plein, barres seules, puis reprise", () => {
+    const settings = { intensity: 1, flashes: 0.9, reduced: false, hard: "on" } as RenderSettings;
+    const frame = (beatIndex: number) =>
+      ({
+        hard: true,
+        reduced: false,
+        energy: 1,
+        beat: 1,
+        bass: 1,
+        beatPhase: 0,
+        beatIndex,
+      }) as unknown as FrameState;
+    expect([0, 1, 2, 3].map((beat) => hardStrobePhase(frame(beat)))).toEqual([
+      "plein",
+      "plein",
+      "plein",
+      "plein",
+    ]);
+    expect([4, 5].map((beat) => hardStrobePhase(frame(beat)))).toEqual(["barres", "barres"]);
+    expect([6, 7].map((beat) => hardStrobePhase(frame(beat)))).toEqual(["reprise", "reprise"]);
+    expect([0, 4, 6].map((beat) => hardStrobeAllowsFull(frame(beat)))).toEqual([true, false, true]);
+    // Le plein écran se tait pendant le creux, la bordure prend le relais.
+    expect(hardStrobeAlpha(frame(4), settings, 1)).toBe(0);
+    expect(hardStrobeAlpha(frame(6), settings, 1)).toBeGreaterThan(0);
   });
 
   test("le profil hard admet un flash sur chaque temps fort", () => {

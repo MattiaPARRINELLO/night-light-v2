@@ -1,5 +1,6 @@
 import { shiftHue } from "../color";
 import { clamp01, hash01, mix, smoothstep } from "../series";
+import { hardStrobeBarsOnly } from "../strobe";
 import type { TrackView } from "../view";
 import { tempsTempsFort, intensiteBlinder } from "./concert-rig";
 import type { FrameState } from "./types";
@@ -191,6 +192,8 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
  * l'autre, mais deux lectures du même instant donnent le même motif.
  */
 export function motifBordure(f: FrameState, view: TrackView): MotifBordure {
+  // Creux du cycle hard : le plein écran se tait, la bordure prend le relais.
+  if (f.hard && hardStrobeBarsOnly(f)) return "strobe";
   return motifPourBloc(f, Math.floor(tempsTempsFort(f, view) / 8));
 }
 
@@ -353,6 +356,10 @@ export function couleurBordure(f: FrameState, index: number): number {
  * précédent, et le fondu repart de zéro).
  */
 function poidsCourant(f: FrameState, view: TrackView, index: number, budgetFlash = 1): number {
+  // Creux du cycle hard : le pourtour strobe seul, sans le mur de lumière.
+  if (f.hard && hardStrobeBarsOnly(f)) {
+    return poidsMotif(f, view, index, "strobe", budgetFlash);
+  }
   const temps = tempsTempsFort(f, view);
   const bloc = Math.floor(temps / 8);
   const local = temps / 8 - bloc;
