@@ -151,7 +151,7 @@ export function installControl(Target: { prototype: App }): void {
       localStorage.setItem("night-light-transition", this.transitionMode);
     }
     this.settings.flashes = this.noflash ? 0 : this.flashSlider;
-    this.refreshPlan();
+    this.refreshPlan(patch.hard !== undefined || patch.reduced !== undefined);
   };
 
   Target.prototype.setDebugOverlay = function (this: App, on: boolean): void {

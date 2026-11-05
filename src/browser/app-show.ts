@@ -19,7 +19,7 @@ declare module "./app" {
     startShowCrossfade(): void;
     buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
-    refreshPlan(): void;
+    refreshPlan(transition?: boolean): void;
     togglePlay(): Promise<void>;
     restart(): Promise<void>;
     toggleFullscreen(): Promise<void>;
@@ -72,7 +72,7 @@ export function installShow(Target: { prototype: App }): void {
     });
     el<HTMLInputElement>("chk-reduced").addEventListener("change", () => {
       this.settings.reduced = el<HTMLInputElement>("chk-reduced").checked;
-      this.refreshPlan();
+      this.refreshPlan(true);
     });
     const hardMode = el<HTMLSelectElement>("hard-mode");
     hardMode.value = this.settings.hard;
@@ -81,7 +81,7 @@ export function installShow(Target: { prototype: App }): void {
       // Rend le clavier au show : sans ça, la touche H restait avalée par le
       // menu qui gardait le focus après le choix.
       hardMode.blur();
-      this.refreshPlan();
+      this.refreshPlan(true);
     });
     el<HTMLInputElement>("chk-noflash").addEventListener("change", () => {
       this.noflash = el<HTMLInputElement>("chk-noflash").checked;
@@ -243,7 +243,16 @@ export function installShow(Target: { prototype: App }): void {
     return this.settings.reduced || this.reducedMotion;
   };
 
-  Target.prototype.refreshPlan = function (this: App): void {
+  Target.prototype.refreshPlan = function (this: App, transition = false): void {
+    // Changement de profil (standard ↔ rave) : on fige l'image actuelle et on
+    // la fait fondre vers le nouveau plan. Sans ça, le mur de lyres remplaçait
+    // la scène d'un coup, au milieu d'un temps.
+    const activeLayer: "show" | "live" | null =
+      this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
+    if (transition && activeLayer !== null) {
+      this.cancelCrossfade();
+      this.createCrossfade("snapshot", activeLayer, 900);
+    }
     // Show local : le plan porte `this.plan`. Show calé sur le lecteur : il vit
     // dans `syncedPlan`. Les deux doivent être reconstruits, sinon un réglage
     // comme le mode rave ne change rien pendant un morceau synchronisé.
@@ -335,7 +344,7 @@ export function installShow(Target: { prototype: App }): void {
         case "h":
         case "H":
           this.settings.hard = this.settings.hard === "on" ? "off" : "on";
-          this.refreshPlan();
+          this.refreshPlan(true);
           setStatus(
             this.settings.hard === "on"
               ? "Mode rave activé (touche H pour revenir)."
