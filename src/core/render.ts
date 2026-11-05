@@ -914,28 +914,100 @@ function drawRavePanels(ctx: CanvasRenderingContext2D, f: FrameState): void {
 }
 
 /**
- * Mur de lyres du mode rave : trois rangées de huit têtes, décalées en
- * profondeur avec un alpha décroissant. La scène reste donc remplie de lyres
- * même pendant le creux du strobe, pas seulement sur les pics.
+ * Sol de club en perspective : lignes de fuite et lignes horizontales qui
+ * défilent vers le spectateur. C'est ce qui donne la profondeur sous les lyres.
+ */
+function drawRaveFloor(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  if (f.hard !== true || f.reduced) return;
+  const horizon = f.height * 0.58;
+  const bottom = f.height * 1.06;
+  const center = f.width * 0.5;
+  const alpha = 0.08 + 0.12 * f.energy;
+  // Lignes de fuite.
+  for (let index = 0; index <= 14; index += 1) {
+    const x = f.width * (-0.25 + (1.5 * index) / 14);
+    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 40 + index * 18), 1, 0.55, alpha);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(center, horizon);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+  }
+  // Lignes horizontales en perspective, qui descendent vers le bas.
+  const scroll = (f.t * 0.35) % 1;
+  for (let step = 0; step < 9; step += 1) {
+    const progress = (step / 9 + scroll) % 1;
+    const y = horizon + progress * progress * (bottom - horizon);
+    const spread = 0.15 + progress * 0.95;
+    const x0 = center - f.width * 0.62 * spread;
+    const x1 = center + f.width * 0.62 * spread;
+    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 50 + step * 22), 1, 0.6, alpha * 0.9);
+    ctx.lineWidth = 1 + progress * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
+    ctx.stroke();
+  }
+}
+
+/**
+ * Mur de lyres du mode rave : quatre rangées frontales avec des gestes
+ * différents, plus des colonnes de lyres sur les bords gauche et droit.
  */
 function drawRaveLyreWall(
   ctx: CanvasRenderingContext2D,
   f: FrameState,
   view: TrackView,
 ): void {
-  // Quatre rangées, quatre gestes : éventail, croisement, vague puis cercle.
-  // La scène est remplie de 32 têtes, et aucune rangée ne bouge comme sa voisine.
+  const drawRow = (
+    gesture: "eventail" | "croisement" | "vague" | "cercle",
+    alpha: number,
+    offsetY: number,
+    scale: number,
+  ): void => {
+    ctx.save();
+    ctx.translate(f.width * 0.5, f.height * 0.5 + offsetY);
+    ctx.scale(scale, scale);
+    ctx.translate(-f.width * 0.5, -f.height * 0.5);
+    dessinerLyresRave(ctx, { ...f, alpha: f.alpha * alpha }, view, gesture);
+    ctx.restore();
+  };
+
+  // Quatre rangées frontales, de la plus lointaine à la plus proche.
   const gestures = ["eventail", "croisement", "vague", "cercle"] as const;
   for (let row = 0; row < gestures.length; row += 1) {
-    const rowState: FrameState = {
-      ...f,
-      alpha: f.alpha * (row === 0 ? 1 : row === 1 ? 0.78 : row === 2 ? 0.6 : 0.45),
-    };
-    ctx.save();
-    ctx.translate(0, row * f.height * 0.16);
-    dessinerLyresRave(ctx, rowState, view, gestures[row]);
-    ctx.restore();
+    const depth = row / (gestures.length - 1);
+    const gesture = gestures[row] ?? "eventail";
+    drawRow(gesture, 0.5 + 0.5 * depth, row * f.height * 0.16, 0.8 + 0.14 * depth);
   }
+
+  // Colonnes latérales : mêmes lyres, mais tournées vers le centre.
+  const drawSide = (side: -1 | 1, gesture: "croix" | "cercle"): void => {
+    ctx.save();
+    if (side < 0) {
+      ctx.translate(0, f.height);
+      ctx.rotate(-Math.PI / 2);
+    } else {
+      ctx.translate(f.width, 0);
+      ctx.rotate(Math.PI / 2);
+    }
+    ctx.scale(f.height / Math.max(f.width, 1), 1);
+    const rows = f.quality >= 0.9 ? 2 : 1;
+    for (let row = 0; row < rows; row += 1) {
+      ctx.save();
+      ctx.translate(0, row * f.height * 0.18);
+      dessinerLyresRave(
+        ctx,
+        { ...f, alpha: f.alpha * (row === 0 ? 0.7 : 0.4) },
+        view,
+        gesture,
+      );
+      ctx.restore();
+    }
+    ctx.restore();
+  };
+  drawSide(-1, "croix");
+  drawSide(1, "cercle");
 }
 
 /**
@@ -1141,8 +1213,10 @@ export function renderFrame(input: RenderInput): void {
     ctx.scale(camera.scale, camera.scale);
     ctx.translate(-width * 0.5, -height * 0.5);
   }
-  if (hard) drawRaveLyreWall(ctx, base, view);
-  else drawFamily(ctx, base, view, sceneFamily);
+  if (hard) {
+    drawRaveFloor(ctx, base);
+    drawRaveLyreWall(ctx, base, view);
+  } else drawFamily(ctx, base, view, sceneFamily);
   if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
 

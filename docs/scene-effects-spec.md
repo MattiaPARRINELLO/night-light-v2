@@ -299,8 +299,10 @@ vocabulaire agressif.
   `drawRaveLayers` empile par-dessus `crossfire`, `burst` et `spots` (tirs croisés,
   rayons centraux, projecteurs mobiles), avec saturation 1, luminosité +0,04 et budget
   de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence quatre rangées de huit
-  lyres, avec quatre gestes (éventail, croisement, vague, cercle) : 32 têtes, même
-  pendant le creux ;
+  lyres, avec quatre gestes (éventail, croisement, vague, cercle) et une échelle
+  croissante pour la profondeur, plus deux colonnes latérales tournées vers le centre.
+  `drawRaveFloor` ajoute un sol de club en perspective, avec lignes de fuite et lignes
+  horizontales qui défilent ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit ;
 - **mouvement de rave** : caméra (`raveCamera`) avec zoom pulsé sur le kick, rotation et
