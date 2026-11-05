@@ -821,19 +821,19 @@ function drawRaveConfetti(
   if (f.hard !== true || f.reduced || drop < 0.05) return;
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
-  const count = Math.round(90 * f.quality);
+  const count = Math.round(220 * f.quality);
   const life = 1.8;
-  const intensity = clamp01(drop * 1.4);
+  const intensity = clamp01(drop * 1.6);
   for (let index = 0; index < count; index += 1) {
     const seed = index * 7919 + f.seed;
     const speed = 0.7 + hash01(seed + 3) * 0.6;
     const phase = ((f.t * speed) / life + hash01(seed)) % 1;
     const x =
-      f.width * (0.08 + 0.84 * hash01(seed + 1)) +
-      Math.sin(f.t * 3 + index) * f.width * 0.015;
+      f.width * (0.06 + 0.88 * hash01(seed + 1)) +
+      Math.sin(f.t * 3 + index) * f.width * 0.02;
     const y = -f.height * 0.1 + phase * f.height * 1.2;
-    const size = (1.5 + hash01(seed + 4) * 2.5) * (0.6 + f.quality * 0.4);
-    const alpha = (1 - phase) * intensity * 0.85;
+    const size = (2.4 + hash01(seed + 4) * 4.2) * (0.6 + f.quality * 0.4);
+    const alpha = (1 - phase) * intensity;
     if (alpha <= 0.01) continue;
     const hue = shiftHue(f.palette.hue, hash01(seed + 5) * 360 + f.t * 70);
     ctx.fillStyle = paint(hue, 1, 0.65, alpha);
@@ -846,28 +846,30 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
   if (f.hard !== true || f.reduced || drop < 0.12) return;
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
-  const intensity = clamp01(drop * 1.2);
+  const intensity = clamp01(drop * 1.6);
   for (const side of [-1, 1] as const) {
-    const originX = side < 0 ? f.width * 0.08 : f.width * 0.92;
-    const originY = f.height * 1.02;
-    for (let puff = 0; puff < 8; puff += 1) {
-      const rise = (f.t * 0.7 + puff * 0.12 + (side < 0 ? 0 : 0.5)) % 1;
-      const x =
-        originX -
-        side * rise * f.width * 0.12 +
-        Math.sin(f.t * 2 + puff) * f.width * 0.012;
-      const y = originY - rise * f.height * 0.82;
-      const radius = f.height * (0.06 + rise * 0.18);
-      const alpha = intensity * (1 - rise) * 0.34;
-      if (alpha <= 0.01) continue;
-      const puffGradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radius, 1));
-      puffGradient.addColorStop(0, paint(208, 0.14, 0.96, alpha));
-      puffGradient.addColorStop(0.45, paint(208, 0.2, 0.88, alpha * 0.6));
-      puffGradient.addColorStop(1, paint(208, 0.12, 0.78, 0));
-      ctx.fillStyle = puffGradient;
-      ctx.beginPath();
-      ctx.arc(x, y, Math.max(radius, 1), 0, Math.PI * 2);
-      ctx.fill();
+    for (let jet = 0; jet < 2; jet += 1) {
+      const originX = side < 0 ? f.width * (0.06 + jet * 0.05) : f.width * (0.94 - jet * 0.05);
+      const originY = f.height * 1.02;
+      for (let puff = 0; puff < 10; puff += 1) {
+        const rise = (f.t * 0.6 + puff * 0.1 + (side < 0 ? 0 : 0.5) + jet * 0.17) % 1;
+        const x =
+          originX -
+          side * rise * f.width * 0.1 +
+          Math.sin(f.t * 2 + puff + jet) * f.width * 0.014;
+        const y = originY - rise * f.height * 0.9;
+        const radius = f.height * (0.07 + rise * 0.2);
+        const alpha = intensity * (1 - rise) * 0.45;
+        if (alpha <= 0.01) continue;
+        const puffGradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radius, 1));
+        puffGradient.addColorStop(0, paint(208, 0.12, 0.98, alpha));
+        puffGradient.addColorStop(0.45, paint(208, 0.18, 0.9, alpha * 0.65));
+        puffGradient.addColorStop(1, paint(208, 0.12, 0.78, 0));
+        ctx.fillStyle = puffGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(radius, 1), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 }
@@ -1385,25 +1387,19 @@ export function renderFrame(input: RenderInput): void {
     ctx.fillRect(0, 0, width, height);
   }
 
-  // Confettis et CO2 passent après le strobe : s'ils étaient dessinés avant, le
-  // flash plein écran les avalait et on ne les voyait jamais. Leur intensité
-  // monte aussi sur les phases de plein strobe, pas seulement sur un drop.
-  const raveBurst = Math.max(
-    drop,
-    strobeFull ? clamp01(base.energy * 0.7 + base.beat * 0.5) : 0,
-  );
-  drawRaveConfetti(ctx, base, raveBurst);
-  drawRaveCo2(ctx, base, raveBurst);
-
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 1;
-
   // Vignette : garde la composition lisible même quand tout s'allume.
-  // Le dégradé ne dépend que des dimensions : on le mémorise au lieu d'en
-  // recréer un à chaque image.
   const vignette = vignetteFor(ctx, width, height);
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
+
+  // Le lavage blanc d'impact, le strobe et la vignette sont passés : les
+  // confettis et le CO2 se dessinent maintenant au-dessus, sinon la vignette
+  // assombrissait justement les bords où sont les jets.
+  const raveBurst = hard
+    ? Math.max(drop, clamp01(base.energy * 0.85 + base.beat * 0.55))
+    : drop;
+  drawRaveConfetti(ctx, base, raveBurst);
+  drawRaveCo2(ctx, base, raveBurst);
 
   // La bordure LED passe en dernier : collée au bord, elle doit rester nette et
   // pleine au lieu d'être mangée par la vignette.
