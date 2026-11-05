@@ -315,8 +315,9 @@ vocabulaire agressif.
   moitié depuis le plafond, avec 2 à 3 images de rémanence ; ils balaient le cadre et
   changent de teinte le long de la rangée ;
 - **confettis** (`drawRaveConfetti`) : pluie de particules colorées pendant les drops ;
-- **CO2** (`drawRaveCo2`) : quatre jets **discrets** (un toutes les 1,35 s) qui sortent
-  compressés d'une buse, puis s'épanouissent en cône en montant. Entre deux jets, rien ;
+- **CO2** (`drawRaveCo2`) : quatre jets **discrets** (un toutes les 1,35 s), déclenchés
+  uniquement par un impact (`drop > 0,12`). Ils sortent compressés d'une buse, puis
+  s'épanouissent en cône en montant. Entre deux impacts, aucun jet ;
 - **onde de choc** (`drawRaveShockwave`) : anneau qui part du centre sur les 0,9 s qui
   suivent un impact ;
 - **panneaux LED** (`drawRavePanels`) : deux bandes verticales sur les bords, en

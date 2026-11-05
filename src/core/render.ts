@@ -1432,7 +1432,8 @@ export function renderFrame(input: RenderInput): void {
     ? Math.max(drop, clamp01(base.energy * 0.85 + base.beat * 0.55))
     : drop;
   drawRaveConfetti(ctx, base, raveBurst);
-  drawRaveCo2(ctx, base, raveBurst);
+  // Le CO2 reste réservé aux impacts : pas de canons qui crachent en continu.
+  drawRaveCo2(ctx, base, drop);
 
   // La bordure LED passe en dernier : collée au bord, elle doit rester nette et
   // pleine au lieu d'être mangée par la vignette.
