@@ -14,7 +14,7 @@
  * version, elles se ignorent au lieu de se comprendre de travers.
  */
 
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 import type { JobTimings } from "../core/api";
 import type { FamilyId, Mood, SceneRole } from "../core/show";
 
@@ -121,6 +121,8 @@ export interface ShowState {
     flashes: number;
     reduced: boolean;
     noflash: boolean;
+    /** Profil esthétique : automatique, hard forcé ou standard. */
+    hard: HardMode;
     /** Entrée dans le show : voile noir historique ou fondu enchaîné. */
     transition: "black" | "crossfade";
   };
@@ -382,7 +384,7 @@ export function emptyShowState(): ShowState {
       correlation: null,
     },
     analysis: null,
-    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, transition: "crossfade" },
+    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, hard: "auto", transition: "crossfade" },
     limits: null,
     debugOverlay: false,
     error: null,

@@ -20,7 +20,7 @@ import {
   type DashboardCommand,
   type ShowState,
 } from "../shared/control";
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 import { fmtTime, sampleCurve } from "./format";
 import { TrackChart } from "./trackChart";
 
@@ -694,6 +694,8 @@ class Dashboard {
     if (document.activeElement !== reduced) reduced.checked = state.settings.reduced;
     if (document.activeElement !== noflash) noflash.checked = state.settings.noflash;
     if (document.activeElement !== transition) transition.value = state.settings.transition;
+    const hardMode = el<HTMLSelectElement>("hard-mode");
+    if (document.activeElement !== hardMode) hardMode.value = state.settings.hard ?? "auto";
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -1048,7 +1050,12 @@ class Dashboard {
     const reduced = el<HTMLInputElement>("chk-reduced");
     const noflash = el<HTMLInputElement>("chk-noflash");
     const transition = el<HTMLSelectElement>("transition-mode");
+    const hardMode = el<HTMLSelectElement>("hard-mode");
     const latency = el<HTMLInputElement>("latency");
+
+    hardMode.addEventListener("change", () => {
+      this.send({ type: "set-settings", patch: { hard: hardMode.value as HardMode } });
+    });
 
     transition.addEventListener("change", () => {
       this.send({
