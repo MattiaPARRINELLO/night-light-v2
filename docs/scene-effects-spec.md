@@ -301,4 +301,9 @@ vocabulaire agressif.
   luminosité +0,04 et budget de teinte ×1,5 : le strobe tombe sur une scène de rave
   hyper colorée, pas sur une nappe ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
-  couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.
+  couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit ;
+- **mouvement de rave** : caméra (`raveCamera`) avec zoom pulsé sur le kick, rotation et
+  balayage lents autour du centre ; l'éventail de lyres passe de 0,17 à 1,15 rad/s, le
+  burst tourne en continu (×11), les tirs croisés et les projecteurs balaient le cadre.
+  Le fond, la vignette et la bordure restent fixes : c'est la lumière qui bouge, pas
+  l'image entière.

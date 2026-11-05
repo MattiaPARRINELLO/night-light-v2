@@ -357,6 +357,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
   Le cycle dure 8 temps : 4 temps de strobe plein, 2 temps de creux où seules les
   barres LED strobe, puis 2 temps de reprise. Le budget de flashs et le mode réduit
   restent maîtres : « Sans flashs » ou « Intensité réduite » coupent tout.
+- du mouvement de scène de club : caméra de rave (zoom pulsé sur le kick, rotation et
+  balayage lents), éventail de lyres qui balaie vite, burst en rotation continue, tirs
+  croisés et projecteurs mobiles qui parcourent le cadre.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 

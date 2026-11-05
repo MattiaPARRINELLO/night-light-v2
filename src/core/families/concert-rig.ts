@@ -278,10 +278,14 @@ export function orientationLyre(
         break;
       }
       case "eventail": {
-        const ouvertureEventail = 0.2 * (0.85 + 0.15 * Math.sin(f.t * 0.17));
+        // En mode rave, l'éventail balaie vite au lieu de respirer lentement :
+        // c'est le mouvement de tête le plus lisible sur une scène de club.
+        const vitesse = f.hard ? 1.15 : 0.17;
+        const amplitude = f.hard ? 0.3 : 0.2;
+        const ouvertureEventail = amplitude * (0.85 + 0.15 * Math.sin(f.t * vitesse));
         angle = base + (i - centre) * ouvertureEventail;
         ouverture = 0.026;
-        intensite = 0.8;
+        intensite = f.hard ? 0.9 : 0.8;
         prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy) * 0.6;
         break;
       }

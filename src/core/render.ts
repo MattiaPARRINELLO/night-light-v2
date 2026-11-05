@@ -759,6 +759,34 @@ function drawRaveLayers(
 }
 
 /**
+ * Caméra de rave : léger zoom pulsé, rotation lente et balayage.
+ *
+ * Elle ne s'applique qu'au mode rave et seulement aux familles de lumière : le
+ * fond, la vignette et la bordure restent fixes, donc l'image ne tremble pas
+ * bêtement, elle « respire » comme une caméra de concert.
+ */
+interface RaveCamera {
+  x: number;
+  y: number;
+  rotation: number;
+  scale: number;
+}
+
+function raveCamera(f: FrameState, drop: number): RaveCamera | null {
+  if (f.hard !== true) return null;
+  return {
+    x: Math.sin(f.t * 0.42) * 0.012 * f.width,
+    y: Math.cos(f.t * 0.31) * 0.008 * f.height,
+    rotation: Math.sin(f.t * 0.28) * 0.04 + Math.sin(f.t * 0.11) * 0.02,
+    scale:
+      1.04 +
+      0.04 * clamp01(f.beat) +
+      0.05 * clamp01(drop) +
+      0.012 * Math.sin(f.t * 0.8),
+  };
+}
+
+/**
  * Rend une image complète du spectacle. Fonction pure du temps musical :
  * mêmes entrées ⇒ image identique, ce qui garde la synchronisation après une
  * pause, une reprise ou un déplacement dans le morceau.
@@ -900,6 +928,14 @@ export function renderFrame(input: RenderInput): void {
   // mur de faisceaux qui doit clignoter, pas une nappe ou une figure seule.
   const strobeFull = hard && hardStrobeAllowsFull(base);
   const sceneFamily = hardStrobeFamily(base, scene.family);
+  const camera = raveCamera(base, drop);
+  if (camera !== null) {
+    ctx.save();
+    ctx.translate(width * 0.5 + camera.x, height * 0.5 + camera.y);
+    ctx.rotate(camera.rotation);
+    ctx.scale(camera.scale, camera.scale);
+    ctx.translate(-width * 0.5, -height * 0.5);
+  }
   drawFamily(ctx, base, view, sceneFamily);
   if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
@@ -925,6 +961,7 @@ export function renderFrame(input: RenderInput): void {
     };
     drawFamily(ctx, variationState, view, scene.variant);
   }
+  if (camera !== null) ctx.restore();
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
   // sur-couche et couvre tout l'écran. Jamais en mode réduit.

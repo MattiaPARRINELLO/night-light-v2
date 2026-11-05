@@ -38,7 +38,9 @@ const spots: FamilyDraw = (ctx, f, view) => {
     const origin = spotOrigin(i, w, h, f.seed);
     // Chaque lampe a son propre décalage : la salle n'est jamais éclairée
     // d'un seul mouvement, mais tout le monde reste sur le tempo.
-    const drift = beatSwing(f, view, sweep, i % 3 === 0 ? PETIT_ELEMENT_BEATS * 2 : PETIT_ELEMENT_BEATS, i * 0.31);
+    const drift =
+      beatSwing(f, view, sweep, i % 3 === 0 ? PETIT_ELEMENT_BEATS * 2 : PETIT_ELEMENT_BEATS, i * 0.31) +
+      (f.hard === true ? Math.sin(f.t * (0.9 + (i % 4) * 0.12) + i * 1.7) * 0.8 : 0);
     const aimX = cx + (hash01(i * 733 + f.seed) - 0.5) * w * 0.9 + drift * w * 0.35;
     const aimY = cy + (hash01(i * 887 + f.seed) - 0.5) * h * 0.9 + drift * h * 0.2;
     const angle = Math.atan2(aimY - origin.y, aimX - origin.x);
@@ -208,7 +210,9 @@ const crossfire: FamilyDraw = (ctx, f, view) => {
   const cx = w * 0.5;
   const cy = h * 0.5;
   const reach = Math.hypot(w, h) * 1.45;
-  const breath = beatSwing(f, view, f.reduced ? 0.12 : 0.34, GRAND_BALAYAGE_BEATS);
+  const breath =
+    beatSwing(f, view, f.reduced ? 0.12 : 0.34, GRAND_BALAYAGE_BEATS) +
+    (f.hard === true ? f.t * 0.45 : 0);
   const alpha = (0.06 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -396,7 +400,9 @@ const burst: FamilyDraw = (ctx, f, view) => {
   const reach = Math.hypot(w, h) * 1.5;
   // La tête tourne par quarts de tour sur la mesure, avec un léger glissement
   // continu : ça tourne, mais ça tourne sur la musique.
-  const rotation = beatSwing(f, view, f.reduced ? 0.4 : 1.1, GRAND_BALAYAGE_BEATS) + f.t * (f.reduced ? 0.02 : 0.05);
+  const rotation =
+    beatSwing(f, view, f.reduced ? 0.4 : 1.1, GRAND_BALAYAGE_BEATS) +
+    f.t * (f.reduced ? 0.02 : f.hard ? 0.55 : 0.05);
   const alpha = (0.045 + 0.24 * f.energy + 0.15 * f.beat) * f.alpha;
   if (alpha <= 0.002) return;
 
