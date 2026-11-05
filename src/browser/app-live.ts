@@ -168,6 +168,7 @@ export function installLive(Target: { prototype: App }): void {
     this.livePlan = {
       duration: 1_000_000,
       seed: 1,
+      profile: "standard",
       scenes: [
         {
           index: 0,

@@ -73,11 +73,27 @@ export const FLASH_LATENCY_SEC = 0;
  */
 export const FLASH_ATTACK_BEAT_SEC = 0.04;
 /**
+ * Durée de montée d'un flash de temps fort en profil hard, en secondes.
+ *
+ * Le kick d'un morceau hard est sec : une attaque de 40 ms laisse une traîne
+ * perceptible. 20 ms garde le flash lisible tout en le collant à l'attaque.
+ */
+export const FLASH_ATTACK_BEAT_HARD_SEC = 0.02;
+/**
  * Durée de montée d'un flash de drop, en secondes.
  *
  * Plus lente : l'impact est large, la montée participe au geste.
  */
 export const FLASH_ATTACK_DROP_SEC = 0.12;
+/**
+ * Durée de montée d'un flash de drop en profil hard, en secondes.
+ *
+ * L'impact hard est un coup, pas un déploiement : l'attaque est plus courte,
+ * et le flash retombe plus vite sur le noir.
+ */
+export const FLASH_ATTACK_DROP_HARD_SEC = 0.08;
+/** Gain d'opacité des flashs en profil hard, pour compenser le fond plus noir. */
+export const HARD_FLASH_BOOST = 1.12;
 /**
  * Nombre de temps forts par phrase hors drop.
  *
@@ -133,12 +149,17 @@ function paint(h: number, s: number, l: number, a: number): string {
 
 function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
-  const glow = 0.02 + f.energy * 0.05 + f.bass * 0.05;
+  // Le profil hard veut un fond plus noir : c'est ce qui fait ressortir les
+  // barres, les volets et les strobes au lieu de baigner l'image dans une
+  // lueur de salle. La lueur reste liée à l'énergie, simplement divisée.
+  const glow = f.hard
+    ? 0.012 + f.energy * 0.032 + f.bass * 0.028
+    : 0.02 + f.energy * 0.05 + f.bass * 0.05;
   // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
   // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
   const contraste = contrastHue(f);
-  const top = paint(f.palette.hue, f.palette.saturation, 0.035 + glow * 0.5, 1);
-  const bottom = paint(contraste, f.palette.saturation, 0.05 + glow, 1);
+  const top = paint(f.palette.hue, f.palette.saturation, (f.hard ? 0.018 : 0.035) + glow * 0.5, 1);
+  const bottom = paint(contraste, f.palette.saturation, (f.hard ? 0.026 : 0.05) + glow, 1);
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
   gradient.addColorStop(0, top);
   gradient.addColorStop(1, bottom);
@@ -150,7 +171,8 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const cy = h * 0.55;
   const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
-  const haloAlpha = (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha;
+  const haloAlpha =
+    (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha * (f.hard ? 0.65 : 1);
   halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
@@ -299,9 +321,17 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
   const dropAlpha = flashAlphaAt(0, f.bass, f.drop, f.buildStrength, f.energy, f.reduced, settings);
   // Âge infini = aucun déclencheur : pas d'attaque en cours (facteur 1), sinon
   // `clamp01` ramènerait l'infini à 0 et éteindrait le flash.
-  const attackBeat = Number.isFinite(f.beatAge) ? clamp01(f.beatAge / FLASH_ATTACK_BEAT_SEC) : 1;
-  const attackDrop = Number.isFinite(f.dropAge) ? clamp01(f.dropAge / FLASH_ATTACK_DROP_SEC) : 1;
-  return Math.max(beatAlpha * attackBeat, dropAlpha * attackDrop);
+  const attackBeat = Number.isFinite(f.beatAge)
+    ? clamp01(f.beatAge / (f.hard ? FLASH_ATTACK_BEAT_HARD_SEC : FLASH_ATTACK_BEAT_SEC))
+    : 1;
+  const attackDrop = Number.isFinite(f.dropAge)
+    ? clamp01(f.dropAge / (f.hard ? FLASH_ATTACK_DROP_HARD_SEC : FLASH_ATTACK_DROP_SEC))
+    : 1;
+  const boost = f.hard ? HARD_FLASH_BOOST : 1;
+  return Math.min(
+    FLASH_CEILING * Math.min(settings.flashes, 1.5),
+    Math.max(beatAlpha * attackBeat, dropAlpha * attackDrop) * boost,
+  );
 }
 
 /**
@@ -637,6 +667,7 @@ export function renderFrame(input: RenderInput): void {
     }
   }
   const scene = sceneAt(plan, t);
+  const hard = plan.profile === "hard";
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
@@ -698,6 +729,7 @@ export function renderFrame(input: RenderInput): void {
     intensity: scene.intensity * settings.intensity * (isLive ? (1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85) : (1 + surge * 0.6 + beatDriveValue * 0.5)),
     alpha: sceneWeight(scene, t),
     reduced,
+    hard,
     quality,
     seed: plan.seed,
     haze,

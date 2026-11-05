@@ -10,7 +10,7 @@ import { clamp, formatTime } from "../core/series";
 import { buildShowPlan, type ShowPlan } from "../core/show";
 import { TrackView } from "../core/view";
 import { el, setPlaying, setShowError, setStatus, showScreen } from "./ui";
-import type { Analysis } from "../types";
+import type { Analysis, HardMode } from "../types";
 
 declare module "./app" {
   interface App {
@@ -32,7 +32,10 @@ export function installShow(Target: { prototype: App }): void {
   /** Construit le plan en mesurant le temps réellement passé dans `buildShowPlan`. */
   Target.prototype.buildPlan = function (this: App, analysis: Analysis, seed?: number): ShowPlan {
     const startedAt = performance.now();
-    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed, { dramaturgy: true });
+    const plan = buildShowPlan(analysis, this.effectiveReduced(), seed, {
+      dramaturgy: true,
+      hard: this.settings.hard,
+    });
     const durationMs = performance.now() - startedAt;
     this.debug("show", "plan de spectacle construit", {
       dureeMs: Number(durationMs.toFixed(2)),
@@ -69,6 +72,12 @@ export function installShow(Target: { prototype: App }): void {
     });
     el<HTMLInputElement>("chk-reduced").addEventListener("change", () => {
       this.settings.reduced = el<HTMLInputElement>("chk-reduced").checked;
+      this.refreshPlan();
+    });
+    const hardMode = el<HTMLSelectElement>("hard-mode");
+    hardMode.value = this.settings.hard;
+    hardMode.addEventListener("change", () => {
+      this.settings.hard = hardMode.value as HardMode;
       this.refreshPlan();
     });
     el<HTMLInputElement>("chk-noflash").addEventListener("change", () => {

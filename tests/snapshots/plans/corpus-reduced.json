@@ -14,6 +14,7 @@
         60.024
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 340.085,
@@ -146,6 +147,7 @@
         60.024
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 340.085,
@@ -280,6 +282,7 @@
         56.541
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 35.141,
@@ -375,6 +378,7 @@
         56.076
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 325.385,
@@ -486,6 +490,7 @@
         53.406
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 307.72,
@@ -598,6 +603,7 @@
         59.513
       ],
       "duration": 60,
+      "profile": "standard",
       "scenes": [
         {
           "accent": 228.8,

@@ -105,6 +105,7 @@ export function installEffects(Target: { prototype: App }): void {
           // réglage envoyé depuis le téléphone.
           flashes: this.noflash ? 0 : override.flashes,
           reduced: override.reduced || this.settings.reduced,
+          hard: "off",
         },
         reducedMotion: this.reducedMotion,
         quality,

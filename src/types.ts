@@ -111,6 +111,15 @@ export interface Analysis {
   coverage?: [number, number];
 }
 
+/**
+ * Déclenchement du profil « hard » (rap sombre, trap, phonk).
+ *
+ * `auto` laisse l'analyse décider, `on` force le profil et `off` l'interdit.
+ * Le forçage est utile quand un morceau est musicalement hard mais que ses
+ * courbes ne suffisent pas à le prouver (mix très compressé, hats nombreux).
+ */
+export type HardMode = "auto" | "on" | "off";
+
 export interface RenderSettings {
   /** Intensité visuelle générale, 0.2 à 1.5. */
   intensity: number;
@@ -118,10 +127,13 @@ export interface RenderSettings {
   flashes: number;
   /** Mode confort : moins d'éléments, mouvements ralentis, jamais de flash. */
   reduced: boolean;
+  /** Profil hard : automatique, forcé ou désactivé. */
+  hard: HardMode;
 }
 
 export const DEFAULT_SETTINGS: RenderSettings = {
   intensity: 1,
   flashes: 0.9,
   reduced: false,
+  hard: "auto",
 };

@@ -94,8 +94,8 @@ lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé
    d'après les octets du fichier et pas d'après son extension (un MP3 renommé `.wav` est
    reconnu comme MP3).
 5. Pendant le show : lecture/pause (`Espace`), recommencer (`R`), plein écran (`F`),
-   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, intensité réduite, sans flashs,
-   retour à l'écran de dépôt.
+   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/hard,
+   intensité réduite, sans flashs, retour à l'écran de dépôt.
 6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
    et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
 
@@ -324,6 +324,29 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
 - les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
+
+### Le profil hard
+
+Le répertoire « gros son » — rap sombre, trap, phonk, morceaux du type *PTSD* — ne réagit pas
+comme de l'électro claire : les basses tiennent l'image, les aigus arrivent par éclats, et un
+traitement de « soirée lumineuse » y paraît mou. Le plan bascule donc sur un profil `hard`
+quand le morceau est à la fois **fort**, **sombre** et **tenu dans les basses** (énergie
+médiane ≥ 0,70, écart médian basses − aigus ≥ 0,30, majorité de fenêtres fortes sous 0,30
+d'aigus). Le réglage **Profil** du HUD permet de le forcer ou de le couper quand l'analyse
+se trompe.
+
+Le profil change quatre choses, sans toucher aux humeurs de scène :
+
+- une palette dédiée, très saturée et volontairement sombre (rouge/glace, violet/acide,
+  braise/cyan), avec un écart de teintes plus serré que les palettes standard ;
+- un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,
+  rayons, maillages, poursuites de lyres — au lieu des nappes et figures rondes ;
+- des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus
+  courtes entre scènes ;
+- un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
+  gain de 12 %) et bordure LED qui stroboscope plus souvent sur les impacts.
+- le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
+  forcé.
 
 ### La transition
 

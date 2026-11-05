@@ -244,3 +244,44 @@ de scène.
 - **Mode réduit** : plafond `0,3`, facteur `0,5`, pas de chenillard ni d'éclat.
 - **Coût** : deux tronçons et un halo local par diode, plus deux remplissages
   pour les émetteurs échantillonnés, sans transformation ni dégradé radial.
+
+## 10. Profil hard
+
+Le profil est une décision **de morceau**, pas de scène : il est résolu une fois dans
+`buildShowPlan` (`resolveShowProfile`) puis recopié dans `plan.profile`. Les humeurs de scène
+restent celles du modèle existant ; le profil ne fait que changer leur vocabulaire.
+
+### Détection (`auto`)
+
+Mesures sur les fenêtres où l'énergie dépasse 0,45, échantillonnées toutes les 0,5 s :
+
+| mesure | seuil |
+| --- | --- |
+| énergie médiane | ≥ 0,70 |
+| basses médianes − aigus médians | ≥ 0,30 |
+| part de fenêtres sous 0,30 d'aigus | ≥ 0,50 |
+
+Les bandes étant normalisées indépendamment par l'analyseur, l'écart basses − aigus mesure
+la **forme du mix** (basses tenues, aigus en éclats), pas un niveau absolu. Le réglage
+`RenderSettings.hard` vaut `auto` par défaut ; `on` force le profil, `off` l'interdit.
+
+### Effets sur le plan
+
+- palette tirée de `HARD_TRACK_PALETTES` (rouge/glace, violet/acide, braise/cyan,
+  magenta/arc), spread 30–38° ;
+- réservoir `HARD_FAMILIES` pour les scènes hors calme, hors refrain/montée/impact ;
+- fond tiré de `HARD_BACKDROPS` (grille, tunnel, vagues) ;
+- saturation des scènes non calmes portée à 1, luminosité des humeurs fortes abaissée
+  (0,60 explosif, 0,54 pulsé), intensité +0,06 ;
+- fondus d'entrée et de sortie raccourcis (0,35–0,50 s au lieu de 0,7–1,2 s / 0,9 s).
+
+Le mode réduit force `standard` : c'est un mode de confort, il ne doit pas hériter d'un
+vocabulaire agressif.
+
+### Effets sur le rendu
+
+- fond plus noir (`drawBackground`) et halo central réduit ;
+- attaque de flash de temps fort à 20 ms, de drop à 80 ms, gain d'opacité de 12 %
+  (`FLASH_ATTACK_*_HARD_SEC`, `HARD_FLASH_BOOST`) ;
+- bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
+  couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

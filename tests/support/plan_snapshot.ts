@@ -47,6 +47,7 @@ export interface SnapshotScene {
 export interface SnapshotTrack {
   duration: number;
   seed: number;
+  profile: string;
   track: { name: string; hue: number; accent: number; spread: number };
   backdrop: string;
   barStarts: number[];
@@ -125,6 +126,7 @@ export function serializePlan(plan: ShowPlan): SnapshotTrack {
   return stableValue({
     duration: plan.duration,
     seed: plan.seed,
+    profile: plan.profile,
     track: {
       name: plan.track.name,
       hue: plan.track.hue,
