@@ -11,7 +11,7 @@ import {
   resolveShowProfile,
   type ShowProfile,
 } from "../../src/core/show";
-import { flashAdmitted, hardStrobeAlpha } from "../../src/core/render";
+import { flashAdmitted, hardStrobeAlpha, hardStrobeRate } from "../../src/core/render";
 import type { FrameState } from "../../src/core/families";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -110,7 +110,7 @@ describe("profil hard", () => {
     expect(familyBranchFor(caractere, false, "couplet", false, false, false)).not.toBe("hard");
   });
 
-  test("le strobe hard clignote sur les kicks, jamais en mode réduit ni sans flashs", () => {
+  test("le strobe hard n'a pas de plafond de vitesse", () => {
     const settings = { intensity: 1, flashes: 0.9, reduced: false, hard: "on" } as RenderSettings;
     const frame = (overrides: Partial<FrameState> = {}) =>
       ({
@@ -119,18 +119,23 @@ describe("profil hard", () => {
         energy: 1,
         beat: 1,
         beatPhase: 0,
+        t: 0,
         ...overrides,
       }) as unknown as FrameState;
-    expect(hardStrobeAlpha(frame(), settings, 0.5)).toBeGreaterThan(0.3);
-    // Quatre éclats par temps en pointe, donc une phase au deuxième quart est éteinte.
-    expect(hardStrobeAlpha(frame({ beatPhase: 0.3 }), settings, 0)).toBe(0);
-    expect(hardStrobeAlpha(frame({ hard: false }), settings, 0.5)).toBe(0);
-    expect(hardStrobeAlpha(frame({ reduced: true }), settings, 0.5)).toBe(0);
+    const rate = hardStrobeRate(frame(), 1);
+    expect(rate).toBeGreaterThan(60);
+    // La vitesse monte avec l'énergie et l'impact, sans borne haute.
+    expect(rate).toBeGreaterThan(hardStrobeRate(frame({ energy: 0.6 }), 0));
+    expect(hardStrobeAlpha(frame(), settings, 1)).toBeGreaterThan(0.3);
+    // Phase impaire à cette vitesse : l'écran est éteint.
+    expect(hardStrobeAlpha(frame({ t: 1.25 / rate }), settings, 1)).toBe(0);
+    expect(hardStrobeAlpha(frame({ hard: false }), settings, 1)).toBe(0);
+    expect(hardStrobeAlpha(frame({ reduced: true }), settings, 1)).toBe(0);
     expect(
-      hardStrobeAlpha(frame(), { ...settings, flashes: 0 } as RenderSettings, 0.5),
+      hardStrobeAlpha(frame(), { ...settings, flashes: 0 } as RenderSettings, 1),
     ).toBe(0);
     // Sans kick récent, pas de strobe : l'écran revient à la scène.
-    expect(hardStrobeAlpha(frame({ beat: 0 }), settings, 0.5)).toBe(0);
+    expect(hardStrobeAlpha(frame({ beat: 0 }), settings, 1)).toBe(0);
   });
 
   test("le profil hard admet un flash sur chaque temps fort", () => {

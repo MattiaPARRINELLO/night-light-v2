@@ -103,15 +103,19 @@ export const HARD_FLASH_BOOST = 1.12;
  */
 export const HARD_BEAT_FLASH_WEIGHT = 0.9;
 /**
- * Nombre d'éclats du stroboscope hard par temps fort.
+ * Vitesse du stroboscope hard, en éclats par seconde.
  *
- * Deux éclats par temps dans les passages soutenus, quatre dans les impacts et
- * les pics. À 140 BPM, quatre éclats font ~9 Hz : c'est le clignotement d'un
- * strobe de club, pas une respiration de lumière.
+ * Volontairement **sans plafond fixe** : elle monte avec l'énergie et la force
+ * de l'impact. Un morceau hard à pleine puissance peut dépasser la cadence
+ * d'affichage, ce qui donne un clignotement continu plutôt qu'un décompte
+ * net de flashs. Le budget de flashs et le mode réduit restent les seuls
+ * interrupteurs.
  */
-export const HARD_STROBE_DIVISIONS = 4;
-/** Nombre d'éclats par temps hors pic. */
-export const HARD_STROBE_DIVISIONS_CALM = 2;
+export function hardStrobeRate(f: FrameState, drop: number): number {
+  const energy = clamp01(f.energy);
+  const violence = clamp01(drop);
+  return 8 + 28 * energy * energy + 52 * violence;
+}
 /**
  * Nombre de temps forts par phrase hors drop.
  *
@@ -382,11 +386,13 @@ export function hardStrobeAlpha(
   // dire qu'on est entre deux frappes, et l'écran doit revenir à la scène.
   const kick = clamp01(f.beat);
   if (kick < 0.05) return 0;
-  const violent = drop > 0.3 || f.energy > 0.82;
-  const divisions = violent ? HARD_STROBE_DIVISIONS : HARD_STROBE_DIVISIONS_CALM;
-  const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
+  const rate = hardStrobeRate(f, drop);
+  // `f.t` est le temps musical : la phase reste déterministe après une pause,
+  // un seek ou un changement de morceau. Le rythme n'est plus calé sur le
+  // temps fort mais sur la vitesse brute du strobe.
+  const on = Math.floor(f.t * rate) % 2 === 0;
   if (!on) return 0;
-  const amount = gate * (0.45 + 0.55 * kick) * (violent ? 0.95 : 0.55);
+  const amount = gate * (0.45 + 0.55 * kick);
   return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
 }
 
