@@ -291,6 +291,8 @@ vocabulaire agressif.
   kick, en mode réduit, ou si `settings.flashes = 0` ;
 - **cycle du strobe hard** (`core/strobe.ts`) : 8 temps forts, soit 4 temps de plein
   strobe, 2 temps de creux où le plein écran se tait et où la bordure LED strobe seule,
-  puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek ;
+  puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek.
+  Pendant le plein strobe, `hardStrobeFamily` remplace la famille de la scène par
+  `lyres-eventail` : le strobe tombe sur un plateau de lyres, pas sur une nappe ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

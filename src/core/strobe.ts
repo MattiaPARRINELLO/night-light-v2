@@ -8,8 +8,16 @@
  */
 
 import type { FrameState } from "./families/types";
+import type { FamilyId } from "./show";
 
 export type HardStrobePhase = "plein" | "barres" | "reprise";
+
+/**
+ * Famille affichée pendant le plein strobe : le plateau de lyres en éventail,
+ * avec ses barres LED. Le strobe doit tomber sur une scène remplie de lyres,
+ * pas sur une nappe ou une figure géométrique.
+ */
+export const HARD_STROBE_FAMILY: FamilyId = "lyres-eventail";
 
 /** Longueur du cycle, en temps forts. */
 export const HARD_STROBE_CYCLE_BEATS = 8;
@@ -40,4 +48,9 @@ export function hardStrobeAllowsFull(f: FrameState): boolean {
 /** Vrai quand seules les barres LED doivent strober. */
 export function hardStrobeBarsOnly(f: FrameState): boolean {
   return hardStrobePhase(f) === "barres";
+}
+
+/** Famille à dessiner pendant le cycle hard : les lyres remplacent la scène. */
+export function hardStrobeFamily(f: FrameState, fallback: FamilyId): FamilyId {
+  return f.hard === true && hardStrobeAllowsFull(f) ? HARD_STROBE_FAMILY : fallback;
 }

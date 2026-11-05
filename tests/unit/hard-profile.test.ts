@@ -12,7 +12,7 @@ import {
   type ShowProfile,
 } from "../../src/core/show";
 import { flashAdmitted, hardStrobeAlpha, hardStrobeDivisions } from "../../src/core/render";
-import { hardStrobeAllowsFull, hardStrobePhase } from "../../src/core/strobe";
+import { hardStrobeAllowsFull, hardStrobeFamily, hardStrobePhase } from "../../src/core/strobe";
 import type { FrameState } from "../../src/core/families";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -166,6 +166,11 @@ describe("profil hard", () => {
     // Le plein écran se tait pendant le creux, la bordure prend le relais.
     expect(hardStrobeAlpha(frame(4), settings, 1)).toBe(0);
     expect(hardStrobeAlpha(frame(6), settings, 1)).toBeGreaterThan(0);
+    // Pendant le plein strobe, la scène devient un plateau de lyres.
+    expect(hardStrobeFamily(frame(0), "shutters")).toBe("lyres-eventail");
+    expect(hardStrobeFamily(frame(6), "shutters")).toBe("lyres-eventail");
+    expect(hardStrobeFamily(frame(4), "shutters")).toBe("shutters");
+    expect(hardStrobeFamily({ ...frame(0), hard: false }, "shutters")).toBe("shutters");
   });
 
   test("le profil hard admet un flash sur chaque temps fort", () => {

@@ -15,7 +15,7 @@ import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
 import { hslToRgb, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
-import { hardStrobeAllowsFull, hardStrobeBarsOnly } from "./strobe";
+import { hardStrobeAllowsFull, hardStrobeBarsOnly, hardStrobeFamily } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
 
@@ -836,14 +836,18 @@ export function renderFrame(input: RenderInput): void {
   ctx.globalCompositeOperation = "lighter";
 
   // Scène courante + scène sortante pendant le fondu (transition fluide).
-  drawFamily(ctx, base, view, scene.family);
+  // En plein strobe hard, la scène cède la place au plateau de lyres : c'est le
+  // mur de faisceaux qui doit clignoter, pas une nappe ou une figure seule.
+  const sceneFamily = hardStrobeFamily(base, scene.family);
+  drawFamily(ctx, base, view, sceneFamily);
   drawCoreGlow(ctx, permanent);
 
   // (Plus de couche de fond permanente : seul le halo et la poussière subsistent.)
 
   // Variation au milieu de la phrase : une autre famille surgit brièvement,
   // avec sa propre teinte. C'est ce qui empêche le spectacle de tourner en boucle.
-  if (variation > 0.05) {
+  // Elle se tait pendant le plein strobe : la scène doit rester un mur de lyres.
+  if (variation > 0.05 && sceneFamily === scene.family) {
     const variationState: FrameState = {
       ...base,
       palette: {
@@ -904,7 +908,7 @@ export function renderFrame(input: RenderInput): void {
       alpha: 1 - ratio,
       intensity: previous.intensity * settings.intensity,
     };
-    drawFamily(ctx, outgoing, view, previous.family);
+    drawFamily(ctx, outgoing, view, hardStrobeFamily(outgoing, previous.family));
   }
 
   // Fumée : les faisceaux ont été déposés dans deux nappes, l'une pour les
