@@ -850,18 +850,19 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
   for (const side of [-1, 1] as const) {
     const originX = side < 0 ? f.width * 0.08 : f.width * 0.92;
     const originY = f.height * 1.02;
-    for (let puff = 0; puff < 6; puff += 1) {
-      const rise = (f.t * 0.7 + puff * 0.14 + (side < 0 ? 0 : 0.5)) % 1;
+    for (let puff = 0; puff < 8; puff += 1) {
+      const rise = (f.t * 0.7 + puff * 0.12 + (side < 0 ? 0 : 0.5)) % 1;
       const x =
         originX -
         side * rise * f.width * 0.12 +
         Math.sin(f.t * 2 + puff) * f.width * 0.012;
-      const y = originY - rise * f.height * 0.75;
-      const radius = f.height * (0.05 + rise * 0.14);
-      const alpha = intensity * (1 - rise) * 0.2;
+      const y = originY - rise * f.height * 0.82;
+      const radius = f.height * (0.06 + rise * 0.18);
+      const alpha = intensity * (1 - rise) * 0.34;
       if (alpha <= 0.01) continue;
       const puffGradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radius, 1));
-      puffGradient.addColorStop(0, paint(208, 0.18, 0.92, alpha));
+      puffGradient.addColorStop(0, paint(208, 0.14, 0.96, alpha));
+      puffGradient.addColorStop(0.45, paint(208, 0.2, 0.88, alpha * 0.6));
       puffGradient.addColorStop(1, paint(208, 0.12, 0.78, 0));
       ctx.fillStyle = puffGradient;
       ctx.beginPath();
