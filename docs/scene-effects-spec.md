@@ -298,8 +298,9 @@ vocabulaire agressif.
   Pendant le plein strobe, `hardStrobeFamily` reste `lyres-eventail`, et
   `drawRaveLayers` empile par-dessus `crossfire`, `burst` et `spots` (tirs croisés,
   rayons centraux, projecteurs mobiles), avec saturation 1, luminosité +0,04 et budget
-  de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence trois rangées de huit
-  lyres, même pendant le creux : la scène n'est jamais vide de têtes ;
+  de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence quatre rangées de huit
+  lyres, avec quatre gestes (éventail, croisement, vague, cercle) : 32 têtes, même
+  pendant le creux ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit ;
 - **mouvement de rave** : caméra (`raveCamera`) avec zoom pulsé sur le kick, rotation et

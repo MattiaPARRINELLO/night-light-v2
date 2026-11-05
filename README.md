@@ -351,8 +351,8 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
   clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
   140 BPM. Les flashs et le strobe sont colorés dans l'accord de la scène, pas blancs :
   chaque éclat alterne entre la teinte principale et la complémentaire. En mode rave,
-  la scène est en permanence un **mur de trois rangées de lyres** (24 têtes), même
-  pendant le creux du strobe. Sur le plein strobe s'ajoutent les tirs croisés des coins,
+  la scène est en permanence un **mur de quatre rangées de lyres** (32 têtes), avec
+  quatre gestes différents : éventail, croisement, vague et cercle. Sur le plein strobe s'ajoutent les tirs croisés des coins,
   un burst de rayons, les projecteurs mobiles et les lasers.
   Le cycle dure 8 temps : 4 temps de strobe plein, 2 temps de creux où seules les
   barres LED strobe, puis 2 temps de reprise. Le budget de flashs et le mode réduit

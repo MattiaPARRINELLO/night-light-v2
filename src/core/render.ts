@@ -923,15 +923,17 @@ function drawRaveLyreWall(
   f: FrameState,
   view: TrackView,
 ): void {
-  const rows = 3;
-  for (let row = 0; row < rows; row += 1) {
+  // Quatre rangées, quatre gestes : éventail, croisement, vague puis cercle.
+  // La scène est remplie de 32 têtes, et aucune rangée ne bouge comme sa voisine.
+  const gestures = ["eventail", "croisement", "vague", "cercle"] as const;
+  for (let row = 0; row < gestures.length; row += 1) {
     const rowState: FrameState = {
       ...f,
-      alpha: f.alpha * (row === 0 ? 1 : row === 1 ? 0.75 : 0.55),
+      alpha: f.alpha * (row === 0 ? 1 : row === 1 ? 0.78 : row === 2 ? 0.6 : 0.45),
     };
     ctx.save();
     ctx.translate(0, row * f.height * 0.16);
-    dessinerLyresRave(ctx, rowState, view);
+    dessinerLyresRave(ctx, rowState, view, gestures[row]);
     ctx.restore();
   }
 }

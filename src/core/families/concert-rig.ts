@@ -151,7 +151,14 @@ export function tempsTempsFort(f: FrameState, view: TrackView): number {
 }
 
 /** Geste imposé aux huit lyres, indépendamment du rôle de la scène. */
-export type GesteLyre = "auto" | "poursuite" | "eventail" | "croisement" | "vague";
+export type GesteLyre =
+  | "auto"
+  | "poursuite"
+  | "eventail"
+  | "croisement"
+  | "vague"
+  | "cercle"
+  | "croix";
 
 /**
  * Cinématique pan/tilt d'une lyre.
@@ -301,6 +308,25 @@ export function orientationLyre(
         ouverture = 0.022;
         intensite = 0.7;
         prisme = 0;
+        break;
+      }
+      case "cercle": {
+        // Les têtes tournent en cercle, chacune avec son décalage : la rangée
+        // décrit une spirale au lieu de balayer en bloc.
+        angle = base + Math.sin(f.t * 0.85 + i * 0.92) * 0.6;
+        ouverture = 0.02 + 0.008 * (0.5 + 0.5 * Math.sin(f.t * 1.3 + i));
+        intensite = 0.85;
+        prisme = f.reduced ? 0 : 0.5;
+        break;
+      }
+      case "croix": {
+        // Les têtes se croisent vers le centre : moitié gauche vers la droite,
+        // moitié droite vers la gauche, en respiration lente.
+        const versCentre = -((i - centre) / Math.max(centre, 1));
+        angle = base + versCentre * 0.55 * (0.7 + 0.3 * Math.sin(f.t * 1.15));
+        ouverture = 0.022;
+        intensite = 0.9;
+        prisme = f.reduced ? 0 : 0.4;
         break;
       }
     }
@@ -1013,8 +1039,9 @@ export function dessinerLyresRave(
   ctx: CanvasRenderingContext2D,
   f: FrameState,
   view: TrackView,
+  geste: GesteLyre = "eventail",
 ): void {
-  dessinerLyres(ctx, f, view, "eventail");
+  dessinerLyres(ctx, f, view, geste);
 }
 
 /** Poursuite : une seule tête éclairée court le long du pont. */
