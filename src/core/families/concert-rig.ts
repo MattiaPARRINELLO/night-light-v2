@@ -1003,6 +1003,20 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
 const lyresSuspendues: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "auto");
 const barresLed: FamilyDraw = (ctx, f, view) => dessinerBarres(ctx, f, view);
 
+/**
+ * Lyres seules, geste éventail : brique du mur de lyres du mode rave.
+ *
+ * Le rendu les empile sur plusieurs rangées, sans les barres LED de
+ * `lyres-eventail`, pour que la scène soit réellement remplie de têtes.
+ */
+export function dessinerLyresRave(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+): void {
+  dessinerLyres(ctx, f, view, "eventail");
+}
+
 /** Poursuite : une seule tête éclairée court le long du pont. */
 const lyresPoursuite: FamilyDraw = (ctx, f, view) => dessinerLyres(ctx, f, view, "poursuite");
 

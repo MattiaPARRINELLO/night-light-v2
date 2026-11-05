@@ -4,6 +4,7 @@ import {
   contrastHue,
   dessinerBlinders,
   dessinerBordure,
+  dessinerLyresRave,
   dessinerStructure,
   drawCoreGlow,
   drawFamily,
@@ -913,6 +914,29 @@ function drawRavePanels(ctx: CanvasRenderingContext2D, f: FrameState): void {
 }
 
 /**
+ * Mur de lyres du mode rave : trois rangées de huit têtes, décalées en
+ * profondeur avec un alpha décroissant. La scène reste donc remplie de lyres
+ * même pendant le creux du strobe, pas seulement sur les pics.
+ */
+function drawRaveLyreWall(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+): void {
+  const rows = 3;
+  for (let row = 0; row < rows; row += 1) {
+    const rowState: FrameState = {
+      ...f,
+      alpha: f.alpha * (row === 0 ? 1 : row === 1 ? 0.75 : 0.55),
+    };
+    ctx.save();
+    ctx.translate(0, row * f.height * 0.16);
+    dessinerLyresRave(ctx, rowState, view);
+    ctx.restore();
+  }
+}
+
+/**
  * Coupes glitch sur les gros drops : trois bandes horizontales décalées pendant
  * quelques images. Le décalage est tiré du temps musical, donc reproductible.
  */
@@ -1115,7 +1139,8 @@ export function renderFrame(input: RenderInput): void {
     ctx.scale(camera.scale, camera.scale);
     ctx.translate(-width * 0.5, -height * 0.5);
   }
-  drawFamily(ctx, base, view, sceneFamily);
+  if (hard) drawRaveLyreWall(ctx, base, view);
+  else drawFamily(ctx, base, view, sceneFamily);
   if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
 
@@ -1124,7 +1149,7 @@ export function renderFrame(input: RenderInput): void {
   // Variation au milieu de la phrase : une autre famille surgit brièvement,
   // avec sa propre teinte. C'est ce qui empêche le spectacle de tourner en boucle.
   // Elle se tait pendant le plein strobe : la scène doit rester un mur de faisceaux.
-  if (variation > 0.05 && !strobeFull) {
+  if (variation > 0.05 && !strobeFull && !hard) {
     const variationState: FrameState = {
       ...base,
       palette: {

@@ -295,11 +295,11 @@ vocabulaire agressif.
 - **cycle du strobe hard** (`core/strobe.ts`) : 8 temps forts, soit 4 temps de plein
   strobe, 2 temps de creux où le plein écran se tait et où la bordure LED strobe seule,
   puis 2 temps de reprise. Le cycle est calé sur `beatIndex`, donc stable après un seek.
-  Pendant le plein strobe, `hardStrobeFamily` remplace la famille de la scène par
-  `lyres-eventail`, et `drawRaveLayers` empile par-dessus `crossfire`, `burst` et
-  `spots` (tirs croisés, rayons centraux, projecteurs mobiles), avec saturation 1,
-  luminosité +0,04 et budget de teinte ×1,5 : le strobe tombe sur une scène de rave
-  hyper colorée, pas sur une nappe ;
+  Pendant le plein strobe, `hardStrobeFamily` reste `lyres-eventail`, et
+  `drawRaveLayers` empile par-dessus `crossfire`, `burst` et `spots` (tirs croisés,
+  rayons centraux, projecteurs mobiles), avec saturation 1, luminosité +0,04 et budget
+  de teinte ×1,5. Et `drawRaveLyreWall` dessine en permanence trois rangées de huit
+  lyres, même pendant le creux : la scène n'est jamais vide de têtes ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit ;
 - **mouvement de rave** : caméra (`raveCamera`) avec zoom pulsé sur le kick, rotation et
