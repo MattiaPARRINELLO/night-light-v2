@@ -103,18 +103,26 @@ export const HARD_FLASH_BOOST = 1.12;
  */
 export const HARD_BEAT_FLASH_WEIGHT = 0.9;
 /**
- * Vitesse du stroboscope hard, en éclats par seconde.
+ * Nombre d'éclats du stroboscope hard par temps fort.
  *
- * Volontairement **sans plafond fixe** : elle monte avec l'énergie et la force
- * de l'impact. Un morceau hard à pleine puissance peut dépasser la cadence
- * d'affichage, ce qui donne un clignotement continu plutôt qu'un décompte
- * net de flashs. Le budget de flashs et le mode réduit restent les seuls
- * interrupteurs.
+ * Le strobe suit le temps musical au lieu d'une horloge absolue : sa phase
+ * repart de zéro à chaque temps, donc aucun « strobe, pause, strobe » quand la
+ * vitesse change en cours de mesure. Quatre éclats dans un passage soutenu,
+ * jusqu'à douze dans un pic : à 140 BPM, cela reste entre 9 et 28 Hz, sous la
+ * limite où l'œil ne voit plus qu'un papillotement continu.
  */
-export function hardStrobeRate(f: FrameState, drop: number): number {
+export const HARD_STROBE_DIVISIONS_MIN = 4;
+export const HARD_STROBE_DIVISIONS_MAX = 12;
+
+/** Éclats par temps fort, de 4 à 12 selon l'énergie et l'impact. */
+export function hardStrobeDivisions(f: FrameState, drop: number): number {
   const energy = clamp01(f.energy);
   const violence = clamp01(drop);
-  return 8 + 28 * energy * energy + 52 * violence;
+  const extra = Math.round((HARD_STROBE_DIVISIONS_MAX - HARD_STROBE_DIVISIONS_MIN) * 0.5 * (energy + violence));
+  return Math.min(
+    HARD_STROBE_DIVISIONS_MAX,
+    HARD_STROBE_DIVISIONS_MIN + extra,
+  );
 }
 /**
  * Nombre de temps forts par phrase hors drop.
@@ -382,15 +390,13 @@ export function hardStrobeAlpha(
   if (!f.hard || f.reduced || settings.flashes <= 0) return 0;
   const gate = smoothstep(0.55, 0.85, f.energy);
   if (gate <= 0.01) return 0;
-  // Le stroboscope suit le kick : une décroissance de beat trop avancée veut
-  // dire qu'on est entre deux frappes, et l'écran doit revenir à la scène.
-  const kick = clamp01(f.beat);
-  if (kick < 0.05) return 0;
-  const rate = hardStrobeRate(f, drop);
-  // `f.t` est le temps musical : la phase reste déterministe après une pause,
-  // un seek ou un changement de morceau. Le rythme n'est plus calé sur le
-  // temps fort mais sur la vitesse brute du strobe.
-  const on = Math.floor(f.t * rate) % 2 === 0;
+  // Le stroboscope reste allumé tant que la basse tient : sur un 808, le beat
+  // seul retombait avant la frappe suivante et produisait des trous
+  // « strobe, pause, strobe ». La basse donne la continuité du passage.
+  const kick = clamp01(0.4 * f.beat + 0.6 * f.bass);
+  if (kick < 0.08) return 0;
+  const divisions = hardStrobeDivisions(f, drop);
+  const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
   if (!on) return 0;
   const amount = gate * (0.45 + 0.55 * kick);
   return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);

@@ -345,9 +345,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
   courtes entre scènes ;
 - un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
   gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, puis l'écran
-  clignote à une vitesse **sans plafond fixe**, qui monte avec l'énergie et la force de
-  l'impact (de ~8 Hz à plus de 80 Hz). Le budget de flashs et le mode réduit restent maîtres :
-  « Sans flashs » ou « Intensité réduite » coupent tout.
+  clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
+  140 BPM. Le budget de flashs et le mode réduit restent maîtres : « Sans flashs » ou
+  « Intensité réduite » coupent tout.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 
