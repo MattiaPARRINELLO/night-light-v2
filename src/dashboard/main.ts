@@ -1100,6 +1100,7 @@ class Dashboard {
 
     hardMode.addEventListener("change", () => {
       this.send({ type: "set-settings", patch: { hard: hardMode.value as HardMode } });
+      hardMode.blur();
     });
 
     transition.addEventListener("change", () => {

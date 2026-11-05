@@ -78,6 +78,9 @@ export function installShow(Target: { prototype: App }): void {
     hardMode.value = this.settings.hard;
     hardMode.addEventListener("change", () => {
       this.settings.hard = hardMode.value as HardMode;
+      // Rend le clavier au show : sans ça, la touche H restait avalée par le
+      // menu qui gardait le focus après le choix.
+      hardMode.blur();
       this.refreshPlan();
     });
     el<HTMLInputElement>("chk-noflash").addEventListener("change", () => {
@@ -238,9 +241,23 @@ export function installShow(Target: { prototype: App }): void {
   };
 
   Target.prototype.refreshPlan = function (this: App): void {
+    // Show local : le plan porte `this.plan`. Show calé sur le lecteur : il vit
+    // dans `syncedPlan`. Les deux doivent être reconstruits, sinon un réglage
+    // comme le mode rave ne change rien pendant un morceau synchronisé.
     const analysis = this.view?.analysis;
-    if (analysis === undefined) return;
-    this.plan = this.buildPlan(analysis);
+    if (analysis !== undefined) this.plan = this.buildPlan(analysis, this.plan?.seed);
+    const syncedAnalysis = this.syncedView?.analysis;
+    if (syncedAnalysis !== undefined) {
+      this.syncedPlan = this.buildPlan(syncedAnalysis, this.syncedPlan?.seed);
+    }
+    // Direct : pas d'analyse pour détecter, mais un forçage manuel doit quand
+    // même allumer la scène de rave sur le son en cours.
+    if (this.livePlan !== null) {
+      this.livePlan = {
+        ...this.livePlan,
+        profile: this.settings.hard === "on" ? "hard" : "standard",
+      };
+    }
   };
 
   Target.prototype.togglePlay = async function (this: App): Promise<void> {
