@@ -305,6 +305,7 @@ export function installLive(Target: { prototype: App }): void {
       this.liveFrame += 1;
       this.drawTransitionIfNeeded(time, plan);
       this.composeCrossfade();
+      this.applyBlackout();
       if (this.liveFrame % 120 === 0) {
         dbgThrottled(
           "live-render",

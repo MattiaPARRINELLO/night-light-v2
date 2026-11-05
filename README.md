@@ -94,8 +94,9 @@ lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé
    d'après les octets du fichier et pas d'après son extension (un MP3 renommé `.wav` est
    reconnu comme MP3).
 5. Pendant le show : lecture/pause (`Espace`), recommencer (`R`), plein écran (`F`),
-   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/hard,
-   intensité réduite, sans flashs, retour à l'écran de dépôt.
+   volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/rave,
+   mode rave (`H`), blackout instantané (`B`), intensité réduite, sans flashs,
+   retour à l'écran de dépôt.
 6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
    et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
 

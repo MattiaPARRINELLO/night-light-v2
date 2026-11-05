@@ -699,6 +699,7 @@ class Dashboard {
     const hardMode = el<HTMLSelectElement>("hard-mode");
     if (document.activeElement !== hardMode) hardMode.value = state.settings.hard ?? "auto";
     this.syncHardToggle(state);
+    this.syncBlackout(state);
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -1057,6 +1058,22 @@ class Dashboard {
     this.paintHardToggle();
   }
 
+  /** Reflète le blackout dans le bouton du header. */
+  private syncBlackout(state: ShowState): void {
+    const on = state.settings.blackout;
+    const button = el<HTMLButtonElement>("blackout-toggle");
+    button.classList.toggle("is-on", on);
+    button.setAttribute("aria-pressed", String(on));
+    el<HTMLElement>("blackout-toggle-label").textContent = on ? "Blackout on" : "Blackout";
+  }
+
+  private toggleBlackout(): void {
+    const next = !this.state.settings.blackout;
+    this.state.settings.blackout = next;
+    this.syncBlackout(this.state);
+    this.send({ type: "set-settings", patch: { blackout: next } });
+  }
+
   private bindControls(): void {
     // La bande d'état sert de sommaire : cliquer un fait mène au panneau qui le
     // détaille, et le fait clignoter une fois pour qu'on voie où on a atterri.
@@ -1081,20 +1098,26 @@ class Dashboard {
     const latency = el<HTMLInputElement>("latency");
 
     el<HTMLButtonElement>("hard-toggle").addEventListener("click", () => this.toggleHard());
+    el<HTMLButtonElement>("blackout-toggle").addEventListener("click", () => this.toggleBlackout());
     window.addEventListener("keydown", (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
       const target = event.target;
-      if (
-        target instanceof HTMLInputElement ||
+      // On ne vole jamais une frappe dans un champ de texte. Les curseurs, cases
+      // et menus laissent passer H et B.
+      const textField =
         target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
-      ) {
-        return;
-      }
-      if (event.key.toLowerCase() === "h") {
+        (target instanceof HTMLInputElement &&
+          !["checkbox", "radio", "range", "button", "submit"].includes(target.type)) ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (textField) return;
+      if (key === "h") {
         event.preventDefault();
         this.toggleHard();
+      }
+      if (key === "b") {
+        event.preventDefault();
+        this.toggleBlackout();
       }
     });
 

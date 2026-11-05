@@ -475,6 +475,7 @@ export function installSync(Target: { prototype: App }): void {
       } else if (fade.active) {
         this.composeCrossfade();
       }
+      this.applyBlackout();
       this.markFirstFrame();
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));

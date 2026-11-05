@@ -159,6 +159,16 @@ body.dashboard {
   background: #ff5c7a;
   box-shadow: 0 0 10px rgba(255, 92, 122, .9);
 }
+
+.blackout-toggle.is-on {
+  border-color: rgba(255, 255, 255, .55);
+  background: #000;
+  box-shadow: 0 0 18px rgba(255, 255, 255, .12);
+}
+.blackout-toggle.is-on .hard-toggle-dot {
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, .9);
+}
 .brand-mark {
   width: 38px; height: 38px; border-radius: 12px;
   background:

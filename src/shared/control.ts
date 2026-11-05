@@ -129,6 +129,8 @@ export interface ShowState {
     noflash: boolean;
     /** Profil esthétique : automatique, hard forcé ou standard. */
     hard: HardMode;
+    /** Écran noir instantané, sans couper la musique. */
+    blackout: boolean;
     /** Entrée dans le show : voile noir historique ou fondu enchaîné. */
     transition: "black" | "crossfade";
   };
@@ -391,7 +393,7 @@ export function emptyShowState(): ShowState {
       correlation: null,
     },
     analysis: null,
-    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, hard: "auto", transition: "crossfade" },
+    settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, hard: "auto", blackout: false, transition: "crossfade" },
     limits: null,
     debugOverlay: false,
     error: null,

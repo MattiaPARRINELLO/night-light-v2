@@ -87,6 +87,9 @@ export function installShow(Target: { prototype: App }): void {
       this.noflash = el<HTMLInputElement>("chk-noflash").checked;
       this.settings.flashes = this.noflash ? 0 : this.flashSlider;
     });
+    el<HTMLInputElement>("chk-blackout").addEventListener("change", () => {
+      this.settings.blackout = el<HTMLInputElement>("chk-blackout").checked;
+    });
 
     const seek = el<HTMLInputElement>("seek");
     seek.addEventListener("input", () => {
@@ -298,7 +301,20 @@ export function installShow(Target: { prototype: App }): void {
   Target.prototype.bindKeyboard = function (this: App): void {
     window.addEventListener("keydown", (event) => {
       const target = event.target as HTMLElement | null;
-      if (target !== null && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // On ne vole jamais une frappe dans un champ de texte. Les curseurs, cases
+      // et menus laissent passer H et B.
+      const textField =
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLInputElement &&
+          !["checkbox", "radio", "range", "button", "submit"].includes(target.type)) ||
+        (target !== null && target.isContentEditable);
+      if (textField) return;
+      const key = event.key.toLowerCase();
+      const formControl =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+      if (formControl && key !== "h" && key !== "b") return;
       switch (event.key) {
         case "s":
         case "S": {
@@ -326,6 +342,14 @@ export function installShow(Target: { prototype: App }): void {
               : "Profil standard (touche H pour activer le mode rave).",
           );
           break;
+        case "b":
+        case "B": {
+          this.settings.blackout = !this.settings.blackout;
+          const blackout = document.getElementById("chk-blackout");
+          if (blackout instanceof HTMLInputElement) blackout.checked = this.settings.blackout;
+          setStatus(this.settings.blackout ? "Blackout." : "Lumière rétablie.");
+          break;
+        }
         case "f":
         case "F":
           void this.toggleFullscreen();

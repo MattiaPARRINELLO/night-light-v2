@@ -75,6 +75,8 @@ declare module "./app" {
     renderAt(time: number): void;
     updateHud(): void;
     syncTrackLabels(): void;
+    /** Couvre la toile de noir quand le blackout est actif, après composition. */
+    applyBlackout(): void;
   }
 }
 
@@ -100,8 +102,17 @@ export function installLoop(Target: { prototype: App }): void {
     return this.haze;
   };
 
-  Target.prototype.startLoop = function (this: App): void {
-    if (this.rafId !== 0) return;
+  Target.prototype.applyBlackout = function (this: App): void {
+    if (!this.settings.blackout) return;
+    const ctx = this.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  };
+
+  Target.prototype.startLoop = function (this: App): void {    if (this.rafId !== 0) return;
     this.lastTs = 0;
     const loop = (timestamp: number) => {
       this.rafId = requestAnimationFrame(loop);
@@ -230,6 +241,7 @@ export function installLoop(Target: { prototype: App }): void {
       this.frame += 1;
       this.drawTransitionIfNeeded(clamped, plan);
       this.composeCrossfade();
+      this.applyBlackout();
       this.markFirstFrame();
     } catch (error) {
       // Le rendu a échoué : on descend d'un palier. La valeur reste quantifiée,

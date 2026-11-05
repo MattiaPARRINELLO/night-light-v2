@@ -757,6 +757,16 @@ export function renderFrame(input: RenderInput): void {
   const liveAudio = input.liveAudio;
   const isLive = liveAudio !== undefined;
   const reduced = settings.reduced || reducedMotion;
+  // Blackout : coupe tout, y compris les flashs et la fumée. Le retour est
+  // immédiat, sans reconstruire le plan : la prochaine image se redessine.
+  if (settings.blackout) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+    return;
+  }
   // La qualité est ramenée à un palier connu ici, et pas seulement par
   // l'appelant : c'est ce qui garantit qu'une variation de fps ne change jamais
   // le nombre d'éléments d'une image à l'autre (voir QUALITY_STEPS).

@@ -129,6 +129,8 @@ export interface RenderSettings {
   reduced: boolean;
   /** Profil hard : automatique, forcé ou désactivé. */
   hard: HardMode;
+  /** Coupe instantanément toute la lumière : écran noir tant que c'est actif. */
+  blackout: boolean;
 }
 
 export const DEFAULT_SETTINGS: RenderSettings = {
@@ -136,4 +138,5 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   flashes: 0.9,
   reduced: false,
   hard: "auto",
+  blackout: false,
 };

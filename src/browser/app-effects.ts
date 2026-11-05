@@ -106,6 +106,7 @@ export function installEffects(Target: { prototype: App }): void {
           flashes: this.noflash ? 0 : override.flashes,
           reduced: override.reduced || this.settings.reduced,
           hard: "off",
+          blackout: this.settings.blackout,
         },
         reducedMotion: this.reducedMotion,
         quality,
