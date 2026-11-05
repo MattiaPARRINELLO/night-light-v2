@@ -311,6 +311,8 @@ class Dashboard {
    */
   private analysisLoadedAt = 0;
   private readonly chart: TrackChart;
+  /** Profil hard réellement actif ou forcé, pour le bouton rapide du header. */
+  private hardActive = false;
 
   constructor() {
     // Le tracé a sa propre boucle d'animation : la position lissée qu'il produit
@@ -696,6 +698,7 @@ class Dashboard {
     if (document.activeElement !== transition) transition.value = state.settings.transition;
     const hardMode = el<HTMLSelectElement>("hard-mode");
     if (document.activeElement !== hardMode) hardMode.value = state.settings.hard ?? "auto";
+    this.syncHardToggle(state);
 
     // canvases
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
@@ -1030,6 +1033,30 @@ class Dashboard {
     beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
   }
 
+  /** Reflète l'état réel du profil dans le bouton rapide du header. */
+  private syncHardToggle(state: ShowState): void {
+    this.hardActive = state.profile === "hard" || state.settings.hard === "on";
+    this.paintHardToggle();
+  }
+
+  private paintHardToggle(): void {
+    const button = el<HTMLButtonElement>("hard-toggle");
+    button.classList.toggle("is-on", this.hardActive);
+    button.setAttribute("aria-pressed", String(this.hardActive));
+    el<HTMLElement>("hard-toggle-label").textContent = this.hardActive ? "Hard on" : "Hard off";
+    button.title = this.hardActive
+      ? "Profil hard actif, touche H pour couper"
+      : "Profil hard inactif, touche H pour forcer";
+  }
+
+  /** Bascule rapide hard on/off. Le mode auto reste réglable dans le panneau. */
+  private toggleHard(): void {
+    const patch: Partial<ShowState["settings"]> = { hard: this.hardActive ? "off" : "on" };
+    this.send({ type: "set-settings", patch });
+    this.hardActive = patch.hard === "on";
+    this.paintHardToggle();
+  }
+
   private bindControls(): void {
     // La bande d'état sert de sommaire : cliquer un fait mène au panneau qui le
     // détaille, et le fait clignoter une fois pour qu'on voie où on a atterri.
@@ -1052,6 +1079,24 @@ class Dashboard {
     const transition = el<HTMLSelectElement>("transition-mode");
     const hardMode = el<HTMLSelectElement>("hard-mode");
     const latency = el<HTMLInputElement>("latency");
+
+    el<HTMLButtonElement>("hard-toggle").addEventListener("click", () => this.toggleHard());
+    window.addEventListener("keydown", (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        this.toggleHard();
+      }
+    });
 
     hardMode.addEventListener("change", () => {
       this.send({ type: "set-settings", patch: { hard: hardMode.value as HardMode } });

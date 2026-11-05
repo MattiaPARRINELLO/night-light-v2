@@ -190,6 +190,7 @@ export function installControl(Target: { prototype: App }): void {
       screen:
         (document.querySelector(".screen.is-active")?.id?.replace("screen-", "") as ShowState["screen"]) ?? "drop",
       mode: this.showMode(),
+      profile: this.plan?.profile ?? null,
       controlled,
       capture: {
         open: this.liveCapture !== null,

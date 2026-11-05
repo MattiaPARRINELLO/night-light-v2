@@ -299,6 +299,16 @@ export function installShow(Target: { prototype: App }): void {
         case "R":
           void this.restart();
           break;
+        case "h":
+        case "H":
+          this.settings.hard = this.settings.hard === "on" ? "off" : "on";
+          this.refreshPlan();
+          setStatus(
+            this.settings.hard === "on"
+              ? "Profil hard forcé (touche H pour revenir)."
+              : "Profil standard (touche H pour forcer le hard).",
+          );
+          break;
         case "f":
         case "F":
           void this.toggleFullscreen();
