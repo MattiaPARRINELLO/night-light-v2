@@ -770,14 +770,30 @@ export function dessinerBlinders(
   // Douze cellules au lieu de quatre : on baisse légèrement chaque source pour
   // que la barre complète reste dans la même plage de luminosité.
   const gainBarre = 0.68;
+  const rave = f.hard === true && !f.reduced;
+  // En rave, le mur claque : toute la barre sur les pics, chenillard rapide
+  // sinon. Le motif n'est plus celui du rôle de scène.
+  const motif: MotifBlinder = rave
+    ? f.energy > 0.8
+      ? "tous"
+      : "chenillard"
+    : motifBlinder(f.scene.role, f.scene.drop);
 
   for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
-    const poids = poidsBlinder(f, index);
+    const poids = poidsBlinder(f, index, f.scene.role, motif);
     if (poids <= 0.02) continue;
-    const intensite = intensiteBlinder(f, view, index) * poids * gainBarre;
+    const ravePulse = rave ? clamp01(f.beat * (0.45 + 0.55 * f.bass)) : 0;
+    const intensite =
+      Math.max(intensiteBlinder(f, view, index), ravePulse) * poids * gainBarre * (rave ? 1.35 : 1);
     if (intensite <= 0.008) continue;
     const { x, y } = positionBlinder(index, w, h);
-    const couleur = couleurBlinder(intensite);
+    const couleur = rave
+      ? {
+          hue: shiftHue(f.palette.hue, index * 26 + f.t * 80),
+          saturation: 1,
+          lightness: 0.62,
+        }
+      : couleurBlinder(intensite);
     const rayon = Math.min(w, h) * (0.035 + 0.09 * intensite);
 
     // Halo circulaire : la lampe elle-même, avant l'étirement de l'objectif.

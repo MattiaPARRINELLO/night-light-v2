@@ -102,7 +102,11 @@ export function lampHue(f: FrameState, index: number): number {
   const rotation = Math.floor(hash01(f.scene.index * 104729 + f.seed) * accord.length);
   const membre =
     accord[((index * pas + rotation) % accord.length + accord.length) % accord.length] ?? f.palette.hue;
-  return shiftHue(membre, (hash01(index * 2711 + f.seed) - 0.5) * f.palette.spread * 0.45);
+  const hue = shiftHue(membre, (hash01(index * 2711 + f.seed) - 0.5) * f.palette.spread * 0.45);
+  // Mode rave : la teinte glisse le long de la rangée et tourne avec le temps.
+  // C'est le balayage arc-en-ciel, réservé à ce profil.
+  if (f.hard === true) return shiftHue(hue, f.t * 55 + index * 22);
+  return hue;
 }
 
 /**

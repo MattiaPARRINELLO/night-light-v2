@@ -13,7 +13,7 @@ import {
 } from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
-import { hslToRgb, shorthand } from "./color";
+import { hslToRgb, shiftHue, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
 import { hardStrobeAllowsFull, hardStrobeBarsOnly, hardStrobeFamily } from "./strobe";
 import type { TrackView } from "./view";
@@ -756,6 +756,73 @@ function drawRaveLayers(
     view,
     "spots",
   );
+  drawRaveLasers(ctx, rave);
+}
+
+/**
+ * Lasers de rave : huit faisceaux ultra-fins partent de la scène et balaient le
+ * cadre. Ils sont dessinés en deux traits, un halo large et un cœur net, pour
+ * rester lisibles même par-dessus les lyres.
+ */
+function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
+  const count = Math.max(3, Math.round(8 * f.quality));
+  const reach = Math.hypot(f.width, f.height) * 1.6;
+  const alpha = (0.22 + 0.4 * clamp01(f.beat)) * clamp01(0.5 + 0.5 * f.energy);
+  if (alpha <= 0.01) return;
+  for (let index = 0; index < count; index += 1) {
+    const originX = f.width * (0.1 + (0.8 * index) / Math.max(count - 1, 1));
+    const originY = f.height * 1.04;
+    const phase = f.t * (0.55 + (index % 3) * 0.09) + index * 0.73;
+    const angle = -Math.PI / 2 + Math.sin(phase) * 0.95;
+    const hue = shiftHue(f.palette.hue, index * (360 / count) + f.t * 70);
+    const endX = originX + Math.cos(angle) * reach;
+    const endY = originY + Math.sin(angle) * reach;
+    ctx.globalAlpha = 1;
+    // Halo.
+    ctx.strokeStyle = paint(hue, 1, 0.55, alpha * 0.45);
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    // Cœur du laser.
+    ctx.strokeStyle = paint(hue, 1, 0.72, alpha);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(originX, originY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    // Point de départ brillant.
+    ctx.fillStyle = paint(hue, 0.3, 0.92, alpha * 1.6);
+    ctx.beginPath();
+    ctx.arc(originX, originY, 1.6 + f.beat * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/**
+ * Coupes glitch sur les gros drops : trois bandes horizontales décalées pendant
+ * quelques images. Le décalage est tiré du temps musical, donc reproductible.
+ */
+function drawGlitchCuts(ctx: CanvasRenderingContext2D, f: FrameState, drop: number): void {
+  if (f.hard !== true || f.reduced || drop < 0.3) return;
+  const canvas = ctx.canvas;
+  if (canvas.width < 2 || canvas.height < 2) return;
+  const bands = 3;
+  const frame = Math.floor(f.t * 24);
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  for (let band = 0; band < bands; band += 1) {
+    const shift =
+      (hash01(band * 7919 + frame * 131 + f.seed) - 0.5) * f.width * 0.18 * clamp01(drop);
+    const sourceY = (band / bands) * canvas.height;
+    const sourceH = canvas.height / bands;
+    const destY = (band / bands) * f.height;
+    const destH = f.height / bands;
+    ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceH, shift, destY, f.width, destH);
+  }
+  ctx.restore();
 }
 
 /**
@@ -962,6 +1029,7 @@ export function renderFrame(input: RenderInput): void {
     drawFamily(ctx, variationState, view, scene.variant);
   }
   if (camera !== null) ctx.restore();
+  drawGlitchCuts(ctx, base, drop);
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
   // sur-couche et couvre tout l'écran. Jamais en mode réduit.
@@ -991,7 +1059,7 @@ export function renderFrame(input: RenderInput): void {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave, l'impact est coloré au lieu d'être un blanc de salle.
       ctx.fillStyle = hard
-        ? paint(contrastHue(base), 1, 0.62, washAlpha)
+        ? paint(shiftHue(contrastHue(base), base.t * 45), 1, 0.62, washAlpha)
         : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
@@ -1062,7 +1130,7 @@ export function renderFrame(input: RenderInput): void {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave : une couleur de l'accord, jamais du blanc.
     ctx.fillStyle = hard
-      ? paint(contrastHue(base), 1, 0.6, strength)
+      ? paint(shiftHue(contrastHue(base), base.t * 50), 1, 0.6, strength)
       : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
@@ -1074,7 +1142,10 @@ export function renderFrame(input: RenderInput): void {
   if (strobe > 0.002) {
     const divisions = hardStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
-    const strobeHue = strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent;
+    const strobeHue = shiftHue(
+      strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,
+      base.t * 60 + strobeIndex * 30,
+    );
     ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }

@@ -306,4 +306,12 @@ vocabulaire agressif.
   balayage lents autour du centre ; l'éventail de lyres passe de 0,17 à 1,15 rad/s, le
   burst tourne en continu (×11), les tirs croisés et les projecteurs balaient le cadre.
   Le fond, la vignette et la bordure restent fixes : c'est la lumière qui bouge, pas
-  l'image entière.
+  l'image entière ;
+- **lasers scan** (`drawRaveLasers`) : huit faisceaux fins partent de la scène, balaient
+  le cadre et changent de teinte le long de la rangée ;
+- **mur de blinders** : en rave, les douze cellules passent en `tous` sur les pics et en
+  `chenillard` sinon, avec un pulse sur chaque kick et une teinte arc-en-ciel ;
+- **coupes glitch** (`drawGlitchCuts`) : trois bandes horizontales décalées sur les drops
+  (`drop > 0,3`), déterministes et sans état ;
+- **balayage arc-en-ciel** : `lampHue` décale la teinte de `f.t × 55 + index × 22` en mode
+  rave, et les strobes tournent de `f.t × 60`.
