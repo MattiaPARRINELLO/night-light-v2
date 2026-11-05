@@ -342,21 +342,54 @@ export async function submitResolve(
   request: ResolveRequest,
   signal?: AbortSignal,
 ): Promise<JobResponse> {
-  const response = await fetch("/api/resolve", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: request.title,
-      artist: request.artist ?? "",
-      duration_sec: request.durationSec,
-      track_key: request.trackKey,
-    }),
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: request.title,
+        artist: request.artist ?? "",
+        duration_sec: request.durationSec,
+        track_key: request.trackKey,
+      }),
+      signal,
+    });
+  } catch (error) {
+    // `fetch` rejette avec un DOMException `AbortError`, pas avec notre
+    // ApiError : sans cette conversion, une résolution remplacée par un autre
+    // morceau était journalisée comme un échec de récupération.
+    if (signal?.aborted === true || (error instanceof DOMException && error.name === "AbortError")) {
+      throw new ApiError("Recherche annulée.", "aborted");
+    }
+    throw new ApiError(
+      "Serveur d'analyse injoignable.",
+      "server_unavailable",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   if (!response.ok) {
     throw toApiError(await parseJson(response), response.status);
   }
   return (await parseJson(response)) as JobResponse;
+}
+
+/**
+ * Une erreur passagère mérite une relance automatique : serveur momentanément
+ * indisponible, 5xx, réponse illisible. Les refus définitifs (morceau absent,
+ * Deezer non configuré, morceau devenu périmé) n'en méritent pas.
+ */
+export function isTransientResolveError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  if (error.code === "aborted") return false;
+  if (error.status !== undefined && error.status >= 500) return true;
+  return error.code === "server_unavailable" || error.code === "bad_response" || error.code === "timeout";
+}
+
+/** Délai avant la n-ième relance (0 = première relance), ou `null` si on arrête. */
+export function resolveRetryDelayMs(attempt: number): number | null {
+  const delays = [2000, 5000, 15000];
+  return delays[attempt] ?? null;
 }
 
 export function resolveAndAnalyze(

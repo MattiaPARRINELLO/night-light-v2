@@ -133,6 +133,18 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **Récupération automatique d'un morceau jamais relancée** : un échec
+  passager (serveur redémarré, 5xx, réseau) était traité comme définitif, le
+  morceau restait en direct sans spectacle et le suivi du lecteur ne réessayait
+  plus pour cette piste. Une relance est désormais programmée (2 s, 5 s, 15 s)
+  tant que le même morceau joue ; les refus définitifs (morceau absent, Deezer
+  non configuré, résultat périmé) ne sont pas relancés. Une recherche annulée
+  par un changement de morceau n'est plus journalisée comme un échec, et le
+  message d'alerte inclut la raison réelle.
+- **Plafond de jobs saturé par les jobs terminés** : `MAX_ACTIVE_JOBS`
+  comptait aussi les analyses terminées ou en erreur qui attendaient d'être
+  lues, si bien qu'après une longue écoute toute nouvelle récupération était
+  refusée en 503. Seuls les jobs encore en cours comptent désormais.
 - **Segfault numba/librosa au démarrage** : l'API et le worker d'analyse
   compilaient en même temps dans le même cache disque numba ; deux
   compilations concurrentes pouvaient corrompre l'index et tuer l'interpréteur

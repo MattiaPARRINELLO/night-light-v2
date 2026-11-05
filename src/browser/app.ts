@@ -129,6 +129,12 @@ export class App {
   pendingAnalysis: Analysis | null = null;
   pendingTitle = "";
   lastAutoTrackKey = "";
+  /** Relance programmée après un échec passager d'une récupération automatique. */
+  autoRetryTimer: number | null = null;
+  /** Morceau concerné par la relance programmée. */
+  autoRetryKey = "";
+  /** Nombre de relances déjà programmées pour ce morceau. */
+  autoRetryAttempt = 0;
   nowPlaying: NowPlayingResponse | null = null;
   nowPlayingStream: EventSource | null = null;
   nowPlayingPollTimer: number | null = null;

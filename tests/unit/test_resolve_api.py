@@ -195,9 +195,31 @@ def _resolve_until_done(client: TestClient, payload: dict) -> dict:
     return _wait_for_job(client, response.json()["jobId"])
 
 
-def test_second_listen_skips_analysis(
+def test_finished_jobs_do_not_block_new_resolves(
     client: TestClient, tmp_path: Path, monkeypatch
 ) -> None:
+    """Un job terminé ou en erreur attend d'être lu ; il ne doit pas saturer le
+    serveur et faire échouer les morceaux suivants."""
+    for index in range(main.MAX_ACTIVE_JOBS):
+        job = main.state.store.create(f"ancien-{index}", 0)
+        main.state.store.set_error(job.id, "no_match", "aucun candidat")
+
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=4.0)
+    monkeypatch.setattr(
+        "server.main.resolve_track",
+        lambda query, *args, **kwargs: _fake_resolve_result(query, audio),
+    )
+
+    response = client.post(
+        "/api/resolve",
+        json={"title": "Après saturation", "artist": "Test", "duration_sec": 4.0},
+    )
+    assert response.status_code == 202, response.text
+    assert _wait_for_job(client, response.json()["jobId"])["status"] == "done"
+
+
+def test_second_listen_skips_analysis(client: TestClient, tmp_path: Path, monkeypatch) -> None:
     audio = tmp_path / "resolved.wav"
     write_synthetic_track(audio, duration=4.0)
     monkeypatch.setattr(

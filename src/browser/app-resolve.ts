@@ -4,7 +4,15 @@
  */
 
 import type { App } from "./app";
-import { ApiError, fetchNowPlaying, normalizeNowPlaying, resolveAndAnalyze, type JobTimings } from "../core/api";
+import {
+  ApiError,
+  fetchNowPlaying,
+  isTransientResolveError,
+  normalizeNowPlaying,
+  resolveAndAnalyze,
+  resolveRetryDelayMs,
+  type JobTimings,
+} from "../core/api";
 import { dbgThrottled } from "../core/debug";
 import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve, shouldFallbackToPolling } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
@@ -22,6 +30,13 @@ declare module "./app" {
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
     maybeAutoResolve(): Promise<void>;
+    scheduleAutoRetry(
+      title: string,
+      artist: string,
+      duration: number | undefined,
+      trackKey: string,
+    ): boolean;
+    cancelAutoRetry(): void;
     bindNowPlayingStream(): void;
     receiveNowPlaying(raw: Record<string, unknown>): void;
     startNowPlayingPolling(): void;
@@ -90,6 +105,51 @@ export function installResolve(Target: { prototype: App }): void {
     timings.firstFrameMs = Math.max(timings.syncedMs, Date.now() - timings.detectedAt);
   };
 
+  /** Annule la relance programmée, quel qu'en soit le motif. */
+  Target.prototype.cancelAutoRetry = function (this: App): void {
+    if (this.autoRetryTimer !== null) {
+      window.clearTimeout(this.autoRetryTimer);
+      this.autoRetryTimer = null;
+    }
+    this.autoRetryKey = "";
+    this.autoRetryAttempt = 0;
+  };
+
+  /**
+   * Programme une nouvelle tentative après un échec passager (serveur
+   * redémarré, 5xx, réseau). Une seule relance à la fois, et uniquement si le
+   * lecteur joue toujours le même morceau : sinon le morceau suivant a déjà
+   * pris la main.
+   */
+  Target.prototype.scheduleAutoRetry = function (
+    this: App,
+    title: string,
+    artist: string,
+    duration: number | undefined,
+    trackKey: string,
+  ): boolean {
+    const delay = resolveRetryDelayMs(this.autoRetryAttempt);
+    if (delay === null) return false;
+    if (this.nowPlaying === null || detectedTrackKey(this.nowPlaying) !== trackKey) return false;
+    if (!shouldAutoResolve(this.nowPlaying)) return false;
+    if (this.autoRetryTimer !== null) window.clearTimeout(this.autoRetryTimer);
+    this.autoRetryKey = trackKey;
+    this.autoRetryAttempt += 1;
+    this.debug("analyse", "nouvelle tentative de récupération programmée", {
+      dansMs: delay,
+      essai: this.autoRetryAttempt,
+    });
+    this.autoRetryTimer = window.setTimeout(() => {
+      this.autoRetryTimer = null;
+      if (this.nowPlaying === null || detectedTrackKey(this.nowPlaying) !== trackKey) return;
+      if (!shouldAutoResolve(this.nowPlaying)) return;
+      // Une action manuelle a repris la main : elle ne doit pas être doublée.
+      if (this.analysisController !== null) return;
+      void this.handleResolve(title, artist, duration, trackKey, true);
+    }, delay);
+    return true;
+  };
+
   Target.prototype.bindResolve = function (this: App): void {
     const form = el<HTMLFormElement>("resolve-form");
     const status = el<HTMLElement>("resolve-status");
@@ -127,6 +187,8 @@ export function installResolve(Target: { prototype: App }): void {
     auto = false,
   ): Promise<void> {
     const status = el<HTMLElement>("resolve-status");
+    // Une action manuelle prend la main : elle annule toute relance programmée.
+    if (!auto) this.cancelAutoRetry();
     // Chaque tentative porte un numéro : une résolution remplacée par un morceau
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
@@ -209,6 +271,7 @@ export function installResolve(Target: { prototype: App }): void {
       if (!partialShown || !this.updateSyncedAnalysis(analysis)) {
         void this.tryAutoSynced(title, artist, analysis.duration, analysis);
       }
+      if (auto) this.cancelAutoRetry();
       status.hidden = true;
     } catch (error) {
       if (seq !== this.resolveSeq) return;
@@ -222,10 +285,17 @@ export function installResolve(Target: { prototype: App }): void {
       const message = error instanceof Error ? error.message : "Erreur inconnue pendant la résolution.";
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
-      // Une résolution automatique qui échoue est une situation normale (le
-      // morceau peut ne pas être sur Deezer) : ce n'est pas une erreur. Elle ne
-      // doit donc pas remplacer le show en cours par l'écran d'erreur.
-      this.debug("attention", "morceau non récupéré automatiquement", { message, detail });
+      // Une résolution automatique qui échoue n'est pas forcément définitive :
+      // un serveur redémarré ou un 5xx momentané mérite une relance. On garde le
+      // show en direct dans tous les cas, sans écran d'erreur.
+      const retryable = auto && isTransientResolveError(error);
+      this.debug(
+        "attention",
+        retryable
+          ? `morceau non récupéré automatiquement · ${message} · nouvel essai programmé`
+          : `morceau non récupéré automatiquement · ${message}`,
+        { message, detail },
+      );
       if (auto) {
         // Échec normal côté show : on reste en direct et le dock reste visible.
         // L'état est publié vers le dashboard uniquement, jamais sur l'écran.
@@ -239,6 +309,11 @@ export function installResolve(Target: { prototype: App }): void {
         // une résolution qui vient d'échouer.
         if (trackKey !== undefined) this.lastAutoTrackKey = trackKey;
         el<HTMLElement>("dock-panel").classList.remove("is-hidden");
+        if (!retryable) {
+          this.cancelAutoRetry();
+        } else if (trackKey !== undefined) {
+          this.scheduleAutoRetry(title, artist, duration, trackKey);
+        }
         return;
       }
       setShowError("Le morceau n'a pas pu être récupéré", message, detail);
@@ -405,6 +480,9 @@ export function installResolve(Target: { prototype: App }): void {
     if (data === null || !shouldAutoResolve(data)) return;
     const key = detectedTrackKey(data);
     if (key === this.lastAutoTrackKey) return;
+    // Nouveau morceau : la relance éventuellement programmée pour le précédent
+    // n'a plus lieu d'être, et le compteur d'essais repart de zéro.
+    if (this.autoRetryTimer !== null || this.autoRetryKey !== "") this.cancelAutoRetry();
     // Le morceau a changé. Si une résolution automatique tournait encore pour le
     // morceau précédent — qu'on vient de sauter —, on l'abandonne : c'est le
     // morceau écouté maintenant qui doit être prêt en premier, comme une pile.
