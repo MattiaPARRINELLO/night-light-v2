@@ -273,7 +273,7 @@ la **forme du mix** (basses tenues, aigus en éclats), pas un niveau absolu. Le 
 - réservoir `HARD_FAMILIES` pour les scènes hors calme, hors refrain/montée/impact ;
 - fond tiré de `HARD_BACKDROPS` (grille, tunnel, vagues) ;
 - saturation des scènes non calmes portée à 1, luminosité des humeurs fortes abaissée
-  (0,72 explosif, 0,66 pulsé), intensité +0,06 ;
+  (0,64 explosif, 0,58 pulsé), intensité +0,06 ;
 - fondus d'entrée et de sortie raccourcis (0,35–0,50 s au lieu de 0,7–1,2 s / 0,9 s).
 
 Le mode réduit force `standard` : c'est un mode de confort, il ne doit pas hériter d'un
@@ -298,7 +298,7 @@ vocabulaire agressif.
   Pendant le plein strobe, `hardStrobeFamily` remplace la famille de la scène par
   `lyres-eventail`, et `drawRaveLayers` empile par-dessus `crossfire`, `burst` et
   `spots` (tirs croisés, rayons centraux, projecteurs mobiles), avec saturation 1,
-  luminosité +0,08 et budget de teinte ×1,5 : le strobe tombe sur une scène de rave
+  luminosité +0,04 et budget de teinte ×1,5 : le strobe tombe sur une scène de rave
   hyper colorée, pas sur une nappe ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

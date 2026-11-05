@@ -734,7 +734,7 @@ function drawRaveLayers(
     palette: {
       ...f.palette,
       saturation: 1,
-      lightness: Math.min(0.9, f.palette.lightness + 0.08),
+      lightness: Math.min(0.8, f.palette.lightness + 0.04),
       spread: Math.min(150, f.palette.spread * 1.5),
     },
   };
@@ -834,8 +834,12 @@ export function renderFrame(input: RenderInput): void {
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la
-    // salle » sur un impact, sans changer la couleur du morceau.
-    lightness: Math.min(0.94, scene.palette.lightness + drop * 0.14 + variation * 0.06 + beat * 0.07),
+    // salle » sur un impact, sans changer la couleur du morceau. En mode rave, on
+    // plafonne plus bas pour garder la couleur saturée au lieu de la délaver.
+    lightness: Math.min(
+      hard ? 0.8 : 0.94,
+      scene.palette.lightness + drop * 0.14 + variation * 0.06 + beat * 0.07,
+    ),
   };
 
   const base: FrameState = {
@@ -950,7 +954,7 @@ export function renderFrame(input: RenderInput): void {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave, l'impact est coloré au lieu d'être un blanc de salle.
       ctx.fillStyle = hard
-        ? paint(contrastHue(base), 1, 0.8, washAlpha)
+        ? paint(contrastHue(base), 1, 0.62, washAlpha)
         : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
@@ -1021,7 +1025,7 @@ export function renderFrame(input: RenderInput): void {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave : une couleur de l'accord, jamais du blanc.
     ctx.fillStyle = hard
-      ? paint(contrastHue(base), 1, 0.78, strength)
+      ? paint(contrastHue(base), 1, 0.6, strength)
       : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
@@ -1034,7 +1038,7 @@ export function renderFrame(input: RenderInput): void {
     const divisions = hardStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
     const strobeHue = strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent;
-    ctx.fillStyle = paint(strobeHue, 1, 0.8, strobe);
+    ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }
 

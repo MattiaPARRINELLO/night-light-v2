@@ -339,7 +339,7 @@ de le forcer ou de le couper quand l'analyse se trompe.
 
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 
-- une palette néon, saturation maximale et luminosité haute (0,66 à 0,72) posée sur un
+- une palette néon, saturation maximale et luminosité moyenne (0,58 à 0,64) posée sur un
   fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec des écarts
   de teintes larges pour multiplier les couleurs vives d'une même scène ;
 - un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,

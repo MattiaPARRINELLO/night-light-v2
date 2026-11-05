@@ -89,8 +89,8 @@ describe("profil hard", () => {
     const fort = plan.scenes.find((scene) => scene.mood === "explosif");
     if (fort !== undefined) {
       expect(fort.palette.saturation).toBe(1);
-      expect(fort.palette.lightness).toBeGreaterThanOrEqual(0.66);
-      expect(fort.palette.lightness).toBeLessThanOrEqual(0.72);
+      expect(fort.palette.lightness).toBeGreaterThanOrEqual(0.58);
+      expect(fort.palette.lightness).toBeLessThanOrEqual(0.64);
     }
     // Le mode rave ouvre le budget de teinte : plus de couleurs vives par scène.
     expect(plan.track.spread).toBeGreaterThanOrEqual(52);

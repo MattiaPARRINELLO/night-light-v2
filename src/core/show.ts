@@ -883,10 +883,11 @@ function paletteLightness(mood: Mood, hard = false): number {
   if (mood === "sombre") return 0.38;
   if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
-  // Le mode rave cherche le néon : saturation maximale et luminosité haute,
-  // posées sur un fond presque noir. C'est ce contraste qui fait « hyper vif ».
-  if (hard && mood === "explosif") return 0.72;
-  if (hard && mood === "pulse") return 0.66;
+  // Le mode rave cherche le néon : saturation maximale, mais une luminosité
+  // moyenne plutôt que pastel. À 0,6 de lightness, une teinte HSL garde toute
+  // sa chroma au lieu de virer au blanc.
+  if (hard && mood === "explosif") return 0.64;
+  if (hard && mood === "pulse") return 0.58;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
   return 0.6;
