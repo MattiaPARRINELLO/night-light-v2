@@ -819,6 +819,8 @@ function drawRaveConfetti(
   drop: number,
 ): void {
   if (f.hard !== true || f.reduced || drop < 0.05) return;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
   const count = Math.round(90 * f.quality);
   const life = 1.8;
   const intensity = clamp01(drop * 1.4);
@@ -842,6 +844,8 @@ function drawRaveConfetti(
 /** Deux jets de CO2 qui piquent sur l'impact et retombent. */
 function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number): void {
   if (f.hard !== true || f.reduced || drop < 0.12) return;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
   const intensity = clamp01(drop * 1.2);
   for (const side of [-1, 1] as const) {
     const originX = side < 0 ? f.width * 0.08 : f.width * 0.92;
@@ -1259,8 +1263,6 @@ export function renderFrame(input: RenderInput): void {
   if (camera !== null) ctx.restore();
   drawGlitchCuts(ctx, base, drop);
   drawRaveShockwave(ctx, base);
-  drawRaveConfetti(ctx, base, drop);
-  drawRaveCo2(ctx, base, drop);
   drawRavePanels(ctx, base);
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
@@ -1381,6 +1383,16 @@ export function renderFrame(input: RenderInput): void {
     ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }
+
+  // Confettis et CO2 passent après le strobe : s'ils étaient dessinés avant, le
+  // flash plein écran les avalait et on ne les voyait jamais. Leur intensité
+  // monte aussi sur les phases de plein strobe, pas seulement sur un drop.
+  const raveBurst = Math.max(
+    drop,
+    strobeFull ? clamp01(base.energy * 0.7 + base.beat * 0.5) : 0,
+  );
+  drawRaveConfetti(ctx, base, raveBurst);
+  drawRaveCo2(ctx, base, raveBurst);
 
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
