@@ -286,7 +286,9 @@ vocabulaire agressif.
   (`FLASH_ATTACK_*_HARD_SEC`, `HARD_FLASH_BOOST`) ;
 - **stroboscope hard** (`hardStrobeAlpha`) : chaque temps fort est admis
   (`flashAdmitted(..., hard)`), puis le clignotement suit `hardStrobeDivisions`, de 4 à
-  12 éclats **par temps** selon l'énergie et l'impact, soit ~9 à 28 Hz à 140 BPM. La phase
+  12 éclats **par temps** selon l'énergie et l'impact, soit ~9 à 28 Hz à 140 BPM. Chaque
+  éclat alterne entre la teinte principale et la complémentaire, et les flashs de temps
+  fort ainsi que le wash d'impact sont colorés dans l'accord de la scène. La phase
   repart de zéro à chaque temps (`beatPhase`), donc pas de trou « strobe, pause, strobe »
   quand la vitesse change. Il s'ajoute au flash de temps fort et s'éteint sans basse ni
   kick, en mode réduit, ou si `settings.flashes = 0` ;

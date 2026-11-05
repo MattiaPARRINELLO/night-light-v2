@@ -947,7 +947,11 @@ export function renderFrame(input: RenderInput): void {
     // Sinon un morceau sans montée clignoterait à chaque temps fort.
     const realDrop = isLive ? 0 : view.buildIntensity(t);
     if (ceiling > 0 && realDrop > 0.35) {
-      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, ceiling * realDrop).toFixed(3)})`;
+      const washAlpha = Math.min(0.5, ceiling * realDrop);
+      // En mode rave, l'impact est coloré au lieu d'être un blanc de salle.
+      ctx.fillStyle = hard
+        ? paint(contrastHue(base), 1, 0.8, washAlpha)
+        : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -1014,15 +1018,23 @@ export function renderFrame(input: RenderInput): void {
   const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
   if (flash > 0.002 && flashAdmitted(view, t, hard)) {
-    ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
+    const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
+    // Flash de temps fort rave : une couleur de l'accord, jamais du blanc.
+    ctx.fillStyle = hard
+      ? paint(contrastHue(base), 1, 0.78, strength)
+      : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
   // Stroboscope hard : la couche qui fait vraiment « clignoter » le profil. Elle
   // s'ajoute au flash de temps fort, sans dépendre de `flashAdmitted`, car elle
-  // bat plusieurs fois à l'intérieur d'un même temps.
+  // bat plusieurs fois à l'intérieur d'un même temps. Chaque éclat alterne entre
+  // la teinte principale et la complémentaire : le strobe est multicolore.
   const strobe = hardStrobeAlpha(base, settings, drop);
   if (strobe > 0.002) {
-    ctx.fillStyle = `rgba(255,255,255,${strobe.toFixed(3)})`;
+    const divisions = hardStrobeDivisions(base, drop);
+    const strobeIndex = Math.floor(base.beatPhase * divisions);
+    const strobeHue = strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent;
+    ctx.fillStyle = paint(strobeHue, 1, 0.8, strobe);
     ctx.fillRect(0, 0, width, height);
   }
 
