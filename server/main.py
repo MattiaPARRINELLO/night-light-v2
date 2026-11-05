@@ -304,7 +304,7 @@ class AppState:
             payload["totalMs"] = payload["analyzedMs"]
             with suppress(OSError):
                 payload["loadavg"] = [round(value, 2) for value in os.getloadavg()]
-            payload["activeJobs"] = self.store.count()
+            payload["activeJobs"] = self.store.count_active()
             if extra:
                 payload.update(extra)
             return payload
@@ -694,9 +694,9 @@ async def read_upload(file: UploadFile) -> tuple[bytes, str]:
 
 @app.post("/api/analyze")
 async def analyze(file: UploadFile = File(...)) -> JSONResponse:
-    if state.store.count() >= MAX_ACTIVE_JOBS:
+    if state.store.count_active() >= MAX_ACTIVE_JOBS:
         state.store.purge_expired()
-        if state.store.count() >= MAX_ACTIVE_JOBS:
+        if state.store.count_active() >= MAX_ACTIVE_JOBS:
             raise HTTPException(
                 status_code=503,
                 detail="Trop d'analyses en cours. Réessaie dans un instant.",
@@ -742,11 +742,15 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
 @app.post("/api/resolve")
 async def resolve(request: ResolveRequest) -> JSONResponse:
     """Résout un morceau par métadonnées puis le transmet à l'analyseur existant."""
-    if state.store.count() >= MAX_ACTIVE_JOBS:
-        raise HTTPException(
-            status_code=503,
-            detail="Trop d'analyses en cours. Réessaie dans un instant.",
-        )
+    if state.store.count_active() >= MAX_ACTIVE_JOBS:
+        # Un job terminé ou en erreur n'occupe plus le serveur : on purge d'abord
+        # les sessions expirées avant de refuser une nouvelle récupération.
+        state.store.purge_expired()
+        if state.store.count_active() >= MAX_ACTIVE_JOBS:
+            raise HTTPException(
+                status_code=503,
+                detail="Trop d'analyses en cours. Réessaie dans un instant.",
+            )
 
     if not request.title or not request.title.strip():
         raise HTTPException(status_code=400, detail="Le titre est requis.")

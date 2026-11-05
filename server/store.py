@@ -178,6 +178,16 @@ class SessionStore:
         with self._lock:
             return len(self._jobs)
 
+    def count_active(self) -> int:
+        """Travaux encore en cours.
+
+        Seuls les jobs que le serveur doit réellement faire avancer comptent :
+        un job terminé ou en erreur attend simplement que son client vienne le
+        lire, il ne doit pas bloquer une nouvelle récupération.
+        """
+        with self._lock:
+            return sum(1 for job in self._jobs.values() if job.status in {"queued", "running"})
+
     def drop(self, job_id: str) -> None:
         """Supprime le travail et le fichier audio associé."""
         with self._lock:
