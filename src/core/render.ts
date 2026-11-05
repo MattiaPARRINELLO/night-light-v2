@@ -841,59 +841,68 @@ function drawRaveConfetti(
   }
 }
 
-/** Deux jets de CO2 qui piquent sur l'impact et retombent. */
+/** Jets de CO2 discrets : buse compressée, puis épanouissement en cône. */
 function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number): void {
   if (f.hard !== true || f.reduced || drop < 0.12) return;
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
   const intensity = clamp01(drop * 1.6);
+  // Un jet toutes les 1,35 s, actif sur 42 % du cycle : entre deux jets, l'écran
+  // respire. C'est un jet, pas une colonne de fumée continue.
+  const cycle = 1.35;
+  const local = (f.t % cycle) / cycle;
+  if (local >= 0.42) return;
+  const progress = local / 0.42;
+  const envelope = 1 - progress;
+  const burst = Math.floor(f.t / cycle);
+
   for (const side of [-1, 1] as const) {
     for (let jet = 0; jet < 2; jet += 1) {
       const originX = side < 0 ? f.width * (0.06 + jet * 0.05) : f.width * (0.94 - jet * 0.05);
       const originY = f.height * 1.02;
-      for (let puff = 0; puff < 12; puff += 1) {
-        const phase = (f.t * 1.4 + puff * 0.083 + (side < 0 ? 0 : 0.5) + jet * 0.13) % 1;
-        // Pression : le jet part vite puis ralentit, au lieu de monter
-        // linéairement comme une fumée tiède.
-        const pressure = 1 - Math.pow(1 - phase, 2.4);
-        const lateral =
-          (hash01(puff * 97 + jet * 13 + (side > 0 ? 1 : 0) + f.seed) - 0.5) *
-          f.width *
-          0.26 *
-          pressure;
-        const x =
-          originX -
-          side * pressure * f.width * 0.26 +
-          lateral +
-          Math.sin(f.t * 2 + puff + jet) * f.width * 0.01;
-        const y = originY - pressure * f.height * 0.95;
-        const radius = f.height * (0.06 + pressure * 0.32);
-        const alpha = intensity * (1 - phase) * 0.5;
+
+      // Cœur de pression à la buse : très concentré au tout début du jet.
+      const coreAlpha = intensity * Math.max(0, 1 - local / 0.12) * 0.65;
+      if (coreAlpha > 0.01) {
+        const coreRadius = f.height * 0.035;
+        const core = ctx.createRadialGradient(
+          originX,
+          originY - f.height * 0.02,
+          0,
+          originX,
+          originY - f.height * 0.02,
+          coreRadius,
+        );
+        core.addColorStop(0, paint(208, 0.04, 1, coreAlpha));
+        core.addColorStop(1, paint(208, 0.08, 0.9, 0));
+        ctx.fillStyle = core;
+        ctx.beginPath();
+        ctx.arc(originX, originY - f.height * 0.02, coreRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let puff = 0; puff < 16; puff += 1) {
+        const seed = puff * 97 + jet * 13 + (side > 0 ? 1 : 0) + f.seed + burst * 7;
+        const lateral = (hash01(seed) - 0.5) * 2;
+        const speed = 0.75 + hash01(seed + 1) * 0.5;
+        const p = clamp01(progress * speed);
+        // Au début, toutes les bouffées sortent du même point ; elles ne
+        // divergent qu'en montant, comme un vrai jet sous pression.
+        const spread = (-side * 0.14 + lateral * 0.24) * p;
+        const x = originX + spread * f.width;
+        const y = originY - p * f.height * (0.8 + hash01(seed + 2) * 0.15);
+        const radius = f.height * (0.012 + p * 0.17 + hash01(seed + 3) * 0.02);
+        const alpha = intensity * envelope * (1 - p * 0.5) * 0.62;
         if (alpha <= 0.01) continue;
         const puffGradient = ctx.createRadialGradient(x, y, 0, x, y, Math.max(radius, 1));
-        puffGradient.addColorStop(0, paint(208, 0.1, 0.99, alpha));
-        puffGradient.addColorStop(0.4, paint(208, 0.16, 0.92, alpha * 0.7));
+        puffGradient.addColorStop(0, paint(208, 0.08, 0.99, alpha));
+        puffGradient.addColorStop(0.38, paint(208, 0.16, 0.92, alpha * 0.7));
         puffGradient.addColorStop(1, paint(208, 0.12, 0.78, 0));
         ctx.fillStyle = puffGradient;
         ctx.beginPath();
         ctx.arc(x, y, Math.max(radius, 1), 0, Math.PI * 2);
         ctx.fill();
       }
-      // Cœur de pression à la buse : un éclat net juste à la sortie.
-      const coreGradient = ctx.createRadialGradient(
-        originX,
-        originY - f.height * 0.03,
-        0,
-        originX,
-        originY - f.height * 0.03,
-        f.height * 0.09,
-      );
-      coreGradient.addColorStop(0, paint(208, 0.05, 1, intensity * 0.55));
-      coreGradient.addColorStop(1, paint(208, 0.1, 0.9, 0));
-      ctx.fillStyle = coreGradient;
-      ctx.beginPath();
-      ctx.arc(originX, originY - f.height * 0.03, f.height * 0.09, 0, Math.PI * 2);
-      ctx.fill();
     }
   }
 }
