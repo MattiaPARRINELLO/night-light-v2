@@ -307,8 +307,9 @@ vocabulaire agressif.
   burst tourne en continu (×11), les tirs croisés et les projecteurs balaient le cadre.
   Le fond, la vignette et la bordure restent fixes : c'est la lumière qui bouge, pas
   l'image entière ;
-- **lasers scan** (`drawRaveLasers`) : huit faisceaux fins partent de la scène, balaient
-  le cadre et changent de teinte le long de la rangée ;
+- **lasers scan** (`drawRaveLasers`) : jusqu'à 36 faisceaux fins, moitié depuis la scène,
+  moitié depuis le plafond, qui balaient le cadre et changent de teinte le long de la
+  rangée ;
 - **mur de blinders** : en rave, les douze cellules passent en `tous` sur les pics et en
   `chenillard` sinon, avec un pulse sur chaque kick et une teinte arc-en-ciel ;
 - **coupes glitch** (`drawGlitchCuts`) : trois bandes horizontales décalées sur les drops

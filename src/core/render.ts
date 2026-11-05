@@ -765,15 +765,20 @@ function drawRaveLayers(
  * rester lisibles même par-dessus les lyres.
  */
 function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
-  const count = Math.max(3, Math.round(8 * f.quality));
+  // Un vrai mur de lasers : jusqu'à 36 faisceaux en pleine qualité, moitié
+  // depuis la scène, moitié depuis le plafond. La qualité adaptative divise le
+  // nombre pour garder le rendu tenable sur une machine modeste.
+  const count = Math.max(12, Math.round(36 * f.quality));
   const reach = Math.hypot(f.width, f.height) * 1.6;
-  const alpha = (0.22 + 0.4 * clamp01(f.beat)) * clamp01(0.5 + 0.5 * f.energy);
+  const alpha = (0.16 + 0.3 * clamp01(f.beat)) * clamp01(0.5 + 0.5 * f.energy);
   if (alpha <= 0.01) return;
   for (let index = 0; index < count; index += 1) {
-    const originX = f.width * (0.1 + (0.8 * index) / Math.max(count - 1, 1));
-    const originY = f.height * 1.04;
+    const fromTop = index % 2 === 1;
+    const originX = f.width * (0.05 + (0.9 * index) / Math.max(count - 1, 1));
+    const originY = fromTop ? -f.height * 0.04 : f.height * 1.04;
+    const baseAngle = fromTop ? Math.PI / 2 : -Math.PI / 2;
     const phase = f.t * (0.55 + (index % 3) * 0.09) + index * 0.73;
-    const angle = -Math.PI / 2 + Math.sin(phase) * 0.95;
+    const angle = baseAngle + Math.sin(phase) * 0.95;
     const hue = shiftHue(f.palette.hue, index * (360 / count) + f.t * 70);
     const endX = originX + Math.cos(angle) * reach;
     const endY = originY + Math.sin(angle) * reach;
