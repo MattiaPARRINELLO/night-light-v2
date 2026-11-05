@@ -245,11 +245,12 @@ de scène.
 - **Coût** : deux tronçons et un halo local par diode, plus deux remplissages
   pour les émetteurs échantillonnés, sans transformation ni dégradé radial.
 
-## 10. Profil hard
+## 10. Profil hard (mode rave)
 
-Le profil est une décision **de morceau**, pas de scène : il est résolu une fois dans
-`buildShowPlan` (`resolveShowProfile`) puis recopié dans `plan.profile`. Les humeurs de scène
-restent celles du modèle existant ; le profil ne fait que changer leur vocabulaire.
+Le profil `hard` est le **mode rave** de l'interface : une décision **de morceau**, pas de
+scène. Il est résolu une fois dans `buildShowPlan` (`resolveShowProfile`) puis recopié dans
+`plan.profile`. Les humeurs de scène restent celles du modèle existant ; le profil ne fait
+que changer leur vocabulaire.
 
 ### Détection (`auto`)
 

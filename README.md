@@ -325,15 +325,16 @@ plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémen
   que l'impact se voie ;
 - les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
 
-### Le profil hard
+### Le mode rave (profil hard)
 
-Le répertoire « gros son » — rap sombre, trap, phonk, morceaux du type *PTSD* — ne réagit pas
-comme de l'électro claire : les basses tiennent l'image, les aigus arrivent par éclats, et un
-traitement de « soirée lumineuse » y paraît mou. Le plan bascule donc sur un profil `hard`
+Le répertoire « gros son » — rap sombre, trap, phonk, morceaux du type *PTSD*, mais aussi
+les gros sons de club — ne réagit pas comme de l'électro claire : les basses tiennent
+l'image, les aigus arrivent par éclats, et un traitement de « soirée lumineuse » y paraît
+mou. Le plan bascule donc sur un profil `hard`, affiché partout comme le **mode rave**,
 quand le morceau est à la fois **fort**, **sombre** et **tenu dans les basses** (énergie
 médiane ≥ 0,70, écart médian basses − aigus ≥ 0,30, majorité de fenêtres fortes sous 0,30
-d'aigus). Le réglage **Profil** du HUD permet de le forcer ou de le couper quand l'analyse
-se trompe.
+d'aigus). Le réglage **Profil** du HUD et le bouton **Rave / H** du dashboard permettent
+de le forcer ou de le couper quand l'analyse se trompe.
 
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 

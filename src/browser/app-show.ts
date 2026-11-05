@@ -305,8 +305,8 @@ export function installShow(Target: { prototype: App }): void {
           this.refreshPlan();
           setStatus(
             this.settings.hard === "on"
-              ? "Profil hard forcé (touche H pour revenir)."
-              : "Profil standard (touche H pour forcer le hard).",
+              ? "Mode rave activé (touche H pour revenir)."
+              : "Profil standard (touche H pour activer le mode rave).",
           );
           break;
         case "f":

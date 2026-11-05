@@ -1043,10 +1043,10 @@ class Dashboard {
     const button = el<HTMLButtonElement>("hard-toggle");
     button.classList.toggle("is-on", this.hardActive);
     button.setAttribute("aria-pressed", String(this.hardActive));
-    el<HTMLElement>("hard-toggle-label").textContent = this.hardActive ? "Hard on" : "Hard off";
+    el<HTMLElement>("hard-toggle-label").textContent = this.hardActive ? "Rave on" : "Rave off";
     button.title = this.hardActive
-      ? "Profil hard actif, touche H pour couper"
-      : "Profil hard inactif, touche H pour forcer";
+      ? "Mode rave actif, touche H pour couper"
+      : "Mode rave inactif, touche H pour forcer";
   }
 
   /** Bascule rapide hard on/off. Le mode auto reste réglable dans le panneau. */
