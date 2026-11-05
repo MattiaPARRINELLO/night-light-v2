@@ -344,7 +344,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus
   courtes entre scènes ;
 - un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
-  gain de 12 %) et bordure LED qui stroboscope plus souvent sur les impacts.
+  gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, avec 2 éclats par
+  temps hors pic et 4 dans les impacts, soit ~9 Hz à 140 BPM. Le budget de flashs et le mode
+  réduit restent maîtres : « Sans flashs » ou « Intensité réduite » coupent tout.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 

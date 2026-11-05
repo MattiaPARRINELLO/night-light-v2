@@ -95,6 +95,24 @@ export const FLASH_ATTACK_DROP_HARD_SEC = 0.08;
 /** Gain d'opacité des flashs en profil hard, pour compenser le fond plus noir. */
 export const HARD_FLASH_BOOST = 1.12;
 /**
+ * Poids d'un temps fort dans le flash, en profil hard.
+ *
+ * Le flash ordinaire est dosé pour une salle de soirée : il marque le temps sans
+ * blanchir l'écran. Un morceau hard vit au contraire de claquements : le temps
+ * fort pèse presque le maximum autorisé par le budget de flashs.
+ */
+export const HARD_BEAT_FLASH_WEIGHT = 0.9;
+/**
+ * Nombre d'éclats du stroboscope hard par temps fort.
+ *
+ * Deux éclats par temps dans les passages soutenus, quatre dans les impacts et
+ * les pics. À 140 BPM, quatre éclats font ~9 Hz : c'est le clignotement d'un
+ * strobe de club, pas une respiration de lumière.
+ */
+export const HARD_STROBE_DIVISIONS = 4;
+/** Nombre d'éclats par temps hors pic. */
+export const HARD_STROBE_DIVISIONS_CALM = 2;
+/**
  * Nombre de temps forts par phrase hors drop.
  *
  * Hors impact, la lumière ne clignote pas : un seul temps fort par phrase porte
@@ -319,6 +337,16 @@ export function flashAlphaAt(
 export function flashAlpha(f: FrameState, settings: RenderSettings): number {
   const beatAlpha = flashAlphaAt(f.beat, f.bass, 0, 0, f.energy, f.reduced, settings);
   const dropAlpha = flashAlphaAt(0, f.bass, f.drop, f.buildStrength, f.energy, f.reduced, settings);
+  // Profil hard : le temps fort est un claquement, pas une caresse. On calcule
+  // son opacité directement, sans passer par le poids « soirée » de
+  // `flashAlphaAt`, tout en gardant le plafond du budget de flashs.
+  const hardBeatAlpha =
+    f.hard && !f.reduced
+      ? clamp01(f.beat * (0.6 + 0.4 * f.bass)) *
+        FLASH_CEILING *
+        Math.min(settings.flashes, 1.5) *
+        HARD_BEAT_FLASH_WEIGHT
+      : 0;
   // Âge infini = aucun déclencheur : pas d'attaque en cours (facteur 1), sinon
   // `clamp01` ramènerait l'infini à 0 et éteindrait le flash.
   const attackBeat = Number.isFinite(f.beatAge)
@@ -330,8 +358,36 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
   const boost = f.hard ? HARD_FLASH_BOOST : 1;
   return Math.min(
     FLASH_CEILING * Math.min(settings.flashes, 1.5),
-    Math.max(beatAlpha * attackBeat, dropAlpha * attackDrop) * boost,
+    Math.max(beatAlpha * attackBeat, hardBeatAlpha * attackBeat, dropAlpha * attackDrop) * boost,
   );
+}
+
+/**
+ * Opacité du stroboscope hard à l'instant courant, 0 s'il ne doit pas clignoter.
+ *
+ * C'est la couche qui distingue vraiment le profil hard : un éclat bref, deux
+ * ou quatre fois par temps fort, dans les passages forts. Elle respecte le budget
+ * de flashs et le mode réduit, et ne s'allume que sur un kick récent : sans
+ * percussion, pas de strobe.
+ */
+export function hardStrobeAlpha(
+  f: FrameState,
+  settings: RenderSettings,
+  drop: number,
+): number {
+  if (!f.hard || f.reduced || settings.flashes <= 0) return 0;
+  const gate = smoothstep(0.55, 0.85, f.energy);
+  if (gate <= 0.01) return 0;
+  // Le stroboscope suit le kick : une décroissance de beat trop avancée veut
+  // dire qu'on est entre deux frappes, et l'écran doit revenir à la scène.
+  const kick = clamp01(f.beat);
+  if (kick < 0.05) return 0;
+  const violent = drop > 0.3 || f.energy > 0.82;
+  const divisions = violent ? HARD_STROBE_DIVISIONS : HARD_STROBE_DIVISIONS_CALM;
+  const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
+  if (!on) return 0;
+  const amount = gate * (0.45 + 0.55 * kick) * (violent ? 0.95 : 0.55);
+  return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
 }
 
 /**
@@ -609,7 +665,7 @@ export function sceneHue(
  *
  * Aucun état n'est conservé : `t` seul décide.
  */
-export function flashAdmitted(view: TrackView, t: number): boolean {
+export function flashAdmitted(view: TrackView, t: number, hard = false): boolean {
   // Fenêtre d'éligibilité : latence nulle + la plus longue des montées. Un
   // flash reste admis pendant toute son attaque, jamais au-delà.
   const window = FLASH_LATENCY_SEC + Math.max(FLASH_ATTACK_BEAT_SEC, FLASH_ATTACK_DROP_SEC) + 0.05;
@@ -624,6 +680,10 @@ export function flashAdmitted(view: TrackView, t: number): boolean {
 
   // Impact de montée : toujours, et sans attendre la cadence.
   if (lastDrop >= lastBeat) return true;
+
+  // Profil hard : chaque temps fort claque, y compris dans la traîne d'un
+  // impact. C'est exactement le geste d'un strobe de club.
+  if (hard) return true;
 
   // Dans les 1,5 s qui suivent un impact, aucun flash de temps fort : l'impact
   // lui-même est déjà admis par `lastDrop >= lastBeat` juste au-dessus. Sans
@@ -874,8 +934,16 @@ export function renderFrame(input: RenderInput): void {
   drawDust(ctx, permanent);
 
   const flash = Math.max(flashAlpha(base, settings), surgeAlpha(base, settings));
-  if (flash > 0.002 && flashAdmitted(view, t)) {
+  if (flash > 0.002 && flashAdmitted(view, t, hard)) {
     ctx.fillStyle = `rgba(255,255,255,${(flash * (0.5 + 0.5 * mix(0.7, 1, base.energy))).toFixed(3)})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+  // Stroboscope hard : la couche qui fait vraiment « clignoter » le profil. Elle
+  // s'ajoute au flash de temps fort, sans dépendre de `flashAdmitted`, car elle
+  // bat plusieurs fois à l'intérieur d'un même temps.
+  const strobe = hardStrobeAlpha(base, settings, drop);
+  if (strobe > 0.002) {
+    ctx.fillStyle = `rgba(255,255,255,${strobe.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
 

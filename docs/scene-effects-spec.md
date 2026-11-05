@@ -283,5 +283,9 @@ vocabulaire agressif.
 - fond plus noir (`drawBackground`) et halo central réduit ;
 - attaque de flash de temps fort à 20 ms, de drop à 80 ms, gain d'opacité de 12 %
   (`FLASH_ATTACK_*_HARD_SEC`, `HARD_FLASH_BOOST`) ;
+- **stroboscope hard** (`hardStrobeAlpha`) : chaque temps fort est admis
+  (`flashAdmitted(..., hard)`), avec 2 éclats par temps hors pic et 4 dans les impacts
+  (`HARD_STROBE_DIVISIONS`), soit ~9 Hz à 140 BPM. Il s'ajoute au flash de temps fort et
+  s'éteint sans kick récent, en mode réduit, ou si `settings.flashes = 0` ;
 - bordure LED : part de `strobe` élargie sur les impacts et présente à l'occasion sur les
   couplets (`motifPourBloc`), toujours sous le budget de flashs et jamais en mode réduit.

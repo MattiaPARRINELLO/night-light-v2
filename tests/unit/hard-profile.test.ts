@@ -11,7 +11,10 @@ import {
   resolveShowProfile,
   type ShowProfile,
 } from "../../src/core/show";
-import type { Analysis } from "../../src/types";
+import { flashAdmitted, hardStrobeAlpha } from "../../src/core/render";
+import type { FrameState } from "../../src/core/families";
+import { TrackView } from "../../src/core/view";
+import type { Analysis, RenderSettings } from "../../src/types";
 
 function points(value: number): [number, number][] {
   return [
@@ -105,5 +108,40 @@ describe("profil hard", () => {
     expect(familyBranchFor(caractere, false, "couplet", false, false, true)).toBe("hard");
     expect(familyBranchFor(caractere, false, "couplet", false, true, true)).toBe("calme");
     expect(familyBranchFor(caractere, false, "couplet", false, false, false)).not.toBe("hard");
+  });
+
+  test("le strobe hard clignote sur les kicks, jamais en mode réduit ni sans flashs", () => {
+    const settings = { intensity: 1, flashes: 0.9, reduced: false, hard: "on" } as RenderSettings;
+    const frame = (overrides: Partial<FrameState> = {}) =>
+      ({
+        hard: true,
+        reduced: false,
+        energy: 1,
+        beat: 1,
+        beatPhase: 0,
+        ...overrides,
+      }) as unknown as FrameState;
+    expect(hardStrobeAlpha(frame(), settings, 0.5)).toBeGreaterThan(0.3);
+    // Quatre éclats par temps en pointe, donc une phase au deuxième quart est éteinte.
+    expect(hardStrobeAlpha(frame({ beatPhase: 0.3 }), settings, 0)).toBe(0);
+    expect(hardStrobeAlpha(frame({ hard: false }), settings, 0.5)).toBe(0);
+    expect(hardStrobeAlpha(frame({ reduced: true }), settings, 0.5)).toBe(0);
+    expect(
+      hardStrobeAlpha(frame(), { ...settings, flashes: 0 } as RenderSettings, 0.5),
+    ).toBe(0);
+    // Sans kick récent, pas de strobe : l'écran revient à la scène.
+    expect(hardStrobeAlpha(frame({ beat: 0 }), settings, 0.5)).toBe(0);
+  });
+
+  test("le profil hard admet un flash sur chaque temps fort", () => {
+    const view = new TrackView(hardAnalysis());
+    let normal = 0;
+    let hard = 0;
+    for (let time = 0; time < 60; time += 0.05) {
+      if (flashAdmitted(view, time)) normal += 1;
+      if (flashAdmitted(view, time, true)) hard += 1;
+    }
+    expect(hard).toBeGreaterThan(normal);
+    expect(hard).toBeGreaterThan(0);
   });
 });
