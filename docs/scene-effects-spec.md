@@ -329,9 +329,6 @@ vocabulaire agressif.
   (`drop > 0,3`), déterministes et sans état ;
 - **balayage arc-en-ciel** : `lampHue` décale la teinte de `f.t × 55 + index × 22` en mode
   rave, et les strobes tournent de `f.t × 60`.
-- **chorégraphie par phrase** (`ravePhase`) : `build` (pas de strobe ni CO2), `impact`
-  (CO2, glitch, onde de choc, strobe forcé), `after` (confettis, lasers, cycle de strobe),
-  `trough` (lyres seules, panneaux atténués) ;
 - **bascule calée** : `refreshPlan(true)` ne reconstruit pas tout de suite en show analysé.
   Il stocke `pendingPlanAt`, calculé sur le prochain impact (≤ 1,4 s) ou le prochain temps
   fort, et `applyPendingPlanIfDue` lance le fondu animé à cet instant.

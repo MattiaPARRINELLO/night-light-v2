@@ -20,8 +20,6 @@ import {
   hardStrobeAllowsFull,
   hardStrobeBarsOnly,
   hardStrobeFamily,
-  ravePhase,
-  type RavePhase,
 } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
@@ -942,10 +940,8 @@ function drawRaveShockwave(ctx: CanvasRenderingContext2D, f: FrameState): void {
 function drawRavePanels(
   ctx: CanvasRenderingContext2D,
   f: FrameState,
-  phase: RavePhase,
 ): void {
   if (f.hard !== true || f.reduced) return;
-  const factor = phase === "impact" ? 1.25 : phase === "after" ? 1 : 0.45;
   const cols = Math.max(2, Math.round(4 * f.quality));
   const rows = Math.max(8, Math.round(20 * f.quality));
   const panelWidth = f.width * 0.055;
@@ -959,7 +955,7 @@ function drawRavePanels(
         if (!on) continue;
         const x = originX + (panelWidth * (col + 0.5)) / cols;
         const y = (f.height * (row + 0.5)) / rows;
-        const alpha = (0.35 + 0.5 * clamp01(f.beat)) * factor;
+        const alpha = 0.35 + 0.5 * clamp01(f.beat);
         const hue = shiftHue(f.palette.hue, row * 14 + col * 22 + f.t * 80);
         ctx.fillStyle = paint(hue, 1, 0.6, alpha);
         ctx.fillRect(x - panelWidth * 0.07, y - f.height * 0.007, panelWidth * 0.14, f.height * 0.014);
@@ -1119,19 +1115,17 @@ interface RaveCamera {
   scale: number;
 }
 
-function raveCamera(f: FrameState, drop: number, phase: RavePhase): RaveCamera | null {
+function raveCamera(f: FrameState, drop: number): RaveCamera | null {
   if (f.hard !== true) return null;
-  const intensity =
-    phase === "impact" ? 1.35 : phase === "after" ? 1 : phase === "build" ? 0.6 : 0.3;
   return {
-    x: Math.sin(f.t * 0.42) * 0.012 * f.width * intensity,
-    y: Math.cos(f.t * 0.31) * 0.008 * f.height * intensity,
-    rotation:
-      (Math.sin(f.t * 0.28) * 0.04 + Math.sin(f.t * 0.11) * 0.02) * intensity,
+    x: Math.sin(f.t * 0.42) * 0.012 * f.width,
+    y: Math.cos(f.t * 0.31) * 0.008 * f.height,
+    rotation: Math.sin(f.t * 0.28) * 0.04 + Math.sin(f.t * 0.11) * 0.02,
     scale:
-      1.02 +
-      (0.04 * clamp01(f.beat) + 0.05 * clamp01(drop) + 0.012 * Math.sin(f.t * 0.8)) *
-        intensity,
+      1.04 +
+      0.04 * clamp01(f.beat) +
+      0.05 * clamp01(drop) +
+      0.012 * Math.sin(f.t * 0.8),
   };
 }
 
@@ -1275,11 +1269,9 @@ export function renderFrame(input: RenderInput): void {
   // Scène courante + scène sortante pendant le fondu (transition fluide).
   // En plein strobe hard, la scène cède la place au plateau de lyres : c'est le
   // mur de faisceaux qui doit clignoter, pas une nappe ou une figure seule.
-  const phase = ravePhase(base, view);
-  const strobeFull =
-    hard && (phase === "impact" || (phase === "after" && hardStrobeAllowsFull(base)));
+  const strobeFull = hard && hardStrobeAllowsFull(base);
   const sceneFamily = hardStrobeFamily(base, scene.family);
-  const camera = raveCamera(base, drop, phase);
+  const camera = raveCamera(base, drop);
   if (camera !== null) {
     ctx.save();
     ctx.translate(width * 0.5 + camera.x, height * 0.5 + camera.y);
@@ -1316,11 +1308,9 @@ export function renderFrame(input: RenderInput): void {
     drawFamily(ctx, variationState, view, scene.variant);
   }
   if (camera !== null) ctx.restore();
-  if (phase === "impact") {
-    drawGlitchCuts(ctx, base, drop);
-    drawRaveShockwave(ctx, base);
-  }
-  drawRavePanels(ctx, base, phase);
+  drawGlitchCuts(ctx, base, drop);
+  drawRaveShockwave(ctx, base);
+  drawRavePanels(ctx, base);
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
   // sur-couche et couvre tout l'écran. Jamais en mode réduit.
@@ -1415,7 +1405,7 @@ export function renderFrame(input: RenderInput): void {
 
   drawDust(ctx, permanent);
 
-  const fullStrobeAllowed = !hard || strobeFull;
+  const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
   if (flash > 0.002 && flashAdmitted(view, t, hard)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
@@ -1429,7 +1419,7 @@ export function renderFrame(input: RenderInput): void {
   // s'ajoute au flash de temps fort, sans dépendre de `flashAdmitted`, car elle
   // bat plusieurs fois à l'intérieur d'un même temps. Chaque éclat alterne entre
   // la teinte principale et la complémentaire : le strobe est multicolore.
-  const strobe = strobeFull ? hardStrobeAlpha(base, settings, drop) : 0;
+  const strobe = hardStrobeAlpha(base, settings, drop);
   if (strobe > 0.002) {
     const divisions = hardStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
@@ -1449,11 +1439,12 @@ export function renderFrame(input: RenderInput): void {
   // Le lavage blanc d'impact, le strobe et la vignette sont passés : les
   // confettis et le CO2 se dessinent maintenant au-dessus, sinon la vignette
   // assombrissait justement les bords où sont les jets.
-  const raveBurst =
-    hard && phase === "after" ? clamp01(base.energy * 0.85 + base.beat * 0.55) : 0;
+  const raveBurst = hard
+    ? Math.max(drop, clamp01(base.energy * 0.85 + base.beat * 0.55))
+    : drop;
   drawRaveConfetti(ctx, base, raveBurst);
   // Le CO2 reste réservé aux impacts : pas de canons qui crachent en continu.
-  drawRaveCo2(ctx, base, phase === "impact" ? drop : 0);
+  drawRaveCo2(ctx, base, drop);
 
   // La bordure LED passe en dernier : collée au bord, elle doit rester nette et
   // pleine au lieu d'être mangée par la vignette.
