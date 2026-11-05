@@ -538,7 +538,7 @@ export function dessinerBordure(
     ctx.stroke();
   };
 
-  const tube = Math.max(4.5, petitCote * 0.009);
+  const tube = Math.max(5.5, petitCote * 0.011);
 
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
@@ -589,7 +589,7 @@ export function dessinerBordure(
     if (index % pas !== 0) continue;
 
     // Halo de la diode (diffusion dans le tube).
-    const rayon = tube * 0.26 * (0.5 + intensite) * variation;
+    const rayon = tube * 0.27 * (0.5 + intensite) * variation;
     ctx.fillStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.62, 0.25 * intensite);
     ctx.beginPath();
     ctx.arc(x, y, rayon * 2.6, 0, Math.PI * 2);
