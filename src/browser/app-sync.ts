@@ -197,6 +197,7 @@ export function installSync(Target: { prototype: App }): void {
     this.debugSync.match = "show lancé à la position du lecteur";
 
     this.syncedView = new TrackView(analysis);
+    this.pendingPlanAt = null;
     this.syncedPlan = this.buildPlan(analysis);
     this.pendingSynced = null;
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
@@ -430,6 +431,7 @@ export function installSync(Target: { prototype: App }): void {
       return;
     }
     const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    this.applyPendingPlanIfDue(time);
     const pending = this.pendingSynced;
     if (pending !== null && time >= pending.switchAt) {
       this.syncedView = pending.view;

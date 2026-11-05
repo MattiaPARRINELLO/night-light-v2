@@ -218,9 +218,11 @@ export function installLoop(Target: { prototype: App }): void {
       return;
     }
     const view = this.view;
-    const plan = this.plan;
-    if (view === null || plan === null) return;
+    if (view === null) return;
     const clamped = clamp(time, 0, view.duration);
+    this.applyPendingPlanIfDue(clamped);
+    const plan = this.plan;
+    if (plan === null) return;
     const target = this.fadeTarget("show");
     try {
       // Bascule standard ↔ rave : l'ancien plan continue de vivre dans la couche

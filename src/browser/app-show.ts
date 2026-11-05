@@ -19,13 +19,34 @@ declare module "./app" {
     startShowCrossfade(): void;
     buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
+    rebuildPlan(transition: boolean): void;
     refreshPlan(transition?: boolean): void;
+    applyPendingPlanIfDue(time: number): void;
     togglePlay(): Promise<void>;
     restart(): Promise<void>;
     toggleFullscreen(): Promise<void>;
     bindKeyboard(): void;
     bumpVolume(delta: number): void;
   }
+}
+
+/**
+ * Instant musical de la prochaine bascule de plan.
+ *
+ * On vise un impact s'il tombe dans les 1,4 s, sinon le temps fort suivant :
+ * le fondu démarre ainsi sur la musique, jamais au milieu d'un temps.
+ */
+function nextRaveSwitchTime(view: TrackView, now: number): number {
+  const impacts = [
+    ...(view.analysis.drops ?? []).map((drop) => drop.time),
+    ...view.analysis.builds.map((build) => build.end),
+  ]
+    .filter((time) => time > now + 0.03)
+    .sort((left, right) => left - right);
+  const nearest = impacts[0];
+  if (nearest !== undefined && nearest - now <= 1.4) return nearest;
+  const beat = view.beats.find((time) => time > now + 0.03);
+  return beat ?? now + 0.12;
 }
 
 export function installShow(Target: { prototype: App }): void {
@@ -161,6 +182,7 @@ export function installShow(Target: { prototype: App }): void {
       startedAt: Date.now(),
     };
     this.view = new TrackView(analysis);
+    this.pendingPlanAt = null;
     this.plan = this.buildPlan(analysis);
     if (useCrossfade) this.startShowCrossfade();
     else this.beginTransition();
@@ -244,9 +266,26 @@ export function installShow(Target: { prototype: App }): void {
   };
 
   Target.prototype.refreshPlan = function (this: App, transition = false): void {
-    // Changement de profil (standard ↔ rave) : on fige l'image actuelle et on
-    // la fait fondre vers le nouveau plan. Sans ça, le mur de lyres remplaçait
-    // la scène d'un coup, au milieu d'un temps.
+    const activeLayer: "show" | "live" | null =
+      this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
+    // En show analysé, on attend le prochain temps fort (ou un impact proche)
+    // pour basculer : le changement tombe sur la musique, pas au milieu d'un temps.
+    if (transition && activeLayer === "show") {
+      const view = this.syncedMode ? this.syncedView : this.view;
+      if (view !== null) {
+        const now = this.syncedMode
+          ? this.showTimeMs(Date.now()) / 1000
+          : this.audio.currentTime;
+        this.pendingPlanAt = nextRaveSwitchTime(view, now);
+        return;
+      }
+    }
+    this.pendingPlanAt = null;
+    this.rebuildPlan(transition);
+  };
+
+  /** Construit les nouveaux plans, avec un fondu animé depuis les anciens. */
+  Target.prototype.rebuildPlan = function (this: App, transition = false): void {
     const activeLayer: "show" | "live" | null =
       this.syncedMode || this.view !== null ? "show" : this.liveMode ? "live" : null;
     const oldPlan =
@@ -278,6 +317,13 @@ export function installShow(Target: { prototype: App }): void {
         profile: this.settings.hard === "on" ? "hard" : "standard",
       };
     }
+  };
+
+  /** Applique la bascule de plan si son temps musical est arrivé. */
+  Target.prototype.applyPendingPlanIfDue = function (this: App, time: number): void {
+    if (this.pendingPlanAt === null || time + 0.02 < this.pendingPlanAt) return;
+    this.pendingPlanAt = null;
+    this.rebuildPlan(true);
   };
 
   Target.prototype.togglePlay = async function (this: App): Promise<void> {

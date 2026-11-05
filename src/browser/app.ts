@@ -122,6 +122,8 @@ export class App {
 
   view: TrackView | null = null;
   plan: ShowPlan | null = null;
+  /** Instant musical (s) de la prochaine bascule standard ↔ rave. */
+  pendingPlanAt: number | null = null;
   settings: RenderSettings = { ...DEFAULT_SETTINGS };
   session: Session | null = null;
   jobId = "";

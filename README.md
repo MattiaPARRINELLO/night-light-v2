@@ -366,7 +366,11 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - des lasers scan ultra-fins, jusqu'à 36 faisceaux depuis la scène et le plafond, avec
   rémanence, un mur de blinders qui claque sur chaque kick, des coupes glitch sur les
   gros drops, des confettis, deux jets de CO2, une onde de choc, deux panneaux LED
-  latéraux et un balayage arc-en-ciel sur les faisceaux.
+  latéraux et un balayage arc-en-ciel sur les faisceaux ;
+- une **chorégraphie par phrase** : montée sans strobe ni CO2, impact avec CO2, glitch et
+  onde de choc, après-impact avec confettis et lasers larges, creux avec les lyres seules ;
+- une **bascule calée sur la musique** : le passage standard ↔ rave attend le prochain
+  impact s'il tombe dans 1,4 s, sinon le prochain temps fort.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 

@@ -9,6 +9,7 @@
 
 import type { FrameState } from "./families/types";
 import type { FamilyId } from "./show";
+import type { TrackView } from "./view";
 
 export type HardStrobePhase = "plein" | "barres" | "reprise";
 
@@ -48,6 +49,28 @@ export function hardStrobeAllowsFull(f: FrameState): boolean {
 /** Vrai quand seules les barres LED doivent strober. */
 export function hardStrobeBarsOnly(f: FrameState): boolean {
   return hardStrobePhase(f) === "barres";
+}
+
+/**
+ * Phrase de la chorégraphie rave.
+ *
+ * - `build` : une montée est en cours, on prépare sans tout lâcher ;
+ * - `impact` : moins de 0,5 s après un drop, tout part d'un coup ;
+ * - `after` : les 2 s qui suivent, confettis et lasers larges ;
+ * - `trough` : creux, les lyres tiennent la scène seules.
+ */
+export type RavePhase = "build" | "impact" | "after" | "trough";
+
+export function ravePhase(f: FrameState, view: TrackView): RavePhase {
+  if (f.hard !== true) return "trough";
+  const age = f.dropAge;
+  if (Number.isFinite(age) && age >= 0 && age < 0.5) return "impact";
+  if (Number.isFinite(age) && age < 2.4) return "after";
+  // Direct, ou morceau sans analyse : on retombe sur l'énergie.
+  if (view.beats.length === 0) return f.energy > 0.55 ? "after" : "trough";
+  if (view.analysis.builds.length === 0) return f.energy > 0.65 ? "after" : "trough";
+  if (view.buildProgress(f.t) > 0.02) return "build";
+  return "trough";
 }
 
 /** Famille à dessiner pendant le cycle hard : les lyres remplacent la scène. */
