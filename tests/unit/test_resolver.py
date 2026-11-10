@@ -46,6 +46,30 @@ def test_ambiguous_match_is_reported(tmp_path: Path) -> None:
         raise AssertionError("expected ambiguous_match")
 
 
+def test_cached_track_found_through_an_artist_variant(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "audio.wav"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=238.0), source)
+
+    class FakeProvider:
+        name = "fake"
+
+        def search(self, query):
+            raise AssertionError("ne doit pas interroger Deezer")
+
+        def download(self, candidate, destination):
+            raise AssertionError("ne doit pas télécharger")
+
+    result = resolve_track(
+        TrackQuery(title="Mwaka Moon", artist="Kalash, Damso", duration_sec=238.0),
+        FakeProvider(),
+        cache,
+    )
+    assert result.from_cache is True
+    assert result.cache_entry_path.is_file()
+
+
 def test_concurrent_same_track_downloads_once(tmp_path: Path) -> None:
     fixture = tmp_path / "truth.wav"
     fixture.write_bytes(b"payload")

@@ -64,6 +64,11 @@ def resolve_track(
     with cache.lock_for(key):
         report("Cache", 0.0, "Vérification du cache persistant")
         hit = cache.get(key, validate_hash=True)
+        if hit is None:
+            # Le lecteur peut annoncer un crédit différent de celui enregistré
+            # (« Kalash, Damso » contre « Kalash ») : on retente sur les
+            # métadonnées normalisées avant d'interroger Deezer.
+            hit = cache.find_for_query(query, validate_hash=True)
         if hit is not None:
             report("Cache", 1.0, "Morceau déjà disponible")
         if hit is not None:
