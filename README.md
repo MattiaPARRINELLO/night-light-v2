@@ -129,8 +129,9 @@ Prérequis :
 
 2. **Le cookie ARL de ta session Deezer**, dans `DEEZER_ARL` (voir `.env.example`). Il se
    lit dans les cookies du navigateur connecté à Deezer : DevTools → Application →
-   Cookies → `arl`. Sans lui, la récupération est refusée avec un message explicite, et le
-   reste de l'application fonctionne normalement.
+   Cookies → `arl`. Sans lui, la récupération est refusée avec un message explicite — un
+   morceau déjà en cache reste jouable — et le reste de l'application fonctionne
+   normalement.
 
 > ⚠️ **Avertissement.** Cette récupération télécharge des morceaux depuis Deezer en
 > s'appuyant sur une session personnelle, ce qui est contraire aux conditions
@@ -141,6 +142,25 @@ Prérequis :
 Le provider (`server/retrieve/deezer.py`) n'appelle que le CLI : il écrit pour streamrip une
 copie privée (`0600`) de sa configuration dans le répertoire de cache, y pose le cookie et
 force le niveau de qualité le plus bas. Aucun secret n'est écrit dans le dépôt.
+
+### Pré-remplir le cache avec des fichiers locaux
+
+Un live, une édition rare ou un fichier personnel n'existe pas dans le catalogue : autant
+le donner une fois au serveur, qui le servira ensuite sans repasser par Deezer. Le script
+lit le titre, l'artiste et la durée du fichier (ffprobe, sinon soundfile et le nom de
+fichier), puis copie le fichier dans le cache sous la clé du morceau :
+
+```bash
+uv run python scripts/seed_cache.py "~/Musique/Damso - Σ. MOROSE (LIVE).mp3"
+uv run python scripts/seed_cache.py --dir ~/Musique/lives --replace
+uv run python scripts/seed_cache.py --dry-run fichier.mp3   # montre sans écrire
+```
+
+Un fichier pré-rempli est retrouvé à l'identique quand le lecteur annonce le même titre et
+le même artiste, à la durée près (`AudioCache.find_for_query`) : les variantes de crédit
+(« Damso » contre « Damso, Kalash ») et les durées arrondies passent. Il n'a alors plus
+besoin de `DEEZER_ARL` du tout. `--title`, `--artist` et `--duration` forcent les
+métadonnées quand les tags sont absents ou faux, pour un seul fichier à la fois.
 
 ## Confidentialité et sécurité
 

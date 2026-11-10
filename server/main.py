@@ -58,7 +58,8 @@ from .queue.models import QueueTrack
 from .relay import attach_control_relay
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
-from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
+from .retrieve.match import MatchThresholds
+from .retrieve.models import Candidate, TrackQuery, audio_cache_key, normalize_text
 from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
@@ -83,6 +84,28 @@ def package_version(name: str) -> str:
         return metadata.version(name)
     except metadata.PackageNotFoundError:
         return "inconnue"
+
+
+class CacheOnlyProvider:
+    """Fournisseur inerte quand aucun ARL n'est configuré.
+
+    Un morceau pré-rempli (`scripts/seed_cache.py`) ou déjà récupéré ne demande
+    pas de compte Deezer : `resolve_track` le trouve dans le cache et n'appelle
+    jamais ce fournisseur. S'il l'appelle, l'erreur dit quoi configurer.
+    """
+
+    name = "cache-only"
+    thresholds = MatchThresholds()
+
+    def search(self, query: TrackQuery) -> list[Candidate]:
+        raise RuntimeError(
+            "récupération Deezer non configurée (DEEZER_ARL vide) et morceau absent du cache"
+        )
+
+    def download(self, candidate: Candidate, destination: Path) -> Path:
+        raise RuntimeError(
+            "récupération Deezer non configurée (DEEZER_ARL vide) et morceau absent du cache"
+        )
 
 
 class ResolveRequest(BaseModel):
@@ -410,19 +433,26 @@ class AppState:
             duration_sec,
         )
         if not self.settings.deezer_arl:
-            self.resolve_pending = False
-            self.store.set_error(
-                job_id,
-                "deezer_not_configured",
-                "La récupération Deezer n'est pas configurée.",
-                "Renseigne DEEZER_ARL dans l'environnement du serveur, puis relance-le.",
+            # Le cache est consulté avant le contrôle d'ARL : un morceau
+            # pré-rempli ou déjà récupéré doit rester jouable sans compte.
+            if cache.find_for_query(query, validate_hash=False) is not None:
+                _LOGGER.info("Résolution depuis le cache sans Deezer id=%s titre=%r", job_id, title)
+                provider = CacheOnlyProvider()
+            else:
+                self.resolve_pending = False
+                self.store.set_error(
+                    job_id,
+                    "deezer_not_configured",
+                    "La récupération Deezer n'est pas configurée.",
+                    "Renseigne DEEZER_ARL dans l'environnement du serveur, puis relance-le.",
+                )
+                _LOGGER.error("Résolution refusée: Deezer non configuré id=%s", job_id)
+                return
+        else:
+            provider = DeezerProvider(
+                arl=self.settings.deezer_arl,
+                work_dir=Path(self.settings.cache_dir) / "streamrip",
             )
-            _LOGGER.error("Résolution refusée: Deezer non configuré id=%s", job_id)
-            return
-        provider = DeezerProvider(
-            arl=self.settings.deezer_arl,
-            work_dir=Path(self.settings.cache_dir) / "streamrip",
-        )
 
         def report(phase: str, progress: float, message: str) -> None:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
