@@ -114,6 +114,50 @@ def test_find_for_query_tolerates_a_missing_duration(tmp_path: Path) -> None:
     assert hit is not None
 
 
+def test_find_for_query_tolerates_a_title_typo_without_artist(tmp_path: Path) -> None:
+    """Cas d'un fichier uploadé : Deezer annonce un titre mal orthographié, pas
+    d'artiste, et une durée sans rapport avec le fichier."""
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(
+        TrackQuery(title="Vie Olance X Vantablack", artist="Damso", duration_sec=259.291), source
+    )
+
+    hit = cache.find_for_query(
+        TrackQuery(title="Vie Olence X VantaBlack", artist="", duration_sec=691.4)
+    )
+    assert hit is not None
+
+
+def test_find_for_query_rejects_another_version(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Σ. MOROSE", artist="Damso", duration_sec=263.579), source)
+
+    assert (
+        cache.find_for_query(
+            TrackQuery(title="Σ. MOROSE (LIVE)", artist="Damso", duration_sec=263.654)
+        )
+        is None
+    )
+    assert (
+        cache.find_for_query(TrackQuery(title="Σ. MOROSE (LIVE)", artist="", duration_sec=263.654))
+        is None
+    )
+
+
+def test_find_for_query_keeps_duration_guard_when_artist_is_known(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=238.0), source)
+
+    hit = cache.find_for_query(TrackQuery(title="Mwaka Mooon", artist="Kalash", duration_sec=180.0))
+    assert hit is None
+
+
 def test_clear(tmp_path: Path) -> None:
     cache = AudioCache(tmp_path / "cache")
     source = tmp_path / "source.ogg"

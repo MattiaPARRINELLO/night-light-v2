@@ -45,12 +45,8 @@ def _text_ratio(left: str, right: str) -> float:
     # une version différente. Les termes additionnels non officiels sont
     # pénalisés plutôt que considérés comme identiques.
     if left in right or right in left:
-        long_value, short_value = (
-            (right, left) if len(right) >= len(left) else (left, right)
-        )
-        extra = [
-            token for token in long_value.split() if token not in short_value.split()
-        ]
+        long_value, short_value = (right, left) if len(right) >= len(left) else (left, right)
+        extra = [token for token in long_value.split() if token not in short_value.split()]
         if not extra:
             return 1.0
         if extra[0] in {"feat", "ft", "featuring"}:
@@ -61,6 +57,11 @@ def _text_ratio(left: str, right: str) -> float:
         # comme une correspondance mot-à-mot exacte.
         return max(0.85, min(0.95, max(len(short_value), 1) / max(len(long_value), 1)))
     return SequenceMatcher(None, left, right).ratio()
+
+
+def text_ratio(left: str, right: str) -> float:
+    """Similarité de deux textes déjà normalisés (1.0 = identiques)."""
+    return _text_ratio(left, right)
 
 
 def duration_tolerance_sec(query: TrackQuery, thresholds: MatchThresholds) -> float:

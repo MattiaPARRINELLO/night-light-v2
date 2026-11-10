@@ -156,10 +156,11 @@ uv run python scripts/seed_cache.py --dir ~/Musique/lives --replace
 uv run python scripts/seed_cache.py --dry-run fichier.mp3   # montre sans écrire
 ```
 
-Un fichier pré-rempli est retrouvé à l'identique quand le lecteur annonce le même titre et
-le même artiste, à la durée près (`AudioCache.find_for_query`) : les variantes de crédit
-(« Damso » contre « Damso, Kalash ») et les durées arrondies passent. Il n'a alors plus
-besoin de `DEEZER_ARL` du tout. `--title`, `--artist` et `--duration` forcent les
+Un fichier pré-rempli est retrouvé quand le lecteur annonce un titre suffisamment proche
+(une faute de frappe passe, « live » ou « remix » non), avec au moins un artiste en commun
+et une durée cohérente. Les fichiers uploadés sur Deezer font exception : Deezer n'annonce
+ni artiste ni durée fiables pour eux, donc un titre quasi identique suffit alors. Il n'a
+plus besoin de `DEEZER_ARL` du tout. `--title`, `--artist` et `--duration` forcent les
 métadonnées quand les tags sont absents ou faux, pour un seul fichier à la fois.
 
 ## Confidentialité et sécurité
