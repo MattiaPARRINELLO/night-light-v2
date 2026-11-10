@@ -107,21 +107,6 @@ def test_seeded_track_is_served_without_deezer_account(tmp_path: Path) -> None:
     assert job["status"] == "done", job
 
 
-def test_seeded_track_survives_the_metadata_deezer_announces(tmp_path: Path) -> None:
-    """Deezer annonce « Vie Olence » (faute), sans artiste, et 691 s de durée
-    pour un fichier de 259 s : le morceau doit quand même être retrouvé."""
-    audio = tmp_path / "Damso - Vie Olance X Vantablack.wav"
-    write_synthetic_track(audio, duration=4.0)
-    cache = _cache(tmp_path)
-    seed_track(cache, audio)
-
-    hit = cache.find_for_query(
-        TrackQuery(title="Vie Olance X VantaBlack", artist="", duration_sec=691.4)
-    )
-
-    assert hit is not None
-
-
 def test_seed_refuses_duplicate_without_replace(tmp_path: Path) -> None:
     audio = tmp_path / "Damso - Morose.wav"
     write_synthetic_track(audio, duration=3.0)

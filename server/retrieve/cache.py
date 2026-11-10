@@ -13,7 +13,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .match import text_ratio
 from .models import TrackQuery, audio_cache_key, normalize_text
 
 
@@ -78,11 +77,6 @@ def _durations_compatible(query_duration: float, cached_duration: float | None) 
     if query_duration <= 0 or cached_duration is None or cached_duration <= 0:
         return True
     return abs(query_duration - cached_duration) <= max(2.0, query_duration * 0.005)
-
-
-# Seuil de similarité de titre sous lequel on considère avoir affaire à une
-# autre version (live, remix, edit) plutôt qu'à une variante d'orthographe.
-_MIN_TITLE_RATIO = 0.90
 
 
 class AudioCache:
@@ -265,24 +259,16 @@ class AudioCache:
     ) -> CacheEntry | None:
         """Retrouve une entrée qui désigne le même morceau, malgré les variantes.
 
-        La clé exacte dépend des métadonnées annoncées par le lecteur : le
+        La clé exacte dépend de l'artiste tel que le lecteur l'annonce : le
         morceau mis en cache sous « Kalash » manquait sa cible quand le lecteur
-        annonçait « Kalash, Damso ». On compare donc le titre, les artistes (au
-        moins un en commun) et la durée, puis on garde la meilleure
+        annonçait « Kalash, Damso ». On compare donc le titre normalisé, les
+        artistes (au moins un en commun) et la durée, puis on garde la meilleure
         correspondance.
-
-        Le titre est comparé avec la même tolérance que le catalogue Deezer :
-        une différence d'un caractère (« Olence » contre « Olance ») reste le
-        même morceau, alors qu'un marqueur de version (« live », « remix »)
-        fait chuter la similarité sous le seuil. Pour les fichiers uploadés,
-        Deezer n'expose pas l'artiste et annonce une durée sans rapport avec le
-        fichier : sans artiste dans la requête, la durée ne peut donc pas
-        disqualifier un titre quasi identique.
         """
         target_title = query.normalized_title
         if not target_title or not self.root.is_dir():
             return None
-        best: tuple[tuple[float, int, float], str] | None = None
+        best: tuple[tuple[int, float], str] | None = None
         for entry_dir in self.root.iterdir():
             if not entry_dir.is_dir():
                 continue
@@ -294,17 +280,14 @@ class AudioCache:
                 continue
             if payload.get("version", 1) != self.version:
                 continue
-            title_ratio = text_ratio(target_title, normalize_text(str(payload.get("title") or "")))
-            if title_ratio < _MIN_TITLE_RATIO:
+            if normalize_text(str(payload.get("title") or "")) != target_title:
                 continue
             if not _artists_compatible(query.artist, str(payload.get("artist") or "")):
                 continue
             cached_duration = payload.get("duration_sec")
             if isinstance(cached_duration, bool) or not isinstance(cached_duration, (int, float)):
                 cached_duration = None
-            if not _durations_compatible(query.duration_sec, cached_duration) and (
-                query.normalized_artist
-            ):
+            if not _durations_compatible(query.duration_sec, cached_duration):
                 continue
             exact_artist = int(
                 normalize_text(str(payload.get("artist") or "")) == query.normalized_artist
@@ -314,7 +297,7 @@ class AudioCache:
                 if cached_duration is not None and query.duration_sec > 0
                 else float("inf")
             )
-            score = (-round(title_ratio, 6), -exact_artist, delta)
+            score = (-exact_artist, delta)
             if best is None or score < best[0]:
                 best = (score, entry_dir.name)
         if best is None:
