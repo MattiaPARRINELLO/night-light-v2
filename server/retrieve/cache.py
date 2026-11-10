@@ -55,6 +55,30 @@ def _safe_suffix(path: Path | str) -> str:
     return suffix
 
 
+def _artists_compatible(query_artist: str, cached_artist: str) -> bool:
+    """Vrai si les deux crédits partagent au moins un artiste.
+
+    Un lecteur peut annoncer « Kalash, Damso » là où le cache a retenu
+    « Kalash » (ou l'inverse). Un crédit absent ne disqualifie pas l'entrée :
+    le titre et la durée suffisent alors à trancher.
+    """
+    query_tokens = set(normalize_text(query_artist).split())
+    cached_tokens = set(normalize_text(cached_artist).split())
+    if not query_tokens or not cached_tokens:
+        return True
+    return bool(query_tokens & cached_tokens)
+
+
+def _durations_compatible(query_duration: float, cached_duration: float | None) -> bool:
+    """Même tolérance que la validation du fichier téléchargé.
+
+    Une durée absente d'un côté n'empêche pas la correspondance.
+    """
+    if query_duration <= 0 or cached_duration is None or cached_duration <= 0:
+        return True
+    return abs(query_duration - cached_duration) <= max(2.0, query_duration * 0.005)
+
+
 class AudioCache:
     """Cache disque à clé, avec verrou par entrée et sidecar JSON."""
 
@@ -229,6 +253,56 @@ class AudioCache:
 
     def get_entry_for_query(self, query: TrackQuery) -> CacheEntry | None:
         return self.get(audio_cache_key(query))
+
+    def find_for_query(
+        self, query: TrackQuery, *, validate_hash: bool = False
+    ) -> CacheEntry | None:
+        """Retrouve une entrée qui désigne le même morceau, malgré les variantes.
+
+        La clé exacte dépend de l'artiste tel que le lecteur l'annonce : le
+        morceau mis en cache sous « Kalash » manquait sa cible quand le lecteur
+        annonçait « Kalash, Damso ». On compare donc le titre normalisé, les
+        artistes (au moins un en commun) et la durée, puis on garde la meilleure
+        correspondance.
+        """
+        target_title = query.normalized_title
+        if not target_title or not self.root.is_dir():
+            return None
+        best: tuple[tuple[int, float], str] | None = None
+        for entry_dir in self.root.iterdir():
+            if not entry_dir.is_dir():
+                continue
+            try:
+                payload = json.loads((entry_dir / "metadata.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("version", 1) != self.version:
+                continue
+            if normalize_text(str(payload.get("title") or "")) != target_title:
+                continue
+            if not _artists_compatible(query.artist, str(payload.get("artist") or "")):
+                continue
+            cached_duration = payload.get("duration_sec")
+            if isinstance(cached_duration, bool) or not isinstance(cached_duration, (int, float)):
+                cached_duration = None
+            if not _durations_compatible(query.duration_sec, cached_duration):
+                continue
+            exact_artist = int(
+                normalize_text(str(payload.get("artist") or "")) == query.normalized_artist
+            )
+            delta = (
+                abs(query.duration_sec - cached_duration)
+                if cached_duration is not None and query.duration_sec > 0
+                else float("inf")
+            )
+            score = (-exact_artist, delta)
+            if best is None or score < best[0]:
+                best = (score, entry_dir.name)
+        if best is None:
+            return None
+        return self.get(best[1], validate_hash=validate_hash)
 
     def put_for_query(
         self,

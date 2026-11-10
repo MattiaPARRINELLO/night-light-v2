@@ -71,6 +71,49 @@ def test_query_helpers_and_remove(tmp_path: Path) -> None:
     assert cache.get(key) is None
 
 
+def test_find_for_query_accepts_extra_artists(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=238.0), source)
+
+    hit = cache.find_for_query(
+        TrackQuery(title="Mwaka Moon", artist="Kalash, Damso", duration_sec=238.0)
+    )
+    assert hit is not None
+    assert hit.title == "Mwaka Moon"
+
+
+def test_find_for_query_rejects_another_track(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=238.0), source)
+
+    assert (
+        cache.find_for_query(TrackQuery(title="Mwaka Moon", artist="Damso", duration_sec=238.0))
+        is None
+    )
+    assert (
+        cache.find_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=180.0))
+        is None
+    )
+    assert (
+        cache.find_for_query(TrackQuery(title="Autre titre", artist="Kalash", duration_sec=238.0))
+        is None
+    )
+
+
+def test_find_for_query_tolerates_a_missing_duration(tmp_path: Path) -> None:
+    cache = AudioCache(tmp_path / "cache")
+    source = tmp_path / "source.ogg"
+    source.write_bytes(b"payload")
+    cache.put_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash", duration_sec=238.0), source)
+
+    hit = cache.find_for_query(TrackQuery(title="Mwaka Moon", artist="Kalash, Damso"))
+    assert hit is not None
+
+
 def test_clear(tmp_path: Path) -> None:
     cache = AudioCache(tmp_path / "cache")
     source = tmp_path / "source.ogg"
