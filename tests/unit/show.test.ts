@@ -409,14 +409,15 @@ describe("palette du morceau", () => {
     }
   });
 
-  test("les moments forts basculent sur la complementaire", () => {
+  test("les moments forts jouent l'une des deux couleurs du morceau", () => {
     const plan = buildShowPlan(morceau(), false);
     const forts = plan.scenes.filter((scene) => scene.mood === "explosif");
     expect(forts.length).toBeGreaterThan(0);
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     for (const scene of forts) {
-      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+      expect([plan.track.hue, plan.track.accent]).toContain(scene.palette.hue);
     }
+    // La complémentaire reste la couleur des moments forts quand elle est libre.
+    expect(forts.some((scene) => scene.palette.hue === plan.track.accent)).toBe(true);
   });
 
   test("les moments forts sont vifs, les calmes portent un voile lumineux", () => {
@@ -494,8 +495,10 @@ describe("diversite du spectacle", () => {
     const families = new Set(plan.scenes.map((scene) => scene.family));
     expect(families.size).toBeGreaterThanOrEqual(5);
 
-    const hueBuckets = new Set(plan.scenes.map((scene) => Math.floor(scene.palette.hue / 30)));
-    expect(hueBuckets.size).toBeGreaterThanOrEqual(4);
+    // Le morceau ne possède que deux couleurs, même si les scènes changent.
+    const hues = new Set(plan.scenes.map((scene) => scene.palette.hue));
+    expect(hues.size).toBeLessThanOrEqual(2);
+    expect(hues.size).toBeGreaterThan(0);
   });
 
   test("un long morceau exploite toutes les familles visuelles", () => {
@@ -930,13 +933,12 @@ describe("répétition des passages (couplet / refrain)", () => {
     expect(dramatise.scenes.some((scene) => scene.role === "montee")).toBe(true);
   });
 
-  test("le refrain s'allume : humeur explosive et complémentaire", () => {
+  test("le refrain s'allume : humeur explosive et couleur du morceau", () => {
     const plan = buildShowPlan(morceau(), false, undefined, { dramaturgy: true });
     const refrains = [...scenesIn(plan, 20, 40), ...scenesIn(plan, 60, 80)];
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     for (const scene of refrains) {
       expect(scene.mood).toBe("explosif");
-      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+      expect([plan.track.hue, plan.track.accent]).toContain(scene.palette.hue);
     }
   });
 

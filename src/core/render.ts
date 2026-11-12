@@ -14,7 +14,7 @@ import {
 } from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
-import { hslToRgb, shiftHue, shorthand } from "./color";
+import { hslToRgb, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
 import {
   hardStrobeAllowsFull,
@@ -161,45 +161,19 @@ export function hardStrobeDivisions(f: FrameState, drop: number): number {
  */
 const PHRASE_BEATS = 8;
 /**
- * Glissement continu de la teinte, en degrés par seconde.
+ * Ancienne vitesse de dérive de teinte, conservée pour les diagnostics.
  *
- * Volontairement très lent : il fait vivre la couleur sans la faire dériver hors
- * de l'identité du morceau. À 14 °/s, un tour complet prenait 26 s — la palette
- * choisie pour le morceau était perdue au bout d'une demi-minute.
+ * La couleur ne dérive plus : un morceau ne possède que deux teintes, et la
+ * scène joue l'une ou l'autre. La constante reste exportée pour les rapports.
  */
 export const HUE_DRIFT_PER_SEC = 0.4;
-/** Respiration de la teinte autour de celle de la scène, en degrés. */
-const HUE_BREATH_DEG = 14;
 /**
- * Marge de teinte au-delà du `spread` de la palette, en degrés.
+ * Marge de teinte historique, conservée pour les diagnostics et les tests.
  *
- * Le contrat de couleur borne la teinte rendue autour de l'ancre du morceau :
- * `|teinte − ancre| ≤ spread + HUE_BUDGET_MARGIN_DEG`, dérive, respiration,
- * sauts d'impact et variante compris.
- *
- * À remplacer par l'import de `show.ts` après fusion de la branche du plan.
+ * Le rendu ne dérive plus autour de l'ancre : il choisit exactement l'une des
+ * deux couleurs du morceau.
  */
 export const HUE_BUDGET_MARGIN_DEG = 12;
-/**
- * Période de la dérive de teinte, en secondes.
- *
- * Une dérive linéaire (`0,4 °/s × t`) sortait de l'identité du morceau au bout
- * de quelques minutes : à 4 min, 96° de dérive cumulée. Une sinusoïde bornée à
- * une demi-largeur de palette fait respirer la couleur sans jamais la quitter.
- */
-const HUE_DRIFT_PERIOD_SEC = 90;
-/**
- * Saut de teinte à l'impact, en degrés.
- *
- * L'impact doit se voir — la couleur change franchement — mais il ne doit pas
- * sortir le morceau de sa palette : la complémentaire joue déjà ce rôle, un
- * saut trop grand ajoutait une troisième couleur qui ne voulait rien dire.
- */
-const DROP_HUE_JUMP = 26;
-/** Saut de teinte quand la variation d'une phrase surgit. */
-const VARIATION_HUE_JUMP = 30;
-/** Écart maximal à la teinte de scène, impacts compris. */
-const HUE_IMPACT_LIMIT = 32;
 
 function paint(h: number, s: number, l: number, a: number): string {
   return shorthand(hslToRgb({ h, s, l }), a);
@@ -736,38 +710,22 @@ export function clampHueToAnchor(hue: number, anchor: number, spread: number): n
 /**
  * Teinte réellement dessinée à l'instant `t`.
  *
- * Le glissement porte sur le temps du morceau, jamais sur le temps écoulé
- * depuis le début de la scène : en repartant de zéro à chaque changement de
- * scène, la couleur faisait un bond de plusieurs dizaines de degrés en plein
- * spectacle. Fonction partagée avec l'affichage, pour que le HUD annonce la
- * teinte qui est vraiment à l'écran.
- *
- * `anchor` est l'ancre du morceau (voir `sceneAnchor`). Sans elle, la fonction
- * se rabat sur la teinte de la scène : le résultat reste borné, mais c'est le
- * rendu qui applique le budget exact.
+ * Un morceau ne possède que deux couleurs : la teinte de scène et sa
+ * complémentaire. Un impact ou une variation peut basculer de l'une à l'autre,
+ * mais le rendu n'invente jamais de teinte intermédiaire. `t`, `reduced` et
+ * `anchor` restent dans la signature pour les diagnostics.
  */
 export function sceneHue(
   scene: Scene,
-  t: number,
+  _t: number,
   drop: number,
   variation: number,
-  reduced: boolean,
-  anchor: number = scene.palette.hue,
+  _reduced: boolean,
+  _anchor: number = scene.palette.hue,
 ): number {
-  const spread = scene.palette.spread;
-  // Dérive périodique, d'amplitude une demi-largeur de palette : la couleur
-  // respire autour de l'ancre au lieu de s'en éloigner sans fin.
-  const drift =
-    (0.5 * spread * Math.sin((2 * Math.PI * t) / HUE_DRIFT_PERIOD_SEC)) * (reduced ? 0.4 : 1) +
-    Math.sin(t * 0.11) * HUE_BREATH_DEG * (reduced ? 0.5 : 1);
-  // Les sauts sont bornés : un impact fait changer la lumière, il ne change pas
-  // de morceau.
-  const impact = Math.max(
-    -HUE_IMPACT_LIMIT,
-    Math.min(HUE_IMPACT_LIMIT, DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation),
-  );
-  const base = scene.palette.hue;
-  return clampHueToAnchor(base + drift + impact, anchor, spread);
+  const accent = scene.palette.accent;
+  if (accent === scene.palette.hue) return scene.palette.hue;
+  return drop >= 0.35 || variation >= 0.5 ? accent : scene.palette.hue;
 }
 
 /**
@@ -889,7 +847,7 @@ function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
       const time = f.t - trail * 0.045;
       const phase = time * (0.55 + (index % 3) * 0.09) + index * 0.73;
       const angle = baseAngle + Math.sin(phase) * 0.95;
-      const hue = shiftHue(f.palette.hue, index * (360 / count) + time * 70);
+      const hue = index % 2 === 0 ? f.palette.hue : f.palette.accent;
       const trailAlpha = alpha * (trail === 0 ? 1 : 0.3 / trail);
       const endX = originX + Math.cos(angle) * reach;
       const endY = originY + Math.sin(angle) * reach;
@@ -942,7 +900,7 @@ function drawRaveConfetti(
     const size = (2.4 + hash01(seed + 4) * 4.2) * (0.6 + f.quality * 0.4);
     const alpha = (1 - phase) * intensity;
     if (alpha <= 0.01) continue;
-    const hue = shiftHue(f.palette.hue, hash01(seed + 5) * 360 + f.t * 70);
+    const hue = hash01(seed + 5) < 0.5 ? f.palette.hue : f.palette.accent;
     ctx.fillStyle = paint(hue, 1, 0.65, alpha);
     ctx.fillRect(x, y, size, size * 1.8);
   }
@@ -1026,7 +984,7 @@ function drawRaveShockwave(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const progress = age / 0.9;
   const radius = Math.min(f.width, f.height) * (0.08 + progress * 0.8);
   const alpha = (1 - progress) * (0.55 + 0.35 * f.energy);
-  const hue = shiftHue(contrastHue(f), f.t * 60);
+  const hue = contrastHue(f);
   ctx.strokeStyle = paint(hue, 1, 0.62, alpha * 0.7);
   ctx.lineWidth = 5 + 12 * (1 - progress);
   ctx.beginPath();
@@ -1059,7 +1017,7 @@ function drawRavePanels(
         const x = originX + (panelWidth * (col + 0.5)) / cols;
         const y = (f.height * (row + 0.5)) / rows;
         const alpha = 0.35 + 0.5 * clamp01(f.beat);
-        const hue = shiftHue(f.palette.hue, row * 14 + col * 22 + f.t * 80);
+        const hue = row % 2 === 0 ? f.palette.hue : f.palette.accent;
         ctx.fillStyle = paint(hue, 1, 0.6, alpha);
         ctx.fillRect(x - panelWidth * 0.07, y - f.height * 0.007, panelWidth * 0.14, f.height * 0.014);
       }
@@ -1080,7 +1038,7 @@ function drawRaveFloor(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // Lignes de fuite.
   for (let index = 0; index <= 14; index += 1) {
     const x = f.width * (-0.25 + (1.5 * index) / 14);
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 40 + index * 18), 1, 0.55, alpha);
+    ctx.strokeStyle = paint(index % 2 === 0 ? f.palette.hue : f.palette.accent, 1, 0.55, alpha);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(center, horizon);
@@ -1095,7 +1053,7 @@ function drawRaveFloor(ctx: CanvasRenderingContext2D, f: FrameState): void {
     const spread = 0.15 + progress * 0.95;
     const x0 = center - f.width * 0.62 * spread;
     const x1 = center + f.width * 0.62 * spread;
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 50 + step * 22), 1, 0.6, alpha * 0.9);
+    ctx.strokeStyle = paint(step % 2 === 0 ? f.palette.hue : f.palette.accent, 1, 0.6, alpha * 0.9);
     ctx.lineWidth = 1 + progress * 1.6;
     ctx.beginPath();
     ctx.moveTo(x0, y);
@@ -1300,12 +1258,13 @@ export function renderFrame(input: RenderInput): void {
   const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
   const anchor = sceneAnchor(scene, plan.track);
   const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
+  const paletteAccent =
+    paletteHue === scene.palette.hue ? scene.palette.accent : scene.palette.hue;
   const palette: Palette = {
     name: scene.palette.name,
     hue: paletteHue,
-    // La complémentaire suit la dérive de la principale : l'écart entre les deux
-    // reste celui voulu par le morceau, quel que soit le glissement de teinte.
-    accent: (paletteHue + (scene.palette.accent - scene.palette.hue) + 360) % 360,
+    // L'autre couleur du morceau, jamais une teinte intermédiaire.
+    accent: paletteAccent,
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la
@@ -1410,10 +1369,9 @@ export function renderFrame(input: RenderInput): void {
       ...base,
       palette: {
         ...palette,
-        // La variante garde son écart de 48°, ramené lui aussi dans le budget
-        // autour de l'ancre : le spectacle ne doit jamais sortir de l'identité
-        // colorée du morceau, même quand une autre famille surgit.
-        hue: clampHueToAnchor(palette.hue + 48, anchor, scene.palette.spread),
+        // La variante joue l'autre couleur du morceau, jamais une troisième.
+        hue: palette.accent,
+        accent: palette.hue,
         saturation: Math.min(1, palette.saturation + 0.1),
       },
       alpha: base.alpha * variation * 0.8,
@@ -1432,7 +1390,7 @@ export function renderFrame(input: RenderInput): void {
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
-      palette: { ...palette, hue: clampHueToAnchor(palette.hue + 25, anchor, scene.palette.spread) },
+      palette: { ...palette, hue: palette.accent, accent: palette.hue },
       alpha: base.alpha * wash,
       intensity: base.intensity,
     };
@@ -1453,10 +1411,9 @@ export function renderFrame(input: RenderInput): void {
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
-      // salle. Le concert garde la teinte stable de l'accord ; le rave dérive.
-      ctx.fillStyle = hard
-        ? paint(shiftHue(contrastHue(base), base.t * 45), 1, 0.62, washAlpha)
-        : dynamic
+      // salle, et reste dans les deux couleurs du morceau.
+      ctx.fillStyle =
+        hard || dynamic
           ? paint(contrastHue(base), 1, 0.62, washAlpha)
           : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
@@ -1527,10 +1484,9 @@ export function renderFrame(input: RenderInput): void {
   if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave ou concert : une couleur de l'accord, jamais du
-    // blanc. Le concert garde une teinte fixe au lieu de dériver.
-    ctx.fillStyle = hard
-      ? paint(shiftHue(contrastHue(base), base.t * 50), 1, 0.6, strength)
-      : dynamic
+    // blanc, et jamais une troisième teinte.
+    ctx.fillStyle =
+      hard || dynamic
         ? paint(contrastHue(base), 1, 0.6, strength)
         : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
@@ -1549,14 +1505,13 @@ export function renderFrame(input: RenderInput): void {
       ? hardStrobeDivisions(base, drop)
       : dynamicStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
-    // En rave, chaque éclat dérive dans l'arc-en-ciel. En concert, le strobe
-    // reste lisible : une couleur par temps fort, en alternance entre la teinte
-    // principale et la complémentaire. Pas de kaléidoscope.
+    // Toujours deux couleurs au maximum : une alternance entre la teinte de la
+    // scène et sa complémentaire. Le rave alterne à chaque éclat, le concert à
+    // chaque temps fort.
     const strobeHue = hard
-      ? shiftHue(
-          strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,
-          base.t * 60 + strobeIndex * 30,
-        )
+      ? strobeIndex % 2 === 0
+        ? base.palette.hue
+        : base.palette.accent
       : Math.floor(base.beatIndex) % 2 === 0
         ? base.palette.hue
         : base.palette.accent;

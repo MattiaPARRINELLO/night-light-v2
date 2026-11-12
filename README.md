@@ -305,26 +305,22 @@ machine qui souffle, où seule la résolution de la surface baisse. À défaut d
 
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
 sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
-plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémentaire :
+plan (`plan.track`). **Deux couleurs maximum par morceau** : une teinte principale et une
+complémentaire, jamais une troisième.
 
-- chaque scène reste dans la fenêtre de l'une ou de l'autre ;
-- les **moments forts basculent sur la complémentaire** — c'est le saut de couleur qui marque
+- chaque scène joue exactement l'une des deux, jamais une teinte intermédiaire ;
+- les **moments forts basculent sur l'autre couleur** — c'est le saut de couleur qui marque
   un refrain ou un drop ;
-- dès qu'une scène a plusieurs sources, ses projecteurs ne sont pas monochromes : ils se
-  répartissent sur un **accord** tiré du cercle chromatique (`lampHue`). Quatre accords
-  alternent d'une scène à l'autre — demi-complémentaire, triade, carré, hexade — et l'accent
-  du morceau remplace toujours son 180 : la scène est multicolore, mais ses couleurs viennent
-  toutes de la palette du morceau. Les lampes parcourent l'accord avec un pas qui ne retombe
-  jamais sur la voisine, donc une rangée se lit comme un dégradé d'univers, pas comme deux
-  tons alternés ;
-- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur la couleur
-  opposée** (`colorFlip`) : le passage à l'opposée est une rotation de la roue de couleurs, donc
-  progressif — c'est le déplacement remplacé par la couleur, là où un motif de plus ne se lirait
-  pas ;
+- les projecteurs, lyres et lampes alternent entre ces deux teintes (`lampHue`) : une scène
+  reste lisible et cohérente au lieu de partir en arc-en-ciel ;
+- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur l'autre
+  couleur** (`colorFlip`) : c'est le déplacement remplacé par la couleur, là où un motif de
+  plus ne se lirait pas ;
 - l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
-- les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
+- les gradients de faisceaux et de rideaux peuvent varier de quelques degrés pour la
+  profondeur, mais ils restent dans l'une des deux couleurs.
 
 ### Le mode rave (profil hard)
 
@@ -341,8 +337,8 @@ de le forcer ou de le couper quand l'analyse se trompe. Le profil **Concert** (b
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 
 - une palette néon, saturation maximale et luminosité moyenne (0,58 à 0,64) posée sur un
-  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec des écarts
-  de teintes larges pour multiplier les couleurs vives d'une même scène ;
+  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec deux pôles
+  très écartés pour que la couleur claque sans multiplier les teintes ;
 - un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,
   rayons, maillages, poursuites de lyres — au lieu des nappes et figures rondes ;
 - des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus
@@ -399,14 +395,13 @@ une image montre toujours deux mondes superposés, même quand la scène change.
 
 **Réactions aux moments forts** :
 
-La dérive de teinte est une sinusoïde bornée (période 90 s) et la teinte rendue est
-ramenée dans la fenêtre du morceau : elle ne sort jamais du budget de couleur, même après
-plusieurs minutes. La brillance d'une scène est la **moyenne** de la courbe aiguë, plus une
+La couleur ne dérive plus : chaque morceau garde ses deux teintes, et la scène joue l'une
+ou l'autre. La brillance d'une scène est la **moyenne** de la courbe aiguë, pas une
 somme saturée : les réservoirs de familles sont réellement distincts.
 
-- **drop** : quand une montée se résout sur l'impact, saut de teinte borné à 26°
-  (`DROP_HUE_JUMP`), wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage
-  blanc bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
+- **drop** : quand une montée se résout sur l'impact, bascule sur l'autre couleur du
+  morceau, wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage coloré
+  bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
   lyres, geste des barres, motif des blinders, pôle de teinte — donc deux impacts ne se
   ressemblent pas ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
@@ -429,10 +424,10 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 - curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
   musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
-- deux teintes voisines sont toujours séparées d'au moins ~34°, pour éviter les alternances
-  de couleur agressives ;
-- les flashs sont suffisamment espacés pour ne pas former de stroboscope ; ce n'est pas une
-  garantie, et le mieux reste de les couper si tu y es sensible.
+- chaque morceau reste limité à deux couleurs, et les scènes voisines alternent entre les
+  deux au lieu d'inventer une teinte intermédiaire ;
+- le mode standard garde des flashs espacés ; les profils concert et rave ajoutent des
+  stroboscopes, à couper avec « Sans flashs » ou « Intensité réduite » si tu y es sensible.
 
 ## Développement
 

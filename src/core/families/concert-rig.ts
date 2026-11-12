@@ -820,7 +820,9 @@ export function dessinerBlinders(
     const { x, y } = positionBlinder(index, w, h);
     const couleur = rave
       ? {
-          hue: shiftHue(f.palette.hue, index * 26 + f.t * 80),
+          // Deux couleurs au maximum : les blinders alternent entre la teinte
+          // de la scène et sa complémentaire.
+          hue: index % 2 === 0 ? f.palette.hue : f.palette.accent,
           saturation: 1,
           lightness: 0.62,
         }

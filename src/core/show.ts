@@ -1301,62 +1301,6 @@ function hueDelta(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-/** Ramène une teinte dans la fenêtre ±spread de son ancre. */
-function clampToAnchor(hue: number, anchor: number, spread: number): number {
-  const delta = hueDelta(anchor, hue);
-  const borne = Math.max(0, Math.min(spread, Math.abs(delta)));
-  return (anchor + (delta >= 0 ? borne : -borne) + 360) % 360;
-}
-
-/**
- * Choisit une teinte qui respecte à la fois le budget de l'ancre et l'écart
- * minimal avec la scène précédente.
- *
- * L'ordre est celui du contrat : l'écart gagne sur le clamp. Si décaler la
- * teinte dans la fenêtre de l'ancre préféré ne suffit pas, on bascule sur
- * l'autre pôle du morceau (ancre ↔ complémentaire) plutôt que de réduire
- * l'écart.
- */
-function hueWithGap(
-  anchor: number,
-  otherAnchor: number,
-  derive: number,
-  previousHue: number,
-  spread: number,
-): { hue: number; anchor: number } {
-  const step = minHueStepEff(spread);
-  const candidate = (anchor + derive + 360) % 360;
-  if (Math.abs(hueDelta(previousHue, candidate)) >= step) {
-    return { hue: clampToAnchor(candidate, anchor, spread), anchor };
-  }
-
-  // Même ancre : on pousse la teinte du côté qui s'éloigne de la précédente.
-  const direction = hueDelta(previousHue, candidate) >= 0 ? 1 : -1;
-  const pushed = clampToAnchor((candidate + direction * step + 360) % 360, anchor, spread);
-  if (Math.abs(hueDelta(previousHue, pushed)) >= step) {
-    return { hue: pushed, anchor };
-  }
-
-  // L'écart gagne : on change d'ancre (l'autre pôle du morceau).
-  const switched = (otherAnchor + derive + 360) % 360;
-  const switchedDirection = hueDelta(previousHue, switched) >= 0 ? 1 : -1;
-  const switchedPushed = clampToAnchor(
-    (switched + switchedDirection * step + 360) % 360,
-    otherAnchor,
-    spread,
-  );
-  if (Math.abs(hueDelta(previousHue, switchedPushed)) >= step) {
-    return { hue: switchedPushed, anchor: otherAnchor };
-  }
-
-  // Repli mesuré : on garde la solution qui offre le plus grand écart réel.
-  const same = clampToAnchor(candidate, anchor, spread);
-  const other = clampToAnchor(switched, otherAnchor, spread);
-  return Math.abs(hueDelta(previousHue, same)) >= Math.abs(hueDelta(previousHue, other))
-    ? { hue: same, anchor }
-    : { hue: other, anchor: otherAnchor };
-}
-
 /** Options du plan de spectacle. */
 export interface ShowPlanOptions {
   /**
@@ -1608,6 +1552,8 @@ export function buildShowPlan(
 
     // Les moments forts basculent sur la complémentaire du morceau : c'est le
     // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
+    // Le morceau ne possède que deux couleurs, `track.hue` et `track.accent` :
+    // chaque scène prend l'une des deux, jamais une teinte intermédiaire.
     const fort =
       section?.kind === "refrain" ||
       mood === "explosif" ||
@@ -1620,9 +1566,6 @@ export function buildShowPlan(
         : fort
           ? track.accent
           : track.hue;
-    const derive = grouped
-      ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
-      : (hash01(seed + turn * 977) - 0.5) * track.spread;
     const autreAncre = ancre === track.hue ? track.accent : track.hue;
     let hue: number;
     const cachedHue = grouped ? groupHues.get(group) : undefined;
@@ -1630,12 +1573,19 @@ export function buildShowPlan(
       // L'identité d'un groupe prime : deux refrains portent la même teinte.
       hue = cachedHue;
     } else {
-      // Le couple (écart minimal, budget d'ancre) est résolu ensemble : voir
-      // `hueWithGap`. L'écart gagne sur le clamp, quitte à changer d'ancre.
-      hue = hueWithGap(ancre, autreAncre, derive, previousHue, track.spread).hue;
+      hue = ancre;
+      // Deux scènes voisines ne portent pas la même couleur : on bascule sur
+      // l'autre pôle plutôt que d'inventer une troisième teinte.
+      if (
+        previousHue > -999 &&
+        Math.abs(hueDelta(previousHue, hue)) < minHueStepEff(track.spread)
+      ) {
+        hue = autreAncre;
+      }
       if (grouped) groupHues.set(group, hue);
     }
     previousHue = hue;
+    const compAccent = hue === track.hue ? track.accent : track.hue;
 
     scenes.push({
       index: turn,
@@ -1647,7 +1597,7 @@ export function buildShowPlan(
       palette: {
         name: track.name,
         hue,
-        accent: (track.accent + derive + 360) % 360,
+        accent: compAccent,
         spread: track.spread,
         saturation: paletteSaturation(mood, hard, dynamic),
         lightness: paletteLightness(mood, hard, dynamic),
@@ -1679,45 +1629,19 @@ export function buildShowPlan(
     });
   }
 
-  // Saut de teinte des reprises après un calme. On agit après la construction
-  // pour ne pas décaler la chaîne de teintes des scènes suivantes : seule la
-  // première scène qui suit le calme change. Le candidat reste dans le budget
-  // de l'une des deux ancres et maximise l'écart avec le calme ET avec la
-  // scène suivante (le contrat de couleur exige aussi un écart entre voisines).
+  // Saut de teinte des reprises après un calme. La scène qui suit le calme
+  // prend, des deux couleurs du morceau, celle qui s'éloigne le plus du calme ;
+  // sa complémentaire devient l'autre. Aucune troisième teinte n'est inventée.
   for (let index = 1; index < scenes.length; index += 1) {
     const scene = scenes[index];
     const previous = scenes[index - 1];
     if (scene === undefined || previous === undefined) continue;
     if (previous.mood !== "calme" || scene.mood === "calme") continue;
     const previousHue = previous.palette.hue;
-    const nextHue = scenes[index + 1]?.palette.hue ?? (previousHue + 180) % 360;
-    const candidates: number[] = [];
-    for (let degree = 0; degree < 360; degree += 1) {
-      const candidate = degree;
-      const inBudget = [track.hue, track.accent].some(
-        (anchor) => Math.abs(hueDelta(anchor, candidate)) <= track.spread + 1e-6,
-      );
-      if (inBudget) candidates.push(candidate);
-    }
-    // Priorité à l'écart ≥ 90° avec le calme ; ensuite on maximise l'écart
-    // avec la scène suivante pour respecter le contrat de couleur.
-    const farFromCalm = candidates.filter(
-      (candidate) => Math.abs(hueDelta(previousHue, candidate)) >= 90,
-    );
-    const pool = farFromCalm.length > 0 ? farFromCalm : candidates;
-    let best = scene.palette.hue;
-    let bestNext = -1;
-    let bestCalm = -1;
-    for (const candidate of pool) {
-      const fromCalm = Math.abs(hueDelta(previousHue, candidate));
-      const fromNext = Math.abs(hueDelta(candidate, nextHue));
-      if (fromNext > bestNext || (fromNext === bestNext && fromCalm > bestCalm)) {
-        bestNext = fromNext;
-        bestCalm = fromCalm;
-        best = candidate;
-      }
-    }
+    const fromCalm = (hue: number) => Math.abs(hueDelta(previousHue, hue));
+    const best = fromCalm(track.hue) >= fromCalm(track.accent) ? track.hue : track.accent;
     scene.palette.hue = best;
+    scene.palette.accent = best === track.hue ? track.accent : track.hue;
   }
 
   if (scenes.length === 0) {

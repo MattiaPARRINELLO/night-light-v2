@@ -1,6 +1,7 @@
 import { hash01 } from "../series";
 import { softBeam } from "./beams";
 import { rowPositions } from "./geometry";
+import { shiftHue } from "../color";
 import { lampHue } from "./harmony";
 import { beatSwing, colorFlip, elementEnvelope } from "./tempo";
 import type { FamilyDraw } from "./types";
@@ -99,11 +100,12 @@ const gobos: FamilyDraw = (ctx, f, view) => {
     const sens = i % 2 === 0 ? 1 : -1;
     const rotation = f.t * (0.08 + hash01(i * 2311 + f.seed) * 0.2) * sens;
     const teinte = lampHue(f, i);
-    // La bascule ajoute 180° : la forme porte brièvement la couleur opposée à
-    // la sienne. Comme la teinte est un angle, le passage d'une couleur à
-    // l'autre est une rotation continue de la roue — jamais un saut.
+    // La bascule fait passer la forme à l'autre couleur du morceau : jamais une
+    // troisième teinte, même pendant la transition.
     const bascule = colorFlip(f, view, i, cycleBascule);
-    const hue = teinte + 180 * bascule;
+    const cible = teinte === f.palette.hue ? f.palette.accent : f.palette.hue;
+    const delta = ((cible - teinte + 540) % 360) - 180;
+    const hue = shiftHue(teinte, delta * bascule);
     // Un léger regain accompagne la bascule : la couleur opposée doit se voir.
     const alpha = enveloppe * (0.08 + 0.3 * f.energy + 0.16 * f.beat) * f.alpha * (1 + 0.55 * bascule);
     if (alpha <= 0.004) continue;
