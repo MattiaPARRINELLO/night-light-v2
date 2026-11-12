@@ -1275,7 +1275,6 @@ export function renderFrame(input: RenderInput): void {
   const scene = sceneAt(plan, t);
   const hard = plan.profile === "hard";
   const dynamic = plan.profile === "dynamic";
-  const energetic = hard || dynamic;
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
@@ -1454,10 +1453,12 @@ export function renderFrame(input: RenderInput): void {
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
-      // salle.
-      ctx.fillStyle = energetic
+      // salle. Le concert garde la teinte stable de l'accord ; le rave dérive.
+      ctx.fillStyle = hard
         ? paint(shiftHue(contrastHue(base), base.t * 45), 1, 0.62, washAlpha)
-        : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
+        : dynamic
+          ? paint(contrastHue(base), 1, 0.62, washAlpha)
+          : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -1526,10 +1527,12 @@ export function renderFrame(input: RenderInput): void {
   if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave ou concert : une couleur de l'accord, jamais du
-    // blanc.
-    ctx.fillStyle = energetic
+    // blanc. Le concert garde une teinte fixe au lieu de dériver.
+    ctx.fillStyle = hard
       ? paint(shiftHue(contrastHue(base), base.t * 50), 1, 0.6, strength)
-      : `rgba(255,255,255,${strength.toFixed(3)})`;
+      : dynamic
+        ? paint(contrastHue(base), 1, 0.6, strength)
+        : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
   // Stroboscope hard ou concert : la couche qui fait vraiment « clignoter » le
@@ -1546,10 +1549,17 @@ export function renderFrame(input: RenderInput): void {
       ? hardStrobeDivisions(base, drop)
       : dynamicStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
-    const strobeHue = shiftHue(
-      strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,
-      base.t * 60 + strobeIndex * 30,
-    );
+    // En rave, chaque éclat dérive dans l'arc-en-ciel. En concert, le strobe
+    // reste lisible : une couleur par temps fort, en alternance entre la teinte
+    // principale et la complémentaire. Pas de kaléidoscope.
+    const strobeHue = hard
+      ? shiftHue(
+          strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,
+          base.t * 60 + strobeIndex * 30,
+        )
+      : Math.floor(base.beatIndex) % 2 === 0
+        ? base.palette.hue
+        : base.palette.accent;
     ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }
