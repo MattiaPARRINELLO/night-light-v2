@@ -598,6 +598,48 @@ export function dessinerBordure(
 
   const tube = epaisseurBordure(f);
 
+  if (concert) {
+    // En concert, le ruban est une vraie bande épaisse : un halo continu, un
+    // corps uniforme et un cœur clair, puis le motif par tronçons. Aucune diode
+    // ronde et aucune variation d'épaisseur : c'est un tube LED, pas une
+    // guirlande.
+    const intensiteMoyenne = moyenneBordure(f, view);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation * 0.9,
+      0.5,
+      (0.07 + 0.1 * energie) * (0.4 + 0.6 * intensiteMoyenne),
+    );
+    ctx.lineWidth = tube * 2.35;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.6, 0.12 + 0.14 * energie);
+    ctx.lineWidth = tube;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.9, 0.1 + 0.14 * energie);
+    ctx.lineWidth = Math.max(1.2, tube * 0.26);
+    traceRuban();
+
+    for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
+      const intensite = intensiteBordure(f, view, index, budgetFlash);
+      const couleur = teinteBordure(f, view, index, budgetFlash);
+      const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
+      ctx.strokeStyle = paint(
+        couleur.hue,
+        couleur.saturation,
+        0.62,
+        clamp01(0.05 + 0.72 * intensite) * variation,
+      );
+      ctx.lineWidth = tube * (0.78 + 0.12 * intensite);
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
+    }
+    return;
+  }
+
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
   // uniformément allumé et la différence allumé/éteint disparaît.
