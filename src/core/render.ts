@@ -1268,6 +1268,7 @@ export function renderFrame(input: RenderInput): void {
     hue: paletteHue,
     // L'autre couleur du morceau, jamais une teinte intermédiaire.
     accent: paletteAccent,
+    ...(scene.palette.tertiary !== undefined ? { tertiary: scene.palette.tertiary } : {}),
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la

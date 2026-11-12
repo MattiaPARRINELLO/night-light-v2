@@ -16,29 +16,28 @@ export function sceneChord(
   _seed?: number,
   _mood?: Mood,
 ): number[] {
-  return palette.accent === palette.hue ? [palette.hue] : [palette.hue, palette.accent];
+  const colors = [palette.hue, palette.accent];
+  if (palette.tertiary !== undefined) colors.push(palette.tertiary);
+  return [...new Set(colors)];
 }
 
 /**
  * Teinte de la lampe `index`.
  *
- * Les lampes alternent entre les deux seules couleurs du morceau. La rotation
- * est tirée de la graine pour que la rangée ne commence pas toujours par le
- * même pôle, mais elle ne peut jamais introduire une troisième teinte.
+ * Les lampes parcourent les une à trois couleurs du morceau. La rotation est
+ * tirée de la graine pour que la rangée ne commence pas toujours par la même
+ * teinte ; elle ne peut jamais en introduire une quatrième.
  */
 export function lampHue(f: FrameState, index: number): number {
   const accord = sceneChord(f.palette, f.scene.index, f.seed, f.scene.mood);
   if (accord.length < 2) return accord[0] ?? f.palette.hue;
-  const rotation = Math.floor(hash01(f.scene.index * 104729 + f.seed) * 2);
-  return accord[(((index + rotation) % 2) + 2) % 2] ?? f.palette.hue;
+  const rotation = Math.floor(hash01(f.scene.index * 104729 + f.seed) * accord.length);
+  return accord[(((index + rotation) % accord.length) + accord.length) % accord.length] ?? f.palette.hue;
 }
 
 /**
- * Teinte de contraste d'une scène : l'autre couleur du morceau.
- *
- * C'est ce qui empêche l'image d'être monochrome : le fond, le halo commun et
- * le foyer de chaque famille s'en servent. Avec deux couleurs, le contraste est
- * toujours l'autre pôle, jamais une teinte inventée.
+ * Teinte de contraste d'une scène : la couleur du morceau la plus éloignée de sa
+ * dominante.
  */
 export function contrastHue(f: FrameState): number {
   const accord = sceneChord(f.palette, f.scene.index, f.seed, f.scene.mood);

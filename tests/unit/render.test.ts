@@ -1249,21 +1249,23 @@ describe("accords de couleurs", () => {
 
   const ecart = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
 
-  test("l'accord se limite aux deux couleurs du morceau", () => {
+  test("l'accord se limite aux couleurs du morceau", () => {
     const palette = scene.palette;
     const accord = sceneChord(palette, scene.index, plan.seed);
-    // Deux teintes maximum : la dominante et sa complémentaire.
-    expect(accord.length).toBeLessThanOrEqual(2);
+    // Une à trois teintes maximum : les couleurs de la palette du morceau.
+    expect(accord.length).toBeGreaterThanOrEqual(1);
+    expect(accord.length).toBeLessThanOrEqual(3);
     expect(accord).toContain(palette.hue);
     if (palette.accent !== palette.hue) expect(accord).toContain(palette.accent);
+    if (palette.tertiary !== undefined) expect(accord).toContain(palette.tertiary);
   });
 
-  test("les lampes d'une même scène n'utilisent que deux teintes", () => {
+  test("les lampes d'une même scène restent dans la palette", () => {
     const f = frame();
     const hues = Array.from({ length: 15 }, (_, index) => lampHue(f, index));
     const distinctes = new Set(hues.map((hue) => Math.round(hue)));
-    expect(distinctes.size).toBeLessThanOrEqual(2);
-    // Deux lampes voisines alternent entre les deux pôles.
+    expect(distinctes.size).toBeLessThanOrEqual(3);
+    // Deux lampes voisines changent de teinte tant que la palette le permet.
     if (f.palette.accent !== f.palette.hue) {
       for (let index = 0; index < hues.length - 1; index += 1) {
         expect(ecart(hues[index]!, hues[index + 1]!)).toBeGreaterThan(0);
@@ -1276,7 +1278,7 @@ describe("accords de couleurs", () => {
     for (let index = 0; index < 8; index += 1) {
       expect(lampHue(frame({ t: 10 }), index)).toBe(lampHue(frame({ t: 40 }), index));
     }
-    // ...et le morceau entier ne dépasse jamais ses deux couleurs, quel que soit
+    // ...et le morceau entier ne dépasse jamais ses trois couleurs, quel que soit
     // le rang de scène : aucun accord plus large ne s'invente.
     const tirages = new Set<string>();
     for (let index = 0; index < 24; index += 1) {
@@ -1294,9 +1296,9 @@ describe("accords de couleurs", () => {
       }
       return max;
     };
-    // Deux teintes maximum, quelle que soit l'humeur.
-    expect(maxLongueur("explosif")).toBeLessThanOrEqual(2);
-    expect(maxLongueur("sombre")).toBeLessThanOrEqual(2);
+    // Trois teintes maximum, quelle que soit l'humeur.
+    expect(maxLongueur("explosif")).toBeLessThanOrEqual(3);
+    expect(maxLongueur("sombre")).toBeLessThanOrEqual(3);
   });
 
   test("la teinte de contraste s'écarte de la dominante", () => {

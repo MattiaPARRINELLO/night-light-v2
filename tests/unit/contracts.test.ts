@@ -93,10 +93,8 @@ describe("X1 — budget de teinte plan + rendu", () => {
       for (let t = 0; t < extended.duration; t += 1 / 30) {
         const scene = sceneAt(plan, t);
         const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false);
-        const anchor = Math.min(
-          circular(hue, plan.track.hue),
-          circular(hue, plan.track.accent),
-        );
+        const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+        const anchor = Math.min(...colors.map((color) => circular(hue, color)));
         if (anchor > budget) {
           if (anchor > worst.excursion) worst = { track: name, excursion: anchor, at: t, budget };
           if (!violations.includes(name)) violations.push(name);

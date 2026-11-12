@@ -513,7 +513,7 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 8,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 11.401,
@@ -531,7 +531,7 @@
           "variant": "waves"
         },
         {
-          "accent": 8,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 24.752,
@@ -556,7 +556,7 @@
           "fadeIn": 1.2,
           "fadeOut": 0.9,
           "family": "mirror",
-          "hue": 8,
+          "hue": 152,
           "intensity": 0.695,
           "lightness": 0.68,
           "mood": "pulse",
@@ -579,7 +579,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 8,
+          "hue": 152,
           "intensity": 0.962,
           "lightness": 0.76,
           "mood": "explosif",
@@ -590,7 +590,7 @@
           "variant": "rings"
         },
         {
-          "accent": 8,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 60,
@@ -610,7 +610,7 @@
       ],
       "seed": 1478502844,
       "track": {
-        "accent": 8,
+        "accent": 152,
         "hue": 152,
         "name": "émeraude-magenta",
         "spread": 42
@@ -631,7 +631,7 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 268,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 15.302,
@@ -649,7 +649,7 @@
           "variant": "spiral"
         },
         {
-          "accent": 268,
+          "accent": 34,
           "backdrop": "waves",
           "drop": {
             "barres": "onde",
@@ -672,7 +672,7 @@
           "variant": "rings"
         },
         {
-          "accent": 268,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 42.26,
@@ -690,7 +690,7 @@
           "variant": "particles"
         },
         {
-          "accent": 268,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 53.94,
@@ -708,7 +708,7 @@
           "variant": "pluie"
         },
         {
-          "accent": 268,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 60,
@@ -728,7 +728,7 @@
       ],
       "seed": 600798831,
       "track": {
-        "accent": 268,
+        "accent": 34,
         "hue": 34,
         "name": "ambre-azur",
         "spread": 38

@@ -78,7 +78,9 @@ describe("profil hard", () => {
     const plan = buildShowPlan(hardAnalysis(), false, 7, { hard: "on" });
     expect(plan.profile).toBe("hard");
     expect(HARD_BACKDROPS).toContain(plan.backdrop);
-    expect(["sang-glace", "violet-acide", "braise-nuit", "magenta-arc"]).toContain(plan.track.name);
+    // La palette ne dépend plus du profil : elle est choisie une fois pour le
+    // morceau et reste identique en standard, concert ou rave.
+    expect(["magenta-cyan", "ambre-azur", "émeraude-magenta", "azur-orange", "corail-turquoise", "violet-jaune", "cyan-rose", "jaune-bleu"]).toContain(plan.track.name);
     for (const scene of plan.scenes) {
       // Les rôles de concert gardent la priorité (refrain, montée, impact) ;
       // les autres scènes puisent dans le réservoir hard.
@@ -92,8 +94,8 @@ describe("profil hard", () => {
       expect(fort.palette.lightness).toBeGreaterThanOrEqual(0.58);
       expect(fort.palette.lightness).toBeLessThanOrEqual(0.64);
     }
-    // Le mode rave ouvre le budget de teinte : plus de couleurs vives par scène.
-    expect(plan.track.spread).toBeGreaterThanOrEqual(52);
+    // Le mode rave garde une palette franche, sans imposer sa propre gamme.
+    expect(plan.track.spread).toBeGreaterThanOrEqual(36);
   });
 
   test("le mode auto n'active pas le hard sur un morceau clair", () => {

@@ -329,7 +329,7 @@ describe("R6 — continuité de la teinte hors événement", () => {
   // de respiration), très en dessous d'un saut de palette (~180°).
   const THRESHOLD = 8;
 
-  test.failing(`|Δ teinte| image à image < ${THRESHOLD}° hors drop/variation (render.ts:350-361)`, () => {
+  test(`|Δ teinte| image à image < ${THRESHOLD}° hors drop/variation (render.ts:350-361)`, () => {
     const worst: string[] = [];
     for (const { name, analysis } of tracks) {
       const plan = buildShowPlan(analysis, false);

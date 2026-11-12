@@ -191,6 +191,8 @@ export interface Palette {
   saturation: number;
   /** Luminosité, 0..1. */
   lightness: number;
+  /** Troisième couleur du morceau, quand la palette en compte trois. */
+  tertiary?: number;
 }
 
 export interface ShowPlan {
@@ -216,12 +218,14 @@ export interface ShowPlan {
   backdrop: FamilyId;
 }
 
-/** Palette d'un morceau : une teinte, sa complémentaire, et leur écart. */
+/** Palette d'un morceau : une à trois couleurs, tenues du début à la fin. */
 export interface TrackPalette {
   name: string;
   hue: number;
   accent: number;
   spread: number;
+  /** Toutes les couleurs du morceau, dans l'ordre : 1, 2 ou 3 teintes. */
+  colors?: number[];
 }
 
 export const FAMILY_LABELS: Record<FamilyId, string> = {
@@ -490,9 +494,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
  *
  * Le spectacle éclaire une salle de soirée, pas un musée : les teintes sont
  * franches et saturées, et chaque morceau garde la même identité d'un bout à
- * l'autre (voir `buildShowPlan`). La complémentaire sert aux sources
- * secondaires, pour qu'un faisceau sur deux parte dans l'autre couleur sans
- * jamais jurer avec l'ensemble.
+ * l'autre (voir `buildShowPlan`).
  */
 const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
   { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
@@ -506,36 +508,46 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
 ];
 
 /**
- * Palettes du profil hard.
- *
- * Deux pôles très écartés (rouge/glace, violet/acide, braise/cyan) et un spread
- * plus serré que les palettes standard : la couleur reste lisible sur un fond
- * noir, et le contraste porte l'agressivité sans multiplier les teintes.
- */
-const HARD_TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
-  { name: "sang-glace", hue: 352, accent: 186, spread: 54 },
-  { name: "violet-acide", hue: 284, accent: 90, spread: 58 },
-  { name: "braise-nuit", hue: 14, accent: 196, spread: 52 },
-  { name: "magenta-arc", hue: 324, accent: 172, spread: 56 },
-];
-
-/**
  * Teintes d'accent disponibles, indépendantes de la teinte principale.
  *
- * L'accent n'est plus figé par la palette du morceau : deux morceaux qui
+ * L'accent n'est pas figé par la palette du morceau : deux morceaux qui
  * partagent la même dominante peuvent recevoir une secondaire très différente.
  * L'accent reste écarté de la dominante pour rester lisible.
  */
 const ACCENT_HUES = [8, 26, 52, 90, 140, 172, 196, 222, 268, 300, 336, 352];
 
+function hueGap(a: number, b: number): number {
+  return Math.abs((((a - b + 540) % 360) - 180));
+}
+
 /** Accent du morceau, choisi à partir de la graine et écarté de la dominante. */
 function pickTrackAccent(hue: number, seed: number): number {
-  const candidats = ACCENT_HUES.filter((accent) => {
-    const ecart = Math.abs((((accent - hue + 540) % 360) - 180));
-    return ecart >= 55;
-  });
+  const candidats = ACCENT_HUES.filter((accent) => hueGap(accent, hue) >= 55);
   const pool = candidats.length > 0 ? candidats : ACCENT_HUES;
   return pool[Math.floor(hash01(seed * 29 + 17) * pool.length)] ?? (hue + 140) % 360;
+}
+
+/** Troisième teinte, écartée des deux premières. */
+function pickTrackTertiary(hue: number, accent: number, seed: number): number {
+  const candidats = ACCENT_HUES.filter(
+    (candidate) => hueGap(candidate, hue) >= 55 && hueGap(candidate, accent) >= 30,
+  );
+  const pool = candidats.length > 0 ? candidats : ACCENT_HUES;
+  return pool[Math.floor(hash01(seed * 53 + 7) * pool.length)] ?? (accent + 120) % 360;
+}
+
+/**
+ * Couleurs du morceau : une, deux ou trois teintes, tirées de la graine.
+ *
+ * Le tirage ne dépend que du morceau (durée, tempo, nombre de temps), donc deux
+ * lectures donnent exactement la même palette, quel que soit le profil choisi.
+ */
+function pickTrackColors(hue: number, seed: number): number[] {
+  const count = 1 + Math.floor(hash01(seed * 71 + 13) * 3);
+  const accent = pickTrackAccent(hue, seed);
+  if (count <= 1) return [hue];
+  if (count === 2) return [hue, accent];
+  return [hue, accent, pickTrackTertiary(hue, accent, seed)];
 }
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
@@ -1432,14 +1444,17 @@ export function buildShowPlan(
   const measureSec = Math.max(1, (analysis.meter ?? 4) * beatPeriod);
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
-  // l'autre, et tenue du premier au dernier plan. Le profil concert garde les
-  // palettes standard : il n'est pas un mode sombre, juste plus habité.
-  const palettes = hard ? HARD_TRACK_PALETTES : TRACK_PALETTES;
+  // l'autre, et tenue du premier au dernier plan. Le profil ne change jamais la
+  // palette : un même morceau garde ses couleurs en standard, concert ou rave.
   const baseTrack =
-    palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
-  // L'accent change d'un morceau à l'autre, même quand deux morceaux tombent sur
-  // la même teinte principale.
-  const track = { ...baseTrack, accent: pickTrackAccent(baseTrack.hue, seed) };
+    TRACK_PALETTES[Math.floor(hash01(seed * 13 + 5) * TRACK_PALETTES.length)] ??
+    TRACK_PALETTES[0]!;
+  const colors = pickTrackColors(baseTrack.hue, seed);
+  const track = {
+    ...baseTrack,
+    accent: colors[1] ?? colors[0]!,
+    colors,
+  };
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
   // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
   // remarque à peine. Choisie une fois, tenue du début à la fin.
@@ -1657,7 +1672,11 @@ export function buildShowPlan(
       hue = ancre;
       if (grouped) groupHues.set(group, hue);
     }
-    const compAccent = hue === track.hue ? track.accent : track.hue;
+    const compAccent =
+      track.colors?.find((candidate) => candidate !== hue) ?? (hue === track.hue ? track.accent : track.hue);
+    const tertiary = track.colors?.find(
+      (candidate) => candidate !== hue && candidate !== compAccent,
+    );
 
     scenes.push({
       index: turn,
@@ -1673,6 +1692,7 @@ export function buildShowPlan(
         spread: track.spread,
         saturation: paletteSaturation(mood, hard, dynamic),
         lightness: paletteLightness(mood, hard, dynamic),
+        ...(tertiary !== undefined ? { tertiary } : {}),
       },
       intensity: clamp01(
         moodIntensity(mood, caractere.energy) +
@@ -1702,18 +1722,22 @@ export function buildShowPlan(
   }
 
   // Saut de teinte des reprises après un calme. La scène qui suit le calme
-  // prend, des deux couleurs du morceau, celle qui s'éloigne le plus du calme ;
-  // sa complémentaire devient l'autre. Aucune troisième teinte n'est inventée.
+  // prend, parmi les une à trois couleurs du morceau, celle qui s'éloigne le
+  // plus du calme ; les autres deviennent ses couleurs secondaires.
   for (let index = 1; index < scenes.length; index += 1) {
     const scene = scenes[index];
     const previous = scenes[index - 1];
     if (scene === undefined || previous === undefined) continue;
     if (previous.mood !== "calme" || scene.mood === "calme") continue;
     const previousHue = previous.palette.hue;
+    const colors = track.colors ?? [track.hue, track.accent];
     const fromCalm = (hue: number) => Math.abs(hueDelta(previousHue, hue));
-    const best = fromCalm(track.hue) >= fromCalm(track.accent) ? track.hue : track.accent;
+    const best = [...colors].sort((a, b) => fromCalm(b) - fromCalm(a))[0] ?? track.hue;
+    const rest = colors.filter((candidate) => candidate !== best);
     scene.palette.hue = best;
-    scene.palette.accent = best === track.hue ? track.accent : track.hue;
+    scene.palette.accent = rest[0] ?? best;
+    if (rest[1] !== undefined) scene.palette.tertiary = rest[1];
+    else delete scene.palette.tertiary;
   }
 
   if (scenes.length === 0) {
@@ -1731,6 +1755,7 @@ export function buildShowPlan(
         spread: track.spread,
         saturation: hard ? 1 : dynamic ? 0.98 : 0.88,
         lightness: hard ? 0.55 : dynamic ? 0.62 : 0.64,
+        ...(colors[2] !== undefined ? { tertiary: colors[2] } : {}),
       },
       intensity: hard ? 0.7 : dynamic ? 0.74 : 0.6,
       fadeIn: hard ? 0.45 : dynamic ? 0.6 : 0.7,

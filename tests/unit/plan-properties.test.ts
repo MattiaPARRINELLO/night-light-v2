@@ -17,11 +17,6 @@ const MIN_SCENE_SPAN = 5;
 
 const tracks = corpusAnalyses();
 
-/** Distance angulaire dans [0, 180]. */
-function circular(left: number, right: number): number {
-  return Math.abs((((left - right) % 360) + 540) % 360 - 180);
-}
-
 function firstNonFinite(value: unknown, path = "plan"): string | null {
   if (typeof value === "number") return Number.isFinite(value) ? null : path;
   if (Array.isArray(value)) {
@@ -212,34 +207,34 @@ describe("P8 — diversité sur un morceau de 3 minutes", () => {
   });
 });
 
-describe("P9 — deux couleurs stables par morceau", () => {
+describe("P9 — palette déterministe de une à trois couleurs par morceau", () => {
   for (const { name, analysis } of tracks) {
     test(`teinte dans la palette du morceau : ${name}`, () => {
       const plan = buildShowPlan(analysis, false);
+      const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+      expect(colors.length).toBeGreaterThanOrEqual(1);
+      expect(colors.length).toBeLessThanOrEqual(3);
       for (const scene of plan.scenes) {
-        // Chaque scène joue exactement la teinte principale ou sa
-        // complémentaire : aucune teinte intermédiaire n'est inventée.
-        const distance = Math.min(
-          circular(scene.palette.hue, plan.track.hue),
-          circular(scene.palette.hue, plan.track.accent),
-        );
+        // Chaque scène joue exactement une couleur du morceau : aucune teinte
+        // intermédiaire n'est inventée.
         expect(
-          distance,
-          `${describeScene(scene)} : teinte ${scene.palette.hue.toFixed(1)}° à ${distance.toFixed(1)}° de l'ancre`,
-        ).toBeLessThanOrEqual(1e-6);
+          colors,
+          `${describeScene(scene)} : teinte ${scene.palette.hue.toFixed(1)}°`,
+        ).toContain(scene.palette.hue);
       }
     });
   }
 
-  test("chaque scène joue l'une des deux couleurs du morceau, la principale domine", () => {
+  test("la couleur principale domine les autres", () => {
     const violations: string[] = [];
     for (const { name, analysis } of tracks) {
       const plan = buildShowPlan(analysis, false);
+      const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
       let principale = 0;
       let secondaire = 0;
       for (const scene of plan.scenes) {
         if (scene.palette.hue === plan.track.hue) principale += 1;
-        else if (scene.palette.hue === plan.track.accent) secondaire += 1;
+        else if (colors.includes(scene.palette.hue)) secondaire += 1;
         else violations.push(`${name}: ${describeScene(scene)} à ${scene.palette.hue.toFixed(1)}°`);
       }
       if (principale < secondaire) {

@@ -318,23 +318,23 @@ machine qui souffle, où seule la résolution de la surface baisse. À défaut d
 
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
 sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
-plan (`plan.track`). **Deux couleurs maximum par morceau** : une teinte principale et une
-complémentaire, jamais une troisième. L'accent est tiré indépendamment de la dominante :
-deux morceaux qui partagent la même couleur principale reçoivent une secondaire différente.
+plan (`plan.track`). **Une à trois couleurs par morceau** : monochrome, duo ou triade, tirées
+de la graine du morceau. Le choix est déterministe et **indépendant du profil** : le même
+morceau garde exactement les mêmes couleurs en standard, concert ou rave.
 
-- chaque scène joue exactement l'une des deux, jamais une teinte intermédiaire ;
-- la **couleur principale domine** le morceau ; la secondaire marque seulement les impacts
-  et les refrains identifiés, pas chaque scène énergique ;
-- les projecteurs, lyres et lampes alternent entre ces deux teintes (`lampHue`) : une scène
+- chaque scène joue exactement l'une des couleurs, jamais une teinte intermédiaire ;
+- la **couleur principale domine** le morceau ; les autres marquent seulement les impacts,
+  les refrains identifiés et les lampes ;
+- les projecteurs, lyres et lampes parcourent les une à trois teintes (`lampHue`) : une scène
   reste lisible et cohérente au lieu de partir en arc-en-ciel ;
-- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur l'autre
-  couleur** (`colorFlip`) : c'est le déplacement remplacé par la couleur, là où un motif de
-  plus ne se lirait pas ;
+- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur une
+  autre couleur** (`colorFlip`) : c'est le déplacement remplacé par la couleur, là où un
+  motif de plus ne se lirait pas ;
 - l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
 - les gradients de faisceaux et de rideaux peuvent varier de quelques degrés pour la
-  profondeur, mais ils restent dans l'une des deux couleurs.
+  profondeur, mais ils restent dans la palette du morceau.
 
 ### Le mode rave (profil hard)
 
@@ -425,7 +425,7 @@ une image montre toujours deux mondes superposés, même quand la scène change.
 
 **Réactions aux moments forts** :
 
-La couleur ne dérive plus : chaque morceau garde ses deux teintes, et la scène joue l'une
+La couleur ne dérive plus : chaque morceau garde ses une à trois teintes, et la scène joue l'une
 ou l'autre. La brillance d'une scène est la **moyenne** de la courbe aiguë, pas une
 somme saturée : les réservoirs de familles sont réellement distincts.
 
@@ -454,8 +454,8 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 - curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
   musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
-- chaque morceau reste limité à deux couleurs, avec une principale qui tient le morceau et
-  une secondaire réservée aux impacts et refrains ;
+- chaque morceau reste limité à une, deux ou trois couleurs, tirées de façon déterministe,
+  avec une principale qui tient le morceau et les autres réservées aux impacts et aux lampes ;
 - le mode standard garde des flashs espacés ; les profils concert et rave ajoutent des
   stroboscopes, à couper avec « Sans flashs » ou « Intensité réduite » si tu y es sensible.
 
