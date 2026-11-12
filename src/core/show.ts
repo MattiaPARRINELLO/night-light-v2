@@ -50,7 +50,15 @@ export type FamilyId =
   | "lyres-respiration"
   | "lyres-zigzag"
   | "lyres-cascade"
-  | "lyres-colisee";
+  | "lyres-colisee"
+  // Autres lumières de scène du mode concert : PAR wash, découpes, tours,
+  // rampe, barres de projecteurs et poursuites croisées.
+  | "par-wash"
+  | "decoupes"
+  | "tours-lumiere"
+  | "rampe-facade"
+  | "barres-projecteurs"
+  | "poursuites-croisees";
 
 /**
  * Rôle d'une scène dans la dramaturgie du concert.
@@ -259,6 +267,12 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-zigzag": "zigzag de lyres",
   "lyres-cascade": "cascade de lyres",
   "lyres-colisee": "colisée de lyres",
+  "par-wash": "PAR wash",
+  decoupes: "découpes",
+  "tours-lumiere": "tours lumière",
+  "rampe-facade": "rampe de façade",
+  "barres-projecteurs": "barres de projecteurs",
+  "poursuites-croisees": "poursuites croisées",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -359,6 +373,12 @@ export const CONCERT_FAMILIES: FamilyId[] = [
   "lyres-zigzag",
   "lyres-cascade",
   "lyres-colisee",
+  "par-wash",
+  "decoupes",
+  "tours-lumiere",
+  "rampe-facade",
+  "barres-projecteurs",
+  "poursuites-croisees",
 ];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [

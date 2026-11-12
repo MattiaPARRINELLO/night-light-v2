@@ -387,6 +387,9 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
+- d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
+  tours lumière latérales, rampe de façade, barres de projecteurs et poursuites
+  croisées ;
 - aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
   réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
 - les refrains et les montées déploient le plateau complet ;
