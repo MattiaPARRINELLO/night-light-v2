@@ -37,7 +37,13 @@ export type FamilyId =
   | "pont-concert"
   | "lyres-poursuite"
   | "lyres-duo"
-  | "lyres-eventail";
+  | "lyres-eventail"
+  // Lyres cinématiques du mode concert : plusieurs étages de têtes, pour
+  // remplir la scène sans lasers ni artifices de rave.
+  | "lyres-cathedrale"
+  | "lyres-orbitale"
+  | "lyres-rideau"
+  | "lyres-aurore";
 
 /**
  * Rôle d'une scène dans la dramaturgie du concert.
@@ -235,6 +241,10 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-poursuite": "lyres en poursuite",
   "lyres-duo": "lyres et barres en duo",
   "lyres-eventail": "éventail de lyres",
+  "lyres-cathedrale": "cathédrale de lyres",
+  "lyres-orbitale": "lyres orbitales",
+  "lyres-rideau": "rideau de lyres",
+  "lyres-aurore": "aurore de lyres",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -277,6 +287,10 @@ export const RHYTHMIC_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
 ];
 export const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -307,6 +321,10 @@ export const ENERGETIC_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
 ];
 /** Familles du plateau de concert (impact, refrain, montée). */
 export const CONCERT_FAMILIES: FamilyId[] = [
@@ -316,6 +334,10 @@ export const CONCERT_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
 ];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [
@@ -367,17 +389,12 @@ export const HARD_BACKDROPS: FamilyId[] = ["grid", "tunnel", "waves"];
 /**
  * Réservoir du profil concert dynamique.
  *
- * Le plateau de concert d'abord (lyres suspendues, barres LED, pont, poursuite,
- * duo, éventail), puis les sources qui remplissent aussi la scène sans la
- * vider : projecteurs mobiles, faisceaux et lyres. Aucune nappe calme : une
- * scène de concert doit rester habitée.
+ * Uniquement le plateau de lyres et ses variantes cinématiques : lyres
+ * suspendues, barres LED, pont, poursuite, duo, éventail, cathédrale, orbitales,
+ * rideau et aurore. Aucun laser, confetti, CO2 ni nappe calme : le concert est
+ * une accumulation de têtes mobiles, pas une rave.
  */
-export const DYNAMIC_FAMILIES: FamilyId[] = [
-  ...CONCERT_FAMILIES,
-  "spots",
-  "beams",
-  "lyre",
-];
+export const DYNAMIC_FAMILIES: FamilyId[] = [...CONCERT_FAMILIES];
 
 /**
  * Branche de l'arbre de décision de `familyFor`.

@@ -718,14 +718,14 @@ export function clampHueToAnchor(hue: number, anchor: number, spread: number): n
 export function sceneHue(
   scene: Scene,
   _t: number,
-  drop: number,
+  _drop: number,
   _variation: number,
   _reduced: boolean,
   _anchor: number = scene.palette.hue,
 ): number {
-  const accent = scene.palette.accent;
-  if (accent === scene.palette.hue) return scene.palette.hue;
-  return drop >= 0.5 ? accent : scene.palette.hue;
+  // Une scène tient UNE couleur du début à la fin. Les impacts sont marqués par
+  // la lumière et le flash, jamais par un changement de teinte en plein strobe.
+  return scene.palette.hue;
 }
 
 /**
@@ -1355,7 +1355,9 @@ export function renderFrame(input: RenderInput): void {
   if (hard) {
     drawRaveFloor(ctx, base);
     drawRaveLyreWall(ctx, base, view);
-  } else drawFamily(ctx, base, view, sceneFamily);
+  } else {
+    drawFamily(ctx, base, view, sceneFamily);
+  }
   if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
 

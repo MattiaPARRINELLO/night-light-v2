@@ -1082,6 +1082,90 @@ const pontConcert: FamilyDraw = (ctx, f, view) => {
   barresLed(ctx, { ...f, alpha: f.alpha * 0.85 }, view);
 };
 
+/** Étage de lyres : une rangée complète, décalée et mise à l'échelle. */
+function dessinerEtageLyres(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  geste: GesteLyre,
+  alpha: number,
+  offsetY: number,
+  scale: number,
+): void {
+  ctx.save();
+  ctx.translate(f.width * 0.5, f.height * 0.5 + offsetY);
+  ctx.scale(scale, scale);
+  ctx.translate(-f.width * 0.5, -f.height * 0.5);
+  dessinerLyres(ctx, { ...f, alpha: f.alpha * alpha }, view, geste);
+  ctx.restore();
+}
+
+/** Colonne latérale de lyres, tournée vers le centre de la scène. */
+function dessinerColonneLyres(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  side: -1 | 1,
+  geste: GesteLyre,
+  alpha: number,
+): void {
+  ctx.save();
+  if (side < 0) {
+    ctx.translate(0, f.height);
+    ctx.rotate(-Math.PI / 2);
+  } else {
+    ctx.translate(f.width, 0);
+    ctx.rotate(Math.PI / 2);
+  }
+  ctx.scale(f.height / Math.max(f.width, 1), 1);
+  dessinerLyres(ctx, { ...f, alpha: f.alpha * alpha }, view, geste);
+  ctx.restore();
+}
+
+/**
+ * Cathédrale de lyres : deux étages lointains et deux étages frontaux, tous en
+ * mouvement lent. C'est la scène la plus dense du profil concert, sans aucun
+ * laser ni artifice de rave.
+ */
+const lyresCathedrale: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.2, -f.height * 0.17, 0.42);
+  dessinerEtageLyres(ctx, f, view, "croisement", 0.28, -f.height * 0.09, 0.55);
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.55, 0, 0.78);
+  dessinerEtageLyres(ctx, f, view, "cercle", 0.72, f.height * 0.11, 0.94);
+};
+
+/**
+ * Lyres orbitales : une rangée centrale en cercle, encadrée par deux colonnes
+ * latérales qui croisent leurs faisceaux vers le milieu.
+ */
+const lyresOrbitale: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.24, -f.height * 0.12, 0.5);
+  dessinerEtageLyres(ctx, f, view, "cercle", 0.7, f.height * 0.02, 0.86);
+  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.55);
+  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.55);
+};
+
+/**
+ * Rideau de lyres : trois nappes de faisceaux parallèles, de la plus lointaine
+ * à la plus proche. Les têtes s'ouvrent ensemble comme un rideau de scène.
+ */
+const lyresRideau: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.3, -f.height * 0.14, 0.6);
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.48, 0, 0.8);
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.66, f.height * 0.13, 0.98);
+};
+
+/**
+ * Aurore de lyres : quatre étages qui déroulent des gestes différents, du fond
+ * vers l'avant. La scène brille par accumulation de têtes, pas par stroboscope.
+ */
+const lyresAurore: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.18, -f.height * 0.2, 0.4);
+  dessinerEtageLyres(ctx, f, view, "croisement", 0.32, -f.height * 0.1, 0.58);
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.52, 0, 0.8);
+  dessinerEtageLyres(ctx, f, view, "cercle", 0.75, f.height * 0.12, 0.96);
+};
+
 /** Familles de la scénographie concert. */
 export const CONCERT_FAMILIES = {
   "lyres-suspendues": lyresSuspendues,
@@ -1090,4 +1174,8 @@ export const CONCERT_FAMILIES = {
   "lyres-poursuite": lyresPoursuite,
   "lyres-duo": lyresDuo,
   "lyres-eventail": lyresEventail,
+  "lyres-cathedrale": lyresCathedrale,
+  "lyres-orbitale": lyresOrbitale,
+  "lyres-rideau": lyresRideau,
+  "lyres-aurore": lyresAurore,
 } as const;

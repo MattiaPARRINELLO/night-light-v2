@@ -1901,15 +1901,10 @@ describe("couleur", () => {
     return Math.abs(((b - a + 540) % 360) - 180);
   }
 
-  test("un impact bascule sur l'autre couleur du morceau, jamais une troisième", () => {
+  test("une scène garde sa couleur du début à la fin", () => {
     const scene = buildShowPlan(analysis(), false).scenes[0]!;
-    const duos = [scene.palette.hue, scene.palette.accent];
-    // Impact et variation au maximum : la scène change de pôle…
     const hue = sceneHue(scene, 12, 1, 1, false);
-    expect(duos).toContain(hue);
-    if (scene.palette.accent !== scene.palette.hue) {
-      expect(hue).toBe(scene.palette.accent);
-    }
+    expect(hue).toBe(scene.palette.hue);
   });
 
   test("la dérive de teinte porte sur le temps du morceau, pas sur la scène", () => {

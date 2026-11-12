@@ -377,11 +377,16 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
 **Concert / C** du dashboard, ou la touche `C` sur l'écran de show.
 
 - la scène reste presque toujours habitée : lyres suspendues, barres LED, pont concert,
-  poursuites, duo et éventail, complétés par les projecteurs mobiles, les faisceaux et les
-  lyres. Aucune nappe calme dans le réservoir ;
-- les refrains et les montées déploient le plateau complet, comme un impact de concert ;
+  poursuites, duo et éventail, complétés par quatre nouvelles scènes de lyres
+  cinématiques — cathédrale, orbitales, rideau et aurore — qui empilent jusqu'à quatre
+  étages de têtes mobiles. Aucune nappe calme ni effet de rave dans le réservoir ;
+- aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
+  réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
+- les refrains et les montées déploient le plateau complet ;
 - les strobes partent plus facilement : seuil d'énergie plus bas, 2 à 6 éclats par temps
   fort au lieu de 4 à 12, et flashs colorés dans la couleur principale de la scène ;
+- la bordure LED strobe plus rarement qu'en rave et à cadence lente (2 éclats par temps),
+  pour ne pas saturer le pourtour ;
 - l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
   atteindre le fond presque noir du rave ;
 - le budget de flashs et le mode réduit restent maîtres.

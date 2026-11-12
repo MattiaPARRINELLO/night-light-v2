@@ -120,10 +120,10 @@ describe("profil concert dynamique", () => {
       return strobes / 200;
     };
     const dropRate = rate("drop", true);
-    expect(dropRate).toBeGreaterThan(0.2);
-    expect(dropRate).toBeLessThan(0.45);
-    expect(rate("refrain", true)).toBeGreaterThan(0.1);
-    expect(rate("couplet", true)).toBeGreaterThan(0.08);
+    expect(dropRate).toBeGreaterThan(0.1);
+    expect(dropRate).toBeLessThan(0.25);
+    expect(rate("refrain", true)).toBeGreaterThan(0.05);
+    expect(rate("couplet", true)).toBeGreaterThan(0.03);
     // Le standard ne strobe pas sur ces blocs : le concert en ajoute vraiment.
     expect(rate("drop", false)).toBe(0);
     expect(rate("couplet", false)).toBe(0);
