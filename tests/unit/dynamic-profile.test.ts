@@ -57,31 +57,32 @@ describe("profil concert dynamique", () => {
     }
   });
 
-  test("le strobe concert part plus facilement que le hard", () => {
+  test("le strobe concert est réservé aux vrais impacts", () => {
     const settings = { intensity: 1, flashes: 0.9, reduced: false, hard: "dynamic" } as RenderSettings;
     const frame = (overrides: Partial<FrameState> = {}) =>
       ({
         dynamic: true,
         reduced: false,
-        energy: 0.6,
+        energy: 0.95,
         beat: 1,
-        bass: 0.7,
+        bass: 0.9,
         beatPhase: 0,
         beatIndex: 0,
         t: 0,
         ...overrides,
       }) as unknown as FrameState;
-    const divisions = dynamicStrobeDivisions(frame(), 0.5);
+    const divisions = dynamicStrobeDivisions(frame(), 0.8);
     expect(divisions).toBeGreaterThanOrEqual(2);
-    expect(divisions).toBeLessThanOrEqual(6);
-    // À 0,6 d'énergie, le hard serait encore muet ; le concert strobe déjà.
-    expect(dynamicStrobeAlpha(frame(), settings, 0.5)).toBeGreaterThan(0);
-    expect(dynamicStrobeAlpha(frame({ dynamic: false }), settings, 0.5)).toBe(0);
-    expect(dynamicStrobeAlpha(frame({ reduced: true }), settings, 0.5)).toBe(0);
+    expect(divisions).toBeLessThanOrEqual(4);
+    // Il faut un impact franc et un passage fort.
+    expect(dynamicStrobeAlpha(frame(), settings, 0.8)).toBeGreaterThan(0);
+    expect(dynamicStrobeAlpha(frame(), settings, 0.2)).toBe(0);
+    expect(dynamicStrobeAlpha(frame({ energy: 0.5 }), settings, 0.8)).toBe(0);
+    expect(dynamicStrobeAlpha(frame({ dynamic: false }), settings, 0.8)).toBe(0);
+    expect(dynamicStrobeAlpha(frame({ reduced: true }), settings, 0.8)).toBe(0);
     expect(
-      dynamicStrobeAlpha(frame(), { ...settings, flashes: 0 } as RenderSettings, 0.5),
+      dynamicStrobeAlpha(frame(), { ...settings, flashes: 0 } as RenderSettings, 0.8),
     ).toBe(0);
-    expect(dynamicStrobeAlpha(frame({ beat: 0, bass: 0 }), settings, 0.5)).toBe(0);
   });
 
   test("le profil concert admet les temps forts des passages énergiques", () => {
@@ -120,10 +121,10 @@ describe("profil concert dynamique", () => {
       return strobes / 200;
     };
     const dropRate = rate("drop", true);
-    expect(dropRate).toBeGreaterThan(0.1);
-    expect(dropRate).toBeLessThan(0.25);
-    expect(rate("refrain", true)).toBeGreaterThan(0.05);
-    expect(rate("couplet", true)).toBeGreaterThan(0.03);
+    expect(dropRate).toBeGreaterThan(0.03);
+    expect(dropRate).toBeLessThan(0.15);
+    expect(rate("refrain", true)).toBeGreaterThan(0.01);
+    expect(rate("couplet", true)).toBeGreaterThan(0.01);
     // Le standard ne strobe pas sur ces blocs : le concert en ajoute vraiment.
     expect(rate("drop", false)).toBe(0);
     expect(rate("couplet", false)).toBe(0);

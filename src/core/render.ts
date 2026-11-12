@@ -121,7 +121,7 @@ export const DYNAMIC_FLASH_ATTACK_DROP_SEC = 0.1;
  * facilement sans transformer chaque morceau en rave.
  */
 export const DYNAMIC_STROBE_DIVISIONS_MIN = 2;
-export const DYNAMIC_STROBE_DIVISIONS_MAX = 6;
+export const DYNAMIC_STROBE_DIVISIONS_MAX = 4;
 /**
  * Poids d'un temps fort dans le flash, en profil hard.
  *
@@ -464,9 +464,9 @@ export function dynamicStrobeDivisions(f: FrameState, drop: number): number {
 /**
  * Opacité du stroboscope concert à l'instant courant, 0 s'il ne doit pas clignoter.
  *
- * Même geste que le hard, en plus accessible : le seuil d'énergie est plus bas,
- * le kick accepte une basse plus discrète et les éclats sont moins nombreux.
- * Le budget de flashs et le mode réduit restent maîtres.
+ * En concert, le strobe n'est pas une texture de fond : il est réservé aux vrais
+ * impacts. Le reste du temps, ce sont les lyres qui tiennent la salle. Le budget
+ * de flashs et le mode réduit restent maîtres.
  */
 export function dynamicStrobeAlpha(
   f: FrameState,
@@ -474,14 +474,16 @@ export function dynamicStrobeAlpha(
   drop: number,
 ): number {
   if (f.dynamic !== true || f.reduced || settings.flashes <= 0) return 0;
-  const gate = smoothstep(0.38, 0.72, f.energy);
+  // Seuls les impacts francs ouvrent le strobe.
+  if (drop < 0.4) return 0;
+  const gate = smoothstep(0.62, 0.9, f.energy);
   if (gate <= 0.01) return 0;
   const kick = clamp01(0.5 * f.beat + 0.5 * f.bass);
-  if (kick < 0.06) return 0;
+  if (kick < 0.1) return 0;
   const divisions = dynamicStrobeDivisions(f, drop);
   const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
   if (!on) return 0;
-  const amount = gate * (0.3 + 0.5 * kick);
+  const amount = gate * (0.25 + 0.45 * kick);
   return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
 }
 
@@ -744,7 +746,7 @@ export function sceneHue(
  *
  * Aucun état n'est conservé : `t` seul décide.
  */
-export function flashAdmitted(view: TrackView, t: number, hard = false, dynamic = false): boolean {
+export function flashAdmitted(view: TrackView, t: number, hard = false, _dynamic = false): boolean {
   // Fenêtre d'éligibilité : latence nulle + la plus longue des montées. Un
   // flash reste admis pendant toute son attaque, jamais au-delà.
   const window = FLASH_LATENCY_SEC + Math.max(FLASH_ATTACK_BEAT_SEC, FLASH_ATTACK_DROP_SEC) + 0.05;
@@ -764,9 +766,9 @@ export function flashAdmitted(view: TrackView, t: number, hard = false, dynamic 
   // impact. C'est exactement le geste d'un strobe de club.
   if (hard) return true;
 
-  // Profil concert : chaque temps fort d'un passage énergique claque aussi, mais
-  // les passages doux gardent la cadence espacée du standard.
-  if (dynamic && view.energyAt(current) >= 0.5) return true;
+  // Le concert ne flashe pas à chaque temps : la salle est tenue par les lyres.
+  // Les impacts restent admis par la branche du dessus, et les temps forts
+  // gardent la cadence espacée du standard.
 
   // Dans les 1,5 s qui suivent un impact, aucun flash de temps fort : l'impact
   // lui-même est déjà admis par `lastDrop >= lastBeat` juste au-dessus. Sans

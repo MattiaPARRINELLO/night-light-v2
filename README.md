@@ -390,10 +390,10 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
 - aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
   réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
 - les refrains et les montées déploient le plateau complet ;
-- les strobes partent plus facilement : seuil d'énergie plus bas, 2 à 6 éclats par temps
-  fort au lieu de 4 à 12, et flashs colorés dans la couleur principale de la scène ;
-- la bordure LED strobe plus rarement qu'en rave et à cadence lente (2 éclats par temps),
-  pour ne pas saturer le pourtour ;
+- pas de flash à chaque temps : les lyres tiennent la salle. Seuls les vrais impacts
+  ouvrent le strobe, avec 2 à 4 éclats par temps et la couleur principale de la scène ;
+- la bordure LED strobe rarement, à cadence lente (2 éclats par temps), pour ne pas
+  saturer le pourtour ;
 - l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
   atteindre le fond presque noir du rave ;
 - le budget de flashs et le mode réduit restent maîtres.

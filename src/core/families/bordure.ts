@@ -139,7 +139,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     // garde une part plus discrète : un bloc de temps en temps, pas toutes les
     // mesures.
     if (f.hard && tirage < 0.18) return "strobe";
-    if (f.dynamic === true && tirage < 0.16) return "strobe";
+    if (f.dynamic === true && tirage < 0.08) return "strobe";
     // Le strobe « fort et sale » est réservé aux gros drops : une montée qui
     // n'a pas assez de force ne le déclenche jamais.
     const grosDrop = clamp01(f.buildStrength) >= 0.8;
@@ -158,7 +158,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   if (f.scene.role === "refrain") {
     // En concert, le refrain peut lui aussi partir en strobe par blocs, mais
     // rarement.
-    if (f.dynamic === true && tirage < 0.1) return "strobe";
+    if (f.dynamic === true && tirage < 0.05) return "strobe";
     if (tirage < 0.16) return "chenillard";
     if (tirage < 0.3) return "comete";
     if (tirage < 0.42) return "alternance";
@@ -171,7 +171,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return "vumetre";
   }
   if (f.scene.role === "montee") {
-    if (f.dynamic === true && tirage < 0.06) return "strobe";
+    if (f.dynamic === true && tirage < 0.03) return "strobe";
     if (tirage < 0.26) return "haut";
     if (tirage < 0.46) return "chenillard";
     if (tirage < 0.62) return "progression";
@@ -181,8 +181,8 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   }
   if (f.scene.role === "intro") return tirage < 0.45 ? "rail" : tirage < 0.75 ? "respiration" : "progression";
   if (f.hard && tirage > 0.92) return "strobe";
-  // Concert : environ un bloc sur seize sur les couplets et passages neutres.
-  if (f.dynamic === true && tirage > 0.94) return "strobe";
+  // Concert : environ un bloc sur trente sur les couplets et passages neutres.
+  if (f.dynamic === true && tirage > 0.97) return "strobe";
   if (tirage < 0.2) return "rail";
   if (tirage < 0.36) return "cote";
   if (tirage < 0.5) return "respiration";
