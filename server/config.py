@@ -93,6 +93,7 @@ class Settings:
     session_dir: str
     cache_dir: str
     analysis_cache_max_bytes: int
+    local_cache_max_bytes: int
     deezer_arl: str
     workers: int
     sample_rate: int
@@ -118,6 +119,7 @@ def load_settings() -> Settings:
         session_dir=str(session_dir),
         cache_dir=str(cache_dir),
         analysis_cache_max_bytes=max(0, _int_env("ANALYSIS_CACHE_MAX_MB", 256)) * 1024 * 1024,
+        local_cache_max_bytes=max(0, _int_env("LOCAL_CACHE_MAX_MB", 2048)) * 1024 * 1024,
         deezer_arl=(os.environ.get("DEEZER_ARL") or "").strip(),
         workers=max(1, _int_env("ANALYZE_WORKERS", 1)),
         sample_rate=_int_env("ANALYSIS_SAMPLE_RATE", 22050),

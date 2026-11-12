@@ -97,8 +97,21 @@ lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé
    volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/rave,
    mode rave (`H`), blackout instantané (`B`), intensité réduite, sans flashs,
    retour à l'écran de dépôt.
-6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
-   et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
+6. Tu peux relancer le show autant de fois que tu veux : le fichier déposé et son analyse
+   sont conservés dans un cache persistant, même après la fin de la session.
+
+### Le cache des fichiers déposés
+
+Un MP3 déposé à la main n'est pas jetable. Le serveur lit ses métadonnées (`titre`,
+`artiste`), copie l'audio et l'analyse dans `CACHE_DIR/local-uploads`, puis les réutilise :
+
+- si tu relances le même fichier, aucune ré-analyse ;
+- si tu le joues ensuite sur le PC via un lecteur MPRIS, le suivi automatique le retrouve
+  par titre/artiste/durée et le show se synchronise sur l'analyse déjà en cache ;
+- ce chemin passe avant Deezer : pas besoin d'ARL ni de réseau pour un morceau déposé.
+
+Le cache survit au redémarrage du serveur et est purgé en LRU au-delà de
+`LOCAL_CACHE_MAX_MB`.
 
 ## Identification et récupération (Deezer)
 
@@ -585,6 +598,7 @@ server/
   sniff.py              détection du format réel par octets
   analysis.py           moteur librosa (décodage, courbes, rythme, section, montées)
   analysis_cache.py     cache persistant des analyses (clé morceau + version d'analyseur)
+  local_cache.py        cache persistant des fichiers déposés (audio, analyse, métadonnées)
   audio_capture.py      capture audio système locale (PipeWire/PulseAudio)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
@@ -605,7 +619,8 @@ docs/                   spec et audit des effets, harnais de tests, mesures, rap
 | variable | défaut | rôle |
 | --- | --- | --- |
 | `SESSION_DIR` | `/tmp/night-light-sessions` | répertoire des sessions (fichiers audio de lecture) |
-| `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés (survit au redémarrage) |
+| `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés et déposés (survit au redémarrage) |
+| `LOCAL_CACHE_MAX_MB` | `2048` | taille maximale du cache des fichiers déposés à la main |
 | `MAX_FILE_MB` | `40` | taille d'envoi maximale |
 | `MAX_DURATION_SEC` | `900` | durée de morceau maximale |
 | `ANALYZE_TIMEOUT_SEC` | `240` | limite dure d'une analyse (le process est interrompu et l'erreur `timeout` renvoyée) |
