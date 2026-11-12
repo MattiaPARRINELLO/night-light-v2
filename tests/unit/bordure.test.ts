@@ -4,6 +4,7 @@ import {
   blinderBordure,
   couleurBordure,
   dessinerBordure,
+  epaisseurBordure,
   intensiteBordure,
   motifBordure,
   moyenneBordure,
@@ -273,6 +274,14 @@ describe("motifs de la bordure", () => {
 });
 
 describe("dessin de la bordure", () => {
+  test("en concert, le tube est nettement plus épais", () => {
+    const standard = frame("couplet", 12);
+    const concert = frame("couplet", 12, { dynamic: true });
+    const epaisseurStandard = epaisseurBordure(standard);
+    const epaisseurConcert = epaisseurBordure(concert);
+    expect(epaisseurConcert).toBeGreaterThan(epaisseurStandard * 2);
+  });
+
   test("dessinerBordure dépose des diodes et reste pure", () => {
     const view = new TrackView(analysis());
     const f = frame("drop", 12, { energy: 1, drop: 1, beat: 1 });

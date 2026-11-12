@@ -24,6 +24,16 @@ export const NOMBRE_DIODES_BORDURE = 240;
  * Quasi nul : le ruban est collé au bord, seul son halo déborde hors cadre.
  */
 const MARGE_BORDURE = 0.003;
+/**
+ * Retrait du ruban en mode concert.
+ *
+ * Le tube est bien plus épais : il faut l'éloigner du bord pour que toute son
+ * épaisseur reste visible dans le cadre.
+ */
+const MARGE_BORDURE_CONCERT = 0.02;
+/** Épaisseur relative du tube, en fraction du petit côté. */
+const TUBE_BORDURE = 0.011;
+const TUBE_BORDURE_CONCERT = 0.026;
 
 export type MotifBordure =
   | "rail"
@@ -69,8 +79,13 @@ function modulo(value: number, total: number): number {
  * (`index ± 0,55`) : ils se raccordent exactement, y compris dans les coins où
  * le sens change. Un tronçon centré sur sa diode laissait un trou à chaque angle.
  */
-function pointBordure(position: number, largeur: number, hauteur: number): DiodeBordure {
-  const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
+function pointBordure(
+  position: number,
+  largeur: number,
+  hauteur: number,
+  margeRatio = MARGE_BORDURE,
+): DiodeBordure {
+  const marge = Math.min(largeur, hauteur) * margeRatio;
   const largeurUtile = Math.max(largeur - 2 * marge, 0);
   const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
   const perimetre = 2 * (largeurUtile + hauteurUtile);
@@ -114,8 +129,13 @@ function pointBordure(position: number, largeur: number, hauteur: number): Diode
  * est calculée sur le petit côté : en portrait comme en paysage, la bordure
  * reste entièrement dans le cadre.
  */
-export function positionBordure(index: number, largeur: number, hauteur: number): DiodeBordure {
-  return pointBordure(index, largeur, hauteur);
+export function positionBordure(
+  index: number,
+  largeur: number,
+  hauteur: number,
+  margeRatio = MARGE_BORDURE,
+): DiodeBordure {
+  return pointBordure(index, largeur, hauteur, margeRatio);
 }
 
 /**
@@ -227,7 +247,12 @@ export function poidsMotif(
   motif: MotifBordure = motifBordure(f, view),
   budgetFlash = 1,
 ): number {
-  const diode = positionBordure(index, f.width, f.height);
+  const diode = positionBordure(
+    index,
+    f.width,
+    f.height,
+    f.dynamic === true ? MARGE_BORDURE_CONCERT : MARGE_BORDURE,
+  );
   const temps = tempsTempsFort(f, view);
   const marge = Math.min(f.width, f.height) * MARGE_BORDURE;
   const largeurUtile = Math.max(f.width - 2 * marge, 1);
@@ -502,8 +527,9 @@ function tracerTroncon(
   versIndex: number,
   largeur: number,
   hauteur: number,
+  margeRatio = MARGE_BORDURE,
 ): void {
-  const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
+  const marge = Math.min(largeur, hauteur) * margeRatio;
   const largeurUtile = Math.max(largeur - 2 * marge, 0);
   const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
   const perimetre = 2 * (largeurUtile + hauteurUtile);
@@ -516,17 +542,27 @@ function tracerTroncon(
     NOMBRE_DIODES_BORDURE,
   ];
 
-  const debut = pointBordure(deIndex, largeur, hauteur);
+  const debut = pointBordure(deIndex, largeur, hauteur, margeRatio);
   ctx.beginPath();
   ctx.moveTo(debut.x, debut.y);
   for (const coin of coins) {
     if (coin <= deIndex || coin >= versIndex) continue;
-    const point = pointBordure(coin, largeur, hauteur);
+    const point = pointBordure(coin, largeur, hauteur, margeRatio);
     ctx.lineTo(point.x, point.y);
   }
-  const fin = pointBordure(versIndex, largeur, hauteur);
+  const fin = pointBordure(versIndex, largeur, hauteur, margeRatio);
   ctx.lineTo(fin.x, fin.y);
   ctx.stroke();
+}
+
+/** Épaisseur du tube de bordure pour une image. */
+export function epaisseurBordure(f: FrameState): number {
+  const petitCote = Math.min(f.width, f.height);
+  const concert = f.dynamic === true;
+  return Math.max(
+    concert ? 12 : 5.5,
+    petitCote * (concert ? TUBE_BORDURE_CONCERT : TUBE_BORDURE),
+  );
 }
 
 /**
@@ -544,8 +580,9 @@ export function dessinerBordure(
   budgetFlash = 1,
 ): void {
   const { width: w, height: h } = f;
-  const marge = Math.min(w, h) * MARGE_BORDURE;
-  const petitCote = Math.min(w, h);
+  const concert = f.dynamic === true;
+  const margeRatio = concert ? MARGE_BORDURE_CONCERT : MARGE_BORDURE;
+  const marge = Math.min(w, h) * margeRatio;
   const energie = clamp01(f.energy);
   const fil = teinteBordure(f, view, 0, budgetFlash);
 
@@ -559,7 +596,7 @@ export function dessinerBordure(
     ctx.stroke();
   };
 
-  const tube = Math.max(5.5, petitCote * 0.011);
+  const tube = epaisseurBordure(f);
 
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
@@ -573,7 +610,7 @@ export function dessinerBordure(
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
-    const { x, y } = positionBordure(index, w, h);
+    const { x, y } = positionBordure(index, w, h, margeRatio);
     const couleur = teinteBordure(f, view, index, budgetFlash);
     // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
@@ -583,7 +620,7 @@ export function dessinerBordure(
     if (intensite > 0.12) {
       ctx.strokeStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.55, 0.12 * intensite);
       ctx.lineWidth = tube * (1.9 + 0.9 * intensite);
-      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
     }
 
     // Corps : c'est lui qui porte le contraste allumé/éteint.

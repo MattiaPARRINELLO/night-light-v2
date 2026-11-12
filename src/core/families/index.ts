@@ -18,6 +18,7 @@ export {
   blinderBordure,
   couleurBordure,
   dessinerBordure,
+  epaisseurBordure,
   intensiteBordure,
   motifBordure,
   moyenneBordure,

@@ -409,8 +409,8 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
 - les refrains et les montées déploient le plateau complet ;
 - pas de flash à chaque temps : les lyres tiennent la salle. Seuls les vrais impacts
   ouvrent le strobe, avec 2 à 4 éclats par temps et la couleur principale de la scène ;
-- la bordure LED strobe rarement, à cadence lente (2 éclats par temps), pour ne pas
-  saturer le pourtour ;
+- la bordure LED strobe rarement, à cadence lente (2 éclats par temps), mais son tube est
+  nettement plus épais qu'ailleurs : c'est elle qui éclaire la pièce en concert ;
 - l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
   atteindre le fond presque noir du rave ;
 - le budget de flashs et le mode réduit restent maîtres.
