@@ -314,7 +314,12 @@ export function installShow(Target: { prototype: App }): void {
     if (this.livePlan !== null) {
       this.livePlan = {
         ...this.livePlan,
-        profile: this.settings.hard === "on" ? "hard" : "standard",
+        profile:
+          this.settings.hard === "on"
+            ? "hard"
+            : this.settings.hard === "dynamic"
+              ? "dynamic"
+              : "standard",
       };
     }
   };
@@ -403,6 +408,16 @@ export function installShow(Target: { prototype: App }): void {
             this.settings.hard === "on"
               ? "Mode rave activé (touche H pour revenir)."
               : "Profil standard (touche H pour activer le mode rave).",
+          );
+          break;
+        case "c":
+        case "C":
+          this.settings.hard = this.settings.hard === "dynamic" ? "off" : "dynamic";
+          this.refreshPlan(true);
+          setStatus(
+            this.settings.hard === "dynamic"
+              ? "Mode concert activé (touche C pour revenir)."
+              : "Profil standard (touche C pour activer le mode concert).",
           );
           break;
         case "b":

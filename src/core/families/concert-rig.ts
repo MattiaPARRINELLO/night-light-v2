@@ -286,13 +286,14 @@ export function orientationLyre(
       }
       case "eventail": {
         // En mode rave, l'éventail balaie vite au lieu de respirer lentement :
-        // c'est le mouvement de tête le plus lisible sur une scène de club.
-        const vitesse = f.hard ? 1.15 : 0.17;
-        const amplitude = f.hard ? 0.3 : 0.2;
+        // c'est le mouvement de tête le plus lisible sur une scène de club. Le
+        // concert accélère aussi, mais garde un geste plus large.
+        const vitesse = f.hard ? 1.15 : f.dynamic === true ? 0.6 : 0.17;
+        const amplitude = f.hard ? 0.3 : f.dynamic === true ? 0.26 : 0.2;
         const ouvertureEventail = amplitude * (0.85 + 0.15 * Math.sin(f.t * vitesse));
         angle = base + (i - centre) * ouvertureEventail;
         ouverture = 0.026;
-        intensite = f.hard ? 0.9 : 0.8;
+        intensite = f.hard ? 0.9 : f.dynamic === true ? 0.86 : 0.8;
         prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy) * 0.6;
         break;
       }
@@ -796,9 +797,10 @@ export function dessinerBlinders(
   // Douze cellules au lieu de quatre : on baisse légèrement chaque source pour
   // que la barre complète reste dans la même plage de luminosité.
   const gainBarre = 0.68;
-  const rave = f.hard === true && !f.reduced;
+  const rave = (f.hard === true || f.dynamic === true) && !f.reduced;
   // En rave, le mur claque : toute la barre sur les pics, chenillard rapide
-  // sinon. Le motif n'est plus celui du rôle de scène.
+  // sinon. Le motif n'est plus celui du rôle de scène. Le concert garde le même
+  // geste, avec un gain un peu plus bas.
   const motif: MotifBlinder = rave
     ? f.energy > 0.8
       ? "tous"
@@ -810,7 +812,10 @@ export function dessinerBlinders(
     if (poids <= 0.02) continue;
     const ravePulse = rave ? clamp01(f.beat * (0.45 + 0.55 * f.bass)) : 0;
     const intensite =
-      Math.max(intensiteBlinder(f, view, index), ravePulse) * poids * gainBarre * (rave ? 1.35 : 1);
+      Math.max(intensiteBlinder(f, view, index), ravePulse) *
+      poids *
+      gainBarre *
+      (f.hard === true ? 1.35 : f.dynamic === true ? 1.18 : 1);
     if (intensite <= 0.008) continue;
     const { x, y } = positionBlinder(index, w, h);
     const couleur = rave

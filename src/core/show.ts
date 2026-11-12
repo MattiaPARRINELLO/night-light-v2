@@ -143,12 +143,15 @@ export type Mood = "calme" | "pulse" | "explosif" | "aerien" | "sombre";
  * Profil esthétique d'un morceau, décidé une fois pour tout le plan.
  *
  * `standard` garde l'identité historique : palettes franches, familles
- * mélangées, respiration entre les scènes. `hard` réserve un vocabulaire plus
- * sombre et plus tranchant aux morceaux de rap agressif (trap, phonk, type
- * « PTSD ») : palette rouge/glacée, familles de stroboscope, coupes plus
- * courtes. Le profil ne remplace pas l'humeur de scène : il colore tout le plan.
+ * mélangées, respiration entre les scènes. `dynamic` est le profil concert :
+ * la scène reste presque toujours occupée par les lyres et les projecteurs,
+ * avec des strobes plus faciles à déclencher et une énergie générale plus
+ * haute, sans la noirceur du hard. `hard` réserve un vocabulaire plus sombre et
+ * plus tranchant aux morceaux de rap agressif (trap, phonk, type « PTSD ») :
+ * palette rouge/glacée, familles de stroboscope, coupes plus courtes. Le profil
+ * ne remplace pas l'humeur de scène : il colore tout le plan.
  */
-export type ShowProfile = "standard" | "hard";
+export type ShowProfile = "standard" | "dynamic" | "hard";
 
 export interface Palette {
   name: string;
@@ -172,7 +175,7 @@ export interface ShowPlan {
   duration: number;
   seed: number;
   scenes: Scene[];
-  /** Profil esthétique du morceau : standard ou hard. */
+  /** Profil esthétique du morceau : standard, concert dynamique ou hard. */
   profile: ShowProfile;
   /** Fenêtre analysée disponible ; absente pour une analyse complète. */
   coverage?: [number, number];
@@ -362,6 +365,21 @@ export const HARD_FAMILIES: FamilyId[] = [
 export const HARD_BACKDROPS: FamilyId[] = ["grid", "tunnel", "waves"];
 
 /**
+ * Réservoir du profil concert dynamique.
+ *
+ * Le plateau de concert d'abord (lyres suspendues, barres LED, pont, poursuite,
+ * duo, éventail), puis les sources qui remplissent aussi la scène sans la
+ * vider : projecteurs mobiles, faisceaux et lyres. Aucune nappe calme : une
+ * scène de concert doit rester habitée.
+ */
+export const DYNAMIC_FAMILIES: FamilyId[] = [
+  ...CONCERT_FAMILIES,
+  "spots",
+  "beams",
+  "lyre",
+];
+
+/**
  * Branche de l'arbre de décision de `familyFor`.
  *
  * Le nom de la branche est une donnée d'instrumentation : il est exporté pour
@@ -375,6 +393,7 @@ export const FAMILY_BRANCHES = [
   "montee",
   "drop",
   "calme",
+  "concert",
   "hard",
   "brillance",
   "densite",
@@ -397,6 +416,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
   montee: ["barres-led"],
   drop: CONCERT_FAMILIES,
   calme: CALM_FAMILIES,
+  concert: DYNAMIC_FAMILIES,
   hard: HARD_FAMILIES,
   brillance: BRIGHT_FAMILIES,
   densite: RHYTHMIC_FAMILIES,
@@ -544,9 +564,10 @@ export function detectShowProfile(analysis: Analysis): ShowProfile {
     : "standard";
 }
 
-/** Résout le profil selon le réglage utilisateur : auto, forcé ou désactivé. */
+/** Résout le profil selon le réglage utilisateur : auto, concert, forcé ou désactivé. */
 export function resolveShowProfile(analysis: Analysis, mode: HardMode = "auto"): ShowProfile {
   if (mode === "on") return "hard";
+  if (mode === "dynamic") return "dynamic";
   if (mode === "off") return "standard";
   return detectShowProfile(analysis);
 }
@@ -742,6 +763,7 @@ export function familyBranchFor(
   concertDrop = false,
   calm?: boolean,
   hard = false,
+  dynamic = false,
 ): FamilyBranch {
   const { energy, density, brightness } = caractere;
   if (reduced) {
@@ -749,6 +771,7 @@ export function familyBranchFor(
     if (density < REDUCED_DENSITY_THRESHOLD) return "reduit-calme";
     return "reduit-rythmique";
   }
+  if (dynamic) return "concert";
   if (concertDrop) return "drop";
   // Orchestration par rôle : un refrain alterne lyres et barres LED, une
   // montée déploie franchement la vague des barres.
@@ -785,8 +808,9 @@ export function familyFor(
   calm?: boolean,
   used?: ReadonlyMap<FamilyId, number>,
   hard = false,
+  dynamic = false,
 ): FamilyId {
-  const branch = familyBranchFor(caractere, reduced, role, false, calm, hard);
+  const branch = familyBranchFor(caractere, reduced, role, false, calm, hard, dynamic);
   if (branch === "refrain") {
     return pickFamily(FAMILY_BRANCH_RESERVOIRS.refrain, seed, turn, excluded, used);
   }
@@ -862,8 +886,9 @@ function signatureKey(signature: DropSignature): string {
  * forts sont franchement saturés, les passages calmes se permettent une couleur
  * plus retenue (mais jamais grise — c'est une soirée, pas un aquarium).
  */
-function paletteSaturation(mood: Mood, hard = false): number {
+function paletteSaturation(mood: Mood, hard = false, dynamic = false): number {
   if (hard && mood !== "calme" && mood !== "sombre") return 1;
+  if (dynamic && mood !== "calme" && mood !== "sombre") return 0.98;
   if (mood === "sombre") return 0.55;
   // Calme lumineux : une salle éclairée en pastel, pas un aquarium gris. La
   // saturation baisse (pastel) mais la lumière reste franche.
@@ -879,7 +904,7 @@ function paletteSaturation(mood: Mood, hard = false): number {
  * qui « allume la salle » — et les passages calmes s'éclairent par le voile de
  * scène (`calmGlow`), sans jamais devenir un plein blanc.
  */
-function paletteLightness(mood: Mood, hard = false): number {
+function paletteLightness(mood: Mood, hard = false, dynamic = false): number {
   if (mood === "sombre") return 0.38;
   if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
@@ -888,6 +913,9 @@ function paletteLightness(mood: Mood, hard = false): number {
   // sa chroma au lieu de virer au blanc.
   if (hard && mood === "explosif") return 0.64;
   if (hard && mood === "pulse") return 0.58;
+  // Profil concert : plus lumineux que le hard, sans virer au pastel.
+  if (dynamic && mood === "explosif") return 0.7;
+  if (dynamic && mood === "pulse") return 0.64;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
   return 0.6;
@@ -1342,8 +1370,8 @@ export interface ShowPlanOptions {
    */
   dramaturgy?: boolean;
   /**
-   * Profil hard : `auto` (détection sur le morceau), `on` (forcé) ou `off`.
-   * Par défaut `auto`.
+   * Profil : `auto` (détection sur le morceau), `dynamic` (concert, forcé),
+   * `on` (rave forcé) ou `off` (standard). Par défaut `auto`.
    */
   hard?: HardMode;
 }
@@ -1369,6 +1397,7 @@ export function buildShowPlan(
   // même quand le réglage force le profil hard.
   const profile = reduced ? "standard" : resolveShowProfile(analysis, options.hard ?? "auto");
   const hard = profile === "hard";
+  const dynamic = profile === "dynamic";
   const seed =
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
@@ -1378,7 +1407,8 @@ export function buildShowPlan(
   const measureSec = Math.max(1, (analysis.meter ?? 4) * beatPeriod);
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
-  // l'autre, et tenue du premier au dernier plan.
+  // l'autre, et tenue du premier au dernier plan. Le profil concert garde les
+  // palettes standard : il n'est pas un mode sombre, juste plus habité.
   const palettes = hard ? HARD_TRACK_PALETTES : TRACK_PALETTES;
   const track = palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
@@ -1387,9 +1417,9 @@ export function buildShowPlan(
   // Un fond fait partie de l'écran du début à la fin : s'il anime une figure
   // centrée et pulsée (les anneaux), elle tourne en boucle pendant tout le
   // morceau et finit par gêner. Le fond se prend donc parmi les familles
-  // calmes qui n'imposent pas cet effet de cercle permanent. Le profil hard
-  // garde ses propres fonds, déjà compatibles avec ses scènes dures.
-  const backdropFamilies = hard
+  // calmes qui n'imposent pas cet effet de cercle permanent. Les profils hard et
+  // concert gardent leurs propres fonds, déjà compatibles avec leurs scènes.
+  const backdropFamilies = hard || dynamic
     ? HARD_BACKDROPS
     : CALM_FAMILIES.filter((family) => family !== "rings");
   const fond = backdropFamilies[Math.floor(hash01(seed * 31 + 7) * backdropFamilies.length)] ?? "waves";
@@ -1470,12 +1500,14 @@ export function buildShowPlan(
     // groupe : c'est le moment où la scène doit se lire comme un vrai concert.
     // On ne mémorise pas cette famille dans le groupe, sinon tout le refrain
     // resterait un pont concert.
-    const forceConcert = !reduced && role === "drop";
+    const concertRole = !reduced && role === "drop";
+    const forceConcert =
+      concertRole || (!reduced && dynamic && (role === "refrain" || role === "montee"));
     // Force de la montée qui a produit ce drop (0 pour un drop hors build).
     const strength =
       event.reason === "build" || event.reason === "drop" ? clamp01(event.weight) : 0;
     let signature: DropSignature | undefined;
-    if (forceConcert) {
+    if (concertRole) {
       const rank = dropRank;
       signature = dropSignature(seed, rank, strength);
       // Deux drops ne partagent jamais leur signature dans un même plan : la
@@ -1496,11 +1528,12 @@ export function buildShowPlan(
     if (beforePreviousFamily !== undefined) excluded.push(beforePreviousFamily);
     if (forceConcert) {
       // Le plateau complet est réservé aux vrais impacts ; une montée plus
-      // douce alterne lyres suspendues et barres LED.
+      // douce alterne lyres suspendues et barres LED. En profil concert, les
+      // refrains et les montées déploient aussi le plateau.
       family =
-        strength >= 0.6
+        concertRole && strength >= 0.6
           ? "pont-concert"
-          : dropRank % 2 === 1
+          : (concertRole ? dropRank : turn) % 2 === 1
             ? "lyres-suspendues"
             : "barres-led";
     } else if (cachedFamily !== undefined) {
@@ -1520,6 +1553,7 @@ export function buildShowPlan(
             mood === "calme",
             familyUse,
             hard,
+            dynamic,
           )
         : familyFor(
             caractere,
@@ -1531,12 +1565,20 @@ export function buildShowPlan(
             mood === "calme",
             familyUse,
             hard,
+            dynamic,
           );
       if (grouped) groupFamilies.set(group, family);
     }
 
     const calm = CALM_FAMILIES.includes(family);
-    const pool = hard && !calm ? HARD_FAMILIES : calm ? ALL_FAMILIES : CALM_FAMILIES;
+    const pool =
+      hard && !calm
+        ? HARD_FAMILIES
+        : dynamic && !calm
+          ? DYNAMIC_FAMILIES
+          : calm
+            ? ALL_FAMILIES
+            : CALM_FAMILIES;
     const others = pool.filter((candidate) => candidate !== family);
     const variantCandidate =
       others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
@@ -1551,7 +1593,7 @@ export function buildShowPlan(
     // scène calme ne devient pas agitée pour autant.
     let principale = family;
     if (principale === fond) {
-      const memeClasse = (hard ? HARD_FAMILIES : CALM_FAMILIES).filter(
+      const memeClasse = (hard ? HARD_FAMILIES : dynamic ? DYNAMIC_FAMILIES : CALM_FAMILIES).filter(
         (candidate) => candidate !== fond,
       );
       const pickSeed = grouped ? hashString(`${seed}|${group}|fond`) : seed * 17 + turn;
@@ -1607,21 +1649,22 @@ export function buildShowPlan(
         hue,
         accent: (track.accent + derive + 360) % 360,
         spread: track.spread,
-        saturation: paletteSaturation(mood, hard),
-        lightness: paletteLightness(mood, hard),
+        saturation: paletteSaturation(mood, hard, dynamic),
+        lightness: paletteLightness(mood, hard, dynamic),
       },
       intensity: clamp01(
-        moodIntensity(mood, caractere.energy) + (hard && mood !== "calme" ? 0.06 : 0),
+        moodIntensity(mood, caractere.energy) +
+          (hard && mood !== "calme" ? 0.06 : dynamic && mood !== "calme" ? 0.08 : 0),
       ),
       fadeIn:
         event.reason === "drop"
           ? 0.05
           : index === 0
-            ? hard ? 0.45 : 0.7
+            ? hard ? 0.45 : dynamic ? 0.6 : 0.7
             : event.weight >= 1
-              ? hard ? 0.5 : 1.2
-              : hard ? 0.35 : 0.7,
-      fadeOut: hard ? 0.45 : 0.9,
+              ? hard ? 0.5 : dynamic ? 0.9 : 1.2
+              : hard ? 0.35 : dynamic ? 0.55 : 0.7,
+      fadeOut: hard ? 0.45 : dynamic ? 0.7 : 0.9,
       mood,
       role,
       reason: event.reason,
@@ -1682,20 +1725,20 @@ export function buildShowPlan(
       index: 0,
       start: 0,
       end: duration,
-      family: hard && !reduced ? "shutters" : "beams",
-      variant: hard && !reduced ? "bars" : "tunnel",
+      family: hard && !reduced ? "shutters" : dynamic && !reduced ? "lyres-suspendues" : "beams",
+      variant: hard && !reduced ? "bars" : dynamic && !reduced ? "barres-led" : "tunnel",
       backdrop: fond,
       palette: {
         name: track.name,
         hue: track.hue,
         accent: track.accent,
         spread: track.spread,
-        saturation: hard ? 1 : 0.88,
-        lightness: hard ? 0.55 : 0.64,
+        saturation: hard ? 1 : dynamic ? 0.98 : 0.88,
+        lightness: hard ? 0.55 : dynamic ? 0.62 : 0.64,
       },
-      intensity: hard ? 0.7 : 0.6,
-      fadeIn: hard ? 0.45 : 0.7,
-      fadeOut: hard ? 0.45 : 0.9,
+      intensity: hard ? 0.7 : dynamic ? 0.74 : 0.6,
+      fadeIn: hard ? 0.45 : dynamic ? 0.6 : 0.7,
+      fadeOut: hard ? 0.45 : dynamic ? 0.7 : 0.9,
       mood: "pulse",
       role: "intro",
       reason: "ouverture",

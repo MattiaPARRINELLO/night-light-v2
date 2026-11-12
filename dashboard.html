@@ -39,6 +39,17 @@
             <kbd>H</kbd>
           </button>
           <button
+            class="hard-toggle dynamic-toggle"
+            id="dynamic-toggle"
+            type="button"
+            aria-pressed="false"
+            title="Mode concert, raccourci C"
+          >
+            <span class="hard-toggle-dot" aria-hidden="true"></span>
+            <span id="dynamic-toggle-label">Concert off</span>
+            <kbd>C</kbd>
+          </button>
+          <button
             class="hard-toggle blackout-toggle"
             id="blackout-toggle"
             type="button"
@@ -320,6 +331,7 @@
               <span class="field-label">Profil</span>
               <select id="hard-mode">
                 <option value="auto" selected>Auto (détection)</option>
+                <option value="dynamic">Concert (forcé)</option>
                 <option value="on">Rave (forcé)</option>
                 <option value="off">Standard</option>
               </select>

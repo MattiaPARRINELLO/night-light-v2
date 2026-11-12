@@ -100,6 +100,28 @@ export const FLASH_ATTACK_DROP_SEC = 0.12;
 export const FLASH_ATTACK_DROP_HARD_SEC = 0.08;
 /** Gain d'opacité des flashs en profil hard, pour compenser le fond plus noir. */
 export const HARD_FLASH_BOOST = 1.12;
+/** Gain d'opacité des flashs en profil concert. */
+export const DYNAMIC_FLASH_BOOST = 1.05;
+/**
+ * Poids d'un temps fort dans le flash, en profil concert.
+ *
+ * Entre la caresse du standard (0,55) et le claquement du hard (0,9) : la salle
+ * s'allume franchement, mais la scène de concert garde un peu de respiration.
+ */
+export const DYNAMIC_BEAT_FLASH_WEIGHT = 0.72;
+/** Durée de montée d'un flash de temps fort en profil concert, en secondes. */
+export const DYNAMIC_FLASH_ATTACK_BEAT_SEC = 0.03;
+/** Durée de montée d'un flash de drop en profil concert, en secondes. */
+export const DYNAMIC_FLASH_ATTACK_DROP_SEC = 0.1;
+/**
+ * Éclats du stroboscope concert par temps fort.
+ *
+ * Moins dense que le hard (4 à 12) mais bien plus que le standard : 2 à 6
+ * éclats, sur un seuil d'énergie plus bas, pour que le strobe parte plus
+ * facilement sans transformer chaque morceau en rave.
+ */
+export const DYNAMIC_STROBE_DIVISIONS_MIN = 2;
+export const DYNAMIC_STROBE_DIVISIONS_MAX = 6;
 /**
  * Poids d'un temps fort dans le flash, en profil hard.
  *
@@ -187,15 +209,27 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   // Le profil hard veut un fond plus noir : c'est ce qui fait ressortir les
   // barres, les volets et les strobes au lieu de baigner l'image dans une
-  // lueur de salle. La lueur reste liée à l'énergie, simplement divisée.
+  // lueur de salle. Le profil concert assombrit un peu sans éteindre la salle.
   const glow = f.hard
     ? 0.012 + f.energy * 0.032 + f.bass * 0.028
-    : 0.02 + f.energy * 0.05 + f.bass * 0.05;
+    : f.dynamic === true
+      ? 0.016 + f.energy * 0.042 + f.bass * 0.04
+      : 0.02 + f.energy * 0.05 + f.bass * 0.05;
   // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
   // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
   const contraste = contrastHue(f);
-  const top = paint(f.palette.hue, f.palette.saturation, (f.hard ? 0.018 : 0.035) + glow * 0.5, 1);
-  const bottom = paint(contraste, f.palette.saturation, (f.hard ? 0.026 : 0.05) + glow, 1);
+  const top = paint(
+    f.palette.hue,
+    f.palette.saturation,
+    (f.hard ? 0.018 : f.dynamic === true ? 0.026 : 0.035) + glow * 0.5,
+    1,
+  );
+  const bottom = paint(
+    contraste,
+    f.palette.saturation,
+    (f.hard ? 0.026 : f.dynamic === true ? 0.036 : 0.05) + glow,
+    1,
+  );
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
   gradient.addColorStop(0, top);
   gradient.addColorStop(1, bottom);
@@ -208,7 +242,9 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
   const haloAlpha =
-    (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha * (f.hard ? 0.65 : 1);
+    (0.03 + 0.08 * f.energy + 0.06 * f.beat) *
+    f.alpha *
+    (f.hard ? 0.65 : f.dynamic === true ? 0.85 : 1);
   halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
@@ -365,18 +401,42 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
         Math.min(settings.flashes, 1.5) *
         HARD_BEAT_FLASH_WEIGHT
       : 0;
+  // Profil concert : entre les deux. Le temps fort s'allume plus fort que le
+  // standard, sans le claquement du hard.
+  const dynamicBeatAlpha =
+    f.dynamic === true && !f.reduced
+      ? clamp01(f.beat * (0.45 + 0.55 * f.bass)) *
+        FLASH_CEILING *
+        Math.min(settings.flashes, 1.5) *
+        DYNAMIC_BEAT_FLASH_WEIGHT
+      : 0;
+  const beatAttackSec = f.hard
+    ? FLASH_ATTACK_BEAT_HARD_SEC
+    : f.dynamic === true
+      ? DYNAMIC_FLASH_ATTACK_BEAT_SEC
+      : FLASH_ATTACK_BEAT_SEC;
+  const dropAttackSec = f.hard
+    ? FLASH_ATTACK_DROP_HARD_SEC
+    : f.dynamic === true
+      ? DYNAMIC_FLASH_ATTACK_DROP_SEC
+      : FLASH_ATTACK_DROP_SEC;
   // Âge infini = aucun déclencheur : pas d'attaque en cours (facteur 1), sinon
   // `clamp01` ramènerait l'infini à 0 et éteindrait le flash.
   const attackBeat = Number.isFinite(f.beatAge)
-    ? clamp01(f.beatAge / (f.hard ? FLASH_ATTACK_BEAT_HARD_SEC : FLASH_ATTACK_BEAT_SEC))
+    ? clamp01(f.beatAge / beatAttackSec)
     : 1;
   const attackDrop = Number.isFinite(f.dropAge)
-    ? clamp01(f.dropAge / (f.hard ? FLASH_ATTACK_DROP_HARD_SEC : FLASH_ATTACK_DROP_SEC))
+    ? clamp01(f.dropAge / dropAttackSec)
     : 1;
-  const boost = f.hard ? HARD_FLASH_BOOST : 1;
+  const boost = f.hard ? HARD_FLASH_BOOST : f.dynamic === true ? DYNAMIC_FLASH_BOOST : 1;
   return Math.min(
     FLASH_CEILING * Math.min(settings.flashes, 1.5),
-    Math.max(beatAlpha * attackBeat, hardBeatAlpha * attackBeat, dropAlpha * attackDrop) * boost,
+    Math.max(
+      beatAlpha * attackBeat,
+      hardBeatAlpha * attackBeat,
+      dynamicBeatAlpha * attackBeat,
+      dropAlpha * attackDrop,
+    ) * boost,
   );
 }
 
@@ -408,6 +468,45 @@ export function hardStrobeAlpha(
   const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
   if (!on) return 0;
   const amount = gate * (0.45 + 0.55 * kick);
+  return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
+}
+
+/**
+ * Éclats du stroboscope concert par temps fort, de 2 à 6.
+ *
+ * Le profil concert doit pouvoir strober sur des passages simplement énergiques,
+ * pas seulement sur les pics du hard.
+ */
+export function dynamicStrobeDivisions(f: FrameState, drop: number): number {
+  const energy = clamp01(f.energy);
+  const violence = clamp01(drop);
+  const extra = Math.round(
+    (DYNAMIC_STROBE_DIVISIONS_MAX - DYNAMIC_STROBE_DIVISIONS_MIN) * 0.5 * (energy + violence),
+  );
+  return Math.min(DYNAMIC_STROBE_DIVISIONS_MAX, DYNAMIC_STROBE_DIVISIONS_MIN + extra);
+}
+
+/**
+ * Opacité du stroboscope concert à l'instant courant, 0 s'il ne doit pas clignoter.
+ *
+ * Même geste que le hard, en plus accessible : le seuil d'énergie est plus bas,
+ * le kick accepte une basse plus discrète et les éclats sont moins nombreux.
+ * Le budget de flashs et le mode réduit restent maîtres.
+ */
+export function dynamicStrobeAlpha(
+  f: FrameState,
+  settings: RenderSettings,
+  drop: number,
+): number {
+  if (f.dynamic !== true || f.reduced || settings.flashes <= 0) return 0;
+  const gate = smoothstep(0.38, 0.72, f.energy);
+  if (gate <= 0.01) return 0;
+  const kick = clamp01(0.5 * f.beat + 0.5 * f.bass);
+  if (kick < 0.06) return 0;
+  const divisions = dynamicStrobeDivisions(f, drop);
+  const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
+  if (!on) return 0;
+  const amount = gate * (0.3 + 0.5 * kick);
   return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
 }
 
@@ -686,7 +785,7 @@ export function sceneHue(
  *
  * Aucun état n'est conservé : `t` seul décide.
  */
-export function flashAdmitted(view: TrackView, t: number, hard = false): boolean {
+export function flashAdmitted(view: TrackView, t: number, hard = false, dynamic = false): boolean {
   // Fenêtre d'éligibilité : latence nulle + la plus longue des montées. Un
   // flash reste admis pendant toute son attaque, jamais au-delà.
   const window = FLASH_LATENCY_SEC + Math.max(FLASH_ATTACK_BEAT_SEC, FLASH_ATTACK_DROP_SEC) + 0.05;
@@ -705,6 +804,10 @@ export function flashAdmitted(view: TrackView, t: number, hard = false): boolean
   // Profil hard : chaque temps fort claque, y compris dans la traîne d'un
   // impact. C'est exactement le geste d'un strobe de club.
   if (hard) return true;
+
+  // Profil concert : chaque temps fort d'un passage énergique claque aussi, mais
+  // les passages doux gardent la cadence espacée du standard.
+  if (dynamic && view.energyAt(current) >= 0.5) return true;
 
   // Dans les 1,5 s qui suivent un impact, aucun flash de temps fort : l'impact
   // lui-même est déjà admis par `lastDrop >= lastBeat` juste au-dessus. Sans
@@ -1171,6 +1274,8 @@ export function renderFrame(input: RenderInput): void {
   }
   const scene = sceneAt(plan, t);
   const hard = plan.profile === "hard";
+  const dynamic = plan.profile === "dynamic";
+  const energetic = hard || dynamic;
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
@@ -1220,7 +1325,10 @@ export function renderFrame(input: RenderInput): void {
     dpr,
     scene,
     palette,
-    energy: liveAudio !== undefined ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3) : visibleEnergy(view.energyAt(t)),
+    energy:
+      liveAudio !== undefined
+        ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3)
+        : clamp01(visibleEnergy(view.energyAt(t)) * (dynamic ? 1.12 : 1)),
     bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
     mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
     high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),
@@ -1233,10 +1341,17 @@ export function renderFrame(input: RenderInput): void {
     beatAge,
     dropAge,
     surge,
-    intensity: scene.intensity * settings.intensity * (isLive ? (1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85) : (1 + surge * 0.6 + beatDriveValue * 0.5)),
+    intensity:
+      scene.intensity *
+      settings.intensity *
+      (dynamic ? 1.12 : 1) *
+      (isLive
+        ? 1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85
+        : 1 + surge * 0.6 + beatDriveValue * 0.5),
     alpha: sceneWeight(scene, t),
     reduced,
     hard,
+    dynamic,
     quality,
     seed: plan.seed,
     haze,
@@ -1338,8 +1453,9 @@ export function renderFrame(input: RenderInput): void {
     const realDrop = isLive ? 0 : view.buildIntensity(t);
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
-      // En mode rave, l'impact est coloré au lieu d'être un blanc de salle.
-      ctx.fillStyle = hard
+      // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
+      // salle.
+      ctx.fillStyle = energetic
         ? paint(shiftHue(contrastHue(base), base.t * 45), 1, 0.62, washAlpha)
         : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
@@ -1407,21 +1523,28 @@ export function renderFrame(input: RenderInput): void {
 
   const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
-  if (flash > 0.002 && flashAdmitted(view, t, hard)) {
+  if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
-    // Flash de temps fort rave : une couleur de l'accord, jamais du blanc.
-    ctx.fillStyle = hard
+    // Flash de temps fort rave ou concert : une couleur de l'accord, jamais du
+    // blanc.
+    ctx.fillStyle = energetic
       ? paint(shiftHue(contrastHue(base), base.t * 50), 1, 0.6, strength)
       : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
-  // Stroboscope hard : la couche qui fait vraiment « clignoter » le profil. Elle
-  // s'ajoute au flash de temps fort, sans dépendre de `flashAdmitted`, car elle
-  // bat plusieurs fois à l'intérieur d'un même temps. Chaque éclat alterne entre
-  // la teinte principale et la complémentaire : le strobe est multicolore.
-  const strobe = hardStrobeAlpha(base, settings, drop);
+  // Stroboscope hard ou concert : la couche qui fait vraiment « clignoter » le
+  // profil. Elle s'ajoute au flash de temps fort, sans dépendre de
+  // `flashAdmitted`, car elle bat plusieurs fois à l'intérieur d'un même temps.
+  // Chaque éclat alterne entre la teinte principale et la complémentaire : le
+  // strobe est multicolore.
+  const strobe = Math.max(
+    hardStrobeAlpha(base, settings, drop),
+    dynamicStrobeAlpha(base, settings, drop),
+  );
   if (strobe > 0.002) {
-    const divisions = hardStrobeDivisions(base, drop);
+    const divisions = hard
+      ? hardStrobeDivisions(base, drop)
+      : dynamicStrobeDivisions(base, drop);
     const strobeIndex = Math.floor(base.beatPhase * divisions);
     const strobeHue = shiftHue(
       strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,

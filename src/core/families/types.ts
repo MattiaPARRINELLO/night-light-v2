@@ -40,6 +40,8 @@ export interface FrameState {
   reduced: boolean;
   /** Profil esthétique du morceau : les familles peuvent durcir leur geste. */
   hard?: boolean;
+  /** Profil concert : scène habitée, strobes plus faciles, sans la noirceur du hard. */
+  dynamic?: boolean;
   /** Qualité adaptative 0..1 : pilote le nombre d'éléments dessinés. */
   quality: number;
   seed: number;

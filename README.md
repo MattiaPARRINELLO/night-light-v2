@@ -335,7 +335,8 @@ mou. Le plan bascule donc sur un profil `hard`, affiché partout comme le **mode
 quand le morceau est à la fois **fort**, **sombre** et **tenu dans les basses** (énergie
 médiane ≥ 0,70, écart médian basses − aigus ≥ 0,30, majorité de fenêtres fortes sous 0,30
 d'aigus). Le réglage **Profil** du HUD et le bouton **Rave / H** du dashboard permettent
-de le forcer ou de le couper quand l'analyse se trompe.
+de le forcer ou de le couper quand l'analyse se trompe. Le profil **Concert** (bouton
+**Concert / C**, touche `C`) se place entre les deux.
 
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 
@@ -371,6 +372,22 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
   impact s'il tombe dans 1,4 s, sinon le prochain temps fort.
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
+
+### Le mode concert (profil dynamique)
+
+Entre le standard et le rave, le profil **concert** garde l'énergie d'une vraie scène sans
+la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bouton
+**Concert / C** du dashboard, ou la touche `C` sur l'écran de show.
+
+- la scène reste presque toujours habitée : lyres suspendues, barres LED, pont concert,
+  poursuites, duo et éventail, complétés par les projecteurs mobiles, les faisceaux et les
+  lyres. Aucune nappe calme dans le réservoir ;
+- les refrains et les montées déploient le plateau complet, comme un impact de concert ;
+- les strobes partent plus facilement : seuil d'énergie plus bas, 2 à 6 éclats par temps
+  fort au lieu de 4 à 12, et flashs colorés dans l'accord de la scène ;
+- l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
+  atteindre le fond presque noir du rave ;
+- le budget de flashs et le mode réduit restent maîtres.
 
 ### La transition
 

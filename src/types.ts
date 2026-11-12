@@ -112,13 +112,15 @@ export interface Analysis {
 }
 
 /**
- * Déclenchement du profil « hard » (rap sombre, trap, phonk).
+ * Déclenchement du profil de spectacle.
  *
- * `auto` laisse l'analyse décider, `on` force le profil et `off` l'interdit.
- * Le forçage est utile quand un morceau est musicalement hard mais que ses
- * courbes ne suffisent pas à le prouver (mix très compressé, hats nombreux).
+ * `auto` laisse l'analyse décider (standard ou hard), `dynamic` force le profil
+ * concert (entre les deux : plus d'énergie que le standard, sans la noirceur du
+ * hard), `on` force le profil hard et `off` l'interdit. Le forçage est utile
+ * quand un morceau est musicalement hard mais que ses courbes ne suffisent pas à
+ * le prouver (mix très compressé, hats nombreux).
  */
-export type HardMode = "auto" | "on" | "off";
+export type HardMode = "auto" | "dynamic" | "on" | "off";
 
 export interface RenderSettings {
   /** Intensité visuelle générale, 0.2 à 1.5. */
@@ -127,7 +129,7 @@ export interface RenderSettings {
   flashes: number;
   /** Mode confort : moins d'éléments, mouvements ralentis, jamais de flash. */
   reduced: boolean;
-  /** Profil hard : automatique, forcé ou désactivé. */
+  /** Profil : automatique, concert dynamique, hard forcé ou désactivé. */
   hard: HardMode;
   /** Coupe instantanément toute la lumière : écran noir tant que c'est actif. */
   blackout: boolean;
