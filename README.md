@@ -346,8 +346,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
   gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, puis l'écran
   clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
-  140 BPM. Les flashs et le strobe sont colorés dans l'accord de la scène, pas blancs :
-  chaque éclat alterne entre la teinte principale et la complémentaire. En mode rave,
+  140 BPM. Les flashs et le strobe prennent la couleur principale de la scène, pas du
+  blanc : la teinte reste stable pendant tout le passage au lieu de clignoter d'une
+  couleur à l'autre. En mode rave,
   la scène est en permanence un **mur de quatre rangées de lyres** (32 têtes), avec
   quatre gestes différents : éventail, croisement, vague et cercle. Deux à trois
   rangées lointaines, petites et discrètes, remplissent le fond de la scène. Deux
@@ -380,7 +381,7 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   lyres. Aucune nappe calme dans le réservoir ;
 - les refrains et les montées déploient le plateau complet, comme un impact de concert ;
 - les strobes partent plus facilement : seuil d'énergie plus bas, 2 à 6 éclats par temps
-  fort au lieu de 4 à 12, et flashs colorés dans l'accord de la scène ;
+  fort au lieu de 4 à 12, et flashs colorés dans la couleur principale de la scène ;
 - l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
   atteindre le fond presque noir du rave ;
 - le budget de flashs et le mode réduit restent maîtres.

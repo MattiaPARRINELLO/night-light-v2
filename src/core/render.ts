@@ -1483,39 +1483,26 @@ export function renderFrame(input: RenderInput): void {
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
   if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
-    // Flash de temps fort rave ou concert : une couleur de l'accord, jamais du
-    // blanc, et jamais une troisième teinte.
+    // Flash de temps fort rave ou concert : la couleur principale du morceau,
+    // jamais du blanc, et jamais une alternance d'une image à l'autre.
     ctx.fillStyle =
       hard || dynamic
-        ? paint(contrastHue(base), 1, 0.6, strength)
+        ? paint(base.palette.hue, 1, 0.6, strength)
         : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
   // Stroboscope hard ou concert : la couche qui fait vraiment « clignoter » le
   // profil. Elle s'ajoute au flash de temps fort, sans dépendre de
   // `flashAdmitted`, car elle bat plusieurs fois à l'intérieur d'un même temps.
-  // Chaque éclat alterne entre la teinte principale et la complémentaire : le
-  // strobe est multicolore.
   const strobe = Math.max(
     hardStrobeAlpha(base, settings, drop),
     dynamicStrobeAlpha(base, settings, drop),
   );
   if (strobe > 0.002) {
-    const divisions = hard
-      ? hardStrobeDivisions(base, drop)
-      : dynamicStrobeDivisions(base, drop);
-    const strobeIndex = Math.floor(base.beatPhase * divisions);
-    // Toujours deux couleurs au maximum : une alternance entre la teinte de la
-    // scène et sa complémentaire. Le rave alterne à chaque éclat, le concert à
-    // chaque temps fort.
-    const strobeHue = hard
-      ? strobeIndex % 2 === 0
-        ? base.palette.hue
-        : base.palette.accent
-      : Math.floor(base.beatIndex) % 2 === 0
-        ? base.palette.hue
-        : base.palette.accent;
-    ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
+    // Un seul éclat, une seule couleur : la couleur principale du morceau. On
+    // ne bascule plus sur la complémentaire à chaque flash, sinon la teinte
+    // change toutes les demi-secondes.
+    ctx.fillStyle = paint(base.palette.hue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }
 
