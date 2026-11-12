@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_BRANCH_RESERVOIRS, FAMILY_LABELS, familyFor, minHueStepEff, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_BRANCH_RESERVOIRS, FAMILY_LABELS, familyFor, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -53,16 +53,14 @@ describe("show plan", () => {
     );
   });
 
-  test("des teintes voisines restent éloignées (pas d'alternance agressive)", () => {
+  test("les couleurs restent dans la palette du morceau, la principale domine", () => {
     const plan = buildShowPlan(analysis(), false);
-    for (let index = 1; index < plan.scenes.length; index += 1) {
-      const previous = plan.scenes[index - 1];
-      const current = plan.scenes[index];
-      if (previous === undefined || current === undefined) continue;
-      let delta = Math.abs(current.palette.hue - previous.palette.hue) % 360;
-      if (delta > 180) delta = 360 - delta;
-      expect(delta).toBeGreaterThanOrEqual(30);
+    for (const scene of plan.scenes) {
+      expect([plan.track.hue, plan.track.accent]).toContain(scene.palette.hue);
     }
+    const principale = plan.scenes.filter((scene) => scene.palette.hue === plan.track.hue).length;
+    const secondaire = plan.scenes.length - principale;
+    expect(principale).toBeGreaterThanOrEqual(secondaire);
   });
 
   test("le mode réduit retire les familles agitées", () => {
@@ -554,7 +552,6 @@ describe("diversite du spectacle", () => {
   });
 
   test("le contrat de couleur tient sur 6 morceaux × 400 graines", () => {
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     const morceaux = [58, 74, 96, 118, 142, 170].map((tempo, index) =>
       analysis({
         duration: 64 + index * 8,
@@ -568,28 +565,26 @@ describe("diversite du spectacle", () => {
         builds: index % 3 === 0 ? [{ start: 30, end: 34, strength: 0.8 }] : [],
       }),
     );
-    let paires = 0;
+    let scenes = 0;
     for (const morceau of morceaux) {
       for (let seed = 1; seed <= 400; seed += 1) {
         const plan = buildShowPlan(morceau, false, seed);
-        let precedent: number | undefined;
+        const duo = [plan.track.hue, plan.track.accent];
+        let principale = 0;
+        let secondaire = 0;
         for (const scene of plan.scenes) {
-          const presDeLaBase = ecart(scene.palette.hue, plan.track.hue);
-          const presDuComplement = ecart(scene.palette.hue, plan.track.accent);
-          // Toutes les teintes restent dans le budget de l'un des deux pôles.
-          expect(Math.min(presDeLaBase, presDuComplement)).toBeLessThanOrEqual(plan.track.spread + 1e-6);
-          if (precedent !== undefined) {
-            paires += 1;
-            expect(ecart(scene.palette.hue, precedent)).toBeGreaterThanOrEqual(
-              minHueStepEff(plan.track.spread) - 1e-6,
-            );
-          }
-          precedent = scene.palette.hue;
+          // Chaque scène joue exactement l'une des deux couleurs du morceau.
+          expect(duo).toContain(scene.palette.hue);
+          if (scene.palette.hue === plan.track.hue) principale += 1;
+          else secondaire += 1;
         }
+        // La principale domine : la secondaire reste un accent.
+        expect(principale).toBeGreaterThanOrEqual(secondaire);
+        scenes += plan.scenes.length;
       }
     }
     // 6 pistes × 400 graines, plusieurs scènes chacune.
-    expect(paires).toBeGreaterThan(13_200);
+    expect(scenes).toBeGreaterThan(10_000);
   });
 
   test("à 170 BPM en 3/4, les scènes restent dans la fenêtre 5–9 s", () => {
@@ -699,7 +694,8 @@ describe("diversite du spectacle", () => {
       // La signature est complète sur chaque drop.
       for (const drop of drops) expect(drop.drop).toBeDefined();
       const signatures = drops.map(
-        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
+        (drop) =>
+          `${drop.family}|${drop.drop!.lyres}|${drop.drop!.barres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
       );
       expect(new Set(signatures).size).toBe(signatures.length);
       // Les impacts forts déploient le pont, les plus doux alternent lyres et

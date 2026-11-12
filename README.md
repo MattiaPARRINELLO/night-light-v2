@@ -309,8 +309,8 @@ plan (`plan.track`). **Deux couleurs maximum par morceau** : une teinte principa
 complémentaire, jamais une troisième.
 
 - chaque scène joue exactement l'une des deux, jamais une teinte intermédiaire ;
-- les **moments forts basculent sur l'autre couleur** — c'est le saut de couleur qui marque
-  un refrain ou un drop ;
+- la **couleur principale domine** le morceau ; la secondaire marque seulement les impacts
+  et les refrains identifiés, pas chaque scène énergique ;
 - les projecteurs, lyres et lampes alternent entre ces deux teintes (`lampHue`) : une scène
   reste lisible et cohérente au lieu de partir en arc-en-ciel ;
 - quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur l'autre
@@ -425,8 +425,8 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 - curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
   musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
-- chaque morceau reste limité à deux couleurs, et les scènes voisines alternent entre les
-  deux au lieu d'inventer une teinte intermédiaire ;
+- chaque morceau reste limité à deux couleurs, avec une principale qui tient le morceau et
+  une secondaire réservée aux impacts et refrains ;
 - le mode standard garde des flashs espacés ; les profils concert et rave ajoutent des
   stroboscopes, à couper avec « Sans flashs » ou « Intensité réduite » si tu y es sensible.
 

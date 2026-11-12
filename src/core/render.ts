@@ -719,13 +719,13 @@ export function sceneHue(
   scene: Scene,
   _t: number,
   drop: number,
-  variation: number,
+  _variation: number,
   _reduced: boolean,
   _anchor: number = scene.palette.hue,
 ): number {
   const accent = scene.palette.accent;
   if (accent === scene.palette.hue) return scene.palette.hue;
-  return drop >= 0.35 || variation >= 0.5 ? accent : scene.palette.hue;
+  return drop >= 0.5 ? accent : scene.palette.hue;
 }
 
 /**

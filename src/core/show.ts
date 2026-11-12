@@ -1409,7 +1409,6 @@ export function buildShowPlan(
   );
 
   const scenes: Scene[] = [];
-  let previousHue = -999;
   // Mémoire par groupe de structure : deux sections du même matériau musical
   // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
   // famille et leur teinte à la première apparition et on les réutilise.
@@ -1550,14 +1549,10 @@ export function buildShowPlan(
     previousFamily = principale;
     familyUse.set(principale, (familyUse.get(principale) ?? 0) + 1);
 
-    // Les moments forts basculent sur la complémentaire du morceau : c'est le
-    // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
-    // Le morceau ne possède que deux couleurs, `track.hue` et `track.accent` :
-    // chaque scène prend l'une des deux, jamais une teinte intermédiaire.
-    const fort =
-      section?.kind === "refrain" ||
-      mood === "explosif" ||
-      (mood === "pulse" && caractere.energy > 0.6);
+    // La couleur secondaire reste un accent : elle est réservée aux vrais
+    // impacts et aux refrains identifiés. Le reste du morceau tient sa couleur
+    // principale, au lieu de changer de teinte à chaque scène énergique.
+    const fort = role === "drop" || section?.kind === "refrain";
     const ancre =
       signature?.hue === "contraste"
         ? fort
@@ -1566,25 +1561,17 @@ export function buildShowPlan(
         : fort
           ? track.accent
           : track.hue;
-    const autreAncre = ancre === track.hue ? track.accent : track.hue;
     let hue: number;
     const cachedHue = grouped ? groupHues.get(group) : undefined;
     if (cachedHue !== undefined) {
       // L'identité d'un groupe prime : deux refrains portent la même teinte.
       hue = cachedHue;
     } else {
+      // La couleur principale domine : on ne force plus une alternance à chaque
+      // scène. Seuls les impacts et refrains prennent la secondaire via `ancre`.
       hue = ancre;
-      // Deux scènes voisines ne portent pas la même couleur : on bascule sur
-      // l'autre pôle plutôt que d'inventer une troisième teinte.
-      if (
-        previousHue > -999 &&
-        Math.abs(hueDelta(previousHue, hue)) < minHueStepEff(track.spread)
-      ) {
-        hue = autreAncre;
-      }
       if (grouped) groupHues.set(group, hue);
     }
-    previousHue = hue;
     const compAccent = hue === track.hue ? track.accent : track.hue;
 
     scenes.push({
