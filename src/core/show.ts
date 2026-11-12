@@ -43,7 +43,14 @@ export type FamilyId =
   | "lyres-cathedrale"
   | "lyres-orbitale"
   | "lyres-rideau"
-  | "lyres-aurore";
+  | "lyres-aurore"
+  | "lyres-helice"
+  | "lyres-tunnel"
+  | "lyres-diagonale"
+  | "lyres-respiration"
+  | "lyres-zigzag"
+  | "lyres-cascade"
+  | "lyres-colisee";
 
 /**
  * Rôle d'une scène dans la dramaturgie du concert.
@@ -245,6 +252,13 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-orbitale": "lyres orbitales",
   "lyres-rideau": "rideau de lyres",
   "lyres-aurore": "aurore de lyres",
+  "lyres-helice": "hélice de lyres",
+  "lyres-tunnel": "tunnel de lyres",
+  "lyres-diagonale": "balayage diagonal",
+  "lyres-respiration": "respiration de lyres",
+  "lyres-zigzag": "zigzag de lyres",
+  "lyres-cascade": "cascade de lyres",
+  "lyres-colisee": "colisée de lyres",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -338,6 +352,13 @@ export const CONCERT_FAMILIES: FamilyId[] = [
   "lyres-orbitale",
   "lyres-rideau",
   "lyres-aurore",
+  "lyres-helice",
+  "lyres-tunnel",
+  "lyres-diagonale",
+  "lyres-respiration",
+  "lyres-zigzag",
+  "lyres-cascade",
+  "lyres-colisee",
 ];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [

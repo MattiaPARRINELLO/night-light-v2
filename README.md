@@ -377,9 +377,13 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
 **Concert / C** du dashboard, ou la touche `C` sur l'écran de show.
 
 - la scène reste presque toujours habitée : lyres suspendues, barres LED, pont concert,
-  poursuites, duo et éventail, complétés par quatre nouvelles scènes de lyres
-  cinématiques — cathédrale, orbitales, rideau et aurore — qui empilent jusqu'à quatre
-  étages de têtes mobiles. Aucune nappe calme ni effet de rave dans le réservoir ;
+  poursuites, duo et éventail, complétés par onze nouvelles scènes de lyres
+  cinématiques — cathédrale, orbitales, rideau, aurore, hélice, tunnel, diagonale,
+  respiration, zigzag, cascade et colisée. Certaines empilent jusqu'à quatre étages de
+  huit têtes, soit 32 lyres par scène. Aucune nappe calme ni effet de rave dans le
+  réservoir ;
+- de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
+  éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
 - aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
   réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
 - les refrains et les montées déploient le plateau complet ;

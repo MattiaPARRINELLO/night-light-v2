@@ -522,10 +522,16 @@ describe("diversite du spectacle", () => {
     // l'atteignabilité se mesure donc sur plusieurs tirages, pas sur un seul.
     const dessinees = new Set<FamilyId>();
     for (let seed = 1; seed <= 20; seed += 1) {
-      for (const scene of buildShowPlan(long, false, seed).scenes) {
-        dessinees.add(scene.family);
-        dessinees.add(scene.variant);
-        dessinees.add(scene.backdrop);
+      const plans = [
+        buildShowPlan(long, false, seed),
+        buildShowPlan(long, false, seed, { hard: "dynamic" }),
+      ];
+      for (const plan of plans) {
+        for (const scene of plan.scenes) {
+          dessinees.add(scene.family);
+          dessinees.add(scene.variant);
+          dessinees.add(scene.backdrop);
+        }
       }
     }
     // Le compte vient des libellés : ajouter une famille sans la rendre
@@ -668,6 +674,10 @@ describe("diversite du spectacle", () => {
         sequences.add(suite.slice(start, start + 6).join(">"));
       }
       for (const family of suite) familles.add(family);
+      // Les familles de concert (lyres cinématiques) ne sortent qu'en profil
+      // dynamique : on les compte aussi pour vérifier leur atteignabilité.
+      const concert = buildShowPlan(data, false, seed, { hard: "dynamic" });
+      for (const scene of concert.scenes) familles.add(scene.family);
     }
     expect(sequences.size).toBeGreaterThanOrEqual(20);
     // Toutes les familles du réservoir général apparaissent : la couche de fond

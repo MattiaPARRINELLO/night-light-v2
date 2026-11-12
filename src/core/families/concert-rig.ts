@@ -158,7 +158,13 @@ export type GesteLyre =
   | "croisement"
   | "vague"
   | "cercle"
-  | "croix";
+  | "croix"
+  | "helice"
+  | "tunnel"
+  | "diagonale"
+  | "respiration"
+  | "zigzag"
+  | "pluie";
 
 /**
  * Cinématique pan/tilt d'une lyre.
@@ -328,6 +334,65 @@ export function orientationLyre(
         ouverture = 0.022;
         intensite = 0.9;
         prisme = f.reduced ? 0 : 0.4;
+        break;
+      }
+      case "helice": {
+        // Double hélice : l'angle court le long de la rangée comme une onde
+        // hélicoïdale, avec un déphasage continu. Le geste tourne sur lui-même.
+        angle = base + Math.sin(f.t * 0.62 + i * 0.82) * 0.52;
+        ouverture = 0.019 + 0.004 * Math.sin(f.t * 0.4 + i);
+        intensite = 0.82;
+        prisme = f.reduced ? 0 : 0.35;
+        break;
+      }
+      case "tunnel": {
+        // Tunnel : toutes les têtes visent un foyer qui se déplace lentement au
+        // centre du sol. Les faisceaux convergent au lieu de balayer.
+        const cibleX = f.width * (0.5 + 0.26 * Math.sin(f.t * 0.24));
+        const cibleY = f.height * (0.78 + 0.05 * Math.sin(f.t * 0.17 + 1.3));
+        const { x, y } = positionLyre(i, f.width, f.height);
+        const angleCible = Math.atan2(cibleY - y, cibleX - x);
+        angle = base + (angleCible - base) * 0.82;
+        ouverture = 0.02;
+        intensite = 0.88;
+        prisme = f.reduced ? 0 : 0.45;
+        break;
+      }
+      case "diagonale": {
+        // Balayage diagonal : toute la rangée part du même côté, avec un léger
+        // retard de tête en tête, puis revient. Geste lent et large.
+        angle = base + (i - centre) * 0.045 + Math.sin(f.t * 0.33 - i * 0.08) * 0.46;
+        ouverture = 0.022;
+        intensite = 0.84;
+        prisme = f.reduced ? 0 : 0.3;
+        break;
+      }
+      case "respiration": {
+        // Éventail symétrique qui s'ouvre et se referme : la scène respire.
+        const ouvertureLente = 0.07 + 0.055 * Math.sin(f.t * 0.42);
+        angle = base + (i - centre) * ouvertureLente;
+        ouverture = 0.024;
+        intensite = 0.8;
+        prisme = f.reduced ? 0 : 0.4;
+        break;
+      }
+      case "zigzag": {
+        // Têtes alternées qui tirent à gauche et à droite, avec une dérive
+        // lente : un zigzag lisible sur toute la largeur du plateau.
+        const cote = i % 2 === 0 ? 1 : -1;
+        angle = base + cote * 0.16 + Math.sin(f.t * 0.38 + i * 0.36) * 0.28;
+        ouverture = 0.02;
+        intensite = 0.86;
+        prisme = f.reduced ? 0 : 0.25;
+        break;
+      }
+      case "pluie": {
+        // Pluie de lumière : les têtes s'allument en cascade, chacune décalée,
+        // et leurs faisceaux tombent en rideau.
+        angle = base + (i - centre) * 0.03 + Math.sin(f.t * 0.5 - i * 0.7) * 0.34;
+        ouverture = 0.022;
+        intensite = 0.7 + 0.2 * Math.sin(f.t * 0.4 - i * 0.5);
+        prisme = 0;
         break;
       }
     }
@@ -1166,6 +1231,79 @@ const lyresAurore: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, "cercle", 0.75, f.height * 0.12, 0.96);
 };
 
+/**
+ * Hélice de lyres : trois étages décrivent une onde hélicoïdale continue. Les
+ * faisceaux semblent tourner autour d'un axe central.
+ */
+const lyresHelice: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "helice", 0.3, -f.height * 0.12, 0.55);
+  dessinerEtageLyres(ctx, f, view, "helice", 0.52, 0, 0.78);
+  dessinerEtageLyres(ctx, f, view, "helice", 0.72, f.height * 0.12, 0.98);
+};
+
+/**
+ * Tunnel de lyres : trois étages convergent vers un foyer qui glisse au centre
+ * du sol. Plus la rangée est proche, plus le tunnel est serré.
+ */
+const lyresTunnel: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.22, -f.height * 0.16, 0.45);
+  dessinerEtageLyres(ctx, f, view, "tunnel", 0.56, -f.height * 0.04, 0.75);
+  dessinerEtageLyres(ctx, f, view, "tunnel", 0.78, f.height * 0.1, 0.98);
+};
+
+/**
+ * Balayage diagonal : toutes les têtes partent du même côté et reviennent,
+ * avec un léger retard le long de la rangée. Trois nappes superposées.
+ */
+const lyresDiagonale: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "diagonale", 0.28, -f.height * 0.14, 0.55);
+  dessinerEtageLyres(ctx, f, view, "diagonale", 0.52, 0, 0.8);
+  dessinerEtageLyres(ctx, f, view, "diagonale", 0.74, f.height * 0.13, 1);
+};
+
+/**
+ * Respiration de lyres : un éventail géant qui s'ouvre et se referme lentement,
+ * sur quatre étages. C'est l'effet le plus ample du plateau.
+ */
+const lyresRespiration: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.2, -f.height * 0.2, 0.45);
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.36, -f.height * 0.08, 0.65);
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.56, f.height * 0.04, 0.86);
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.76, f.height * 0.16, 1.04);
+};
+
+/**
+ * Zigzag de lyres : les têtes alternent gauche et droite sur trois étages, avec
+ * une dérive lente. Le plateau se lit comme une fermeture éclair de lumière.
+ */
+const lyresZigzag: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "zigzag", 0.32, -f.height * 0.1, 0.6);
+  dessinerEtageLyres(ctx, f, view, "zigzag", 0.55, 0, 0.82);
+  dessinerEtageLyres(ctx, f, view, "zigzag", 0.76, f.height * 0.11, 1);
+};
+
+/**
+ * Cascade de lyres : quatre étages de faisceaux tombent en pluie, chacun décalé
+ * dans le temps. Aucun stroboscope, seulement un ruissellement de lumière.
+ */
+const lyresCascade: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "pluie", 0.2, -f.height * 0.2, 0.42);
+  dessinerEtageLyres(ctx, f, view, "pluie", 0.36, -f.height * 0.07, 0.62);
+  dessinerEtageLyres(ctx, f, view, "pluie", 0.56, f.height * 0.05, 0.84);
+  dessinerEtageLyres(ctx, f, view, "pluie", 0.78, f.height * 0.17, 1.04);
+};
+
+/**
+ * Colisée de lyres : une arène complète, avec deux colonnes latérales
+ * croisées, une rangée frontale et un étage lointain.
+ */
+const lyresColisee: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.22, -f.height * 0.15, 0.5);
+  dessinerEtageLyres(ctx, f, view, "croisement", 0.55, 0, 0.8);
+  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.6);
+  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.6);
+};
+
 /** Familles de la scénographie concert. */
 export const CONCERT_FAMILIES = {
   "lyres-suspendues": lyresSuspendues,
@@ -1178,4 +1316,11 @@ export const CONCERT_FAMILIES = {
   "lyres-orbitale": lyresOrbitale,
   "lyres-rideau": lyresRideau,
   "lyres-aurore": lyresAurore,
+  "lyres-helice": lyresHelice,
+  "lyres-tunnel": lyresTunnel,
+  "lyres-diagonale": lyresDiagonale,
+  "lyres-respiration": lyresRespiration,
+  "lyres-zigzag": lyresZigzag,
+  "lyres-cascade": lyresCascade,
+  "lyres-colisee": lyresColisee,
 } as const;
