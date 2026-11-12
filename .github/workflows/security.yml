@@ -1,0 +1,46 @@
+name: Security
+
+# Vérifications rapides sur chaque PR, en complément des scans Strix
+# bihebdomadaires : détection de secrets dans le diff et revue des dépendances.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks a besoin de l'historique pour lire le diff
+
+      - name: Scan des commits de la PR
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --redact --verbose --no-banner \
+            --log-opts="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  dependencies:
+    name: Dépendances (dependency-review)
+    # l'action dependency-review nécessite GitHub Advanced Security sur les
+    # dépôts privés ; elle est gratuite sur les dépôts publics
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Revue des dépendances ajoutées
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
