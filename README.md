@@ -391,16 +391,14 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
 **Concert / C** du dashboard, ou la touche `C` sur l'écran de show.
 
 - la scène reste presque toujours habitée : lyres suspendues, barres LED, pont concert,
-  poursuites, duo et éventail, complétés par onze nouvelles scènes de lyres
-  cinématiques — cathédrale, orbitales, rideau, aurore, hélice, tunnel, diagonale,
-  respiration, zigzag, cascade et colisée. Certaines empilent jusqu'à quatre étages de
-  huit têtes, soit 32 lyres par scène. Aucune nappe calme ni effet de rave dans le
-  réservoir ;
+  poursuites, duo et éventail, complétés par douze scènes de lyres cinématiques —
+  cathédrale, orbitales, rideau, aurore, hélice, tunnel, diagonale, respiration, zigzag,
+  cascade, colisée et arène. Les plus denses empilent six étages de huit têtes plus deux
+  colonnes latérales, soit jusqu'à 64 lyres par scène ;
+- plusieurs nappes restent allumées en même temps derrière la scène : PAR wash, découpes
+  et tours lumière, pour un plateau haut budget au lieu d'une seule rangée de têtes ;
 - le fond de scène est presque noir : en concert, ce sont les lyres et les barres LED qui
   éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
-- un vrai décor physique est dessiné derrière les faisceaux : praticable, escaliers
-  latéraux, tours de treillis, pont arrière, suspentes, lignes de façade suspendues,
-  échafaudage, praticables bas et rideaux de câbles ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
 - d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
@@ -570,7 +568,6 @@ src/
     families/           les familles d'effets, groupées par provenance
       concert-rig.ts    structure, lyres, barres LED et blinders
       concert-lights.ts PAR wash, découpes, tours, rampe, barres, poursuites
-      concert-set.ts    praticable, escaliers, treillis, façade, échafaudage, câbles
       index.ts          agrégation de la table des familles
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB

@@ -970,7 +970,7 @@ function dessinerLyres(
   // les lyres sont la seule source : elles éclairent réellement la salle et
   // prennent donc beaucoup plus de puissance.
   const alpha = f.dynamic === true
-    ? (0.22 + 0.62 * f.energy) * f.alpha
+    ? (0.1 + 0.32 * f.energy) * f.alpha
     : (0.08 + 0.3 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -991,7 +991,7 @@ function dessinerLyres(
       width: largeur,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + (f.hard ? 0.04 : f.dynamic === true ? 0.2 : 0.08),
+      lightness: f.palette.lightness + (f.hard ? 0.04 : f.dynamic === true ? 0.02 : 0.08),
       quality: f.quality,
       reduced: f.reduced,
       fumee: f.haze,
@@ -1049,7 +1049,7 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
   // Même règle que pour les lyres : la rampe ne clignote pas sur le kick. En
   // concert, les barres LED complètent l'éclairage de salle.
   const alpha = f.dynamic === true
-    ? (0.16 + 0.48 * f.energy) * f.alpha
+    ? (0.08 + 0.24 * f.energy) * f.alpha
     : (0.07 + 0.26 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
@@ -1085,7 +1085,7 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
       width: Math.tan(ouverture) * portee,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + (f.hard ? 0.05 : f.dynamic === true ? 0.18 : 0.1),
+      lightness: f.palette.lightness + (f.hard ? 0.05 : f.dynamic === true ? 0.04 : 0.1),
       alpha: alpha * modulation,
       quality: f.quality,
       reduced: f.reduced,
@@ -1168,7 +1168,10 @@ function dessinerEtageLyres(
   ctx.translate(f.width * 0.5, f.height * 0.5 + offsetY);
   ctx.scale(scale, scale);
   ctx.translate(-f.width * 0.5, -f.height * 0.5);
-  dessinerLyres(ctx, { ...f, alpha: f.alpha * alpha }, view, geste);
+  // Plusieurs étages se superposent : on abaisse chaque nappe pour que
+  // l'addition reste colorée au lieu de saturer l'écran en blanc.
+  const attenuation = f.dynamic === true ? 0.65 : 1;
+  dessinerLyres(ctx, { ...f, alpha: f.alpha * alpha * attenuation }, view, geste);
   ctx.restore();
 }
 
@@ -1200,6 +1203,7 @@ function dessinerColonneLyres(
  * laser ni artifice de rave.
  */
 const lyresCathedrale: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.16, -f.height * 0.24, 0.34);
   dessinerEtageLyres(ctx, f, view, "vague", 0.2, -f.height * 0.17, 0.42);
   dessinerEtageLyres(ctx, f, view, "croisement", 0.28, -f.height * 0.09, 0.55);
   dessinerEtageLyres(ctx, f, view, "eventail", 0.55, 0, 0.78);
@@ -1232,6 +1236,7 @@ const lyresRideau: FamilyDraw = (ctx, f, view) => {
  * vers l'avant. La scène brille par accumulation de têtes, pas par stroboscope.
  */
 const lyresAurore: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.14, -f.height * 0.26, 0.34);
   dessinerEtageLyres(ctx, f, view, "vague", 0.18, -f.height * 0.2, 0.4);
   dessinerEtageLyres(ctx, f, view, "croisement", 0.32, -f.height * 0.1, 0.58);
   dessinerEtageLyres(ctx, f, view, "eventail", 0.52, 0, 0.8);
@@ -1243,7 +1248,8 @@ const lyresAurore: FamilyDraw = (ctx, f, view) => {
  * faisceaux semblent tourner autour d'un axe central.
  */
 const lyresHelice: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "helice", 0.3, -f.height * 0.12, 0.55);
+  dessinerEtageLyres(ctx, f, view, "helice", 0.22, -f.height * 0.18, 0.45);
+  dessinerEtageLyres(ctx, f, view, "helice", 0.36, -f.height * 0.1, 0.6);
   dessinerEtageLyres(ctx, f, view, "helice", 0.52, 0, 0.78);
   dessinerEtageLyres(ctx, f, view, "helice", 0.72, f.height * 0.12, 0.98);
 };
@@ -1253,7 +1259,8 @@ const lyresHelice: FamilyDraw = (ctx, f, view) => {
  * du sol. Plus la rangée est proche, plus le tunnel est serré.
  */
 const lyresTunnel: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "vague", 0.22, -f.height * 0.16, 0.45);
+  dessinerEtageLyres(ctx, f, view, "vague", 0.18, -f.height * 0.22, 0.4);
+  dessinerEtageLyres(ctx, f, view, "tunnel", 0.3, -f.height * 0.14, 0.55);
   dessinerEtageLyres(ctx, f, view, "tunnel", 0.56, -f.height * 0.04, 0.75);
   dessinerEtageLyres(ctx, f, view, "tunnel", 0.78, f.height * 0.1, 0.98);
 };
@@ -1273,6 +1280,7 @@ const lyresDiagonale: FamilyDraw = (ctx, f, view) => {
  * sur quatre étages. C'est l'effet le plus ample du plateau.
  */
 const lyresRespiration: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.16, -f.height * 0.26, 0.38);
   dessinerEtageLyres(ctx, f, view, "respiration", 0.2, -f.height * 0.2, 0.45);
   dessinerEtageLyres(ctx, f, view, "respiration", 0.36, -f.height * 0.08, 0.65);
   dessinerEtageLyres(ctx, f, view, "respiration", 0.56, f.height * 0.04, 0.86);
@@ -1294,6 +1302,7 @@ const lyresZigzag: FamilyDraw = (ctx, f, view) => {
  * dans le temps. Aucun stroboscope, seulement un ruissellement de lumière.
  */
 const lyresCascade: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "pluie", 0.14, -f.height * 0.26, 0.36);
   dessinerEtageLyres(ctx, f, view, "pluie", 0.2, -f.height * 0.2, 0.42);
   dessinerEtageLyres(ctx, f, view, "pluie", 0.36, -f.height * 0.07, 0.62);
   dessinerEtageLyres(ctx, f, view, "pluie", 0.56, f.height * 0.05, 0.84);
@@ -1309,6 +1318,22 @@ const lyresColisee: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, "croisement", 0.55, 0, 0.8);
   dessinerColonneLyres(ctx, f, view, -1, "croix", 0.6);
   dessinerColonneLyres(ctx, f, view, 1, "croix", 0.6);
+};
+
+/**
+ * Arène de lyres : six étages frontaux et deux colonnes latérales, la scène la
+ * plus dense du plateau. Elle est faite pour les refrains où tout doit être
+ * allumé en même temps.
+ */
+const lyresArena: FamilyDraw = (ctx, f, view) => {
+  dessinerEtageLyres(ctx, f, view, "vague", 0.12, -f.height * 0.28, 0.32);
+  dessinerEtageLyres(ctx, f, view, "respiration", 0.16, -f.height * 0.22, 0.4);
+  dessinerEtageLyres(ctx, f, view, "croisement", 0.24, -f.height * 0.15, 0.52);
+  dessinerEtageLyres(ctx, f, view, "helice", 0.38, -f.height * 0.06, 0.68);
+  dessinerEtageLyres(ctx, f, view, "eventail", 0.58, f.height * 0.04, 0.86);
+  dessinerEtageLyres(ctx, f, view, "cercle", 0.78, f.height * 0.14, 1.04);
+  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.55);
+  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.55);
 };
 
 /** Familles de la scénographie concert. */
@@ -1330,4 +1355,5 @@ export const CONCERT_FAMILIES = {
   "lyres-zigzag": lyresZigzag,
   "lyres-cascade": lyresCascade,
   "lyres-colisee": lyresColisee,
+  "lyres-arena": lyresArena,
 } as const;

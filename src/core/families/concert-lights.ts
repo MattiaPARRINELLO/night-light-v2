@@ -14,7 +14,7 @@ import { activeSlots, count, paint } from "./util";
 
 /** Puissance de base : le concert éclaire vraiment, le studio reste plus doux. */
 function puissance(f: FrameState): number {
-  return (f.dynamic === true ? 0.14 + 0.46 * f.energy : 0.06 + 0.2 * f.energy) * f.alpha;
+  return (f.dynamic === true ? 0.06 + 0.26 * f.energy : 0.06 + 0.2 * f.energy) * f.alpha;
 }
 
 /** Faisceau + lentille, brique commune à toutes les nouvelles sources. */
@@ -40,7 +40,7 @@ function source(
     width: largeur,
     hue,
     saturation: Math.min(1, f.palette.saturation + 0.04),
-    lightness: f.palette.lightness + (f.dynamic === true ? 0.2 : 0.12),
+    lightness: f.palette.lightness + (f.dynamic === true ? 0.04 : 0.08),
     alpha,
     quality: f.quality,
     reduced: f.reduced,
@@ -54,13 +54,13 @@ function source(
   ctx.fill();
 }
 
-/** PAR wash : six grands cônes larges depuis le haut, qui baignent la salle. */
+/** PAR wash : dix grands cônes larges depuis le haut, qui baignent la salle. */
 const parWash: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = Math.hypot(w, h) * 1.1;
-  const slots = 6;
+  const slots = 10;
   const visibles = activeSlots(slots, count(slots, f.quality, f.reduced), f.seed);
   const respiration = 0.82 + 0.18 * Math.sin(f.t * 0.32);
   for (const index of visibles) {
@@ -72,14 +72,14 @@ const parWash: FamilyDraw = (ctx, f) => {
   }
 };
 
-/** Découpes : huit faisceaux fins et nets, en éventail lent depuis le pont. */
+/** Découpes : douze faisceaux fins et nets, en éventail lent depuis le pont. */
 const decoupes: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = Math.hypot(w, h) * 1.2;
-  for (let index = 0; index < 8; index += 1) {
-    const t = index / 7;
+  for (let index = 0; index < 12; index += 1) {
+    const t = index / 11;
     const x = w * (0.06 + 0.88 * t);
     const y = -h * 0.02;
     const angle = Math.PI / 2 + Math.sin(f.t * 0.22 + index * 0.5) * 0.18 + (t - 0.5) * 0.55;
@@ -95,8 +95,8 @@ const toursLumiere: FamilyDraw = (ctx, f) => {
   const portee = Math.hypot(w, h) * 1.05;
   for (const side of [0, 1] as const) {
     const x = side === 0 ? w * 0.03 : w * 0.97;
-    for (let index = 0; index < 4; index += 1) {
-      const y = h * (0.2 + index * 0.16);
+    for (let index = 0; index < 6; index += 1) {
+      const y = h * (0.16 + index * 0.12);
       const versCentre = side === 0 ? 0 : Math.PI;
       const angle = versCentre + (side === 0 ? 1 : -1) * (0.3 + index * 0.08);
       source(ctx, f, x, y, angle, 0.09, lampHue(f, index + side), alpha * 0.95, portee, 2);
@@ -104,13 +104,13 @@ const toursLumiere: FamilyDraw = (ctx, f) => {
   }
 };
 
-/** Rampe de façade : dix sources basses qui lavent le devant de la scène. */
+/** Rampe de façade : seize sources basses qui lavent le devant de la scène. */
 const rampeFacade: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = h * 1.2;
-  const slots = 10;
+  const slots = 16;
   const visibles = activeSlots(slots, count(slots, f.quality, f.reduced), f.seed);
   for (const index of visibles) {
     const t = index / (slots - 1);
@@ -120,16 +120,16 @@ const rampeFacade: FamilyDraw = (ctx, f) => {
   }
 };
 
-/** Barres de projecteurs : trois rangées de petits PAR sur le pont arrière. */
+/** Barres de projecteurs : quatre rangées de petits PAR sur le pont arrière. */
 const barresProjecteurs: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = Math.hypot(w, h) * 0.9;
-  const slots = 5;
+  const slots = 7;
   const colonnes = activeSlots(slots, count(slots, f.quality, f.reduced), f.seed);
-  for (let row = 0; row < 3; row += 1) {
-    const y = h * (0.08 + row * 0.11);
+  for (let row = 0; row < 4; row += 1) {
+    const y = h * (0.06 + row * 0.09);
     for (const col of colonnes) {
       const t = col / (slots - 1);
       const x = w * (0.1 + 0.8 * t);
@@ -139,20 +139,22 @@ const barresProjecteurs: FamilyDraw = (ctx, f) => {
   }
 };
 
-/** Poursuites croisées : deux followspots qui se cherchent sur la scène. */
+/** Poursuites croisées : quatre followspots qui se cherchent sur la scène. */
 const poursuitesCroisees: FamilyDraw = (ctx, f) => {
   const { width: w, height: h } = f;
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = Math.hypot(w, h) * 1.25;
   for (const side of [0, 1] as const) {
-    const phase = f.t * 0.28 + side * Math.PI;
-    const x = w * (side === 0 ? 0.06 : 0.94);
-    const y = h * 0.02;
-    const cibleX = w * (0.5 + 0.34 * Math.sin(phase));
-    const cibleY = h * (0.72 + 0.12 * Math.cos(phase * 1.3));
-    const angle = Math.atan2(cibleY - y, cibleX - x);
-    source(ctx, f, x, y, angle, 0.028, lampHue(f, side), alpha * 1.2, portee, 2);
+    for (let paire = 0; paire < 2; paire += 1) {
+      const phase = f.t * 0.28 + side * Math.PI + paire * 1.7;
+      const x = w * (side === 0 ? 0.06 : 0.94);
+      const y = h * (0.02 + paire * 0.04);
+      const cibleX = w * (0.5 + 0.34 * Math.sin(phase));
+      const cibleY = h * (0.72 + 0.12 * Math.cos(phase * 1.3));
+      const angle = Math.atan2(cibleY - y, cibleX - x);
+      source(ctx, f, x, y, angle, 0.028, lampHue(f, side + paire), alpha * 1.1, portee, 2);
+    }
   }
 };
 

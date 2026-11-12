@@ -51,6 +51,7 @@ export type FamilyId =
   | "lyres-zigzag"
   | "lyres-cascade"
   | "lyres-colisee"
+  | "lyres-arena"
   // Autres lumières de scène du mode concert : PAR wash, découpes, tours,
   // rampe, barres de projecteurs et poursuites croisées.
   | "par-wash"
@@ -267,6 +268,7 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-zigzag": "zigzag de lyres",
   "lyres-cascade": "cascade de lyres",
   "lyres-colisee": "colisée de lyres",
+  "lyres-arena": "arène de lyres",
   "par-wash": "PAR wash",
   decoupes: "découpes",
   "tours-lumiere": "tours lumière",
@@ -373,6 +375,7 @@ export const CONCERT_FAMILIES: FamilyId[] = [
   "lyres-zigzag",
   "lyres-cascade",
   "lyres-colisee",
+  "lyres-arena",
   "par-wash",
   "decoupes",
   "tours-lumiere",
@@ -990,9 +993,10 @@ function paletteLightness(mood: Mood, hard = false, dynamic = false): number {
   // sa chroma au lieu de virer au blanc.
   if (hard && mood === "explosif") return 0.64;
   if (hard && mood === "pulse") return 0.58;
-  // Profil concert : plus lumineux que le hard, sans virer au pastel.
-  if (dynamic && mood === "explosif") return 0.7;
-  if (dynamic && mood === "pulse") return 0.64;
+  // Profil concert : plus lumineux qu'un fond noir, mais assez bas pour que la
+  // couleur reste saturée sur les faisceaux au lieu de virer au blanc.
+  if (dynamic && mood === "explosif") return 0.56;
+  if (dynamic && mood === "pulse") return 0.54;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
   return 0.6;

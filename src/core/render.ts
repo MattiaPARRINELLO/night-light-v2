@@ -5,7 +5,6 @@ import {
   dessinerBlinders,
   dessinerBordure,
   dessinerLyresRave,
-  dessinerSceneConcert,
   dessinerStructure,
   drawCoreGlow,
   drawFamily,
@@ -1342,9 +1341,6 @@ export function renderFrame(input: RenderInput): void {
   // source-over, avant la lumière, pour rester une silhouette métallique.
   ctx.globalCompositeOperation = "source-over";
   dessinerStructure(ctx, permanent);
-  // Décor physique du concert : praticable, escaliers, tours, façade,
-  // échafaudage et câbles. Il donne de la profondeur aux lyres.
-  if (dynamic) dessinerSceneConcert(ctx, permanent);
   ctx.globalCompositeOperation = "lighter";
 
   // Scène courante + scène sortante pendant le fondu (transition fluide).
@@ -1364,6 +1360,13 @@ export function renderFrame(input: RenderInput): void {
     drawRaveFloor(ctx, base);
     drawRaveLyreWall(ctx, base, view);
   } else {
+    // Concert haut budget : plusieurs nappes de lumière restent allumées en
+    // même temps derrière la famille principale. Le plateau n'est jamais une
+    // seule rangée de têtes.
+    if (dynamic) {
+      drawFamily(ctx, { ...base, alpha: base.alpha * 0.25 }, view, "par-wash");
+      drawFamily(ctx, { ...base, alpha: base.alpha * 0.16 }, view, "tours-lumiere");
+    }
     drawFamily(ctx, base, view, sceneFamily);
   }
   if (strobeFull) drawRaveLayers(ctx, base, view);
