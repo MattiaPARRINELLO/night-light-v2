@@ -7,6 +7,7 @@ import {
   resolveShowProfile,
 } from "../../src/core/show";
 import { dynamicStrobeAlpha, dynamicStrobeDivisions, flashAdmitted } from "../../src/core/render";
+import { motifBordure } from "../../src/core/families/bordure";
 import type { FrameState } from "../../src/core/families";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -90,5 +91,41 @@ describe("profil concert dynamique", () => {
       if (flashAdmitted(view, time, false, true)) admitted += 1;
     }
     expect(admitted).toBeGreaterThan(0);
+  });
+
+  test("la bordure LED strobe souvent en concert, sans être permanente", () => {
+    const view = new TrackView(energeticAnalysis());
+    const frame = (seed: number, role: string) =>
+      ({
+        dynamic: true,
+        hard: false,
+        reduced: false,
+        energy: 0.8,
+        beat: 1,
+        bass: 0.8,
+        beatIndex: 0,
+        beatPhase: 0,
+        seed,
+        buildStrength: 0,
+        scene: { role, index: 0 },
+      }) as unknown as FrameState;
+    const rate = (role: string, dynamic: boolean): number => {
+      let strobes = 0;
+      for (let seed = 0; seed < 200; seed += 1) {
+        const current = frame(seed, role);
+        if (motifBordure(dynamic ? current : { ...current, dynamic: false }, view) === "strobe") {
+          strobes += 1;
+        }
+      }
+      return strobes / 200;
+    };
+    const dropRate = rate("drop", true);
+    expect(dropRate).toBeGreaterThan(0.2);
+    expect(dropRate).toBeLessThan(0.45);
+    expect(rate("refrain", true)).toBeGreaterThan(0.1);
+    expect(rate("couplet", true)).toBeGreaterThan(0.08);
+    // Le standard ne strobe pas sur ces blocs : le concert en ajoute vraiment.
+    expect(rate("drop", false)).toBe(0);
+    expect(rate("couplet", false)).toBe(0);
   });
 });

@@ -136,9 +136,11 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   if (f.scene.role === "drop") {
     // Le profil hard réserve une part plus large au strobe : sur ce répertoire,
     // l'impact doit claquer au lieu de dérouler un motif. Le profil concert en
-    // garde une part, plus petite.
+    // garde une part bien plus large, mais pas continue : un bloc sur trois
+    // environ, pour que la bande claque souvent sans devenir un stroboscope
+    // permanent.
     if (f.hard && tirage < 0.18) return "strobe";
-    if (f.dynamic === true && tirage < 0.1) return "strobe";
+    if (f.dynamic === true && tirage < 0.32) return "strobe";
     // Le strobe « fort et sale » est réservé aux gros drops : une montée qui
     // n'a pas assez de force ne le déclenche jamais.
     const grosDrop = clamp01(f.buildStrength) >= 0.8;
@@ -155,6 +157,8 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return grosDrop ? "strobe" : "plein";
   }
   if (f.scene.role === "refrain") {
+    // En concert, le refrain peut lui aussi partir en strobe par blocs.
+    if (f.dynamic === true && tirage < 0.2) return "strobe";
     if (tirage < 0.16) return "chenillard";
     if (tirage < 0.3) return "comete";
     if (tirage < 0.42) return "alternance";
@@ -167,6 +171,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return "vumetre";
   }
   if (f.scene.role === "montee") {
+    if (f.dynamic === true && tirage < 0.12) return "strobe";
     if (tirage < 0.26) return "haut";
     if (tirage < 0.46) return "chenillard";
     if (tirage < 0.62) return "progression";
@@ -176,7 +181,8 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   }
   if (f.scene.role === "intro") return tirage < 0.45 ? "rail" : tirage < 0.75 ? "respiration" : "progression";
   if (f.hard && tirage > 0.92) return "strobe";
-  if (f.dynamic === true && tirage > 0.95) return "strobe";
+  // Concert : environ un bloc sur sept sur les couplets et passages neutres.
+  if (f.dynamic === true && tirage > 0.86) return "strobe";
   if (tirage < 0.2) return "rail";
   if (tirage < 0.36) return "cote";
   if (tirage < 0.5) return "respiration";
