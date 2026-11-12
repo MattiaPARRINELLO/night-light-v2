@@ -183,11 +183,12 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   // Le profil hard veut un fond plus noir : c'est ce qui fait ressortir les
   // barres, les volets et les strobes au lieu de baigner l'image dans une
-  // lueur de salle. Le profil concert assombrit un peu sans éteindre la salle.
+  // lueur de salle. Le concert va plus loin : la salle reste noire, ce sont les
+  // lyres qui l'éclairent.
   const glow = f.hard
     ? 0.012 + f.energy * 0.032 + f.bass * 0.028
     : f.dynamic === true
-      ? 0.016 + f.energy * 0.042 + f.bass * 0.04
+      ? 0.006 + f.energy * 0.016 + f.bass * 0.014
       : 0.02 + f.energy * 0.05 + f.bass * 0.05;
   // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
   // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
@@ -195,13 +196,13 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const top = paint(
     f.palette.hue,
     f.palette.saturation,
-    (f.hard ? 0.018 : f.dynamic === true ? 0.026 : 0.035) + glow * 0.5,
+    (f.hard ? 0.018 : f.dynamic === true ? 0.012 : 0.035) + glow * 0.5,
     1,
   );
   const bottom = paint(
     contraste,
     f.palette.saturation,
-    (f.hard ? 0.026 : f.dynamic === true ? 0.036 : 0.05) + glow,
+    (f.hard ? 0.026 : f.dynamic === true ? 0.018 : 0.05) + glow,
     1,
   );
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
@@ -218,7 +219,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const haloAlpha =
     (0.03 + 0.08 * f.energy + 0.06 * f.beat) *
     f.alpha *
-    (f.hard ? 0.65 : f.dynamic === true ? 0.85 : 1);
+    (f.hard ? 0.65 : f.dynamic === true ? 0.4 : 1);
   halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
@@ -1325,7 +1326,8 @@ export function renderFrame(input: RenderInput): void {
 
   drawBackground(ctx, { ...base, palette });
   const calmBlock = calmBlockFor(plan, scene);
-  if (calmBlock !== null) drawCalmVeil(ctx, { ...base, palette }, calmBlock);
+  // En concert, la salle reste sombre : pas de voile pastel de calme.
+  if (calmBlock !== null && !dynamic) drawCalmVeil(ctx, { ...base, palette }, calmBlock);
 
   // Couche permanente : le fond, le halo et la poussière ne dépendent pas du
   // fondu de scène. C'est ce qui garantit qu'il reste toujours quelque chose à

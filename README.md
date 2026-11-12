@@ -306,7 +306,8 @@ machine qui souffle, où seule la résolution de la surface baisse. À défaut d
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
 sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
 plan (`plan.track`). **Deux couleurs maximum par morceau** : une teinte principale et une
-complémentaire, jamais une troisième.
+complémentaire, jamais une troisième. L'accent est tiré indépendamment de la dominante :
+deux morceaux qui partagent la même couleur principale reçoivent une secondaire différente.
 
 - chaque scène joue exactement l'une des deux, jamais une teinte intermédiaire ;
 - la **couleur principale domine** le morceau ; la secondaire marque seulement les impacts
@@ -382,6 +383,8 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   respiration, zigzag, cascade et colisée. Certaines empilent jusqu'à quatre étages de
   huit têtes, soit 32 lyres par scène. Aucune nappe calme ni effet de rave dans le
   réservoir ;
+- le fond de scène est presque noir : en concert, ce sont les lyres et les barres LED qui
+  éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
 - aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent

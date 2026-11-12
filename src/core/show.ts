@@ -496,6 +496,25 @@ const HARD_TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; sp
   { name: "magenta-arc", hue: 324, accent: 172, spread: 56 },
 ];
 
+/**
+ * Teintes d'accent disponibles, indépendantes de la teinte principale.
+ *
+ * L'accent n'est plus figé par la palette du morceau : deux morceaux qui
+ * partagent la même dominante peuvent recevoir une secondaire très différente.
+ * L'accent reste écarté de la dominante pour rester lisible.
+ */
+const ACCENT_HUES = [8, 26, 52, 90, 140, 172, 196, 222, 268, 300, 336, 352];
+
+/** Accent du morceau, choisi à partir de la graine et écarté de la dominante. */
+function pickTrackAccent(hue: number, seed: number): number {
+  const candidats = ACCENT_HUES.filter((accent) => {
+    const ecart = Math.abs((((accent - hue + 540) % 360) - 180));
+    return ecart >= 55;
+  });
+  const pool = candidats.length > 0 ? candidats : ACCENT_HUES;
+  return pool[Math.floor(hash01(seed * 29 + 17) * pool.length)] ?? (hue + 140) % 360;
+}
+
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
 const MIN_HUE_STEP = 34;
 /**
@@ -1392,7 +1411,11 @@ export function buildShowPlan(
   // l'autre, et tenue du premier au dernier plan. Le profil concert garde les
   // palettes standard : il n'est pas un mode sombre, juste plus habité.
   const palettes = hard ? HARD_TRACK_PALETTES : TRACK_PALETTES;
-  const track = palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
+  const baseTrack =
+    palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
+  // L'accent change d'un morceau à l'autre, même quand deux morceaux tombent sur
+  // la même teinte principale.
+  const track = { ...baseTrack, accent: pickTrackAccent(baseTrack.hue, seed) };
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
   // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
   // remarque à peine. Choisie une fois, tenue du début à la fin.

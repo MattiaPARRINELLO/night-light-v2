@@ -966,8 +966,12 @@ function dessinerLyres(
 ): void {
   const { width: w, height: h } = f;
   // Pas de terme de beat : les huit têtes ne clignotent pas ensemble sur le
-  // kick. Leur intensité est déjà modulée, tête par tête, lentement.
-  const alpha = (0.08 + 0.3 * f.energy) * f.alpha;
+  // kick. Leur intensité est déjà modulée, tête par tête, lentement. En concert,
+  // les lyres sont la seule source : elles éclairent réellement la salle et
+  // prennent donc beaucoup plus de puissance.
+  const alpha = f.dynamic === true
+    ? (0.22 + 0.62 * f.energy) * f.alpha
+    : (0.08 + 0.3 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
   for (let index = 0; index < NOMBRE_LYRES; index += 1) {
@@ -987,7 +991,7 @@ function dessinerLyres(
       width: largeur,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + (f.hard ? 0.04 : 0.08),
+      lightness: f.palette.lightness + (f.hard ? 0.04 : f.dynamic === true ? 0.2 : 0.08),
       quality: f.quality,
       reduced: f.reduced,
       fumee: f.haze,
@@ -1042,8 +1046,11 @@ function dessinerLyres(
  */
 function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView): void {
   const { width: w, height: h } = f;
-  // Même règle que pour les lyres : la rampe ne clignote pas sur le kick.
-  const alpha = (0.07 + 0.26 * f.energy) * f.alpha;
+  // Même règle que pour les lyres : la rampe ne clignote pas sur le kick. En
+  // concert, les barres LED complètent l'éclairage de salle.
+  const alpha = f.dynamic === true
+    ? (0.16 + 0.48 * f.energy) * f.alpha
+    : (0.07 + 0.26 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
   const local = clamp01((f.t - f.scene.start) / 1.2);
@@ -1078,7 +1085,7 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
       width: Math.tan(ouverture) * portee,
       hue: teinte,
       saturation: f.palette.saturation,
-      lightness: f.palette.lightness + (f.hard ? 0.05 : 0.1),
+      lightness: f.palette.lightness + (f.hard ? 0.05 : f.dynamic === true ? 0.18 : 0.1),
       alpha: alpha * modulation,
       quality: f.quality,
       reduced: f.reduced,
