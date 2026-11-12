@@ -1364,8 +1364,12 @@ export function renderFrame(input: RenderInput): void {
     // même temps derrière la famille principale. Le plateau n'est jamais une
     // seule rangée de têtes.
     if (dynamic) {
-      drawFamily(ctx, { ...base, alpha: base.alpha * 0.25 }, view, "par-wash");
-      drawFamily(ctx, { ...base, alpha: base.alpha * 0.16 }, view, "tours-lumiere");
+      if (sceneFamily !== "par-wash") {
+        drawFamily(ctx, { ...base, alpha: base.alpha * 0.22 }, view, "par-wash");
+      }
+      if (sceneFamily !== "tours-lumiere") {
+        drawFamily(ctx, { ...base, alpha: base.alpha * 0.14 }, view, "tours-lumiere");
+      }
     }
     drawFamily(ctx, base, view, sceneFamily);
   }

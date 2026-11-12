@@ -1175,29 +1175,7 @@ function dessinerEtageLyres(
   ctx.restore();
 }
 
-/** Colonne latérale de lyres, tournée vers le centre de la scène. */
-function dessinerColonneLyres(
-  ctx: CanvasRenderingContext2D,
-  f: FrameState,
-  view: TrackView,
-  side: -1 | 1,
-  geste: GesteLyre,
-  alpha: number,
-): void {
-  ctx.save();
-  if (side < 0) {
-    ctx.translate(0, f.height);
-    ctx.rotate(-Math.PI / 2);
-  } else {
-    ctx.translate(f.width, 0);
-    ctx.rotate(Math.PI / 2);
-  }
-  ctx.scale(f.height / Math.max(f.width, 1), 1);
-  dessinerLyres(ctx, { ...f, alpha: f.alpha * alpha }, view, geste);
-  ctx.restore();
-}
-
-/**
+/** 
  * Cathédrale de lyres : deux étages lointains et deux étages frontaux, tous en
  * mouvement lent. C'est la scène la plus dense du profil concert, sans aucun
  * laser ni artifice de rave.
@@ -1217,8 +1195,6 @@ const lyresCathedrale: FamilyDraw = (ctx, f, view) => {
 const lyresOrbitale: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, "vague", 0.24, -f.height * 0.12, 0.5);
   dessinerEtageLyres(ctx, f, view, "cercle", 0.7, f.height * 0.02, 0.86);
-  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.55);
-  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.55);
 };
 
 /**
@@ -1316,8 +1292,6 @@ const lyresCascade: FamilyDraw = (ctx, f, view) => {
 const lyresColisee: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, "vague", 0.22, -f.height * 0.15, 0.5);
   dessinerEtageLyres(ctx, f, view, "croisement", 0.55, 0, 0.8);
-  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.6);
-  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.6);
 };
 
 /**
@@ -1332,8 +1306,6 @@ const lyresArena: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, "helice", 0.38, -f.height * 0.06, 0.68);
   dessinerEtageLyres(ctx, f, view, "eventail", 0.58, f.height * 0.04, 0.86);
   dessinerEtageLyres(ctx, f, view, "cercle", 0.78, f.height * 0.14, 1.04);
-  dessinerColonneLyres(ctx, f, view, -1, "croix", 0.55);
-  dessinerColonneLyres(ctx, f, view, 1, "croix", 0.55);
 };
 
 /** Familles de la scénographie concert. */

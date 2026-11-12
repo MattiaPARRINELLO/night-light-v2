@@ -60,15 +60,26 @@ const parWash: FamilyDraw = (ctx, f) => {
   const alpha = puissance(f);
   if (alpha <= 0.002) return;
   const portee = Math.hypot(w, h) * 1.1;
-  const slots = 10;
+  const slots = 8;
   const visibles = activeSlots(slots, count(slots, f.quality, f.reduced), f.seed);
   const respiration = 0.82 + 0.18 * Math.sin(f.t * 0.32);
   for (const index of visibles) {
     const t = index / (slots - 1);
     const x = w * (0.08 + 0.84 * t);
     const y = -h * 0.04;
-    const angle = Math.PI / 2 + (t - 0.5) * 0.9;
-    source(ctx, f, x, y, angle, 0.16, lampHue(f, index), alpha * respiration * 1.1, portee, 3);
+    const angle = Math.PI / 2 + (t - 0.5) * 0.95;
+    source(
+      ctx,
+      f,
+      x,
+      y,
+      angle,
+      0.2,
+      lampHue(f, index),
+      alpha * respiration * 0.85,
+      portee,
+      2,
+    );
   }
 };
 
@@ -82,7 +93,7 @@ const decoupes: FamilyDraw = (ctx, f) => {
     const t = index / 11;
     const x = w * (0.06 + 0.88 * t);
     const y = -h * 0.02;
-    const angle = Math.PI / 2 + Math.sin(f.t * 0.22 + index * 0.5) * 0.18 + (t - 0.5) * 0.55;
+    const angle = Math.PI / 2 + Math.sin(f.t * 0.22 + index * 0.5) * 0.12 + (t - 0.5) * 0.4;
     source(ctx, f, x, y, angle, 0.02, lampHue(f, index + 1), alpha * 1.15, portee, 2);
   }
 };
@@ -98,7 +109,8 @@ const toursLumiere: FamilyDraw = (ctx, f) => {
     for (let index = 0; index < 6; index += 1) {
       const y = h * (0.16 + index * 0.12);
       const versCentre = side === 0 ? 0 : Math.PI;
-      const angle = versCentre + (side === 0 ? 1 : -1) * (0.3 + index * 0.08);
+      const plongee = 0.78 + index * 0.06;
+      const angle = versCentre + (side === 0 ? plongee : -plongee);
       source(ctx, f, x, y, angle, 0.09, lampHue(f, index + side), alpha * 0.95, portee, 2);
     }
   }

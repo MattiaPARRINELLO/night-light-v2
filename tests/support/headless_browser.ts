@@ -17,6 +17,10 @@ interface SetupPayload {
   analysis: Analysis;
   /** Plan réduit (`prefers-reduced-motion`). */
   reduced: boolean;
+  /** Profil forcé, pour capturer le mode concert. */
+  hard?: "auto" | "dynamic" | "on" | "off";
+  /** Force toutes les scènes sur une famille, pour l'inspection visuelle. */
+  family?: string;
   width: number;
   height: number;
   dpr: number;
@@ -94,7 +98,14 @@ function hashPixels(data: Uint8ClampedArray): string {
 function setup(payload: SetupPayload): { scenes: number; width: number; height: number } {
   const target = createTarget(payload);
   const view = new TrackView(payload.analysis);
-  const plan = buildShowPlan(payload.analysis, payload.reduced, undefined, { dramaturgy: true });
+  const plan = buildShowPlan(payload.analysis, payload.reduced, undefined, {
+    dramaturgy: true,
+    hard: payload.hard ?? "auto",
+  });
+  if (payload.family !== undefined) {
+    const family = payload.family as ShowPlan["scenes"][number]["family"];
+    plan.scenes = plan.scenes.map((scene) => ({ ...scene, family, variant: family }));
+  }
   session = { canvas: target.canvas, ctx: target.ctx, view, plan, setup: payload };
   return { scenes: plan.scenes.length, width: target.canvas.width, height: target.canvas.height };
 }
