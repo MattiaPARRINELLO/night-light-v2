@@ -598,6 +598,48 @@ export function dessinerBordure(
 
   const tube = epaisseurBordure(f);
 
+  if (concert) {
+    // Barre LED de concert : une bande continue et épaisse, avec un halo
+    // extérieur, un corps saturé et un cœur clair. Les motifs restent lisibles
+    // par variations de lumière internes, sans grosses diodes rondes.
+    const intensiteMoyenne = moyenneBordure(f, view);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation * 0.9,
+      0.52,
+      (0.06 + 0.09 * energie) * (0.4 + 0.6 * intensiteMoyenne),
+    );
+    ctx.lineWidth = tube * 2.6;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.56, 0.1 + 0.12 * energie);
+    ctx.lineWidth = tube;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.76, 0.06 + 0.08 * energie);
+    ctx.lineWidth = Math.max(1.2, tube * 0.18);
+    traceRuban();
+
+    // Le motif éclaire l'intérieur du tube, à épaisseur constante.
+    for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
+      const intensite = intensiteBordure(f, view, index, budgetFlash);
+      const couleur = teinteBordure(f, view, index, budgetFlash);
+      const variation = 0.94 + 0.12 * hash01(index * 97 + f.seed);
+      ctx.strokeStyle = paint(
+        couleur.hue,
+        couleur.saturation,
+        0.66,
+        clamp01(0.04 + 0.52 * intensite) * variation,
+      );
+      ctx.lineWidth = tube * 0.86;
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
+    }
+    return;
+  }
+
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
   // uniformément allumé et la différence allumé/éteint disparaît.
