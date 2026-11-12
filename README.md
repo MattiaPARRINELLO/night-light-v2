@@ -398,6 +398,9 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   réservoir ;
 - le fond de scène est presque noir : en concert, ce sont les lyres et les barres LED qui
   éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
+- un vrai décor physique est dessiné derrière les faisceaux : praticable, escaliers
+  latéraux, tours de treillis, pont arrière, suspentes, lignes de façade suspendues,
+  échafaudage, praticables bas et rideaux de câbles ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
 - d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
@@ -564,8 +567,10 @@ src/
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
     effects.ts          inventaire des effets et timeline synthétique du studio
-    families/           les trente-deux familles d'effets, groupées par provenance
+    families/           les familles d'effets, groupées par provenance
       concert-rig.ts    structure, lyres, barres LED et blinders
+      concert-lights.ts PAR wash, découpes, tours, rampe, barres, poursuites
+      concert-set.ts    praticable, escaliers, treillis, façade, échafaudage, câbles
       index.ts          agrégation de la table des familles
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB

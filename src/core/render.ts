@@ -5,6 +5,7 @@ import {
   dessinerBlinders,
   dessinerBordure,
   dessinerLyresRave,
+  dessinerSceneConcert,
   dessinerStructure,
   drawCoreGlow,
   drawFamily,
@@ -1341,6 +1342,9 @@ export function renderFrame(input: RenderInput): void {
   // source-over, avant la lumière, pour rester une silhouette métallique.
   ctx.globalCompositeOperation = "source-over";
   dessinerStructure(ctx, permanent);
+  // Décor physique du concert : praticable, escaliers, tours, façade,
+  // échafaudage et câbles. Il donne de la profondeur aux lyres.
+  if (dynamic) dessinerSceneConcert(ctx, permanent);
   ctx.globalCompositeOperation = "lighter";
 
   // Scène courante + scène sortante pendant le fondu (transition fluide).

@@ -14,6 +14,7 @@ export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./type
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
 export { CONCERT_FAMILIES } from "./concert-rig";
+export { dessinerSceneConcert } from "./concert-set";
 export {
   blinderBordure,
   couleurBordure,

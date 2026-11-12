@@ -283,6 +283,28 @@ describe("rendu déterministe", () => {
     }
   });
 
+  test("le profil concert ajoute le décor de scène", () => {
+    const data = analysis();
+    const plan = buildShowPlan(data, false, undefined, { hard: "dynamic" });
+    const { ctx, operations } = fakeContext();
+    renderFrame({
+      ctx,
+      width: 800,
+      height: 600,
+      dpr: 1,
+      time: 25,
+      view: new TrackView(data),
+      plan,
+      settings: { ...DEFAULT_SETTINGS, hard: "dynamic" },
+      reducedMotion: false,
+      quality: 1,
+      frame: 0,
+    });
+    // Le décor trace le praticable, les tours et les suspentes : des courbes et
+    // des traits absents d'une scène standard.
+    expect(operations.some((operation) => operation.startsWith("quadraticCurveTo:"))).toBe(true);
+  });
+
   test("toutes les familles visuelles rendent sans erreur", () => {
     // La liste vient du barème des libellés : aucune famille ne peut être
     // oubliée quand on en ajoute une.
