@@ -24,13 +24,6 @@ export const NOMBRE_DIODES_BORDURE = 240;
  * Quasi nul : le ruban est collé au bord, seul son halo déborde hors cadre.
  */
 const MARGE_BORDURE = 0.003;
-/**
- * Retrait du ruban en mode concert.
- *
- * Le tube est bien plus épais : il faut l'éloigner du bord pour que toute son
- * épaisseur reste visible dans le cadre.
- */
-const MARGE_BORDURE_CONCERT = 0.02;
 /** Épaisseur relative du tube, en fraction du petit côté. */
 const TUBE_BORDURE = 0.011;
 const TUBE_BORDURE_CONCERT = 0.026;
@@ -247,12 +240,7 @@ export function poidsMotif(
   motif: MotifBordure = motifBordure(f, view),
   budgetFlash = 1,
 ): number {
-  const diode = positionBordure(
-    index,
-    f.width,
-    f.height,
-    f.dynamic === true ? MARGE_BORDURE_CONCERT : MARGE_BORDURE,
-  );
+  const diode = positionBordure(index, f.width, f.height);
   const temps = tempsTempsFort(f, view);
   const marge = Math.min(f.width, f.height) * MARGE_BORDURE;
   const largeurUtile = Math.max(f.width - 2 * marge, 1);
@@ -580,8 +568,7 @@ export function dessinerBordure(
   budgetFlash = 1,
 ): void {
   const { width: w, height: h } = f;
-  const concert = f.dynamic === true;
-  const margeRatio = concert ? MARGE_BORDURE_CONCERT : MARGE_BORDURE;
+  const margeRatio = MARGE_BORDURE;
   const marge = Math.min(w, h) * margeRatio;
   const energie = clamp01(f.energy);
   const fil = teinteBordure(f, view, 0, budgetFlash);
@@ -598,7 +585,7 @@ export function dessinerBordure(
 
   const tube = epaisseurBordure(f);
 
-  if (concert) {
+  if (f.dynamic === true) {
     // Barre LED de concert : une bande continue et épaisse, avec un halo
     // extérieur, un corps saturé et un cœur clair. Les motifs restent lisibles
     // par variations de lumière internes, sans grosses diodes rondes.
