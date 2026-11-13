@@ -116,7 +116,7 @@ describe("échantillonnage des drops", () => {
     const first = windows[0]!;
     expect(first.track).toBe("test");
     expect(first.start).toBe(plan.scenes.find((scene) => scene.role === "drop")!.start);
-    expect(first.signature === null || first.signature.split("/").length === 4).toBe(true);
+    expect(first.signature === null || first.signature.split("/").length === 6).toBe(true);
   });
 
   test("sampleDrops interroge le renderer à 10 Hz et agrège les ratios", async () => {

@@ -19,8 +19,10 @@ export const SNAPSHOT_VERSION = 1;
 export const SNAPSHOT_DECIMALS = 3;
 
 export interface SnapshotDrop {
+  plateau: string;
   barres: string;
   blinders: string;
+  strobes: string;
   hue: string;
   lyres: string;
 }
@@ -107,8 +109,10 @@ function serializeScene(scene: ShowPlan["scenes"][number]): SnapshotScene {
       scene.drop === undefined
         ? null
         : {
+            plateau: scene.drop.plateau,
             barres: scene.drop.barres,
             blinders: scene.drop.blinders,
+            strobes: scene.drop.strobes,
             hue: scene.drop.hue,
             lyres: scene.drop.lyres,
           },

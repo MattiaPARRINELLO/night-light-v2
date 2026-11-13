@@ -85,6 +85,32 @@ describe("profil concert dynamique", () => {
     ).toBe(0);
   });
 
+  test("la signature du drop choisit le motif de strobe", () => {
+    const settings = { intensity: 1, flashes: 0.9, reduced: false, hard: "dynamic" } as RenderSettings;
+    const frame = (strobes: string, beatIndex = 0) =>
+      ({
+        dynamic: true,
+        reduced: false,
+        energy: 0.95,
+        beat: 1,
+        bass: 0.9,
+        beatPhase: 0,
+        beatIndex,
+        t: 0,
+        scene: { drop: { strobes } },
+      }) as unknown as FrameState;
+    const divisions = (strobes: string, beatIndex = 0) =>
+      dynamicStrobeDivisions(frame(strobes, beatIndex), 0.8);
+
+    expect(divisions("aucun")).toBe(0);
+    expect(divisions("simple")).toBe(2);
+    expect(divisions("double")).toBe(4);
+    // La cascade change de cadence d'un temps à l'autre au lieu de répéter.
+    expect(new Set([0, 1, 2, 3].map((beat) => divisions("cascade", beat))).size).toBeGreaterThan(1);
+    expect(dynamicStrobeAlpha(frame("aucun"), settings, 0.8)).toBe(0);
+    expect(dynamicStrobeAlpha(frame("simple"), settings, 0.8)).toBeGreaterThan(0);
+  });
+
   test("le profil concert admet les temps forts des passages énergiques", () => {
     const view = new TrackView(energeticAnalysis());
     let admitted = 0;

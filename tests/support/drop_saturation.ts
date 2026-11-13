@@ -8,7 +8,7 @@
  * La logique est séparée du CLI pour être testable avec un faux renderer.
  */
 
-import { buildShowPlan, type ShowPlan } from "../../src/core/show";
+import { buildShowPlan, dropSignatureKey, type ShowPlan } from "../../src/core/show";
 import { DEFAULT_SETTINGS, type RenderSettings } from "../../src/types";
 import type { HeadlessRenderer } from "./headless_render";
 import type { PlanTrack } from "./plan_corpus";
@@ -59,7 +59,7 @@ export function dropWindows(track: string, plan: ShowPlan): DropWindow[] {
       signature:
         scene.drop === undefined
           ? null
-          : `${scene.drop.lyres}/${scene.drop.barres}/${scene.drop.blinders}/${scene.drop.hue}`,
+          : dropSignatureKey(scene.drop),
     }));
 }
 

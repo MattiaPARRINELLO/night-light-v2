@@ -407,6 +407,38 @@ describe("rôles du plan de spectacle", () => {
     expect(impact?.role).toBe("drop");
     expect(impact?.family).toBe("pont-concert");
   });
+
+  test("en concert, chaque impact déploie un plateau et une signature différents", () => {
+    const data = analysis({
+      duration: 120,
+      sections: [{ start: 0, end: 120, label: "intense", energy: 0.9, kind: "refrain", group: "B" }],
+      builds: [
+        { start: 15, end: 20, strength: 1 },
+        { start: 40, end: 45, strength: 1 },
+        { start: 65, end: 70, strength: 1 },
+        { start: 90, end: 95, strength: 1 },
+      ],
+    });
+    const plan = buildShowPlan(data, false, undefined, { hard: "dynamic" });
+    const drops = plan.scenes.filter((scene) => scene.role === "drop");
+    expect(drops.length).toBeGreaterThanOrEqual(3);
+
+    const families = drops.map((scene) => scene.family);
+    const plateaux = drops.map((scene) => scene.drop?.plateau);
+    const signatures = drops.map((scene) => {
+      const drop = scene.drop!;
+      return [drop.plateau, drop.lyres, drop.barres, drop.blinders, drop.strobes, drop.hue].join("/");
+    });
+
+    // Deux impacts voisins ne rejouent ni la scène, ni la combinaison.
+    expect(new Set(families).size).toBe(families.length);
+    expect(new Set(plateaux).size).toBe(plateaux.length);
+    expect(new Set(signatures).size).toBe(signatures.length);
+    // Aucun impact ne reprend la famille de la scène qui le précède.
+    for (let index = 1; index < plan.scenes.length; index += 1) {
+      expect(plan.scenes[index]!.family).not.toBe(plan.scenes[index - 1]!.family);
+    }
+  });
 });
 
 describe("familles de lyres", () => {

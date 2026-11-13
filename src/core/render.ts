@@ -453,6 +453,17 @@ export function hardStrobeAlpha(
  * pas seulement sur les pics du hard.
  */
 export function dynamicStrobeDivisions(f: FrameState, drop: number): number {
+  // La signature du drop choisit la forme du stroboscope. `aucun` laisse
+  // l'impact au seul lavage coloré, `simple` garde deux éclats, `double` en
+  // pose quatre, et `cascade` fait varier la cadence d'un temps à l'autre.
+  const mode = f.scene?.drop?.strobes;
+  if (mode === "aucun") return 0;
+  if (mode === "simple") return DYNAMIC_STROBE_DIVISIONS_MIN;
+  if (mode === "double") return DYNAMIC_STROBE_DIVISIONS_MIN + 2;
+  if (mode === "cascade") {
+    const beat = Math.max(0, Math.floor(f.beatIndex));
+    return DYNAMIC_STROBE_DIVISIONS_MIN + (beat % 3);
+  }
   const energy = clamp01(f.energy);
   const violence = clamp01(drop);
   const extra = Math.round(
@@ -481,6 +492,7 @@ export function dynamicStrobeAlpha(
   const kick = clamp01(0.5 * f.beat + 0.5 * f.bass);
   if (kick < 0.1) return 0;
   const divisions = dynamicStrobeDivisions(f, drop);
+  if (divisions <= 0) return 0;
   const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
   if (!on) return 0;
   const amount = gate * (0.25 + 0.45 * kick);
@@ -1429,11 +1441,22 @@ export function renderFrame(input: RenderInput): void {
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
-      // salle, et reste dans les deux couleurs du morceau.
-      ctx.fillStyle =
-        hard || dynamic
-          ? paint(contrastHue(base), 1, 0.62, washAlpha)
-          : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
+      // salle, et reste dans les deux couleurs du morceau. La signature du drop
+      // peut demander un blanc franc ou un dégradé entre les deux pôles.
+      const washHue = dynamic ? base.scene.drop?.hue : undefined;
+      if (washHue === "blanc") {
+        ctx.fillStyle = `rgba(255,255,255,${washAlpha.toFixed(3)})`;
+      } else if (washHue === "bicolore") {
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        gradient.addColorStop(0, paint(base.palette.hue, 1, 0.62, washAlpha));
+        gradient.addColorStop(1, paint(base.palette.accent, 1, 0.62, washAlpha));
+        ctx.fillStyle = gradient;
+      } else {
+        ctx.fillStyle =
+          hard || dynamic
+            ? paint(contrastHue(base), 1, 0.62, washAlpha)
+            : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
+      }
       ctx.fillRect(0, 0, width, height);
     }
   }
