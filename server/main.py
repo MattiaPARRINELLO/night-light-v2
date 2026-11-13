@@ -43,7 +43,7 @@ from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
 from .local_cache import LocalUploadCache, content_hash, probe_metadata
-from .lyrics import LyricsService
+from .lyrics import LyricsService, apply_chorus_sections
 from .mpris import (
     add_now_playing_listener,
     get_now_playing,
@@ -406,6 +406,9 @@ class AppState:
             return
         if payload is not None:
             schema["lyrics"] = payload
+            # Le refrain des paroles pilote aussi les sections musicales : le
+            # plan de show le traite alors comme un vrai refrain.
+            apply_chorus_sections(schema, payload)
 
     def run_resolve(
         self,

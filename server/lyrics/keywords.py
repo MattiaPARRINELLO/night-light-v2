@@ -239,14 +239,16 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
         for window, count in counts.items():
             if count < min_repeats:
                 continue
-            # Priorité aux blocs les plus répétés, puis les plus longs.
-            candidate = (count, size, -first_seen[window], window)
+            # Priorité à la couverture (répétitions × longueur) : un bloc de
+            # quatre lignes chanté deux fois est un vrai refrain, alors qu'une
+            # seule ligne répétée quatre fois n'en est souvent qu'un tic.
+            candidate = (count * size, count, size, -first_seen[window], window)
             if best is None or candidate > best:
                 best = candidate
 
     if best is None:
         return ()
-    _count, size, _first, window = best
+    _coverage, _count, size, _first, window = best
     chorus: set[int] = set()
     for index in range(len(normalized) - size + 1):
         if tuple(normalized[index : index + size]) == window:

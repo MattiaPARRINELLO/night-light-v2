@@ -23,6 +23,7 @@ from .lrclib import (
 )
 from .models import LyricLine, Lyrics, LyricWord
 from .parsers import parse_lrc, parse_lyricsfile
+from .sections import apply_chorus_sections, chorus_ranges
 from .service import LyricsService
 
 __all__ = [
@@ -40,7 +41,9 @@ __all__ = [
     "LyricWord",
     "Lyrics",
     "LyricsService",
+    "apply_chorus_sections",
     "build_messages",
+    "chorus_ranges",
     "cue_cache_key",
     "cues_from_json",
     "cues_to_json",
