@@ -1,4 +1,3 @@
-
 from server.retrieve.cache import audio_cache_key
 from server.retrieve.match import (
     MatchThresholds,
@@ -10,10 +9,7 @@ from server.retrieve.models import Candidate, TrackQuery, normalize_text
 
 
 def test_normalize_text() -> None:
-    assert (
-        normalize_text("Kevin MacLeod - Canon in D Major!")
-        == "kevin macleod canon in d major"
-    )
+    assert normalize_text("Kevin MacLeod - Canon in D Major!") == "kevin macleod canon in d major"
     assert normalize_text("  A-B/C ") == "a b c"
 
 
@@ -25,15 +21,27 @@ def test_track_query_requires_title_and_non_negative_duration() -> None:
     else:
         raise AssertionError("expected ValueError")
 
+    try:
+        TrackQuery(title="Canon", duration_sec=-1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError")
+
     query = TrackQuery(title="Canon", artist="Kevin MacLeod", duration_sec=355.6)
     assert query.normalized_title == "canon"
     assert query.normalized_artist == "kevin macleod"
 
 
+def test_track_query_accepte_une_duree_inconnue() -> None:
+    """ffprobe absent ou muet : la durée vaut None, pas de quoi faire échouer
+    l'analyse (c'est le cas de la machine d'intégration)."""
+    query = TrackQuery(title="Canon", artist="Kevin MacLeod", duration_sec=None)
+    assert query.duration_sec == 0.0
+
+
 def test_score_candidate_rewards_exact_match() -> None:
-    query = TrackQuery(
-        title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628
-    )
+    query = TrackQuery(title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628)
     candidate = Candidate(
         provider="wikimedia",
         source_id="1",
@@ -49,9 +57,7 @@ def test_score_candidate_rewards_exact_match() -> None:
 
 
 def test_validate_match_rejects_duration_mismatch() -> None:
-    query = TrackQuery(
-        title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628
-    )
+    query = TrackQuery(title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628)
     candidate = Candidate(
         provider="wikimedia",
         source_id="2",
@@ -65,9 +71,7 @@ def test_validate_match_rejects_duration_mismatch() -> None:
 
 
 def test_validate_match_rejects_preview() -> None:
-    query = TrackQuery(
-        title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628
-    )
+    query = TrackQuery(title="Canon in D Major", artist="Kevin MacLeod", duration_sec=355.628)
     candidate = Candidate(
         provider="wikimedia",
         source_id="3",
@@ -83,13 +87,9 @@ def test_validate_match_rejects_preview() -> None:
 
 def test_duration_delta_and_tolerance() -> None:
     query = TrackQuery(title="x", artist="y", duration_sec=100.0)
-    candidate = Candidate(
-        provider="p", source_id="4", title="x", artist="y", duration_sec=101.5
-    )
+    candidate = Candidate(provider="p", source_id="4", title="x", artist="y", duration_sec=101.5)
     assert duration_delta_sec(query, candidate) == 1.5
-    thresholds = MatchThresholds(
-        max_duration_delta_sec=2.0, max_duration_delta_ratio=0.01
-    )
+    thresholds = MatchThresholds(max_duration_delta_sec=2.0, max_duration_delta_ratio=0.01)
     result = validate_match(query, candidate, thresholds)
     assert result.accepted is True
 
@@ -99,9 +99,7 @@ def test_cache_key_stable() -> None:
     key = audio_cache_key(query)
     assert len(key) == 64
     assert (
-        audio_cache_key(
-            TrackQuery(title="canon", artist="KEVIN MACLEOD", duration_sec=355.628)
-        )
+        audio_cache_key(TrackQuery(title="canon", artist="KEVIN MACLEOD", duration_sec=355.628))
         == key
     )
 
@@ -135,9 +133,7 @@ def test_gogo_instrumental_candidate_is_rejected() -> None:
 
 
 def test_matching_normalizes_punctuation_and_accents() -> None:
-    query = TrackQuery(
-        title="Café — Gogo!", artist="Laylow, Jok'Air", duration_sec=245.0
-    )
+    query = TrackQuery(title="Café — Gogo!", artist="Laylow, Jok'Air", duration_sec=245.0)
     candidate = Candidate(
         provider="youtube",
         source_id="x",
