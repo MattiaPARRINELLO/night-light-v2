@@ -257,6 +257,10 @@ export class LiveDirector {
     const energy = clamp01(level * 0.82 + beat * 0.3 + this.dropEnvelope * 0.18);
     const freshBeat = Number.isFinite(beatAge) && beatAge <= ADMITTED_AGE_SEC;
     const freshImpact = Number.isFinite(dropAge) && dropAge <= ADMITTED_AGE_SEC + 0.1;
+    // Comme en analysé, l'impact occupe la salle : aucun flash de temps fort
+    // pendant sa tenue, sinon les deux couches s'empilent et l'image blanchit.
+    const beatAdmitted =
+      freshBeat && dropAge > 1.2 && level > 0.18 && this.beatIndex % BEAT_FLASH_DIVISOR === 0;
     this.music = {
       level,
       energy,
@@ -271,8 +275,7 @@ export class LiveDirector {
       build: clamp01(this.build),
       buildStrength: clamp01(level * 0.85 + this.beatEnvelope * 0.15),
       surge: clamp01(this.surge),
-      admitted:
-        freshImpact || (freshBeat && level > 0.18 && this.beatIndex % BEAT_FLASH_DIVISOR === 0),
+      admitted: freshImpact || beatAdmitted,
       bpm: this.beatIndex > 0 ? 60 / Math.max(this.beatInterval, 0.001) : 0,
     };
     return this.music;
