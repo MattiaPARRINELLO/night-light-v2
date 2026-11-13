@@ -274,12 +274,10 @@ describe("motifs de la bordure", () => {
 });
 
 describe("dessin de la bordure", () => {
-  test("en concert, le tube est nettement plus épais", () => {
+  test("le tube garde la même épaisseur en concert", () => {
     const standard = frame("couplet", 12);
     const concert = frame("couplet", 12, { dynamic: true });
-    const epaisseurStandard = epaisseurBordure(standard);
-    const epaisseurConcert = epaisseurBordure(concert);
-    expect(epaisseurConcert).toBeGreaterThan(epaisseurStandard * 2);
+    expect(epaisseurBordure(concert)).toBe(epaisseurBordure(standard));
   });
 
   test("dessinerBordure dépose des diodes et reste pure", () => {
