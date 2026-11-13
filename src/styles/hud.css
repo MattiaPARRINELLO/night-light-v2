@@ -58,6 +58,33 @@
   text-overflow: ellipsis;
 }
 
+/* État des paroles, sous le titre : mot à mot, ligne à ligne, ou rien. */
+.np-text span.np-lyrics {
+  justify-self: start;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+.np-text span.np-lyrics.is-words {
+  color: var(--accent-2);
+  border-color: var(--line-strong);
+}
+
+.np-text span.np-lyrics.is-lines {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+.np-text span.np-lyrics.is-none {
+  opacity: 0.62;
+}
+
 .np-text span {
   font-size: 0.74rem;
   color: var(--ink-dim);

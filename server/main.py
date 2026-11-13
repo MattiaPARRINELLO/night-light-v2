@@ -43,6 +43,7 @@ from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
 from .local_cache import LocalUploadCache, content_hash, probe_metadata
+from .lyrics import LyricsService, apply_chorus_sections
 from .mpris import (
     add_now_playing_listener,
     get_now_playing,
@@ -122,6 +123,7 @@ class AppState:
             Path(settings.cache_dir) / "local-uploads",
             max_bytes=settings.local_cache_max_bytes,
         )
+        self.lyrics = LyricsService(Path(settings.cache_dir) / "lyrics")
         self.executor = ThreadPoolExecutor(
             max_workers=settings.workers, thread_name_prefix="analysis"
         )
@@ -223,6 +225,7 @@ class AppState:
         timings: dict[str, Any] | None = None,
         track_key: str | None = None,
         window: tuple[float, float] | None = None,
+        track: TrackQuery | None = None,
     ) -> None:
         job = self.store.get(job_id)
         if job is None or job.audio_path is None:
@@ -264,6 +267,7 @@ class AppState:
                 partial_ms = round(time.time() * 1000 - detected)
                 serialize_started = time.monotonic()
                 quick_schema = to_schema(quick)
+                self._attach_lyrics(quick_schema, track, allow_network=False)
                 quick_serialize_ms = round((time.monotonic() - serialize_started) * 1000)
                 _LOGGER.info(
                     "Analyse rapide prête id=%s fenêtre=[%.1f, %.1f] durée=%.2fs tempo=%.1f",
@@ -351,6 +355,7 @@ class AppState:
                     )
                 except Exception as error:  # noqa: BLE001 - le cache ne casse pas l'analyse
                     _LOGGER.warning("Écriture cache local impossible id=%s: %s", job_id, error)
+            self._attach_lyrics(schema, track)
             self.store.set_result(
                 job_id,
                 schema,
@@ -384,6 +389,27 @@ class AppState:
                 str(error)[:300],
             )
 
+    def _attach_lyrics(
+        self,
+        schema: dict[str, Any],
+        track: TrackQuery | None,
+        *,
+        allow_network: bool = True,
+    ) -> None:
+        """Ajoute le payload de paroles au résultat, sans jamais le bloquer."""
+        if track is None:
+            return
+        try:
+            payload = self.lyrics.for_track(track, allow_network=allow_network)
+        except Exception as error:  # noqa: BLE001 - le show reste utilisable sans paroles
+            _LOGGER.warning("Paroles indisponibles pour %r: %s", track.title, error)
+            return
+        if payload is not None:
+            schema["lyrics"] = payload
+            # Le refrain des paroles pilote aussi les sections musicales : le
+            # plan de show le traite alors comme un vrai refrain.
+            apply_chorus_sections(schema, payload)
+
     def run_resolve(
         self,
         job_id: str,
@@ -397,6 +423,11 @@ class AppState:
         job = self.store.get(job_id)
         if job is None:
             return
+        track = (
+            TrackQuery(title=title, artist=artist, duration_sec=duration_sec)
+            if title.strip()
+            else None
+        )
         # Avant Deezer : un fichier déjà déposé à la main est la meilleure source.
         cached_upload = self.local_cache.find(title, artist, duration_sec)
         if cached_upload is not None:
@@ -407,6 +438,7 @@ class AppState:
             with suppress(OSError):
                 job.size_bytes = cached_upload.audio_path.stat().st_size
             self.resolve_pending = False
+            self._attach_lyrics(cached_upload.analysis, track)
             self.store.set_result(
                 job_id,
                 cached_upload.analysis,
@@ -594,6 +626,7 @@ class AppState:
                 }
             )
             self.resolve_pending = False
+            self._attach_lyrics(cached_analysis, track)
             self.store.set_result(job_id, cached_analysis, timings=timings)
             _LOGGER.info(
                 "Analyse servie depuis le cache id=%s version=%s total=%.0f ms",
@@ -619,6 +652,7 @@ class AppState:
             timings={**timings, "analysisCache": False},
             track_key=used_key,
             window=partial_window,
+            track=query,
         )
 
     async def shutdown(self) -> None:
@@ -841,7 +875,11 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
         "duration_sec": duration,
     }
 
-    state.executor.submit(state.run_analysis, job.id)
+    state.executor.submit(
+        state.run_analysis,
+        job.id,
+        track=TrackQuery(title=title, artist=artist, duration_sec=duration),
+    )
     return JSONResponse(
         status_code=202,
         content={
