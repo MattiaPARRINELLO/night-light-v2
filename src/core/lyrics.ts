@@ -40,14 +40,17 @@ export function drawLyrics(
 
   const chorus = lyrics.chorusLines.includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
-  // Aucun mot à l'écran hors refrain : seuls les mots marquants prennent la
-  // scène, sinon la lumière respire seule.
-  if (cue === null && !chorus) return;
+  // Refrain : la phrase entière. Ailleurs : un mot marquant, ou rien du tout.
+  if (!chorus && cue === null) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  drawBigWord(ctx, line, cue, ms, width, height, options);
+  if (chorus) {
+    drawChorusLine(ctx, line, ms, width, height, options);
+  } else if (cue !== null) {
+    drawBigWord(ctx, cue, ms, width, height, options);
+  }
   ctx.restore();
 }
 
@@ -82,31 +85,26 @@ function activeCue(cues: KeywordCue[], index: number, ms: number): KeywordCue | 
 
 function drawBigWord(
   ctx: CanvasRenderingContext2D,
-  line: LyricLine,
-  cue: KeywordCue | null,
+  cue: KeywordCue,
   ms: number,
   width: number,
   height: number,
   options: LyricsDrawOptions,
 ): void {
-  const fallback = cue === null ? contentWordAt(line, ms) : null;
-  const word = cue?.text ?? fallback?.text ?? null;
-  if (word === null || word.trim().length === 0) return;
-  const start = cue?.startMs ?? fallback?.startMs ?? line.startMs;
-  const end = cue?.endMs ?? fallback?.endMs ?? line.endMs;
-  const duration = Math.max(1, end - start);
-  // Les mots courts durent parfois 100 ms : un fondu fixe les rendrait gris.
+  const word = cue.text.trim();
+  if (word.length === 0) return;
+  const duration = Math.max(1, cue.endMs - cue.startMs);
   const alpha = envelope(
     ms,
-    start,
-    end + (cue === null ? 0 : CUE_TAIL_MS),
+    cue.startMs,
+    cue.endMs + CUE_TAIL_MS,
     Math.min(CUE_FADE_IN_MS, duration * 0.35),
     Math.min(CUE_FADE_OUT_MS, duration * 0.45),
   );
   if (alpha <= 0.01) return;
 
-  const text = word.trim().toUpperCase();
-  const isTitle = cue?.kind === "titre";
+  const text = word.toUpperCase();
+  const isTitle = cue.kind === "titre";
   const maxWidth = width * 0.88;
   let size = Math.min(width * 0.17, height * 0.26) * (isTitle ? 1.08 : 1);
   ctx.font = `800 ${size}px ${FONT_STACK}`;
@@ -116,12 +114,11 @@ function drawBigWord(
     ctx.font = `800 ${size}px ${FONT_STACK}`;
   }
 
-  const age = Math.max(0, ms - start) / 1000;
+  const age = Math.max(0, ms - cue.startMs) / 1000;
   const attack = options.reduced ? 0 : 1 - clamp01(age / 0.18);
   const pulse = options.reduced ? 0 : 0.04 * options.beat;
   const scale = 0.94 + 0.06 * (1 - attack) + pulse;
-  const impact = cue?.impact ?? 0.6;
-  const y = height * (0.46 - 0.02 * impact);
+  const y = height * (0.46 - 0.02 * cue.impact);
 
   ctx.globalAlpha = alpha;
   ctx.translate(width * 0.5, y);
@@ -131,43 +128,116 @@ function drawBigWord(
   ctx.fillStyle = isTitle ? accentSolid(options.palette) : "#ffffff";
   ctx.shadowColor = accentColor(options.palette, 0.85);
   const blurCeiling = isTitle ? 64 : 52;
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * impact), blurCeiling);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * cue.impact), blurCeiling);
   ctx.fillText(text, 0, 0);
 }
 
-/** Mots grammaticaux : jamais mis en gros, ils n'ont aucun impact visuel. */
-const STOPWORDS = new Set([
-  "alors", "avec", "aussi", "autre", "avant", "avoir", "bien", "cette", "comme", "comment",
-  "dans", "depuis", "deux", "donc", "elle", "encore", "entre", "etre", "faire", "faut",
-  "elle", "ils", "leur", "mais", "meme", "moins", "monde", "nous", "notre", "parce",
-  "pendant", "petit", "peut", "plus", "pour", "pourquoi", "presque", "quand", "rien",
-  "sans", "seulement", "sont", "sous", "souvent", "temps", "toujours", "toute", "tous",
-  "trop", "venir", "vers", "vouloir", "vraiment", "vous", "avec", "cest", "jai", "jai",
-]);
+/**
+ * Refrain : la phrase entière, en grand, sur une à trois lignes.
+ *
+ * Le mot en cours est mis en couleur d'accent, les mots déjà chantés sont
+ * atténués. Une phrase longue rétrécit jusqu'à tenir, plutôt que d'être coupée.
+ */
+function drawChorusLine(
+  ctx: CanvasRenderingContext2D,
+  line: LyricLine,
+  ms: number,
+  width: number,
+  height: number,
+  options: LyricsDrawOptions,
+): void {
+  const duration = Math.max(1, line.endMs - line.startMs);
+  const alpha = envelope(
+    ms,
+    line.startMs,
+    line.endMs,
+    Math.min(140, duration * 0.12),
+    Math.min(280, duration * 0.18),
+  );
+  if (alpha <= 0.01) return;
 
-function cleanWord(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-zà-öø-ÿ0-9']/g, "");
+  const timed = line.words.length > 0;
+  const tokens = timed
+    ? line.words
+    : line.text
+        .split(/\s+/)
+        .filter((word) => word.length > 0)
+        .map((word) => ({ text: word, startMs: 0, endMs: 0 }));
+  const maxWidth = width * 0.9;
+  let size = Math.min(width * 0.105, height * 0.16);
+  let rows: number[][] = [];
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    ctx.font = `800 ${size}px ${FONT_STACK}`;
+    rows = wrapTokens(ctx, tokens, maxWidth);
+    if (rows.length <= 3) break;
+    size *= 0.86;
+  }
+  if (size < 14) size = 14;
+  ctx.font = `800 ${size}px ${FONT_STACK}`;
+
+  const lineHeight = size * 1.08;
+  const totalHeight = rows.length * lineHeight;
+  const startY = height * 0.46 - totalHeight * 0.5 + lineHeight * 0.5;
+
+  const age = Math.max(0, ms - line.startMs) / 1000;
+  const attack = options.reduced ? 0 : 1 - clamp01(age / 0.22);
+  const pulse = options.reduced ? 0 : 0.03 * options.beat;
+  const scale = 0.96 + 0.04 * (1 - attack) + pulse;
+
+  ctx.globalAlpha = alpha;
+  ctx.translate(width * 0.5, height * 0.46);
+  ctx.scale(scale, scale);
+  ctx.translate(-width * 0.5, -height * 0.46);
+  ctx.shadowColor = accentColor(options.palette, 0.65);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.28, 40);
+
+  rows.forEach((row, rowIndex) => {
+    const texts = row.map((tokenIndex) => tokens[tokenIndex]!.text.trim().toUpperCase());
+    const rowWidth = texts.reduce((sum, text) => sum + ctx.measureText(`${text} `).width, 0) - ctx.measureText(" ").width;
+    let x = width * 0.5 - rowWidth * 0.5;
+    const y = startY + rowIndex * lineHeight;
+    row.forEach((tokenIndex, position) => {
+      const token = tokens[tokenIndex]!;
+      const text = texts[position]!;
+      const current = timed && token.startMs <= ms && ms < token.endMs;
+      const past = timed && ms >= token.endMs;
+      ctx.fillStyle = !timed
+        ? "rgba(255,255,255,0.92)"
+        : current
+          ? accentSolid(options.palette)
+          : past
+            ? "rgba(255,255,255,0.55)"
+            : "rgba(255,255,255,0.92)";
+      ctx.textAlign = "left";
+      ctx.fillText(text, x, y);
+      x += ctx.measureText(`${text} `).width;
+    });
+  });
 }
 
-/**
- * Dernier mot porteur de sens déjà chanté dans la ligne.
- *
- * Sans lui, un refrain afficherait « VA » ou « NE » en pleine largeur : court,
- * grammatical, sans impact. Le mot précédent reste affiché jusqu'au suivant,
- * donc l'écran n'est jamais vide au milieu d'une phrase.
- */
-function contentWordAt(line: LyricLine, ms: number): { text: string; startMs: number; endMs: number } | null {
-  let best: { text: string; startMs: number; endMs: number } | null = null;
-  for (const word of line.words) {
-    if (word.startMs > ms) break;
-    const clean = cleanWord(word.text);
-    if (clean.length < 3 || STOPWORDS.has(clean)) continue;
-    best = word;
-  }
-  return best;
+/** Répartit les mots en lignes sans dépasser `maxWidth`. */
+function wrapTokens(
+  ctx: CanvasRenderingContext2D,
+  tokens: LyricLine["words"],
+  maxWidth: number,
+): number[][] {
+  const rows: number[][] = [];
+  let row: number[] = [];
+  let rowWidth = 0;
+  const space = ctx.measureText(" ").width;
+  tokens.forEach((token, index) => {
+    const text = token.text.trim().toUpperCase();
+    const width = ctx.measureText(text).width;
+    if (row.length > 0 && rowWidth + space + width > maxWidth) {
+      rows.push(row);
+      row = [];
+      rowWidth = 0;
+    }
+    row.push(index);
+    rowWidth += (row.length > 1 ? space : 0) + width;
+  });
+  if (row.length > 0) rows.push(row);
+  return rows;
 }
 
 /** Enveloppe d'apparition : montée courte, sortie douce, nulle hors fenêtre. */
