@@ -1,4 +1,4 @@
-import type { KeywordCue, LyricLine, LyricsCues } from "../types";
+import type { KeywordCue, LyricLine, LyricsCues, LyricWord } from "../types";
 import { clamp01 } from "./series";
 import type { Palette } from "./show";
 
@@ -38,17 +38,20 @@ export function drawLyrics(
   const line = lyrics.lines[index];
   if (line === undefined || !line.text.trim()) return;
 
-  const chorus =
-    lyrics.chorusLines.includes(index) || (lyrics.shoutLines ?? []).includes(index);
+  const chorus = lyrics.chorusLines.includes(index);
+  const shout = (lyrics.shoutLines ?? []).includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
-  // Refrain : la phrase entière. Ailleurs : un mot marquant, ou rien du tout.
-  if (!chorus && cue === null) return;
+  if (!chorus && !shout && cue === null) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   if (chorus) {
+    // Refrain : la phrase entière, lisible d'un coup d'œil.
     drawChorusLine(ctx, line, ms, width, height, options);
+  } else if (shout) {
+    // Ligne criée : un mot à la fois, jamais le bloc.
+    drawLineWord(ctx, line, ms, width, height, options);
   } else if (cue !== null) {
     drawBigWord(ctx, cue, ms, width, height, options);
   }
@@ -92,20 +95,85 @@ function drawBigWord(
   height: number,
   options: LyricsDrawOptions,
 ): void {
-  const word = cue.text.trim();
+  paintWord(
+    ctx,
+    cue.text,
+    cue.startMs,
+    cue.endMs,
+    cue.impact,
+    cue.kind === "titre",
+    ms,
+    width,
+    height,
+    options,
+  );
+}
+
+/**
+ * Ligne criée : un mot à la fois, en très gros.
+ *
+ * Une punchline est souvent longue ; l'afficher d'un bloc la rend illisible.
+ * On suit donc les timings des mots, en gardant le mot visible jusqu'au suivant.
+ */
+function drawLineWord(
+  ctx: CanvasRenderingContext2D,
+  line: LyricLine,
+  ms: number,
+  width: number,
+  height: number,
+  options: LyricsDrawOptions,
+): void {
+  const tokens = withTimings(line);
+  if (tokens.length === 0) return;
+  let index = -1;
+  for (let cursor = 0; cursor < tokens.length; cursor += 1) {
+    if (tokens[cursor]!.startMs <= ms) index = cursor;
+    else break;
+  }
+  if (index < 0) return;
+  const token = tokens[index]!;
+  paintWord(ctx, token.text, token.startMs, token.endMs, 0.85, false, ms, width, height, options);
+}
+
+/** Mots de la ligne, avec des timings répartis si le morceau n'en fournit pas. */
+function withTimings(line: LyricLine): LyricWord[] {
+  if (line.words.length > 0) return line.words;
+  const words = line.text.split(/\s+/).filter((word) => word.length > 0);
+  if (words.length === 0) return [];
+  const span = Math.max(1, line.endMs - line.startMs);
+  const step = span / words.length;
+  return words.map((word, index) => ({
+    text: word,
+    startMs: Math.round(line.startMs + index * step),
+    endMs: Math.round(line.startMs + (index + 1) * step),
+  }));
+}
+
+function paintWord(
+  ctx: CanvasRenderingContext2D,
+  rawText: string,
+  startMs: number,
+  endMs: number,
+  impact: number,
+  isTitle: boolean,
+  ms: number,
+  width: number,
+  height: number,
+  options: LyricsDrawOptions,
+): void {
+  const word = rawText.trim();
   if (word.length === 0) return;
-  const duration = Math.max(1, cue.endMs - cue.startMs);
+  const duration = Math.max(1, endMs - startMs);
   const alpha = envelope(
     ms,
-    cue.startMs,
-    cue.endMs + CUE_TAIL_MS,
+    startMs,
+    endMs + CUE_TAIL_MS,
     Math.min(CUE_FADE_IN_MS, duration * 0.35),
     Math.min(CUE_FADE_OUT_MS, duration * 0.45),
   );
   if (alpha <= 0.01) return;
 
   const text = word.toUpperCase();
-  const isTitle = cue.kind === "titre";
   const maxWidth = width * 0.88;
   let size = Math.min(width * 0.17, height * 0.26) * (isTitle ? 1.08 : 1);
   ctx.font = `800 ${size}px ${FONT_STACK}`;
@@ -115,11 +183,11 @@ function drawBigWord(
     ctx.font = `800 ${size}px ${FONT_STACK}`;
   }
 
-  const age = Math.max(0, ms - cue.startMs) / 1000;
+  const age = Math.max(0, ms - startMs) / 1000;
   const attack = options.reduced ? 0 : 1 - clamp01(age / 0.18);
   const pulse = options.reduced ? 0 : 0.04 * options.beat;
   const scale = 0.94 + 0.06 * (1 - attack) + pulse;
-  const y = height * (0.46 - 0.02 * cue.impact);
+  const y = height * (0.46 - 0.02 * impact);
 
   ctx.globalAlpha = alpha;
   ctx.translate(width * 0.5, y);
@@ -129,7 +197,7 @@ function drawBigWord(
   ctx.fillStyle = isTitle ? accentSolid(options.palette) : "#ffffff";
   ctx.shadowColor = accentColor(options.palette, 0.85);
   const blurCeiling = isTitle ? 64 : 52;
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * cue.impact), blurCeiling);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * impact), blurCeiling);
   ctx.fillText(text, 0, 0);
 }
 
