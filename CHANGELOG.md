@@ -8,6 +8,16 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Blinders de concert enrichis** : le profil dynamique gagne une seconde barre
+  de huit blinders en façade, sous les barres LED, avec sa propre traverse et un
+  motif complémentaire de la barre du pont (quand le pont allume tout, la façade
+  alterne). Les blinders du concert sont des **LED** : chaque cellule éclaire
+  réellement dans une des deux couleurs du morceau, avec cône large, cœur de
+  faisceau, tache au sol et halo saturé, plus un flare anamorphique. Les gros
+  blinders passent de quatre à six pods, décalés en profondeur, avec halo
+  couleur, croix lumineuse et nappe d'impact colorée. Le mode rave et le rendu
+  standard restent inchangés (filament tungstène en standard).
+
 - **Direction musicale du mode direct** : le direct ne se contente plus de
   niveaux lissés. `liveDirector.ts` détecte les temps forts (seuil adaptatif,
   intervalle estimé, BPM), les impacts (saut de rms relatif au niveau habituel)
