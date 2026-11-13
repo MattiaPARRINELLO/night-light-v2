@@ -614,6 +614,26 @@ class Dashboard {
     );
     el<HTMLElement>("sb-capture").classList.toggle("is-good", state.capture.open && !captureStale && !silence);
 
+    // Paroles : mot à mot (cyan), ligne à ligne (orange), ou introuvables (rouge).
+    const sbLyrics = el<HTMLElement>("sb-lyrics");
+    const lyrics = this.analysis?.lyrics;
+    sbLyrics.classList.remove("is-good", "is-warn", "is-bad");
+    if (lyrics === undefined) {
+      setText(el<HTMLElement>("sb-lyrics-value"), "—");
+      setText(el<HTMLElement>("sb-lyrics-note"), "aucune analyse");
+    } else if (lyrics.lines.length === 0) {
+      setText(el<HTMLElement>("sb-lyrics-value"), "non trouvées");
+      setText(el<HTMLElement>("sb-lyrics-note"), "instrumental ou absent de LRCLIB");
+      sbLyrics.classList.add("is-bad");
+    } else {
+      setText(el<HTMLElement>("sb-lyrics-value"), lyrics.wordSynced ? "mot à mot" : "ligne à ligne");
+      setText(
+        el<HTMLElement>("sb-lyrics-note"),
+        `${pluriel(lyrics.lines.length, "ligne", "lignes")} · ${pluriel(lyrics.keywords.length, "mot", "mots")}`,
+      );
+      sbLyrics.classList.add(lyrics.wordSynced ? "is-good" : "is-warn");
+    }
+
     const stages = ["drop", "analysis", "show", "live"];
     for (const stage of stages) {
       const node = document.getElementById(`stage-${stage}`);
