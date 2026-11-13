@@ -149,6 +149,8 @@ export class App {
   autoRetryKey = "";
   /** Nombre de relances déjà programmées pour ce morceau. */
   autoRetryAttempt = 0;
+  /** Nature de la relance en cours : panne passagère ou morceau non reconnu. */
+  autoRetryUnrecognized = false;
   /**
    * Résolution automatique différée : le lecteur publie parfois le nouveau
    * titre avant la durée. Attendre que les métadonnées se stabilisent évite de

@@ -88,6 +88,11 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Corrigé
 
+- **Morceau non reconnu relancé automatiquement** : un refus `no_match` était
+  traité comme définitif, alors que le lecteur publie parfois son titre avant
+  des métadonnées complètes. La résolution automatique est désormais retentée
+  après 1,5 s puis 2 s tant que le même morceau joue ; les autres refus
+  (ambiguïté, Deezer non configuré, résultat périmé) restent définitifs.
 - **Résolution d'un morceau annoncé avec une durée périmée** : un lecteur peut
   publier le nouveau titre avant sa durée. La résolution partait alors avec
   l'ancienne durée, tous les candidats étaient écartés (`durée incompatible`) et

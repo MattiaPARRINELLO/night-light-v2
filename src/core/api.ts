@@ -395,6 +395,27 @@ export function resolveRetryDelayMs(attempt: number): number | null {
   return delays[attempt] ?? null;
 }
 
+/**
+ * Le serveur n'a trouvé aucun candidat pour les métadonnées annoncées.
+ *
+ * Le lecteur publie parfois un titre avant que l'artiste ou la durée ne soient
+ * stabilisés : une relance courte vaut mieux qu'un échec définitif pour ce
+ * morceau.
+ */
+export function isUnrecognizedTrackError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === "no_match";
+}
+
+/**
+ * Délai avant la n-ième relance d'un morceau non reconnu (1 à 2 s), ou `null`
+ * si on arrête. Volontairement plus court que la relance d'une panne serveur :
+ * la métadonnée du lecteur se corrige en quelques secondes, pas en quinze.
+ */
+export function resolveUnrecognizedRetryDelayMs(attempt: number): number | null {
+  const delays = [1500, 2000];
+  return delays[attempt] ?? null;
+}
+
 export function resolveAndAnalyze(
   title: string,
   artist: string,
