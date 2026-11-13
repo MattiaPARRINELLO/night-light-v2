@@ -161,13 +161,13 @@ export interface EffectTimeline {
 function defaultDrop(seed: number): DropSignature {
   const plateaux: DropSignature["plateau"][] = [
     "pont",
-    "cathedrale",
-    "colisee",
-    "arena",
     "rideau",
-    "aurore",
-    "helice",
     "tunnel",
+    "diagonale",
+    "zigzag",
+    "helice",
+    "orbite",
+    "colisee",
     "cascade",
   ];
   const modes: DropSignature["lyres"][] = [

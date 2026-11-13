@@ -80,13 +80,13 @@ export type SceneRole = "intro" | "couplet" | "refrain" | "montee" | "drop" | "f
  */
 export type DropPlateau =
   | "pont"
-  | "cathedrale"
-  | "colisee"
-  | "arena"
   | "rideau"
-  | "aurore"
-  | "helice"
   | "tunnel"
+  | "diagonale"
+  | "zigzag"
+  | "helice"
+  | "orbite"
+  | "colisee"
   | "cascade";
 
 /** Orientation des lyres pendant un drop. */
@@ -978,13 +978,13 @@ function roleFor(
 
 const DROP_PLATEAUX: readonly DropPlateau[] = [
   "pont",
-  "cathedrale",
-  "colisee",
-  "arena",
   "rideau",
-  "aurore",
-  "helice",
   "tunnel",
+  "diagonale",
+  "zigzag",
+  "helice",
+  "orbite",
+  "colisee",
   "cascade",
 ];
 const DROP_LYRES: readonly DropLyres[] = [
@@ -1013,13 +1013,13 @@ const DROP_HUES: readonly DropHue[] = ["accent", "contraste", "blanc", "bicolore
  */
 export const DROP_PLATEAU_FAMILIES: Record<DropPlateau, FamilyId> = {
   pont: "pont-concert",
-  cathedrale: "lyres-cathedrale",
-  colisee: "lyres-colisee",
-  arena: "lyres-arena",
   rideau: "lyres-rideau",
-  aurore: "lyres-aurore",
-  helice: "lyres-helice",
   tunnel: "lyres-tunnel",
+  diagonale: "lyres-diagonale",
+  zigzag: "lyres-zigzag",
+  helice: "lyres-helice",
+  orbite: "lyres-orbitale",
+  colisee: "lyres-colisee",
   cascade: "lyres-cascade",
 };
 
@@ -1054,8 +1054,8 @@ export function dropSignature(
   };
 }
 
-/** Clé stable d'une signature, pour garantir l'unicité dans un plan. */
-function signatureKey(signature: DropSignature): string {
+/** Clé stable d'une signature, pour garantir l'unicité dans un plan et la lire dans les rapports. */
+export function dropSignatureKey(signature: DropSignature): string {
   return `${signature.plateau}/${signature.lyres}/${signature.barres}/${signature.blinders}/${signature.strobes}/${signature.hue}`;
 }
 
@@ -1645,7 +1645,7 @@ export function buildShowPlan(
       // de la scène précédente (invariant P3).
       for (let attempt = 0; attempt < MAX_DROP_ATTEMPTS; attempt += 1) {
         const candidate = dropSignature(seed, rank, strength, attempt);
-        if (usedDropSignatures.has(signatureKey(candidate))) continue;
+        if (usedDropSignatures.has(dropSignatureKey(candidate))) continue;
         if (dynamic && candidate.plateau === previousDropPlateau) continue;
         if (dynamic && DROP_PLATEAU_FAMILIES[candidate.plateau] === previousFamily) continue;
         signature = candidate;
@@ -1654,7 +1654,7 @@ export function buildShowPlan(
       // Plan démesuré (plus de 256 drops) : on accepte la première signature
       // plutôt que de boucler. Le cas ne se produit pas sur un morceau réel.
       signature ??= dropSignature(seed, rank, strength);
-      usedDropSignatures.add(signatureKey(signature));
+      usedDropSignatures.add(dropSignatureKey(signature));
       if (dynamic) previousDropPlateau = signature.plateau;
       dropRank += 1;
     }

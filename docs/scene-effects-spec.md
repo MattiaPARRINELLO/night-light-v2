@@ -126,7 +126,7 @@ indépendant, pour éviter les combinaisons corrélées (tous les plateaux
 
 | Axe | Valeurs | Effet |
 | --- | --- | --- |
-| `plateau` | pont, cathédrale, colisée, arène, rideau, aurore, hélice, tunnel, cascade | scène complète déployée par l'impact (`DROP_PLATEAU_FAMILIES`) |
+| `plateau` | pont, rideau, tunnel, diagonale, zigzag, hélice, orbite, colisée, cascade | scène complète déployée par l'impact (`DROP_PLATEAU_FAMILIES`) |
 | `lyres` | convergence, croisée, éventail, croix, hélice, tunnel, diagonale, zigzag, respiration, pluie | cible des huit lyres |
 | `barres` | onde, rideau, alterné | rideau LED (une lame sur deux possible) |
 | `blinders` | tous, un sur deux, un sur quatre, chenillard | motif de la barre |

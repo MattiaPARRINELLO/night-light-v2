@@ -179,7 +179,7 @@ la lecture « les drops ne se ressemblent plus » l'est.
 
 > **Mise à jour (diversité des impacts, mode concert).** La décision « famille
 > unique » est levée : en profil concert, `DropSignature` porte désormais un
-> `plateau` (pont, cathédrale, colisée, arène, rideau, aurore, hélice, tunnel,
+> `plateau` (pont, rideau, tunnel, diagonale, zigzag, hélice, orbite, colisée,
 > cascade), un motif de `strobes` et un mode de `hue` (accent, contraste, blanc,
 > bicolore), soit 17 280 combinaisons. Deux impacts voisins ne déploient plus la
 > même scène. Voir `docs/scene-effects-spec.md` §5.

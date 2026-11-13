@@ -77,7 +77,9 @@
             "barres": "alterne",
             "blinders": "tous",
             "hue": "blanc",
-            "lyres": "tunnel"
+            "lyres": "tunnel",
+            "plateau": "helice",
+            "strobes": "double"
           },
           "end": 41.796,
           "fadeIn": 0.7,
@@ -215,7 +217,9 @@
             "barres": "alterne",
             "blinders": "tous",
             "hue": "blanc",
-            "lyres": "tunnel"
+            "lyres": "tunnel",
+            "plateau": "helice",
+            "strobes": "double"
           },
           "end": 41.796,
           "fadeIn": 0.7,
@@ -337,7 +341,9 @@
             "barres": "alterne",
             "blinders": "un-sur-quatre",
             "hue": "bicolore",
-            "lyres": "croix"
+            "lyres": "croix",
+            "plateau": "diagonale",
+            "strobes": "cascade"
           },
           "end": 43.119,
           "fadeIn": 0.7,
@@ -438,7 +444,9 @@
             "barres": "rideau",
             "blinders": "chenillard",
             "hue": "contraste",
-            "lyres": "croisee"
+            "lyres": "croisee",
+            "plateau": "zigzag",
+            "strobes": "simple"
           },
           "end": 33.065,
           "fadeIn": 0.7,
@@ -573,7 +581,9 @@
             "barres": "alterne",
             "blinders": "tous",
             "hue": "blanc",
-            "lyres": "zigzag"
+            "lyres": "zigzag",
+            "plateau": "helice",
+            "strobes": "double"
           },
           "end": 49.412,
           "fadeIn": 0.7,
@@ -655,7 +665,9 @@
             "barres": "rideau",
             "blinders": "un-sur-deux",
             "hue": "blanc",
-            "lyres": "croisee"
+            "lyres": "croisee",
+            "plateau": "orbite",
+            "strobes": "simple"
           },
           "end": 27.26,
           "fadeIn": 0.7,
