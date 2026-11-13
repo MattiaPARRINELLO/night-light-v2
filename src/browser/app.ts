@@ -342,6 +342,7 @@ export class App {
     this.control?.close();
     this.control = null;
     this.stopNowPlayingPolling();
+    this.cancelScheduledAutoResolve();
     this.nowPlayingStream?.close();
     this.nowPlayingStream = null;
     if (this.nowPlayingWatchdog !== null) window.clearInterval(this.nowPlayingWatchdog);
