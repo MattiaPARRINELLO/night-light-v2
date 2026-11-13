@@ -149,6 +149,12 @@ export class App {
   autoRetryKey = "";
   /** Nombre de relances déjà programmées pour ce morceau. */
   autoRetryAttempt = 0;
+  /**
+   * Résolution automatique différée : le lecteur publie parfois le nouveau
+   * titre avant la durée. Attendre que les métadonnées se stabilisent évite de
+   * lancer une résolution avec la durée du morceau précédent.
+   */
+  autoResolveTimer: number | null = null;
   nowPlaying: NowPlayingResponse | null = null;
   nowPlayingStream: EventSource | null = null;
   nowPlayingPollTimer: number | null = null;

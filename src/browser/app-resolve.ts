@@ -31,6 +31,8 @@ declare module "./app" {
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
     maybeAutoResolve(): Promise<void>;
+    scheduleAutoResolve(delayMs?: number): void;
+    cancelScheduledAutoResolve(): void;
     scheduleAutoRetry(
       title: string,
       artist: string,
@@ -153,6 +155,30 @@ export function installResolve(Target: { prototype: App }): void {
     return true;
   };
 
+  /** Annule la résolution automatique différée, si elle attend encore. */
+  Target.prototype.cancelScheduledAutoResolve = function (this: App): void {
+    if (this.autoResolveTimer !== null) {
+      window.clearTimeout(this.autoResolveTimer);
+      this.autoResolveTimer = null;
+    }
+  };
+
+  /**
+   * Diffère la résolution automatique de quelques centaines de millisecondes.
+   *
+   * Un lecteur annonce souvent le nouveau titre puis, un instant plus tard, sa
+   * durée. Résoudre sur la première trame partait avec la durée du morceau
+   * précédent : tous les candidats étaient écartés (« durée incompatible »).
+   * Chaque nouvelle trame repousse l'échéance jusqu'à ce que l'état se stabilise.
+   */
+  Target.prototype.scheduleAutoResolve = function (this: App, delayMs = 300): void {
+    this.cancelScheduledAutoResolve();
+    this.autoResolveTimer = window.setTimeout(() => {
+      this.autoResolveTimer = null;
+      void this.maybeAutoResolve();
+    }, delayMs);
+  };
+
   Target.prototype.bindResolve = function (this: App): void {
     const form = el<HTMLFormElement>("resolve-form");
     const status = el<HTMLElement>("resolve-status");
@@ -192,7 +218,10 @@ export function installResolve(Target: { prototype: App }): void {
   ): Promise<void> {
     const status = el<HTMLElement>("resolve-status");
     // Une action manuelle prend la main : elle annule toute relance programmée.
-    if (!auto) this.cancelAutoRetry();
+    if (!auto) {
+      this.cancelAutoRetry();
+      this.cancelScheduledAutoResolve();
+    }
     // Chaque tentative porte un numéro : une résolution remplacée par un morceau
     // plus récent s'arrête en silence, sans toucher à l'écran ni au show.
     const seq = (this.resolveSeq += 1);
@@ -368,7 +397,7 @@ export function installResolve(Target: { prototype: App }): void {
     // tourner (et se recaler sur le début du nouveau morceau). Plusieurs
     // lecteurs à la fois donnent un titre qui va et vient : on s'abstient.
     if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
-    void this.maybeAutoResolve();
+    this.scheduleAutoResolve();
   };
 
   Target.prototype.startNowPlayingPolling = function (this: App): void {
@@ -463,7 +492,7 @@ export function installResolve(Target: { prototype: App }): void {
         },
         5000,
       );
-      await this.maybeAutoResolve();
+      this.scheduleAutoResolve();
     } catch {
       // Service indisponible : on masque simplement l'indication.
       this.nowPlaying = null;
