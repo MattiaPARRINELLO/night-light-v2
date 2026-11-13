@@ -8,6 +8,18 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
+- **Direction musicale du mode direct** : le direct ne se contente plus de
+  niveaux lissés. `liveDirector.ts` détecte les temps forts (seuil adaptatif,
+  intervalle estimé, BPM), les impacts (saut de rms relatif au niveau habituel)
+  et les montées (pente d'énergie), avec un gain automatique pour que le show
+  utilise toute la dynamique quel que soit le volume de la source. Le rendu
+  reçoit ainsi des flashs admis, un wash, un strobe sur les vrais impacts, une
+  onde de choc, des confettis/CO2 et des familles qui battent sur la musique.
+  `livePlan.ts` remplace la scène unique magenta-cyan par un plan de douze
+  heures : 46 familles et 8 palettes tournantes, une scène toutes les 24 à 42 s,
+  profil concert dynamique par défaut. Deux nouveaux tests unitaires couvrent la
+  détection et les propriétés du plan.
+
 - **Refrains sans reprise de production (R7)** : un matériau répété au moins
   trois fois et qui tranche avec ses voisins reste un refrain même quand la
   production n'a pas de creux avant (Lune de fiel : 53,3 / 123,5 / 208,2 s au

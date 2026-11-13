@@ -23,6 +23,7 @@ import {
 } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
+import type { LiveMusic } from "./liveDirector";
 
 export interface RenderInput {
   ctx: CanvasRenderingContext2D;
@@ -44,6 +45,14 @@ export interface RenderInput {
   frame: number;
   /** Caractéristiques audio live optionnelles, pour le mode réactif. */
   liveAudio?: LiveAudioFeatures;
+  /**
+   * Évènements musicaux dérivés du direct (temps forts, impacts, montées).
+   *
+   * Sans eux, le direct ne dispose que de niveaux lissés : aucun flash n'est
+   * admis, aucun impact ne déclenche de wash, et les familles battent sur une
+   * grille fixe. Voir `liveDirector.ts`.
+   */
+  liveMusic?: LiveMusic;
   /**
    * Surface de fumée, créée et conservée par l'appelant. Sans elle, les
    * faisceaux larges retombent sur la superposition de couches : le spectacle
@@ -886,7 +895,7 @@ function drawRaveConfetti(
   f: FrameState,
   drop: number,
 ): void {
-  if (f.hard !== true || f.reduced || drop < 0.05) return;
+  if (!(f.hard === true || f.live === true) || f.reduced || drop < 0.05) return;
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
   const count = Math.round(220 * f.quality);
@@ -911,7 +920,7 @@ function drawRaveConfetti(
 
 /** Jets de CO2 discrets : buse compressée, puis épanouissement en cône. */
 function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number): void {
-  if (f.hard !== true || f.reduced || drop < 0.12) return;
+  if (!(f.hard === true || f.live === true) || f.reduced || drop < 0.12) return;
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
   const intensity = clamp01(drop * 1.6);
@@ -981,7 +990,9 @@ function drawRaveCo2(ctx: CanvasRenderingContext2D, f: FrameState, drop: number)
 
 /** Onde de choc circulaire qui part du centre sur un impact. */
 function drawRaveShockwave(ctx: CanvasRenderingContext2D, f: FrameState): void {
-  if (f.hard !== true || f.reduced) return;
+  // Le direct n'a pas de profil rave : sur un impact réel, l'onde reste un
+  // geste de salle, coloré et bref, pas une signature de club.
+  if (!(f.hard === true || f.live === true) || f.reduced) return;
   const age = f.dropAge;
   if (!Number.isFinite(age) || age < 0 || age > 0.9) return;
   const progress = age / 0.9;
@@ -1236,18 +1247,42 @@ export function renderFrame(input: RenderInput): void {
   const scene = sceneAt(plan, t);
   const hard = plan.profile === "hard";
   const dynamic = plan.profile === "dynamic";
-  // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
+  const liveMusic = input.liveMusic;
+  // En direct, la direction musicale fournit un vrai temps fort (attaque suivie
+  // et enveloppe). À défaut, on retombe sur le transitoire brut ; en mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
-  const beat = liveAudio !== undefined ? liveAudio.transient : beatStrength(view, t);
-  const build = liveAudio !== undefined ? 0 : view.buildProgress(t);
-  const buildNow = view.buildAt(t);
+  const beat =
+    liveMusic !== undefined
+      ? liveMusic.beat
+      : liveAudio !== undefined
+        ? liveAudio.transient
+        : beatStrength(view, t);
+  const build =
+    liveMusic !== undefined
+      ? liveMusic.build
+      : liveAudio !== undefined
+        ? 0
+        : view.buildProgress(t);
+  const buildNow = liveMusic !== undefined ? null : view.buildAt(t);
   // Flash : le trigger est l'instant de naissance (latence nulle). On expose
   // l'âge des deux déclencheurs pour que l'attaque puisse être dosée.
-  const lastBeat = liveAudio !== undefined ? -Infinity : view.lastBeatAt(t);
-  const lastImpact = liveAudio !== undefined ? -Infinity : view.lastBuildEnd(t);
-  const beatAge = lastBeat === -Infinity ? Infinity : t - lastBeat;
-  const dropAge = lastImpact === -Infinity ? Infinity : t - lastImpact;
+  const lastBeat =
+    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBeatAt(t);
+  const lastImpact =
+    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBuildEnd(t);
+  const beatAge =
+    liveMusic !== undefined
+      ? liveMusic.beatAge
+      : lastBeat === -Infinity
+        ? Infinity
+        : t - lastBeat;
+  const dropAge =
+    liveMusic !== undefined
+      ? liveMusic.dropAge
+      : lastImpact === -Infinity
+        ? Infinity
+        : t - lastImpact;
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
   // le morceau « change de lumière » sans cesse.
@@ -1256,9 +1291,19 @@ export function renderFrame(input: RenderInput): void {
   // clignoter la teinte de 12° d'une image à l'autre. Le saut de couleur reste
   // réservé au vrai drop (`buildIntensity`).
   const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
-  const drop = liveAudio !== undefined ? 0 : view.buildIntensity(t);
+  const drop =
+    liveMusic !== undefined
+      ? liveMusic.drop
+      : liveAudio !== undefined
+        ? 0
+        : view.buildIntensity(t);
   const variation = reduced ? 0 : variationStrength(scene, t);
-  const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
+  const surge =
+    liveMusic !== undefined
+      ? liveMusic.surge
+      : liveAudio !== undefined
+        ? liveAudio.transient
+        : view.energyTrend(t, 1.2);
   const anchor = sceneAnchor(scene, plan.track);
   const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
   const paletteAccent =
@@ -1288,18 +1333,20 @@ export function renderFrame(input: RenderInput): void {
     scene,
     palette,
     energy:
-      liveAudio !== undefined
-        ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3)
-        : clamp01(visibleEnergy(view.energyAt(t)) * (dynamic ? 1.12 : 1)),
+      liveMusic !== undefined
+        ? liveMusic.energy
+        : liveAudio !== undefined
+          ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3)
+          : clamp01(visibleEnergy(view.energyAt(t)) * (dynamic ? 1.12 : 1)),
     bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
     mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
     high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),
     beat,
-    beatPhase: view.beatPhase(t),
-    beatIndex: view.beatIndexAt(t),
+    beatPhase: liveMusic !== undefined ? liveMusic.beatPhase : view.beatPhase(t),
+    beatIndex: liveMusic !== undefined ? liveMusic.beatIndex : view.beatIndexAt(t),
     build,
-    buildStrength: buildNow?.strength ?? 0,
-    drop: liveAudio !== undefined ? 0 : view.dropImpact(t),
+    buildStrength: liveMusic !== undefined ? liveMusic.buildStrength : (buildNow?.strength ?? 0),
+    drop,
     beatAge,
     dropAge,
     surge,
@@ -1307,13 +1354,20 @@ export function renderFrame(input: RenderInput): void {
       scene.intensity *
       settings.intensity *
       (dynamic ? 1.12 : 1) *
-      (isLive
-        ? 1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85
-        : 1 + surge * 0.6 + beatDriveValue * 0.5),
+      (liveMusic !== undefined
+        ? // Direct : le plateau s'allume avec ce qu'on entend, sans jamais
+          // s'éteindre complètement (une salle vide reste une salle).
+          0.55 + liveMusic.energy * 1.05 + liveMusic.beat * 0.25
+        : isLive
+          ? 1.1 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.4
+          : 1 + surge * 0.6 + beatDriveValue * 0.5),
     alpha: sceneWeight(scene, t),
     reduced,
     hard,
     dynamic,
+    // Le direct partage le vocabulaire du live : couches d'impact autorisées
+    // dans le profil concert, sans passer par la noirceur du profil hard.
+    live: isLive,
     quality,
     seed: plan.seed,
     haze,
@@ -1403,8 +1457,16 @@ export function renderFrame(input: RenderInput): void {
   drawRavePanels(ctx, base);
 
   // Grand wash de projecteurs après un impact : il vit plus longtemps que la
-  // sur-couche et couvre tout l'écran. Jamais en mode réduit.
-  const wash = reduced || isLive ? 0 : washStrength(view, t, plan.scenes.length);
+  // sur-couche et couvre tout l'écran. Jamais en mode réduit. En direct, c'est
+  // la direction musicale qui fournit l'âge et la force de l'impact : un vrai
+  // saut de niveau balaie la salle, un simple temps fort ne le déclenche pas.
+  const wash = reduced
+    ? 0
+    : liveMusic !== undefined
+      ? washAlpha(liveMusic.dropAge, liveMusic.impactStrength)
+      : isLive
+        ? 0
+        : washStrength(view, t, plan.scenes.length);
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
@@ -1422,10 +1484,18 @@ export function renderFrame(input: RenderInput): void {
   // scène, qui porte déjà la couleur du morceau.
   if (drop > 0.02 && !reduced) {
     const ceiling = FLASH_CEILING * Math.min(settings.flashes, 1.5);
-    // Seul un vrai drop de l'analyse ouvre le lavage blanc : le pulsage de
-    // secours sur les temps forts éclaire la scène, il ne blanchit pas l'écran.
-    // Sinon un morceau sans montée clignoterait à chaque temps fort.
-    const realDrop = isLive ? 0 : view.buildIntensity(t);
+    // Seul un vrai drop de l'analyse, ou un impact réel du direct, ouvre le
+    // lavage blanc : le pulsage de secours sur les temps forts éclaire la scène,
+    // il ne blanchit pas l'écran. Sinon un morceau sans montée clignoterait à
+    // chaque temps fort.
+    const realDrop =
+      liveMusic !== undefined
+        ? liveMusic.drop > 0.35
+          ? liveMusic.impactStrength
+          : 0
+        : isLive
+          ? 0
+          : view.buildIntensity(t);
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
@@ -1499,7 +1569,11 @@ export function renderFrame(input: RenderInput): void {
 
   const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
-  if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
+  // En direct, il n'y a pas de grille de temps forts dans la vue : c'est la
+  // direction musicale qui dit si un flash peut naître (impact toujours, temps
+  // fort une fois sur deux).
+  const admitted = liveMusic !== undefined ? liveMusic.admitted : flashAdmitted(view, t, hard, dynamic);
+  if (flash > 0.002 && admitted) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave ou concert : la couleur principale du morceau,
     // jamais du blanc, et jamais une alternance d'une image à l'autre.
