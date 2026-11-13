@@ -186,6 +186,7 @@ class DeezerProvider:
             path,
             max_bytes=self.max_download_bytes,
             expected_duration_sec=_expected_duration(candidate),
+            label=candidate.title,
         )
         return path
 
@@ -376,7 +377,11 @@ def _downloaded_file(destination: Path, before: set[Path]) -> Path:
 
 
 def _validate_downloaded_audio(
-    path: Path, *, max_bytes: int, expected_duration_sec: float | None
+    path: Path,
+    *,
+    max_bytes: int,
+    expected_duration_sec: float | None,
+    label: str = "",
 ) -> None:
     if not path.is_file() or path.stat().st_size <= 0:
         raise DeezerProviderError("fichier audio vide ou absent")
@@ -394,8 +399,11 @@ def _validate_downloaded_audio(
         # écart franc signale une autre version (live, remix, edit).
         tolerance = max(2.0, expected_duration_sec * 0.005)
         if abs(duration - expected_duration_sec) > tolerance:
+            version = f" pour « {label} »" if label else ""
             raise DeezerProviderError(
-                f"durée incompatible: attendu {expected_duration_sec:.3f}s, obtenu {duration:.3f}s"
+                f"durée incompatible{version} : attendu "
+                f"{expected_duration_sec:.1f}s, obtenu {duration:.1f}s "
+                "(version différente du morceau)"
             )
 
 

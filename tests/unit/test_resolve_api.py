@@ -317,3 +317,40 @@ def test_analyzer_version_change_invalidates_cache(
     assert third["status"] == "done", third
     assert len(calls) == 2, "un changement d'ANALYZER_VERSION doit provoquer une réanalyse"
     assert third["timings"]["analysisCache"] is False
+
+
+def test_resolve_falls_back_to_search_when_the_deezer_id_fails(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    """Un identifiant de piste locale ne doit pas condamner la résolution."""
+    from server.retrieve.resolver import RetrievalError
+
+    audio = tmp_path / "resolved.wav"
+    write_synthetic_track(audio, duration=4.0)
+    selections: list[list[Candidate] | None] = []
+
+    def fake_resolve(query, provider, cache, **kwargs):
+        preselected = kwargs.get("preselected")
+        selections.append(preselected)
+        if preselected is not None:
+            raise RetrievalError("download_failed", "aucun fichier audio téléchargé")
+        return _fake_resolve_result(query, audio)
+
+    monkeypatch.setattr("server.main.resolve_track", fake_resolve)
+
+    job = _resolve_until_done(
+        client,
+        {
+            "title": "Σ. MOROSE (LIVE)",
+            "artist": "",
+            "duration_sec": 703.03,
+            "deezer_id": "3152150703",
+        },
+    )
+
+    assert job["status"] == "done", job
+    assert len(selections) == 2
+    first = selections[0]
+    assert first is not None and first[0].source_id == "3152150703"
+    assert selections[1] is None
+    assert job["timings"]["resolutionMethod"] == "deezer_id+search"

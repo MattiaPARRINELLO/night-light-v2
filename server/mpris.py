@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -11,7 +12,11 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 PLAYERCTL = "playerctl"
-FOLLOW_FORMAT = "{{status}}|{{title}}|{{artist}}|{{album}}|{{mpris:length}}"
+FOLLOW_FORMAT = "{{status}}|{{title}}|{{artist}}|{{album}}|{{mpris:length}}|{{xesam:url}}"
+# Identifiant d'une piste du catalogue Deezer dans l'URL MPRIS. Les pistes
+# locales (fichiers importés) portent un identifiant négatif : elles ne sont pas
+# téléchargeables, on les ignore.
+_DEEZER_TRACK_URL = re.compile(r"deezer\.com/track/([^/?#\s]+)")
 
 
 @dataclass
@@ -27,6 +32,9 @@ class NowPlaying:
     updated_at: float = 0.0
     ambiguous: bool = False
     error: str = ""
+    # Piste Deezer exacte quand le lecteur l'expose : elle évite une recherche
+    # par titre seul, qui peut retomber sur une autre version (live, remix).
+    deezer_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -65,10 +73,10 @@ def _playerctl_available() -> bool:
 
 
 def _parse_info(line: str) -> dict[str, Any]:
-    parts = line.split("|", 4)
-    while len(parts) < 5:
+    parts = line.split("|", 5)
+    while len(parts) < 6:
         parts.append("")
-    status_raw, title, artist, album, length_raw = parts
+    status_raw, title, artist, album, length_raw, url_raw = parts
     status = status_raw.strip().lower() or "unknown"
     # mpris:length est en microsecondes.
     duration = None
@@ -78,12 +86,20 @@ def _parse_info(line: str) -> dict[str, Any]:
             duration = length / 1_000_000.0
     except ValueError:
         duration = None
+    deezer_id = ""
+    match = _DEEZER_TRACK_URL.search(url_raw.strip())
+    if match is not None:
+        identifier = match.group(1)
+        # Un identifiant négatif (ou non numérique) désigne une piste locale,
+        # absente du catalogue Deezer : inutile de la demander au serveur.
+        deezer_id = identifier if identifier.isdigit() else ""
     return {
         "status": status,
         "title": title.strip(),
         "artist": artist.strip(),
         "album": album.strip(),
         "duration_sec": duration,
+        "deezer_id": deezer_id,
     }
 
 
@@ -220,6 +236,7 @@ def _snapshot(previous: NowPlaying) -> NowPlaying:
         position_sec=info.get("position_sec"),
         updated_at=time.time(),
         ambiguous=ambiguous,
+        deezer_id=info.get("deezer_id", ""),
     )
 
 
@@ -269,6 +286,7 @@ def _follow_once(previous: NowPlaying) -> tuple[bool, NowPlaying]:
                 duration_sec=info["duration_sec"],
                 position_sec=position,
                 updated_at=time.time(),
+                deezer_id=info.get("deezer_id", ""),
             )
             _publish(state)
             previous = state

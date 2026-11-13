@@ -40,3 +40,25 @@ def test_cancellation_ignores_unrelated_manual_analysis() -> None:
     should_cancel = main.AppState._cancellation_check(state, "Autre|Morceau")
     state.now_playing_key = "Titre B|Artiste"
     assert should_cancel(0.1) is False
+
+
+def test_parse_info_reads_the_deezer_track_from_the_mpris_url() -> None:
+    info = mpris._parse_info(
+        "Playing|Σ. MOROSE (LIVE)||QALF (Live|703033333|https://www.deezer.com/track/3152150703"
+    )
+    assert info["title"] == "Σ. MOROSE (LIVE)"
+    assert info["duration_sec"] == 703.033333
+    assert info["deezer_id"] == "3152150703"
+
+
+def test_parse_info_ignores_local_tracks_and_other_players() -> None:
+    local = mpris._parse_info(
+        "Playing|Titre|Artiste|Album|200000000|https://www.deezer.com/track/-3152150703"
+    )
+    assert local["deezer_id"] == ""
+    youtube = mpris._parse_info(
+        "Playing|Titre|Artiste|Album|200000000|https://music.youtube.com/watch?v=abc"
+    )
+    assert youtube["deezer_id"] == ""
+    # Une ligne sans URL (ancien format) ne casse pas l'analyse.
+    assert mpris._parse_info("Playing|Titre|||200000000")["deezer_id"] == ""
