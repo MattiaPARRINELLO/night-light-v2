@@ -300,6 +300,8 @@ Trois règles, toutes vérifiées par des tests :
 
 L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
 contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
+En mode concert, un refrain détecté dans les paroles relève en plus la lumière de salle :
+le fond et le halo s'ouvrent pendant le bloc chanté, puis retombent doucement.
 
 ### Des faisceaux diffus
 
