@@ -38,7 +38,8 @@ export function drawLyrics(
   const line = lyrics.lines[index];
   if (line === undefined || !line.text.trim()) return;
 
-  const chorus = lyrics.chorusLines.includes(index);
+  const chorus =
+    lyrics.chorusLines.includes(index) || (lyrics.shoutLines ?? []).includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
   // Refrain : la phrase entière. Ailleurs : un mot marquant, ou rien du tout.
   if (!chorus && cue === null) return;

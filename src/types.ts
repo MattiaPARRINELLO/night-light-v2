@@ -107,6 +107,8 @@ export interface LyricsCues {
   wordSynced: boolean;
   keywords: KeywordCue[];
   chorusLines: number[];
+  /** Lignes que le public crie en concert, au-delà du refrain. */
+  shoutLines?: number[];
   lines: LyricLine[];
   source: "llm" | "heuristic" | "empty";
   model?: string;

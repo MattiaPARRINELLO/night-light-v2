@@ -18,7 +18,7 @@ from server.retrieve.models import normalize_text
 from .groq import GroqClient
 from .models import LyricLine, Lyrics
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 DEFAULT_MAX_KEYWORDS = 10
 MIN_KEYWORDS = 4
 KINDS = {"image", "action", "emotion", "lieu", "nom"}
@@ -58,10 +58,11 @@ class KeywordCue:
 
 @dataclass(frozen=True)
 class LyricCues:
-    """Résultat complet : mots marquants et lignes de refrain."""
+    """Résultat complet : mots marquants, refrain et lignes criées."""
 
     keywords: tuple[KeywordCue, ...] = ()
     chorus_lines: tuple[int, ...] = ()
+    shout_lines: tuple[int, ...] = ()
     source: str = "heuristic"
     model: str = ""
 
@@ -69,6 +70,7 @@ class LyricCues:
         return {
             "keywords": [cue.as_dict() for cue in self.keywords],
             "chorusLines": list(self.chorus_lines),
+            "shoutLines": list(self.shout_lines),
             "source": self.source,
             "model": self.model,
         }
@@ -86,13 +88,15 @@ def build_messages(
         f"Paroles numérotées :\n{lines}\n\n"
         f"Choisis entre {MIN_KEYWORDS} et {max_keywords} mots. Réponds en JSON :\n"
         '{"keywords": [{"line": 12, "text": "tueurs", "impact": 0.9, "kind": "image"}], '
-        '"chorus": [12, 13, 14]}\n\n'
+        '"chorus": [12, 13, 14], "shout": [27, 31]}\n\n'
         "Contraintes :\n"
         "- `text` doit être une sous-chaîne exacte de la ligne citée, sans la modifier.\n"
         "- 1 à 3 mots par entrée, jamais une phrase entière.\n"
         "- `impact` entre 0 et 1 : force visuelle du mot.\n"
         f"- `kind` parmi {sorted(KINDS)}.\n"
         "- `chorus` : numéros des lignes du refrain, même s'il se répète.\n"
+        "- `shout` : lignes que le public crie en concert (punchline, hook), "
+        "au-delà du refrain, 2 à 4 lignes.\n"
         "- Aucun commentaire, aucun texte hors JSON."
     )
     return [
@@ -115,17 +119,20 @@ def parse_cues(payload: dict[str, Any], lyrics: Lyrics) -> LyricCues:
             cues.append(cue)
     cues.sort(key=lambda cue: cue.start_ms)
 
-    chorus: list[int] = []
-    raw_chorus = payload.get("chorus")
-    if isinstance(raw_chorus, list):
-        for item in raw_chorus:
-            if isinstance(item, int) and 0 <= item < len(lyrics.lines):
-                chorus.append(item)
     return LyricCues(
         keywords=tuple(cues),
-        chorus_lines=tuple(sorted(set(chorus))),
+        chorus_lines=_line_indices(payload.get("chorus"), lyrics),
+        shout_lines=_line_indices(payload.get("shout"), lyrics),
         source="llm",
     )
+
+
+def _line_indices(raw: Any, lyrics: Lyrics) -> tuple[int, ...]:
+    """Numéros de lignes valides, dédoublonnés."""
+    if not isinstance(raw, list):
+        return ()
+    keep = {item for item in raw if isinstance(item, int) and 0 <= item < len(lyrics.lines)}
+    return tuple(sorted(keep))
 
 
 def _cue_from_item(item: Any, lyrics: Lyrics) -> KeywordCue | None:
@@ -427,12 +434,17 @@ def extract_cues(
     llm = client or GroqClient()
     if llm.configured:
         try:
-            payload = llm.complete_json(build_messages(lyrics, max_keywords=max_keywords))
+            payload = llm.complete_json(
+                build_messages(lyrics, max_keywords=max_keywords), temperature=0.0
+            )
             cues = parse_cues(payload, lyrics)
             if cues.keywords:
                 return LyricCues(
                     keywords=_merge_title_cues(lyrics, cues.keywords),
-                    chorus_lines=cues.chorus_lines or chorus,
+                    # Le refrain local (répétition réelle) prime : le modèle
+                    # ne voit pas la musique et se trompe plus facilement.
+                    chorus_lines=chorus or cues.chorus_lines,
+                    shout_lines=cues.shout_lines,
                     source="llm",
                     model=llm.model,
                 )
@@ -442,6 +454,7 @@ def extract_cues(
     return LyricCues(
         keywords=_merge_title_cues(lyrics, heuristic_keywords(lyrics, max_keywords=max_keywords)),
         chorus_lines=chorus,
+        shout_lines=(),
         source="heuristic",
     )
 
@@ -463,6 +476,7 @@ def cues_from_json(payload: dict[str, Any]) -> LyricCues:
     return LyricCues(
         keywords=keywords,
         chorus_lines=tuple(int(value) for value in payload.get("chorusLines", [])),
+        shout_lines=tuple(int(value) for value in payload.get("shoutLines", [])),
         source=str(payload.get("source", "cache")),
         model=str(payload.get("model", "")),
     )

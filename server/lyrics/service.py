@@ -77,6 +77,7 @@ class LyricsService:
             "wordSynced": lyrics.word_synced,
             "keywords": [cue.as_dict() for cue in cues.keywords],
             "chorusLines": list(cues.chorus_lines),
+            "shoutLines": list(cues.shout_lines),
             "lines": [line.as_dict() for line in lyrics.lines],
             "source": cues.source,
             "model": cues.model,

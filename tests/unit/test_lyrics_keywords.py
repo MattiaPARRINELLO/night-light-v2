@@ -48,7 +48,9 @@ def test_parse_cues_maps_text_to_word_timings() -> None:
         "keywords": [
             {"line": 0, "text": "tueurs", "impact": 0.9, "kind": "image"},
             {"line": 1, "text": "ennemi mort", "impact": 2.0, "kind": "inconnu"},
-        ]
+        ],
+        "chorus": [1],
+        "shout": [0, 99, 0],
     }
     cues = parse_cues(payload, LYRICS)
 
@@ -61,6 +63,8 @@ def test_parse_cues_maps_text_to_word_timings() -> None:
     # Impact borné, kind inconnu ramené au défaut.
     assert second.impact == 1.0
     assert second.kind == "image"
+    assert cues.shout_lines == (0,)
+    assert cues.chorus_lines == (1,)
     # Ligne sans mots : bornes réparties proportionnellement dans la ligne.
     assert 8810 < second.start_ms < second.end_ms < 11414
 
@@ -132,7 +136,7 @@ def test_extract_cues_uses_llm_when_configured() -> None:
     cues = extract_cues(LYRICS, client=client)
 
     assert cues.source == "llm"
-    assert cues.model == "openai/gpt-oss-20b"
+    assert cues.model == "openai/gpt-oss-120b"
     assert cues.keywords[0].start_ms == 3720
     assert cues.chorus_lines == (0,)
 

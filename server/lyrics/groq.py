@@ -14,7 +14,7 @@ from collections.abc import Callable
 from typing import Any
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "openai/gpt-oss-20b"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT_SEC = 20.0
 # Cloudflare devant l'API Groq refuse l'agent par défaut d'urllib.
 HTTP_USER_AGENT = "night-light/2.0 (+https://github.com/MattiaPARRINELLO/night-light-v2)"
