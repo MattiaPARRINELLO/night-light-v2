@@ -127,18 +127,34 @@ function drawLineWord(
   );
 }
 
-/** Mots de la ligne, avec des timings répartis si le morceau n'en fournit pas. */
+/**
+ * Mots de la ligne, avec des timings estimés si le morceau n'en fournit pas.
+ *
+ * Une répartition égale dérive vite : « anticonstitutionnellement » dure bien
+ * plus longtemps que « de ». On pondère donc chaque mot par son nombre de
+ * syllabes, ce qui reste une estimation mais suit le débit réel.
+ */
 function withTimings(line: LyricLine): LyricWord[] {
   if (line.words.length > 0) return line.words;
   const words = line.text.split(/\s+/).filter((word) => word.length > 0);
   if (words.length === 0) return [];
+  const weights = words.map(syllables);
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
   const span = Math.max(1, line.endMs - line.startMs);
-  const step = span / words.length;
-  return words.map((word, index) => ({
-    text: word,
-    startMs: Math.round(line.startMs + index * step),
-    endMs: Math.round(line.startMs + (index + 1) * step),
-  }));
+  let elapsed = 0;
+  return words.map((word, index) => {
+    const start = line.startMs + Math.round((span * elapsed) / total);
+    elapsed += weights[index]!;
+    const end = line.startMs + Math.round((span * elapsed) / total);
+    return { text: word, startMs: start, endMs: end };
+  });
+}
+
+/** Estimation grossière : une syllabe par groupe de voyelles. */
+function syllables(word: string): number {
+  const clean = word.toLowerCase().replace(/[^a-zà-öø-ÿ'-]/g, "");
+  const groups = clean.match(/[aeiouyàâäéèêëîïôöùûüÿœæ]+/g);
+  return Math.max(1, groups?.length ?? 1);
 }
 
 function paintWord(

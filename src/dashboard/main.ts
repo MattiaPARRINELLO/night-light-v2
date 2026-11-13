@@ -128,6 +128,46 @@ function pluriel(count: number, singulier: string, pluriels: string): string {
   return `${count} ${count > 1 ? pluriels : singulier}`;
 }
 
+/** Résumé des paroles disponibles pour le morceau analysé. */
+function lyricsSummary(analysis: Analysis | null): string {
+  const lyrics = analysis?.lyrics;
+  if (lyrics === undefined) return "Paroles : —";
+  if (lyrics.lines.length === 0) return "Paroles : aucune (instrumental ou introuvable)";
+  const parts = [
+    pluriel(lyrics.lines.length, "ligne", "lignes"),
+    lyrics.wordSynced ? "mot à mot" : "ligne à ligne",
+    pluriel(lyrics.keywords.length, "mot marquant", "mots marquants"),
+    `refrain ${pluriel(lyrics.chorusLines.length, "ligne", "lignes")}`,
+  ];
+  const shouts = lyrics.shoutLines ?? [];
+  if (shouts.length > 0) parts.push(`${shouts.length} lignes criées`);
+  parts.push(lyrics.source === "llm" ? (lyrics.model ?? "modèle") : "repli local");
+  return `Paroles : ${parts.join(" · ")}`;
+}
+
+/** Mot affiché à l'écran à cette position, avec sa nature. */
+function currentLyricLabel(analysis: Analysis, positionSec: number): string {
+  const lyrics = analysis.lyrics;
+  if (lyrics === undefined || lyrics.lines.length === 0) return "—";
+  const ms = positionSec * 1000;
+  let index = -1;
+  for (let cursor = 0; cursor < lyrics.lines.length; cursor += 1) {
+    if (lyrics.lines[cursor]!.startMs <= ms) index = cursor;
+    else break;
+  }
+  if (index < 0) return "—";
+  const line = lyrics.lines[index]!;
+  const word = line.words.find((entry) => entry.startMs <= ms && ms < entry.endMs);
+  const badge = lyrics.chorusLines.includes(index)
+    ? "refrain"
+    : (lyrics.shoutLines ?? []).includes(index)
+      ? "criée"
+      : "";
+  const text = (word?.text ?? line.text).trim();
+  const short = text.length > 34 ? `${text.slice(0, 33)}…` : text;
+  return badge === "" ? short : `${short} (${badge})`;
+}
+
 /** Courbe simple. */
 function drawSeries(
   canvas: HTMLCanvasElement,
@@ -785,6 +825,8 @@ class Dashboard {
       sectionCount.textContent = "—";
     }
 
+    el<HTMLElement>("track-lyrics").textContent = lyricsSummary(this.analysis);
+
     const trackTimings = el<HTMLElement>("track-timings");
     if (state.timings === null) {
       trackTimings.textContent = "Chronologie : —";
@@ -1017,6 +1059,7 @@ class Dashboard {
     setText(el<HTMLElement>("now-time"), `${fmtTime(position)} / ${fmtTime(duration)}`);
     setText(el<HTMLElement>("now-percent"), `${percent.toFixed(1)} %`);
     setText(el<HTMLElement>("now-section"), kindLabel);
+    setText(el<HTMLElement>("now-lyrics"), currentLyricLabel(this.analysis, position));
     setText(el<HTMLElement>("now-energy"), `${energyNow.toFixed(2)} / 1`);
     setText(
       el<HTMLElement>("now-build"),
