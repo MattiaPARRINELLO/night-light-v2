@@ -6,7 +6,7 @@
 
 import type { App } from "./app";
 import { fetchPlaybackPosition, type PlaybackPositionResponse } from "../core/api";
-import { dbgThrottled } from "../core/debug";
+import { dbgThrottled, msText } from "../core/debug";
 import {
   estimatePlayerPositionMs,
   isDifferentTrack,
@@ -115,15 +115,16 @@ export function installSync(Target: { prototype: App }): void {
         dbgThrottled(
           "sync-attempt",
           "sync",
-          `tentative ${attempt + 1}/${delaysMs.length} de synchronisation`,
+          `tentative de synchronisation ${attempt + 1}/${delaysMs.length}`,
           {
-            source: state.source,
             lecteur: state.title || "—",
-            positionSec: Number((state.positionMs / 1000).toFixed(2)),
+            application: state.source,
+            position: `${(state.positionMs / 1000).toFixed(2)} s`,
             statut: state.status,
-            correspondance: match,
-            motifs: reasons,
-            ecartDureeSec: durationDelta,
+            correspondance: match ? "oui" : "non",
+            motifs: reasons.join(", ") || "aucun",
+            ecartDuree:
+              durationDelta === null ? undefined : `${durationDelta.toFixed(2)} s`,
           },
           1500,
         );
@@ -624,9 +625,9 @@ export function installSync(Target: { prototype: App }): void {
         this.syncCorrectionDur = syncRampDuration(drift);
         this.debugSync.match = "écart > 150 ms · rattrapage progressif";
         this.debug("sync", "dérive détectée · rattrapage progressif", {
-          ecartMs: Math.round(driftAvantCorrection),
-          dureeMs: this.syncCorrectionDur,
-          positionLecteurSec: Number((playerMs / 1000).toFixed(2)),
+          ecart: msText(Math.round(driftAvantCorrection)),
+          rattrapage: msText(this.syncCorrectionDur),
+          positionLecteur: `${(playerMs / 1000).toFixed(2)} s`,
         });
       } else {
         this.debugSync.match = "synchronisé (≤ 150 ms)";
@@ -635,10 +636,10 @@ export function installSync(Target: { prototype: App }): void {
           "sync",
           "synchronisé",
           {
-            ecartMs: Math.round(drift),
-            lecteurSec: Number((playerMs / 1000).toFixed(2)),
-            showSec: Number(((this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch)) / 1000).toFixed(2)),
-            latenceMs: this.syncedLatencyMs,
+            ecart: msText(Math.round(drift)),
+            lecteur: `${(playerMs / 1000).toFixed(2)} s`,
+            show: `${((this.syncedStartMs + (Date.now() - this.syncedStartedAtEpoch)) / 1000).toFixed(2)} s`,
+            latence: msText(this.syncedLatencyMs),
           },
           5000,
         );

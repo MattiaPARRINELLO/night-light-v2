@@ -15,7 +15,7 @@ import {
   resolveUnrecognizedRetryDelayMs,
   type JobTimings,
 } from "../core/api";
-import { dbgThrottled } from "../core/debug";
+import { msText } from "../core/debug";
 import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve, shouldFallbackToPolling, shouldRetryAfterDurationChange } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
 
@@ -255,15 +255,20 @@ export function installResolve(Target: { prototype: App }): void {
     this.resolveFailure = null;
     this.lastAutoFailure = null;
     if (!auto) el<HTMLElement>("dock-panel").classList.add("is-hidden");
-    this.debug("analyse", `recherche par titre · ${title} / ${artist}`, { dureeSec: duration ?? "—" });
+    this.debug(
+      "analyse",
+      `recherche · « ${title} »${artist.trim() ? ` — ${artist}` : ""}`,
+      duration === undefined ? undefined : { duree: `${duration.toFixed(0)} s` },
+    );
     setUploadState({
       phase: "Recherche",
       progress: 0,
-      detail: "Recherche du morceau sur YouTube",
+      detail: "Recherche du morceau sur Deezer",
       title,
       meta: "Résolution automatique",
     });
     let partialShown = false;
+    let lastPhaseLine = "";
     try {
       const { jobId, analysis, timings } = await resolveAndAnalyze(
         title,
@@ -273,16 +278,13 @@ export function installResolve(Target: { prototype: App }): void {
           signal: controller.signal,
           onPhase: ({ progress, phase, detail }) => {
             setUploadState({ phase, progress, detail: detail.length > 0 ? detail : phase, title });
-            dbgThrottled(
-              `phase-${phase}`,
-              "analyse",
-              `phase « ${phase} »`,
-              {
-                progression: `${Math.round(progress * 100)} %`,
-                detail: detail.length > 0 ? detail : phase,
-              },
-              4000,
-            );
+            // Une ligne par vrai changement de phase : le détail raconte le
+            // travail en cours (candidats, téléchargement, montées…), sans
+            // répéter la même phase toutes les quatre secondes.
+            const line = detail.length > 0 ? `${phase} · ${detail}` : phase;
+            if (line === lastPhaseLine) return;
+            lastPhaseLine = line;
+            this.debug("analyse", line, { progression: `${Math.round(progress * 100)} %` });
           },
           onPartial: (partial, partialTimings) => {
             if (seq !== this.resolveSeq) return;
@@ -290,10 +292,11 @@ export function installResolve(Target: { prototype: App }): void {
             this.pendingAnalysis = partial;
             this.applyJobTimings(partialTimings);
             document.body.dataset.analysisReady = "true";
-            this.debug("analyse", "analyse partielle prête · bascule immédiate", {
-              couverture: partial.coverage ?? null,
+            this.debug("analyse", "analyse rapide prête · le show démarre", {
+              couverture: partial.coverage === undefined ? "—" : `${partial.coverage[0].toFixed(0)}–${partial.coverage[1].toFixed(0)} s`,
               tempo: Number(partial.tempo.toFixed(1)),
               temps: partial.beats.length,
+              duree: msText(partialTimings?.quickAnalysisMs),
             });
             void this.tryAutoSynced(title, artist, partial.duration, partial);
           },
@@ -306,15 +309,33 @@ export function installResolve(Target: { prototype: App }): void {
       this.pendingAnalysis = analysis;
       this.applyJobTimings(timings);
       document.body.dataset.analysisReady = "true";
-      this.debug("analyse", `analyse terminée · ${title} / ${artist}`, {
-        dureeSec: Number(analysis.duration.toFixed(1)),
-        tempo: Number(analysis.tempo.toFixed(1)),
-        temps: analysis.beats.length,
-        montees: analysis.builds.length,
-        sections: analysis.sections.length,
-        dureeMs: Math.round(performance.now() - startedAt),
-        analyseEnCache: this.trackTimings?.analysisCache === true,
-      });
+      this.debug(
+        "analyse",
+        `morceau prêt · « ${title} »${artist.trim() ? ` — ${artist}` : ""}`,
+        {
+          duree: `${analysis.duration.toFixed(1)} s`,
+          tempo: Number(analysis.tempo.toFixed(1)),
+          temps: analysis.beats.length,
+          sections: analysis.sections.length,
+          montees: analysis.builds.length,
+          recherche: msText(timings?.retrieval?.searchMs),
+          validation: msText(timings?.retrieval?.validationMs),
+          telechargement: msText(timings?.retrieval?.downloadMs),
+          analyse: msText(timings?.analysisMs),
+          total: msText(Math.round(performance.now() - startedAt)),
+          cacheAudio: timings?.audioCache === true,
+          cacheAnalyse: timings?.analysisCache === true,
+        },
+      );
+      if (analysis.lyrics !== undefined) {
+        this.debug("analyse", "paroles prêtes", {
+          source: analysis.lyrics.source,
+          lignes: analysis.lyrics.lines.length,
+          motsMarquants: analysis.lyrics.keywords.length,
+          refrains: analysis.lyrics.chorusLines.length,
+          motAMot: analysis.lyrics.wordSynced,
+        });
+      }
       // Si le show partiel tourne déjà, on remplace le plan sans le relancer ;
       // sinon (analyse en cache, ou aucun calage encore) on tente le calage final.
       if (!partialShown || !this.updateSyncedAnalysis(analysis)) {
@@ -380,11 +401,6 @@ export function installResolve(Target: { prototype: App }): void {
       status.classList.add("is-error");
       status.textContent = message;
     } finally {
-      this.debug("analyse", "résolution terminée", {
-        titre: title,
-        automatique: auto,
-        dureeMs: Math.round(performance.now() - startedAt),
-      });
       // Une résolution remplacée ne doit pas éteindre le contrôleur de la suivante.
       if (this.analysisController === controller) {
         this.analysisController = null;
@@ -401,6 +417,17 @@ export function installResolve(Target: { prototype: App }): void {
     if (key !== "" && key !== this.lastDetectedKey) {
       this.lastDetectedKey = key;
       this.beginTrackTimings();
+      this.debug(
+        "sync",
+        `lecteur · « ${data.title} »${data.artist.trim() ? ` — ${data.artist}` : ""}`,
+        {
+          statut: data.status,
+          application: data.player || "inconnue",
+          duree: data.durationSec === null || data.durationSec === undefined ? undefined : `${data.durationSec.toFixed(0)} s`,
+          position: data.positionSec === null || data.positionSec === undefined ? undefined : `${data.positionSec.toFixed(0)} s`,
+          ambigu: data.ambiguous,
+        },
+      );
     }
     this.nowPlaying = data;
     this.nowPlayingLastEventAt = Date.now();
@@ -496,21 +523,6 @@ export function installResolve(Target: { prototype: App }): void {
       if (data.title.trim() !== "") this.debugSync.playerTitle = data.title;
       if (!data.ambiguous && data.title.trim() !== "") this.debugSync.expectedTitle = data.title;
       if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
-      dbgThrottled(
-        "now-playing",
-        "sync",
-        "lecteur scruté",
-        {
-          source: data.available ? "détecté" : "aucun",
-          titre: data.title || "—",
-          artiste: data.artist || "—",
-          statut: data.status,
-          positionSec:
-            data.positionSec === null || data.positionSec === undefined ? "—" : Number(data.positionSec.toFixed(1)),
-          ambigue: data.ambiguous,
-        },
-        5000,
-      );
       this.scheduleAutoResolve();
     } catch {
       // Service indisponible : on masque simplement l'indication.

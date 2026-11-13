@@ -43,6 +43,7 @@ from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
 from .local_cache import LocalUploadCache, content_hash, probe_metadata
+from .logs import configure_logging, duration, short_id, size_text
 from .lyrics import LyricsService, apply_chorus_sections
 from .mpris import (
     add_now_playing_listener,
@@ -66,7 +67,7 @@ from .store import SessionStore
 
 MAX_ACTIVE_JOBS = 24
 _LOGGER = logging.getLogger("night-light.resolve")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+configure_logging()
 PURGE_INTERVAL_SEC = 20
 
 AUDIO_MEDIA_TYPES = {
@@ -203,7 +204,7 @@ class AppState:
                     request.isrc,
                 )
             except Exception:  # noqa: BLE001 - un job ne doit pas tuer le worker
-                _LOGGER.exception("Résolution interrompue id=%s", request.job_id)
+                _LOGGER.exception("Résolution interrompue · job %s", short_id(request.job_id))
 
     def drop_audio(self, job_id: str) -> None:
         job = self.store.get(job_id)
@@ -270,11 +271,11 @@ class AppState:
                 self._attach_lyrics(quick_schema, track, allow_network=False)
                 quick_serialize_ms = round((time.monotonic() - serialize_started) * 1000)
                 _LOGGER.info(
-                    "Analyse rapide prête id=%s fenêtre=[%.1f, %.1f] durée=%.2fs tempo=%.1f",
-                    job_id,
+                    "Analyse rapide prête · %r · fenêtre %.0f–%.0f s · %s · tempo %.0f",
+                    track.title if track is not None else job.filename,
                     window[0],
                     window[1],
-                    quick_ms / 1000,
+                    duration(quick_ms / 1000),
                     quick.tempo,
                 )
                 self.store.set_partial_result(
@@ -297,12 +298,11 @@ class AppState:
                     self.store.set_error(job_id, error.code, error.message, error.detail)
                     return
                 _LOGGER.warning(
-                    "Analyse rapide impossible id=%s (%s), passage à l'analyse complète",
-                    job_id,
+                    "Analyse rapide impossible (%s) · analyse complète",
                     error.code,
                 )
             except Exception as error:  # noqa: BLE001 - la passe complète reste possible
-                _LOGGER.warning("Analyse rapide en échec id=%s: %s", job_id, error)
+                _LOGGER.warning("Analyse rapide en échec · %s", error)
 
         def finished(extra: dict[str, Any] | None = None) -> dict[str, Any]:
             now = time.time()
@@ -330,31 +330,33 @@ class AppState:
             serialize_started = time.monotonic()
             serialize_ms = round((time.monotonic() - serialize_started) * 1000)
             elapsed = time.time() - started_at
+            titre = track.title if track is not None else job.filename
             _LOGGER.info(
-                "Analyse terminée id=%s durée=%.2fs tempo=%.1f phases=%s",
-                job_id,
-                elapsed,
+                "Analyse prête · %r · %s · tempo %.0f · %d temps · %d sections · %d montées",
+                titre,
+                duration(elapsed),
                 result.tempo,
-                result.phase_timings,
+                len(result.beats),
+                len(result.sections),
+                len(result.builds),
             )
             if analysis_key is not None:
                 try:
                     self.analysis_cache.put(analysis_key, schema)
                 except Exception as error:  # noqa: BLE001 - le cache ne doit pas casser l'analyse
-                    _LOGGER.warning("Écriture cache analyse impossible id=%s: %s", job_id, error)
+                    _LOGGER.warning("Cache analyse non écrit · %s", error)
             # Un fichier déposé à la main devient un morceau de la bibliothèque
             # locale : audio + analyse, pour le retrouver quand MPRIS le joue.
             if job.upload_meta is not None:
                 try:
                     self.local_cache.put(job.audio_path, schema, **job.upload_meta)
                     _LOGGER.info(
-                        "Dépôt mis en cache id=%s titre=%r artiste=%r",
-                        job_id,
+                        "Dépôt ajouté à la bibliothèque locale · %r — %r",
                         job.upload_meta.get("title"),
                         job.upload_meta.get("artist"),
                     )
                 except Exception as error:  # noqa: BLE001 - le cache ne casse pas l'analyse
-                    _LOGGER.warning("Écriture cache local impossible id=%s: %s", job_id, error)
+                    _LOGGER.warning("Bibliothèque locale non écrite · %s", error)
             self._attach_lyrics(schema, track)
             self.store.set_result(
                 job_id,
@@ -409,6 +411,18 @@ class AppState:
             # Le refrain des paroles pilote aussi les sections musicales : le
             # plan de show le traite alors comme un vrai refrain.
             apply_chorus_sections(schema, payload)
+            _LOGGER.info(
+                "Paroles prêtes · %r · %s · %d lignes · %d mots marquants%s",
+                track.title,
+                payload.get("source", "?"),
+                len(payload.get("lines", [])),
+                len(payload.get("keywords", [])),
+                " · mot à mot" if payload.get("wordSynced") else "",
+            )
+        elif allow_network:
+            # Une absence de paroles est normale (morceau instrumental, catalogue
+            # incomplet) : elle n'a pas sa place dans le journal live.
+            _LOGGER.debug("Aucune parole trouvée · %r", track.title)
 
     def run_resolve(
         self,
@@ -453,8 +467,7 @@ class AppState:
                 },
             )
             _LOGGER.info(
-                "Morceau local servi depuis le cache id=%s titre=%r artiste=%r",
-                job_id,
+                "Morceau local servi depuis le cache · %r — %r",
                 cached_upload.title,
                 cached_upload.artist,
             )
@@ -483,11 +496,11 @@ class AppState:
         timings["resolutionMethod"] = lookup.method
         cache = AudioCache(Path(self.settings.cache_dir))
         _LOGGER.info(
-            "Début résolution id=%s titre=%r artiste=%r durée=%.3fs",
-            job_id,
+            "Recherche · %r — %r · %s · job %s",
             title,
             artist,
-            duration_sec,
+            duration(duration_sec),
+            short_id(job_id),
         )
         if not self.settings.deezer_arl:
             self.resolve_pending = False
@@ -497,7 +510,7 @@ class AppState:
                 "La récupération Deezer n'est pas configurée.",
                 "Renseigne DEEZER_ARL dans l'environnement du serveur, puis relance-le.",
             )
-            _LOGGER.error("Résolution refusée: Deezer non configuré id=%s", job_id)
+            _LOGGER.error("Recherche impossible · Deezer non configuré (DEEZER_ARL absent)")
             return
         provider = DeezerProvider(
             arl=self.settings.deezer_arl,
@@ -506,7 +519,12 @@ class AppState:
 
         def report(phase: str, progress: float, message: str) -> None:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
-            _LOGGER.info("Résolution %s : %s (%.0f%%) %s", job_id, phase, progress * 100, message)
+            # Le journal ne suit que le début du téléchargement : c'est la seule
+            # étape assez longue pour qu'on se demande ce que fait le serveur.
+            # Les allers-retours cache/validation 0 → 100 % n'apprennent rien et
+            # noyaient les événements utiles.
+            if phase == "Téléchargement" and progress <= 0.01:
+                _LOGGER.info("Téléchargement · %r", title)
 
         # L'identifiant Deezer du lecteur désigne la piste exacte (aucune
         # recherche, donc aucune confusion live/studio). Il peut pourtant
@@ -533,9 +551,8 @@ class AppState:
                 if position == 0 and len(plans) > 1:
                     timings["resolutionMethod"] = f"{lookup.method}+search"
                     _LOGGER.info(
-                        "Résolution par identifiant Deezer échouée id=%s (%s), "
-                        "repli sur la recherche",
-                        job_id,
+                        "Identifiant Deezer inutilisable (%s) · repli sur la "
+                        "recherche par métadonnées",
                         error.code,
                     )
                     report(
@@ -584,10 +601,17 @@ class AppState:
             }
         )
         _LOGGER.info(
-            "Retrieval terminé id=%s cache_audio=%s timings=%s",
-            job_id,
-            result.from_cache,
-            result.timings,
+            "Morceau récupéré · %r — %r · %s · téléchargement %s · recherche %s · cache=%s",
+            title,
+            artist,
+            size_text(
+                result.cache_entry_path.stat().st_size
+                if result.cache_entry_path.is_file()
+                else None
+            ),
+            duration(result.timings.download_sec),
+            duration(result.timings.search_sec),
+            "oui" if result.from_cache else "non",
         )
         self.store.set_timings(job_id, timings)
 
@@ -629,14 +653,13 @@ class AppState:
             self._attach_lyrics(cached_analysis, track)
             self.store.set_result(job_id, cached_analysis, timings=timings)
             _LOGGER.info(
-                "Analyse servie depuis le cache id=%s version=%s total=%.0f ms",
-                job_id,
-                ANALYZER_VERSION,
-                analyzed_ms,
+                "Analyse servie depuis le cache · %r · %s",
+                title,
+                duration(analyzed_ms / 1000),
             )
             return
 
-        _LOGGER.info("Résolution réussie id=%s, lancement de l'analyse", job_id)
+        _LOGGER.info("Analyse lancée · %r — %r", title, artist)
         self.resolve_pending = False
         partial_window: tuple[float, float] | None = None
         try:
@@ -729,6 +752,9 @@ async def purge_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # uvicorn installe ses journaux juste avant ce démarrage : on réapplique le
+    # formateur pour que les lignes du serveur et de l'analyse se ressemblent.
+    configure_logging()
     state.store.purge_all()
     # Le worker d'analyse d'abord : son préchauffage (protégé par le verrou
     # numba) répare un éventuel cache corrompu avant que l'API ne compile à son
@@ -739,6 +765,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.purge_task = asyncio.create_task(purge_loop())
     start_mpris_monitor()
     atexit.register(state.store.purge_all)
+    _LOGGER.info(
+        "Serveur prêt · http://%s:%s · Deezer %s",
+        settings.host,
+        settings.port,
+        "configuré" if settings.deezer_arl else "non configuré",
+    )
     try:
         yield
     finally:
