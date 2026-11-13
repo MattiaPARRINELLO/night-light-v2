@@ -79,8 +79,6 @@ const REFERENCE_SEC = 12;
 const LEVEL_GAIN = 0.72;
 /** Lissage rapide du niveau (attaque d'un coup, presque sans traînée). */
 const FAST_SEC = 0.11;
-/** Lissage lent : la référence de « niveau habituel » du morceau. */
-const SLOW_SEC = 3.5;
 /** Lissage rapide du rms brut, pour juger un saut d'impact. */
 const RMS_FAST_SEC = 0.12;
 /** Lissage lent du rms brut, référence du saut. */
@@ -131,8 +129,6 @@ export class LiveDirector {
   private referenceReady = false;
   /** Niveau lissé rapidement (réaction). */
   private fast = 0;
-  /** Niveau lissé lentement (référence). */
-  private slow = 0;
   /** Rms brut lissé vite et lentement, pour les sauts d'impact. */
   private rmsFast = 0;
   private rmsRef = REFERENCE_FLOOR;
@@ -155,7 +151,7 @@ export class LiveDirector {
   private build = 0;
   private surge = 0;
   /** Historique court du niveau, pour les pentes. */
-  private history: Array<{ t: number; level: number; rms: number }> = [];
+  private history: Array<{ t: number; rms: number }> = [];
   /** Dernière image musicale produite. */
   private music: LiveMusic = { ...EMPTY_LIVE_MUSIC };
   private lastT = -1;
@@ -165,7 +161,6 @@ export class LiveDirector {
     this.reference = REFERENCE_FLOOR;
     this.referenceReady = false;
     this.fast = 0;
-    this.slow = 0;
     this.rmsFast = 0;
     this.rmsRef = REFERENCE_FLOOR;
     this.rmsRefReady = false;
@@ -220,7 +215,6 @@ export class LiveDirector {
       : clamp01((rms / Math.max(this.reference, REFERENCE_FLOOR)) * LEVEL_GAIN);
 
     this.fast = approach(this.fast, target, dt, FAST_SEC);
-    this.slow = approach(this.slow, target, dt, SLOW_SEC);
 
     // Rms brut pour les sauts d'impact : un drop est un écart relatif au niveau
     // habituel, pas un volume absolu. L'échelle du morceau n'entre plus en jeu.
@@ -365,7 +359,7 @@ export class LiveDirector {
 
   /** Mémorise le niveau courant pour les pentes. */
   private record(t: number): void {
-    this.history.push({ t, level: this.fast, rms: this.rmsFast });
+    this.history.push({ t, rms: this.rmsFast });
     const floor = t - HISTORY_SEC;
     while (this.history.length > 0 && this.history[0]!.t < floor) this.history.shift();
   }
