@@ -4,98 +4,93 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#05060a" />
+    <meta name="theme-color" content="#000000" />
     <meta name="description" content="Tableau de bord de Night Light : audio, synchronisation, morceau en cours, programme et visualisation complète." />
     <title>Night Light — Contrôle</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%92%A1%3C/text%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/src/styles/base.css" />
     <link rel="stylesheet" href="/src/dashboard/dashboard.css" />
   </head>
   <body class="dashboard">
-    <div class="dash">
-      <!--
-        Bande d'état : une seule ligne pour répondre à « est-ce que tout va
-        bien, et où en est le morceau ? ». Elle remplace les huit tuiles KPI qui
-        obligeaient à recouper la même information à quatre endroits.
-        Chaque élément mène au panneau qui détaille son sujet.
-      -->
-      <header class="dash-head">
-        <div class="dash-brand">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <div>
-            <h1>Night Light</h1>
-            <p class="dash-sub">Console de contrôle · spectacle musical temps réel</p>
-          </div>
-          <a class="dash-link" href="/effets.html">Studio d'effets</a>
-          <button
-            class="hard-toggle"
-            id="hard-toggle"
-            type="button"
-            aria-pressed="false"
-            title="Mode rave, raccourci H"
-          >
-            <span class="hard-toggle-dot" aria-hidden="true"></span>
-            <span id="hard-toggle-label">Rave off</span>
-            <kbd>H</kbd>
-          </button>
-          <button
-            class="hard-toggle dynamic-toggle"
-            id="dynamic-toggle"
-            type="button"
-            aria-pressed="false"
-            title="Mode concert, raccourci C"
-          >
-            <span class="hard-toggle-dot" aria-hidden="true"></span>
-            <span id="dynamic-toggle-label">Concert off</span>
-            <kbd>C</kbd>
-          </button>
-          <button
-            class="hard-toggle blackout-toggle"
-            id="blackout-toggle"
-            type="button"
-            aria-pressed="false"
-            title="Blackout, raccourci B"
-          >
-            <span class="hard-toggle-dot" aria-hidden="true"></span>
-            <span id="blackout-toggle-label">Blackout</span>
-            <kbd>B</kbd>
-          </button>
-        </div>
+    <!-- Barre unique : le produit et son périmètre à gauche, les trois profils
+         que l'on bascule en scène à droite. Aucune décoration. -->
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Night Light, accueil">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">
+          <b>Night Light</b>
+          <span>console de contrôle</span>
+        </span>
+      </a>
+      <nav class="topbar-links" aria-label="Accès rapides">
+        <a href="/effets.html">Studio d'effets</a>
+      </nav>
+      <div class="profiles" role="group" aria-label="Profils du show">
+        <button class="toggle" id="hard-toggle" type="button" aria-pressed="false" title="Mode rave, raccourci H">
+          <span class="toggle-dot" aria-hidden="true"></span>
+          <span id="hard-toggle-label">Rave off</span>
+          <kbd>H</kbd>
+        </button>
+        <button class="toggle" id="dynamic-toggle" type="button" aria-pressed="false" title="Mode concert, raccourci C">
+          <span class="toggle-dot" aria-hidden="true"></span>
+          <span id="dynamic-toggle-label">Concert off</span>
+          <kbd>C</kbd>
+        </button>
+        <button class="toggle" id="blackout-toggle" type="button" aria-pressed="false" title="Blackout, raccourci B">
+          <span class="toggle-dot" aria-hidden="true"></span>
+          <span id="blackout-toggle-label">Blackout</span>
+          <kbd>B</kbd>
+        </button>
+      </div>
+    </header>
 
-        <nav class="status-band" aria-label="État du spectacle">
-          <button class="sb" id="sb-link" type="button" data-jump="panel-sync">
-            <span class="sb-dot" aria-hidden="true"></span>
-            <span class="sb-label">Liaison</span>
-            <b id="link-pill">Show hors ligne</b>
-            <span class="sb-note" id="sb-link-note">aucun signe</span>
-          </button>
-          <button class="sb" id="sb-mode" type="button" data-jump="panel-pipeline">
-            <span class="sb-label">Mode</span>
-            <b id="kpi-mode">—</b>
-            <span class="sb-note" id="kpi-screen">écran : —</span>
-          </button>
-          <button class="sb" id="sb-position" type="button" data-jump="panel-track">
-            <span class="sb-label">Position</span>
-            <b id="sb-position-value">—</b>
-            <span class="sb-note" id="sb-position-note">—</span>
-          </button>
-          <button class="sb" id="sb-drift" type="button" data-jump="panel-sync">
-            <span class="sb-label">Écart show/son</span>
-            <b id="sb-drift-value">—</b>
-            <span class="sb-note" id="sb-drift-note">tolérance 150 ms</span>
-          </button>
-          <button class="sb" id="sb-capture" type="button" data-jump="panel-audio">
-            <span class="sb-label">Capture audio</span>
-            <b id="sb-capture-value">—</b>
-            <span class="sb-note" id="sb-capture-note">—</span>
-          </button>
-          <button class="sb" id="sb-lyrics" type="button" data-jump="panel-track">
-            <span class="sb-label">Paroles</span>
-            <b id="sb-lyrics-value">—</b>
-            <span class="sb-note" id="sb-lyrics-note">aucune analyse</span>
-          </button>
-        </nav>
-      </header>
+    <main class="canvas">
+      <!-- Ce que l'écran répond d'abord : le show suit-il le son, et où en est
+           le morceau ? Le titre, la phrase de constat, puis le geste courant. -->
+      <div class="title-row">
+        <div class="title-copy">
+          <h1>Contrôle du show</h1>
+          <p class="title-finding" id="title-summary">En attente du premier signe de l'écran de show…</p>
+        </div>
+        <div class="title-actions">
+          <span class="freshness" id="freshness">—</span>
+          <a class="btn btn-primary" id="btn-source-jump" href="#panel-source">Lancer un morceau</a>
+        </div>
+      </div>
+
+      <!-- La bande d'état : six faits, un seul cadre divisé. Chaque fait mène
+           au panneau qui le détaille. -->
+      <section class="strip" aria-label="État du spectacle">
+        <button class="stat" id="sb-link" type="button" data-jump="panel-sync">
+          <span class="stat-label">Liaison</span>
+          <b class="stat-value" id="link-pill">Show hors ligne</b>
+          <span class="stat-note" id="sb-link-note">aucun signe</span>
+        </button>
+        <button class="stat" id="sb-mode" type="button" data-jump="panel-pipeline">
+          <span class="stat-label">Mode</span>
+          <b class="stat-value" id="kpi-mode">—</b>
+          <span class="stat-note" id="kpi-screen">écran : —</span>
+        </button>
+        <button class="stat" id="sb-drift" type="button" data-jump="panel-sync">
+          <span class="stat-label">Écart show/son</span>
+          <b class="stat-value" id="sb-drift-value">—</b>
+          <span class="stat-note" id="sb-drift-note">tolérance 150 ms</span>
+        </button>
+        <button class="stat" id="sb-capture" type="button" data-jump="panel-audio">
+          <span class="stat-label">Capture audio</span>
+          <b class="stat-value" id="sb-capture-value">—</b>
+          <span class="stat-note" id="sb-capture-note">—</span>
+        </button>
+        <button class="stat" id="sb-render" type="button" data-jump="panel-render">
+          <span class="stat-label">Rendu</span>
+          <b class="stat-value" id="sb-render-value">—</b>
+          <span class="stat-note" id="sb-render-note">—</span>
+        </button>
+        <button class="stat" id="sb-lyrics" type="button" data-jump="panel-track">
+          <span class="stat-label">Paroles</span>
+          <b class="stat-value" id="sb-lyrics-value">—</b>
+          <span class="stat-note" id="sb-lyrics-note">aucune analyse</span>
+        </button>
+      </section>
 
       <!-- Ce qui demande une action : erreur du show, repli, liaison perdue. -->
       <div class="alerts" id="alerts" hidden>
@@ -105,23 +100,22 @@
         <p class="alert is-notice" id="alert-resolve" hidden><b class="alert-tag">Auto</b><span id="resolve-text">—</span></p>
       </div>
 
-      <!-- ================= ZONE 1 : maintenant ================= -->
-      <section class="panel panel-wide panel-track" id="panel-track" aria-label="Morceau en cours">
-        <header class="panel-head">
-          <h2>Le morceau</h2>
-          <span class="panel-tag" id="track-status">en attente</span>
+      <!-- Le bloc qui répond à la question : le morceau, son énergie, sa
+           structure, le curseur du show. -->
+      <section class="card card-track" id="panel-track" aria-labelledby="track-heading">
+        <header class="card-head">
+          <h2 id="track-heading">Le morceau</h2>
+          <span class="tag" id="track-status">en attente</span>
         </header>
 
-        <div class="track-head">
-          <div class="track-ident">
+        <div class="track-ident">
+          <div>
             <p class="track-title" id="track-title">Aucun morceau chargé</p>
-            <p class="track-sub" id="track-artist">Dépose un fichier ou cherche par titre</p>
+            <p class="track-artist" id="track-artist">Dépose un fichier ou cherche par titre</p>
           </div>
           <p class="track-facts" id="track-facts">—</p>
         </div>
-        <p class="panel-note" id="track-timings">Chronologie : —</p>
-        <p class="panel-note" id="track-phases">Phases d’analyse : —</p>
-        <p class="panel-note" id="track-lyrics">Paroles : —</p>
+        <p class="note" id="track-lyrics">Paroles : —</p>
 
         <div class="track-plot" id="track-plot">
           <canvas id="track-canvas" width="1120" height="340" tabindex="0" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer."></canvas>
@@ -152,11 +146,9 @@
           <span><i class="swatch swatch-descente"></i>descente</span>
           <span><i class="swatch swatch-silence"></i>silence</span>
           <span><i class="line-swatch"></i>énergie</span>
-          <span><i class="spike-swatch"></i>temps forts</span>
+          <span><i class="tick-swatch"></i>temps forts</span>
           <span><i class="arrow-swatch"></i>montées</span>
         </div>
-
-        <p class="panel-note">Bande de structure en haut, puis énergie, bandes, temps forts et curseur du show. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer, double-clic pour tout revoir.</p>
 
         <div id="upcoming" class="upcoming" aria-label="Prochains événements"></div>
 
@@ -166,15 +158,15 @@
         </details>
       </section>
 
-      <div class="dash-grid is-two">
+      <div class="row-2">
         <!-- Audio en direct -->
-        <section class="panel" id="panel-audio" aria-label="Audio en direct">
-          <header class="panel-head">
-            <h2>Audio en direct</h2>
-            <span class="panel-tag" id="audio-rate">—</span>
+        <section class="card" id="panel-audio" aria-labelledby="audio-heading">
+          <header class="card-head">
+            <h2 id="audio-heading">Audio en direct</h2>
+            <span class="tag" id="audio-rate">—</span>
           </header>
-          <p class="panel-verdict" id="audio-verdict">—</p>
-          <canvas id="audio-canvas" width="640" height="180" aria-label="Spectre audio en direct"></canvas>
+          <p class="verdict" id="audio-verdict">—</p>
+          <canvas id="audio-canvas" width="640" height="150" aria-label="Spectre audio en direct"></canvas>
           <div class="meters" aria-label="Jauges du son capté">
             <div class="meter"><span>Volume (RMS)</span><i><b id="meter-rms"></b></i></div>
             <div class="meter"><span>Énergie</span><i><b id="meter-energy"></b></i></div>
@@ -183,8 +175,8 @@
             <div class="meter"><span>Aigus</span><i><b id="meter-high"></b></i></div>
             <div class="meter"><span>Frappe (transitoire)</span><i><b id="meter-transient"></b></i></div>
           </div>
-          <canvas id="rms-canvas" width="640" height="150" aria-label="Historique audio multi-courbes"></canvas>
-          <p class="panel-note">Spectre du moment, puis volume, énergie et bandes sur les 60 dernières secondes. Tout est normalisé de 0 (rien) à 1 (plein).</p>
+          <canvas id="rms-canvas" width="640" height="130" aria-label="Historique audio multi-courbes"></canvas>
+          <p class="note">Spectre du moment, puis volume, énergie et bandes sur les 60 dernières secondes. Tout est normalisé de 0 (rien) à 1 (plein).</p>
           <div class="spark-grid">
             <div class="spark-card"><span>Volume</span><canvas id="spark-rms" width="240" height="64"></canvas></div>
             <div class="spark-card"><span>Énergie</span><canvas id="spark-energy" width="240" height="64"></canvas></div>
@@ -209,18 +201,18 @@
         </section>
 
         <!-- Synchronisation -->
-        <section class="panel" id="panel-sync" aria-label="Synchronisation">
-          <header class="panel-head">
-            <h2>Synchronisation</h2>
-            <span class="panel-tag" id="sync-source">aucune source</span>
+        <section class="card" id="panel-sync" aria-labelledby="sync-heading">
+          <header class="card-head">
+            <h2 id="sync-heading">Synchronisation</h2>
+            <span class="tag" id="sync-source">aucune source</span>
           </header>
-          <p class="panel-verdict" id="sync-verdict">—</p>
-          <canvas id="drift-canvas" width="640" height="130" aria-label="Écart de synchronisation sur la dernière minute"></canvas>
+          <p class="verdict" id="sync-verdict">—</p>
+          <canvas id="drift-canvas" width="640" height="120" aria-label="Écart de synchronisation sur la dernière minute"></canvas>
           <div class="spark-grid">
             <div class="spark-card"><span>Écart absolu</span><canvas id="spark-drift" width="240" height="64"></canvas></div>
             <div class="spark-card"><span>Ressemblance</span><canvas id="spark-corr" width="240" height="64"></canvas></div>
           </div>
-          <p class="panel-note">Écart entre le show et le lecteur, sur la dernière minute. La zone grise du graphe est la tolérance acceptée.</p>
+          <p class="note">Écart entre le show et le lecteur, sur la dernière minute. La zone grise du graphe est la tolérance acceptée.</p>
           <dl class="kv">
             <div><dt>Position du lecteur</dt><dd id="sync-player">—</dd></div>
             <div><dt>Position du show</dt><dd id="sync-show">—</dd></div>
@@ -231,17 +223,20 @@
             <div><dt>Latence appliquée</dt><dd id="sync-latency">—</dd></div>
             <div><dt>Tentatives de calage</dt><dd id="sync-attempts">—</dd></div>
           </dl>
-          <p class="panel-note">Ressemblance : 1 = le lecteur joue bien le morceau attendu, 0 = rien à voir. Latence : avance du show sur le son, pour compenser une sortie Bluetooth ou HDMI.</p>
+          <p class="note">Ressemblance : 1 = le lecteur joue bien le morceau attendu, 0 = rien à voir. Latence : avance du show sur le son, pour compenser une sortie Bluetooth ou HDMI.</p>
         </section>
       </div>
 
-      <!-- ================= ZONE 2 : détail technique ================= -->
-      <section class="zone" id="zone-detail">
-        <h2 class="zone-title">Détail technique <span>à ouvrir quand quelque chose cloche</span></h2>
-        <div class="dash-grid is-two">
-          <section class="panel" id="panel-pipeline" aria-label="Chaîne, capture et programme">
-            <header class="panel-head">
-              <h2>Chaîne et capture</h2>
+      <!-- ================= Détail technique ================= -->
+      <section class="band" id="zone-detail" aria-labelledby="detail-heading">
+        <div class="band-head">
+          <h2 id="detail-heading">Détail technique</h2>
+          <p>à ouvrir quand quelque chose cloche</p>
+        </div>
+        <div class="row-2">
+          <section class="card" id="panel-pipeline" aria-labelledby="pipeline-heading">
+            <header class="card-head">
+              <h2 id="pipeline-heading">Chaîne et capture</h2>
             </header>
             <div class="pipeline" id="pipeline" aria-label="Étapes de la chaîne">
               <span class="stage" id="stage-drop">Dépôt</span>
@@ -266,18 +261,23 @@
                 <div><dt>Dernier message</dt><dd id="capture-last">—</dd></div>
               </dl>
             </details>
-            <p class="panel-note">La chaîne va du dépôt du fichier au Live : <b>Dépôt</b> attend un morceau, <b>Analyse</b> le découpe, <b>Show</b> le joue, <b>Live</b> laisse le son du PC piloter les lumières.</p>
+            <details class="sub">
+              <summary>Chronologie et phases d'analyse</summary>
+              <p class="note" id="track-timings">Chronologie : —</p>
+              <p class="note" id="track-phases">Phases d'analyse : —</p>
+            </details>
+            <p class="note">La chaîne va du dépôt du fichier au Live : <b>Dépôt</b> attend un morceau, <b>Analyse</b> le découpe, <b>Show</b> le joue, <b>Live</b> laisse le son du PC piloter les lumières.</p>
           </section>
 
-          <section class="panel" id="panel-render" aria-label="Rendu visuel">
-            <header class="panel-head">
-              <h2>Rendu visuel</h2>
-              <span class="panel-tag" id="render-verdict">—</span>
+          <section class="card" id="panel-render" aria-labelledby="render-heading">
+            <header class="card-head">
+              <h2 id="render-heading">Rendu visuel</h2>
+              <span class="tag" id="render-verdict">—</span>
             </header>
-            <canvas id="render-canvas" width="640" height="120" aria-label="Images par seconde du show sur la dernière minute"></canvas>
-            <p class="panel-note">Images par seconde du show sur la dernière minute. Le trait pointillé marque 40 images/s : en dessous, le spectacle peut saccader.</p>
-            <canvas id="render-spark" width="640" height="64" aria-label="Qualité appliquée sur la même période"></canvas>
-            <p class="panel-note">Qualité choisie automatiquement sur la même période (1 = pleine qualité).</p>
+            <canvas id="render-canvas" width="640" height="110" aria-label="Images par seconde du show sur la dernière minute"></canvas>
+            <p class="note">Images par seconde du show sur la dernière minute. Le trait pointillé marque 40 images/s : en dessous, le spectacle peut saccader.</p>
+            <canvas id="render-spark" width="640" height="60" aria-label="Qualité appliquée sur la même période"></canvas>
+            <p class="note">Qualité choisie automatiquement sur la même période (1 = pleine qualité).</p>
             <dl class="kv kv-compact">
               <div><dt>Images par seconde (live)</dt><dd id="render-live-fps">—</dd></div>
               <div><dt>Images par seconde (show)</dt><dd id="render-show-fps">—</dd></div>
@@ -286,28 +286,30 @@
               <div><dt>Images dessinées (live)</dt><dd id="render-live-frame">—</dd></div>
               <div><dt>Images dessinées (show)</dt><dd id="render-show-frame">—</dd></div>
             </dl>
-            <p class="panel-note">La qualité baisse automatiquement quand les images par seconde chutent. En dessous de 40, le spectacle peut saccader.</p>
           </section>
         </div>
       </section>
 
-      <!-- ================= ZONE 3 : outils ================= -->
-      <section class="zone" id="zone-tools">
-        <h2 class="zone-title">Outils <span>ce que tu manipules</span></h2>
-        <div class="dash-grid">
-          <section class="panel" id="panel-source" aria-label="Lancer un morceau">
-            <header class="panel-head">
-              <h2>Lancer un morceau</h2>
+      <!-- ================= Outils ================= -->
+      <section class="band" id="zone-tools" aria-labelledby="tools-heading">
+        <div class="band-head">
+          <h2 id="tools-heading">Outils</h2>
+          <p>ce que tu manipules</p>
+        </div>
+        <div class="row-2">
+          <section class="card" id="panel-source" aria-labelledby="source-heading">
+            <header class="card-head">
+              <h2 id="source-heading">Lancer un morceau</h2>
             </header>
 
-            <div id="dropzone" class="dash-drop" role="button" tabindex="0">
-              <p class="dash-drop-title">Dépose un fichier audio</p>
-              <p class="dash-drop-sub">MP3, WAV, OGG, FLAC, M4A · analysé puis supprimé</p>
-              <button id="btn-pick" class="btn btn-ghost" type="button">Choisir un fichier</button>
+            <div id="dropzone" class="drop" role="button" tabindex="0">
+              <p class="drop-title">Dépose un fichier audio</p>
+              <p class="drop-sub">MP3, WAV, OGG, FLAC, M4A · analysé puis supprimé</p>
+              <button id="btn-pick" class="btn" type="button">Choisir un fichier</button>
               <input id="file-input" type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" class="visually-hidden" />
             </div>
 
-            <div class="dash-progress" id="analyze-progress" hidden>
+            <div class="progress-box" id="analyze-progress" hidden>
               <div class="progress-bar"><span id="analyze-fill" class="progress-fill"></span></div>
               <div class="progress-row">
                 <span id="analyze-phase" class="progress-phase">Préparation</span>
@@ -315,85 +317,92 @@
               </div>
             </div>
 
-            <form id="resolve-form" class="dash-form" novalidate>
-              <p class="dash-form-title">Ou par titre</p>
-              <label class="field field-text"><span class="field-label">Titre</span><input id="resolve-title" type="text" placeholder="Ex. Get Lucky" /></label>
-              <label class="field field-text"><span class="field-label">Artiste</span><input id="resolve-artist" type="text" placeholder="Ex. Daft Punk" /></label>
+            <form id="resolve-form" class="form" novalidate>
+              <p class="form-title">Ou par titre</p>
+              <div class="form-grid">
+                <label class="field"><span>Titre</span><input id="resolve-title" type="text" placeholder="Ex. Get Lucky" /></label>
+                <label class="field"><span>Artiste</span><input id="resolve-artist" type="text" placeholder="Ex. Daft Punk" /></label>
+              </div>
               <button id="btn-resolve" class="btn btn-primary" type="submit">Rechercher et analyser</button>
             </form>
-            <p class="panel-note" id="limits-note">—</p>
+            <p class="note" id="limits-note">—</p>
+            <p class="note">L'analyse tourne sur cette machine : le fichier est supprimé dès qu'elle est prête. Un morceau déjà analysé se recharge sans repasser par l'analyse.</p>
           </section>
 
-          <section class="panel" id="panel-settings" aria-label="Réglages du spectacle">
-            <header class="panel-head">
-              <h2>Réglages</h2>
+          <section class="card" id="panel-settings" aria-labelledby="settings-heading">
+            <header class="card-head">
+              <h2 id="settings-heading">Réglages</h2>
             </header>
-            <label class="field"><span class="field-label">Intensité <b id="intensity-value">100 %</b></span><input id="intensity" type="range" min="20" max="150" value="100" /></label>
-            <label class="field"><span class="field-label">Flashs <b id="flashes-value">90 %</b></span><input id="flashes" type="range" min="0" max="150" value="90" /></label>
-            <div class="hud-toggles">
+            <label class="field field-range"><span>Intensité <b id="intensity-value">100 %</b></span><input id="intensity" type="range" min="20" max="150" value="100" /></label>
+            <label class="field field-range"><span>Flashs <b id="flashes-value">90 %</b></span><input id="flashes" type="range" min="0" max="150" value="90" /></label>
+            <div class="switches">
               <label class="switch"><input id="chk-reduced" type="checkbox" /><span>Intensité réduite</span></label>
               <label class="switch"><input id="chk-noflash" type="checkbox" /><span>Sans flashs</span></label>
             </div>
-            <label class="field">
-              <span class="field-label">Profil</span>
-              <select id="hard-mode">
-                <option value="auto" selected>Auto (détection)</option>
-                <option value="dynamic">Concert (forcé)</option>
-                <option value="on">Rave (forcé)</option>
-                <option value="off">Standard</option>
-              </select>
-            </label>
-            <label class="field">
-              <span class="field-label">Entrée dans le show</span>
-              <select id="transition-mode">
-                <option value="crossfade">Fondu enchaîné</option>
-                <option value="black">Fondu noir</option>
-              </select>
-            </label>
-            <hr class="dash-sep" />
-            <label class="field field-text"><span class="field-label">Latence (ms)</span><input id="latency" type="number" min="-500" max="1000" step="10" value="0" /></label>
-            <div class="dash-actions">
-              <button id="latency-wired" class="btn btn-ghost" type="button">Filaire</button>
-              <button id="latency-bt" class="btn btn-ghost" type="button">Bluetooth</button>
-              <button id="latency-calibrate" class="btn btn-ghost" type="button">Caler</button>
+            <div class="form-grid">
+              <label class="field">
+                <span>Profil</span>
+                <select id="hard-mode">
+                  <option value="auto" selected>Auto (détection)</option>
+                  <option value="dynamic">Concert (forcé)</option>
+                  <option value="on">Rave (forcé)</option>
+                  <option value="off">Standard</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Entrée dans le show</span>
+                <select id="transition-mode">
+                  <option value="crossfade">Fondu enchaîné</option>
+                  <option value="black">Fondu noir</option>
+                </select>
+              </label>
             </div>
-            <p class="panel-note">La latence avance le show sur le son : augmente-la quand les effets arrivent après la musique.</p>
+            <hr class="sep" />
+            <div class="latency-row">
+              <label class="field field-text"><span>Latence (ms)</span><input id="latency" type="number" min="-500" max="1000" step="10" value="0" /></label>
+              <div class="actions-row">
+                <button id="latency-wired" class="btn" type="button">Filaire</button>
+                <button id="latency-bt" class="btn" type="button">Bluetooth</button>
+                <button id="latency-calibrate" class="btn" type="button">Caler</button>
+              </div>
+            </div>
+            <p class="note">La latence avance le show sur le son : augmente-la quand les effets arrivent après la musique.</p>
           </section>
 
-          <section class="panel" id="panel-actions" aria-label="Actions">
-            <header class="panel-head">
-              <h2>Actions</h2>
+          <section class="card card-wide" id="panel-actions" aria-labelledby="actions-heading">
+            <header class="card-head">
+              <h2 id="actions-heading">Actions</h2>
             </header>
-            <div class="dash-actions dash-actions-stack">
-              <button id="btn-capture" class="btn btn-ghost" type="button">Couper la capture</button>
-              <button id="btn-force-live" class="btn btn-ghost" type="button">Revenir en Live</button>
-              <button id="btn-force-show" class="btn btn-ghost" type="button">Forcer le show local</button>
-              <button id="btn-debug" class="btn btn-ghost" type="button">Overlay de debug</button>
-              <button id="btn-cancel" class="btn btn-ghost" type="button">Annuler l'analyse</button>
+            <div class="actions-row">
+              <button id="btn-capture" class="btn" type="button">Couper la capture</button>
+              <button id="btn-force-live" class="btn" type="button">Revenir en Live</button>
+              <button id="btn-force-show" class="btn" type="button">Forcer le show local</button>
+              <button id="btn-debug" class="btn" type="button">Overlay de debug</button>
+              <button id="btn-cancel" class="btn" type="button">Annuler l'analyse</button>
             </div>
-            <p class="panel-note">L'écran de show n'a pas d'interface : tout se règle ici. Raccourcis clavier sur l'écran de show : <b>D</b> overlay, <b>S</b> show local, <b>Échap</b> annuler, <b>F</b> plein écran.</p>
+            <p class="note">L'écran de show n'a pas d'interface : tout se règle ici. Raccourcis clavier sur l'écran de show : <b>D</b> overlay, <b>S</b> show local, <b>Échap</b> annuler, <b>F</b> plein écran.</p>
           </section>
 
-          <section class="panel" id="panel-queue" aria-label="File et préchargement">
-            <header class="panel-head">
-              <h2>File et préchargement</h2>
-              <span class="panel-tag" id="queue-provider">—</span>
+          <section class="card card-wide" id="panel-queue" aria-labelledby="queue-heading">
+            <header class="card-head">
+              <h2 id="queue-heading">File et préchargement</h2>
+              <span class="tag" id="queue-provider">—</span>
             </header>
-            <p class="panel-note" id="queue-method">Source : —</p>
-            <ul class="notice-list" id="queue-preload"><li>Aucune piste préchargée.</li></ul>
+            <p class="note" id="queue-method">Source : —</p>
+            <ul class="preload-list" id="queue-preload"><li>Aucune piste préchargée.</li></ul>
           </section>
         </div>
       </section>
 
       <!-- ================= Journal ================= -->
-      <details class="panel panel-wide journal" id="panel-log">
+      <details class="card card-log" id="panel-log">
         <summary>
           <h2>Journal et événements</h2>
-          <span class="panel-tag" id="log-count">—</span>
+          <span class="tag" id="log-count">—</span>
         </summary>
-        <pre id="log" class="dash-log" tabindex="0">En attente de l'écran de show…</pre>
+        <pre id="log" class="log" tabindex="0">En attente de l'écran de show…</pre>
       </details>
-    </div>
+    </main>
 
     <script type="module" src="/src/dashboard/main.ts"></script>
   </body>

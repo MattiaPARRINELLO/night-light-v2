@@ -26,12 +26,16 @@ class TrackQuery:
 
     title: str
     artist: str = ""
-    duration_sec: float = 0.0
+    # `None` = durée inconnue (ffprobe absent ou tags muets), ramenée à 0 pour
+    # que les appels qui la comparent à zéro n'aient pas à s'en soucier.
+    duration_sec: float | None = 0.0
 
     def __post_init__(self) -> None:
         if not self.title or not self.title.strip():
             raise ValueError("title is required")
-        if self.duration_sec < 0:
+        if self.duration_sec is None:
+            object.__setattr__(self, "duration_sec", 0.0)
+        elif self.duration_sec < 0:
             raise ValueError("duration_sec must be non-negative")
 
     @property
@@ -94,7 +98,6 @@ class MatchResult:
 def audio_cache_key(query: TrackQuery) -> str:
     """Clé stable pour le cache persistant, fondée sur les métadonnées."""
     raw = (
-        f"{query.normalized_title}|{query.normalized_artist}|"
-        f"{round(float(query.duration_sec), 3)}"
+        f"{query.normalized_title}|{query.normalized_artist}|{round(float(query.duration_sec), 3)}"
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

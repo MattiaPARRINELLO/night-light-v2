@@ -29,6 +29,10 @@ const SAMPLE_MS = 250;
 const LINK_TIMEOUT_MS = 3000;
 /** Au-delà, la capture est ouverte mais n'envoie plus rien. */
 const CAPTURE_STALE_MS = 2000;
+/** Fréquence de repeinture des graphes d'historique (huit tracés de 240 points). */
+const HISTORY_RENDER_MS = 250;
+/** Le journal affiché s'arrête aux dernières lignes : au-delà, il noie l'écran. */
+const LOG_LIMIT = 200;
 
 interface Sample {
   at: number;
@@ -61,9 +65,21 @@ interface QueueStatus {
   }>;
 }
 
+/**
+ * Les nœuds de la page sont fixes : on les résout une fois. `render()` tourne à
+ * chaque message du show et appelait `getElementById` plus d'une centaine de
+ * fois par passe, pour les mêmes éléments à chaque fois.
+ */
+const nodes = new Map<string, HTMLElement>();
+
 function el<T extends HTMLElement>(id: string): T {
-  const node = document.getElementById(id);
-  if (node === null) throw new Error(`Élément manquant dans le DOM : #${id}`);
+  let node = nodes.get(id);
+  if (node === undefined) {
+    const found = document.getElementById(id);
+    if (found === null) throw new Error(`Élément manquant dans le DOM : #${id}`);
+    node = found;
+    nodes.set(id, found);
+  }
   return node as T;
 }
 
@@ -174,7 +190,7 @@ function drawSeries(
   samples: Sample[],
   pick: (sample: Sample) => number,
   color: string,
-  options: { min?: number; max?: number; zero?: boolean } = {},
+  options: { min?: number; max?: number; zero?: boolean; tolerance?: number } = {},
 ): void {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return;
@@ -184,6 +200,15 @@ function drawSeries(
   const min = options.min ?? 0;
   const max = options.max ?? 1;
   const span = Math.max(max - min, 1e-6);
+
+  // Zone de tolérance : ce que le graphe de synchronisation annonce sous le
+  // trait (la note sous le panneau la décrit).
+  if (options.tolerance !== undefined) {
+    const top = h - ((options.tolerance - min) / span) * h;
+    const bottom = h - ((-options.tolerance - min) / span) * h;
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    ctx.fillRect(0, top, w, bottom - top);
+  }
 
   if (options.zero === true) {
     const y = h - ((0 - min) / span) * h;
@@ -228,12 +253,12 @@ function drawSpectrum(canvas: HTMLCanvasElement, state: ShowState, idle: boolean
   for (const [index, [label, value]] of bands.entries()) {
     const x = index * barWidth;
     const height = h * Math.min(1, Math.max(idle ? 0 : 0.04, value));
-    const gradient = ctx.createLinearGradient(0, h - height, 0, h);
-    gradient.addColorStop(0, `hsla(${190 + index * 55}, 85%, 66%, ${idle ? 0.3 : 0.95})`);
-    gradient.addColorStop(1, `hsla(${190 + index * 55}, 85%, 45%, ${idle ? 0.18 : 0.55})`);
-    ctx.fillStyle = gradient;
+    // Une seule teinte pour la donnée, des gris pour le reste : pas de dégradé
+    // recalculé à chaque message.
+    ctx.fillStyle = index === 0 ? "rgba(111, 195, 255, 0.9)" : "rgba(180, 180, 180, 0.45)";
+    if (idle) ctx.fillStyle = index === 0 ? "rgba(111, 195, 255, 0.25)" : "rgba(180, 180, 180, 0.12)";
     ctx.fillRect(x + barWidth * 0.14, h - height, barWidth * 0.72, height);
-    ctx.fillStyle = "rgba(220,232,248,0.55)";
+    ctx.fillStyle = "rgba(148, 148, 148, 0.9)";
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(label, x + barWidth * 0.14, h - 4);
   }
@@ -288,11 +313,11 @@ function drawHistory(canvas: HTMLCanvasElement, samples: Sample[], idle: boolean
   };
 
   const flat = (value: number): number => (idle ? 0 : value);
-  draw((sample) => flat(sample.bass), "rgba(120, 210, 255, 0.55)", 1.2);
-  draw((sample) => flat(sample.mid), "rgba(180, 150, 255, 0.55)", 1.2);
-  draw((sample) => flat(sample.high), "rgba(255, 170, 120, 0.55)", 1.2);
-  draw((sample) => sample.energy, "rgba(255, 230, 140, 0.85)", 2);
-  draw((sample) => sample.rms, "#7fd7ff", 2);
+  draw((sample) => flat(sample.bass), "rgba(180, 180, 180, 0.35)", 1.2);
+  draw((sample) => flat(sample.mid), "rgba(180, 180, 180, 0.22)", 1.2);
+  draw((sample) => flat(sample.high), "rgba(180, 180, 180, 0.14)", 1.2);
+  draw((sample) => sample.energy, "rgba(111, 195, 255, 0.85)", 2);
+  draw((sample) => sample.rms, "#e6e6e6", 2);
 }
 
 /** Images par seconde du show, mises à l'échelle sur 60 : la vraie activité du rendu. */
@@ -305,7 +330,7 @@ function drawRender(canvas: HTMLCanvasElement, samples: Sample[]): void {
 
   // Repère des 40 images/s, en dessous desquelles le spectacle peut saccader.
   const floor = h - (40 / 60) * h;
-  ctx.strokeStyle = "rgba(255, 217, 138, 0.28)";
+  ctx.strokeStyle = "rgba(148, 148, 148, 0.45)";
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
@@ -318,7 +343,7 @@ function drawRender(canvas: HTMLCanvasElement, samples: Sample[]): void {
   const first = samples[0]!;
   const last = samples[samples.length - 1]!;
   const span = Math.max(last.at - first.at, 1);
-  ctx.strokeStyle = "rgba(160, 130, 255, 0.85)";
+  ctx.strokeStyle = "#6fc3ff";
   ctx.lineWidth = 1.6;
   ctx.beginPath();
   samples.forEach((sample, index) => {
@@ -351,6 +376,14 @@ class Dashboard {
    */
   private analysisLoadedAt = 0;
   private readonly chart: TrackChart;
+  /** Dernière passe des graphes d'historique. */
+  private lastHistoryAt = 0;
+  /** Canvas sortis de la fenêtre : inutile de les repeindre. */
+  private readonly offscreen = new Set<string>();
+  /** Signatures des blocs reconstruits : on ne réécrit que s'ils changent. */
+  private lastLogKey = "";
+  private lastUpcomingKey = "";
+  private lastQueueKey = "";
   /** Profil hard réellement actif ou forcé, pour le bouton rapide du header. */
   private hardActive = false;
   /** Profil concert réellement actif ou forcé, pour son bouton rapide. */
@@ -374,7 +407,7 @@ class Dashboard {
         this.analysisArtist = payload.artist;
         this.analysisLoadedAt = Date.now();
         this.sectionsSource = null;
-        this.render();
+        if (!document.hidden) this.render();
         return;
       }
       if (message.state === undefined) return;
@@ -383,17 +416,54 @@ class Dashboard {
       // dès qu'un morceau est actif et qu'on ne l'a pas encore localement (par
       // exemple après un rechargement du dashboard).
       this.requestAnalysisIfNeeded();
-      this.render();
+      // Onglet caché : on garde l'état et l'historique à jour, sans repeindre
+      // une page que personne ne regarde.
+      if (!document.hidden) this.render();
       this.sample();
     });
     this.send({ type: "hello" });
     window.setInterval(() => this.send({ type: "hello" }), 2000);
     window.setInterval(() => this.checkLink(), 1000);
-    window.setInterval(() => void this.refreshQueue(), 2000);
+    window.setInterval(() => {
+      if (!document.hidden) void this.refreshQueue();
+    }, 2000);
+    this.observeCharts();
     void this.loadLimits();
     this.bindControls();
     this.checkLink();
     void this.refreshQueue();
+  }
+
+  /** Repère les graphes hors écran pour ne pas les repeindre pour rien. */
+  private observeCharts(): void {
+    if (!("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = entry.target.id;
+          if (entry.isIntersecting) this.offscreen.delete(id);
+          else this.offscreen.add(id);
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    for (const id of [
+      "rms-canvas",
+      "drift-canvas",
+      "render-canvas",
+      "render-spark",
+      "spark-rms",
+      "spark-energy",
+      "spark-bass",
+      "spark-mid",
+      "spark-high",
+      "spark-transient",
+      "spark-drift",
+      "spark-corr",
+    ]) {
+      const node = document.getElementById(id);
+      if (node !== null) observer.observe(node);
+    }
   }
 
   private async refreshQueue(): Promise<void> {
@@ -401,20 +471,27 @@ class Dashboard {
       const response = await fetch("/api/queue");
       if (!response.ok) return;
       const queue = (await response.json()) as QueueStatus;
+      const key = JSON.stringify(queue);
+      if (key === this.lastQueueKey) return;
+      this.lastQueueKey = key;
       el<HTMLElement>("queue-provider").textContent = queue.provider || "MPRIS seul";
       el<HTMLElement>("queue-method").textContent =
         `Source : ${queue.provider} · ${queue.note || "—"}`;
+      // Les titres viennent du lecteur : texte, jamais HTML.
       const list = el<HTMLElement>("queue-preload");
+      list.replaceChildren();
       if (queue.preload.length === 0) {
-        list.innerHTML = "<li>Aucune piste préchargée.</li>";
+        const item = document.createElement("li");
+        item.textContent = "Aucune piste préchargée.";
+        list.append(item);
         return;
       }
-      list.innerHTML = queue.preload
-        .map((item) => {
-          const state = item.error ? `${item.state} (${item.error})` : item.state;
-          return `<li>${item.title} — ${item.artist} · ${state} · ${item.method}</li>`;
-        })
-        .join("");
+      for (const entry of queue.preload) {
+        const item = document.createElement("li");
+        const state = entry.error ? `${entry.state} (${entry.error})` : entry.state;
+        item.textContent = `${entry.title} — ${entry.artist} · ${state} · ${entry.method}`;
+        list.append(item);
+      }
     } catch {
       // Le dashboard reste utilisable si le serveur redémarre.
     }
@@ -517,8 +594,16 @@ class Dashboard {
           : `dernier signe il y a ${Math.round((age ?? 0) / 1000)} s`,
     );
     const link = el<HTMLElement>("sb-link");
-    link.classList.toggle("is-on", alive);
-    link.classList.toggle("is-off", !alive);
+    link.classList.toggle("is-good", alive);
+    link.classList.toggle("is-bad", !alive);
+    setText(
+      el<HTMLElement>("freshness"),
+      !seen
+        ? "aucun signe reçu"
+        : alive
+          ? "à jour"
+          : `dernier signe il y a ${Math.round((age ?? 0) / 1000)} s`,
+    );
 
     // Une liaison perdue ne doit pas se lire comme un dashboard en panne : on dit
     // explicitement que tout ce qui est affiché est figé, et depuis quand.
@@ -556,12 +641,14 @@ class Dashboard {
       liveQuality: this.state.render.liveQuality,
       showQuality: this.state.render.quality,
     });
-    this.samples = this.samples.filter((sample) => now - sample.at <= HISTORY_MS);
+    // Les échantillons sont triés : on retire par le début, sans recréer le tableau.
+    while (this.samples.length > 0 && now - this.samples[0]!.at > HISTORY_MS) this.samples.shift();
   }
 
   private render(): void {
     const state = this.state;
     const sync = state.sync;
+    this.refreshSummary();
 
     // ---- bande d'état : cinq faits ; le reste de la page ne fait que détailler
     setText(el<HTMLElement>("kpi-mode"), MODE_LABELS[state.mode]);
@@ -569,23 +656,6 @@ class Dashboard {
     el<HTMLElement>("sb-mode").classList.toggle("is-mode-active", state.mode !== "live");
 
     const trackPositionSec = Math.max(0, sync.showMs / 1000);
-    const positionSec = this.analysis !== null ? this.analysis.duration : state.analysis?.durationSec ?? null;
-    const shownPosition = positionSec === null ? trackPositionSec : Math.min(trackPositionSec, positionSec);
-    setText(
-      el<HTMLElement>("sb-position-value"),
-      positionSec === null ? `${fmtTime(shownPosition)} / —` : `${fmtTime(shownPosition)} / ${fmtTime(positionSec)}`,
-    );
-    const place =
-      this.analysis === null
-        ? state.analysis === null
-          ? "aucun morceau analysé"
-          : state.analysis.title
-        : sectionAt(this.analysis, shownPosition);
-    setText(
-      el<HTMLElement>("sb-position-note"),
-      positionSec === null ? place : `${((shownPosition / positionSec) * 100).toFixed(1)} % · ${place}`,
-    );
-
     const live = state.mode === "live";
     const driftAbs = Math.abs(sync.driftMs);
     setText(el<HTMLElement>("sb-drift-value"), live ? "—" : signed(sync.driftMs));
@@ -613,6 +683,14 @@ class Dashboard {
         : "le show n'écoute pas le son du PC",
     );
     el<HTMLElement>("sb-capture").classList.toggle("is-good", state.capture.open && !captureStale && !silence);
+
+    const showFpsBand = state.render.showFps;
+    setText(el<HTMLElement>("sb-render-value"), `${showFpsBand.toFixed(0)} i/s`);
+    setText(el<HTMLElement>("sb-render-note"), `qualité ${state.render.quality.toFixed(2)}`);
+    const sbRender = el<HTMLElement>("sb-render");
+    sbRender.classList.toggle("is-good", showFpsBand >= 40);
+    sbRender.classList.toggle("is-warn", showFpsBand < 40 && showFpsBand >= 24);
+    sbRender.classList.toggle("is-bad", showFpsBand < 24);
 
     // Paroles : mot à mot (cyan), ligne à ligne (orange), ou introuvables (rouge).
     const sbLyrics = el<HTMLElement>("sb-lyrics");
@@ -768,26 +846,14 @@ class Dashboard {
     // Sans signal, tous les relevés audio tombent à plat : un niveau de repos de
     // ⅓ affiché à côté de « silence » se lirait comme un son réel.
     const level = (fn: (sample: Sample) => number) => (sample: Sample): number => (idle ? 0 : fn(sample));
+    // Le spectre suit les messages (trois barres, rien de coûteux) ; l'historique
+    // est peint quatre fois par seconde, et seulement pour les graphes à l'écran.
     drawSpectrum(el<HTMLCanvasElement>("audio-canvas"), state, idle);
-    drawHistory(el<HTMLCanvasElement>("rms-canvas"), this.samples, idle);
-    drawSeries(el<HTMLCanvasElement>("drift-canvas"), this.samples, (sample) => sample.driftMs, "#ffb86b", {
-      min: -1500,
-      max: 1500,
-      zero: true,
-    });
-
-    drawSeries(el<HTMLCanvasElement>("spark-rms"), this.samples, level((sample) => sample.rms), "#7fd7ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-energy"), this.samples, level((sample) => sample.energy), "#ffd98a", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-bass"), this.samples, level((sample) => sample.bass), "#78d2ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-mid"), this.samples, level((sample) => sample.mid), "#b496ff", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-high"), this.samples, level((sample) => sample.high), "#ffaa78", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-transient"), this.samples, level((sample) => sample.transient), "#ff8ca0", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-drift"), this.samples, (sample) => Math.abs(sample.driftMs) / 1500, "#ffb86b", { max: 1 });
-    drawSeries(el<HTMLCanvasElement>("spark-corr"), this.samples, (sample) => sample.correlation ?? 0.5, "#8ff0c4", { max: 1 });
-
-    drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
-    drawSeries(el<HTMLCanvasElement>("render-spark"), this.samples, (sample) => sample.showQuality, "#a082ff", { max: 1 });
-
+    const now = Date.now();
+    if (now - this.lastHistoryAt >= HISTORY_RENDER_MS && !document.hidden) {
+      this.lastHistoryAt = now;
+      this.renderHistory(idle, level);
+    }
 
     // morceau en cours : titre, artiste, puis la fiche technique en une ligne
     const trackTitle = el<HTMLElement>("track-title");
@@ -795,17 +861,18 @@ class Dashboard {
     const trackStatus = el<HTMLElement>("track-status");
     const trackFacts = el<HTMLElement>("track-facts");
     const sectionCount = el<HTMLElement>("section-count");
+    el<HTMLElement>("track-plot").classList.toggle("is-empty", this.analysis === null);
     if (this.analysis !== null) {
       // Une analyse rapide ne couvre qu'une fenêtre du morceau : le dire évite
       // de la lire comme l'analyse définitive en attendant la finale.
       const partial = this.analysis.coverage !== undefined;
       trackTitle.textContent = this.analysisTitle || "Morceau analysé";
       trackArtist.textContent =
-        this.analysisArtist === ""
-          ? partial
-            ? "analyse rapide : courbes partielles"
-            : "analyse locale complète"
-          : this.analysisArtist;
+        this.analysisArtist !== ""
+          ? this.analysisArtist
+          : partial
+            ? "fenêtre partielle du morceau"
+            : "fichier local";
       trackStatus.textContent = partial ? "analyse rapide" : "analyse locale complète";
       trackFacts.textContent = [
         fmtTime(this.analysis.duration),
@@ -971,19 +1038,25 @@ class Dashboard {
     if (this.analysis !== null) {
       // prochains événements
       const events: string[] = [];
-      for (const build of this.analysis.builds.filter((entry) => entry.end >= trackPositionSec).slice(0, 3)) {
+      for (const build of this.analysis.builds.filter((entry) => entry.end >= trackPositionSec).slice(0, 2)) {
         events.push(
           `<span class="upcoming-item is-build">Montée dans ${fmtTime(Math.max(0, build.start - trackPositionSec))} → impact dans ${fmtTime(Math.max(0, build.end - trackPositionSec))} · force ${(build.strength * 100).toFixed(0)} %</span>`,
         );
       }
-      for (const future of this.analysis.sections.filter((entry) => entry.start > trackPositionSec).slice(0, 3)) {
+      for (const future of this.analysis.sections.filter((entry) => entry.start > trackPositionSec).slice(0, 2)) {
         events.push(
           `<span class="upcoming-item">${future.kind ?? future.label} dans ${fmtTime(future.start - trackPositionSec)} · énergie ${(future.energy * 100).toFixed(0)} %</span>`,
         );
       }
-      el<HTMLElement>("upcoming").innerHTML = events.length > 0 ? events.join("") : `<span class="upcoming-item is-muted">Fin du morceau proche</span>`;
-    } else {
-      el<HTMLElement>("upcoming").innerHTML = "";
+      const key = events.length > 0 ? events.join("|") : "fin";
+      if (key !== this.lastUpcomingKey) {
+        this.lastUpcomingKey = key;
+        el<HTMLElement>("upcoming").innerHTML =
+          events.length > 0 ? events.join("") : `<span class="upcoming-item is-muted">Fin du morceau proche</span>`;
+      }
+    } else if (this.lastUpcomingKey !== "vide") {
+      this.lastUpcomingKey = "vide";
+      el<HTMLElement>("upcoming").replaceChildren();
     }
 
     // état du programme
@@ -1026,16 +1099,58 @@ class Dashboard {
       showFps >= 40 ? "fluide" : showFps >= 24 ? "un peu juste" : "saccadé",
       showFps >= 40 ? "good" : showFps >= 24 ? "warn" : "bad",
     );
-    drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
 
     // journal
     const log = el<HTMLElement>("log");
-    log.textContent = state.log.length === 0 ? "Rien à signaler." : state.log.join("\n");
-    el<HTMLElement>("log-count").textContent = state.log.length === 0 ? "vide" : `${state.log.length} lignes`;
+    const lines = state.log.length > LOG_LIMIT ? state.log.slice(-LOG_LIMIT) : state.log;
+    const logText = lines.length === 0 ? "Rien à signaler." : lines.join("\n");
+    // Comparer avant d'écrire : un textContent de journal réécrit douze fois par
+    // seconde force un nouveau calcul de mise en page du bloc.
+    if (logText !== this.lastLogKey) {
+      this.lastLogKey = logText;
+      log.textContent = logText;
+    }
+    setText(
+      el<HTMLElement>("log-count"),
+      state.log.length === 0
+        ? "vide"
+        : state.log.length > LOG_LIMIT
+          ? `${state.log.length} lignes · ${LOG_LIMIT} affichées`
+          : `${state.log.length} lignes`,
+    );
 
     el<HTMLButtonElement>("btn-capture").textContent = state.capture.open
       ? "Couper la capture"
       : "Écouter le son du PC";
+  }
+
+  /** La phrase sous le titre : le constat que l'écran existe pour donner. */
+  private refreshSummary(): void {
+    const state = this.state;
+    const age = state.at > 0 ? Date.now() - state.at : null;
+    let text: string;
+    if (state.error !== null) {
+      text = `Erreur : ${state.error.title}. ${state.error.message}`;
+    } else if (age === null) {
+      text = "En attente du premier signe de l'écran de show…";
+    } else if (age >= LINK_TIMEOUT_MS) {
+      text = `L'écran de show ne répond plus depuis ${Math.round(age / 1000)} s : les valeurs affichées sont les dernières reçues.`;
+    } else if (state.mode === "live") {
+      text = state.capture.open
+        ? `Le show suit le son du PC en direct · capture à ${state.capture.rate.toFixed(1)} messages par seconde.`
+        : "Le show suit le son du PC, mais la capture audio est fermée.";
+    } else if (this.analysis !== null) {
+      const drift = Math.abs(state.sync.driftMs);
+      const verdict = drift <= 150 ? "calé" : drift < 1500 ? "décalé" : "désynchronisé";
+      const place = sectionAt(this.analysis, Math.max(0, state.sync.showMs / 1000));
+      const name = this.analysisTitle || "morceau analysé";
+      text = `Le show est ${verdict} (${signed(state.sync.driftMs)} d'écart), ${place} en cours sur « ${name} ».`;
+    } else if (state.analysis !== null) {
+      text = `« ${state.analysis.title} » est chargé : les courbes arrivent du show.`;
+    } else {
+      text = "Aucun morceau chargé : dépose un fichier ou cherche un titre pour lancer le show.";
+    }
+    setText(el<HTMLElement>("title-summary"), text);
   }
 
   /** La zone d'alertes ne s'affiche que s'il y a quelque chose à dire. */
@@ -1100,12 +1215,57 @@ class Dashboard {
     beat.style.transform = `scale(${0.8 + pulse * 0.6})`;
   }
 
+  /**
+   * Historique sur 60 s. Huit courbes de 240 points coûtent cher : on ne les
+   * peint que quatre fois par seconde, et seulement si le graphe est dans la
+   * fenêtre (ou à moins de 200 px d'elle).
+   */
+  private renderHistory(idle: boolean, level: (fn: (sample: Sample) => number) => (sample: Sample) => number): void {
+    const canDraw = (id: string): boolean => !this.offscreen.has(id);
+    if (canDraw("rms-canvas")) drawHistory(el<HTMLCanvasElement>("rms-canvas"), this.samples, idle);
+    if (canDraw("drift-canvas")) {
+      drawSeries(el<HTMLCanvasElement>("drift-canvas"), this.samples, (sample) => sample.driftMs, "#b4b4b4", {
+        min: -1500,
+        max: 1500,
+        zero: true,
+        tolerance: 150,
+      });
+    }
+    if (canDraw("spark-rms")) {
+      drawSeries(el<HTMLCanvasElement>("spark-rms"), this.samples, level((sample) => sample.rms), "#e6e6e6", { max: 1 });
+    }
+    if (canDraw("spark-energy")) {
+      drawSeries(el<HTMLCanvasElement>("spark-energy"), this.samples, level((sample) => sample.energy), "#6fc3ff", { max: 1 });
+    }
+    if (canDraw("spark-bass")) {
+      drawSeries(el<HTMLCanvasElement>("spark-bass"), this.samples, level((sample) => sample.bass), "#b4b4b4", { max: 1 });
+    }
+    if (canDraw("spark-mid")) {
+      drawSeries(el<HTMLCanvasElement>("spark-mid"), this.samples, level((sample) => sample.mid), "#8a8a8a", { max: 1 });
+    }
+    if (canDraw("spark-high")) {
+      drawSeries(el<HTMLCanvasElement>("spark-high"), this.samples, level((sample) => sample.high), "#6e6e6e", { max: 1 });
+    }
+    if (canDraw("spark-transient")) {
+      drawSeries(el<HTMLCanvasElement>("spark-transient"), this.samples, level((sample) => sample.transient), "#c9c9c9", { max: 1 });
+    }
+    if (canDraw("spark-drift")) {
+      drawSeries(el<HTMLCanvasElement>("spark-drift"), this.samples, (sample) => Math.abs(sample.driftMs) / 1500, "#8a8a8a", { max: 1 });
+    }
+    if (canDraw("spark-corr")) {
+      drawSeries(el<HTMLCanvasElement>("spark-corr"), this.samples, (sample) => sample.correlation ?? 0.5, "#8a8a8a", { max: 1 });
+    }
+    if (canDraw("render-canvas")) drawRender(el<HTMLCanvasElement>("render-canvas"), this.samples);
+    if (canDraw("render-spark")) {
+      drawSeries(el<HTMLCanvasElement>("render-spark"), this.samples, (sample) => sample.showQuality, "#b4b4b4", { max: 1 });
+    }
+  }
+
   /** Reflète l'état réel du profil dans le bouton rapide du header. */
   private syncHardToggle(state: ShowState): void {
     this.hardActive = state.profile === "hard" || state.settings.hard === "on";
     this.paintHardToggle();
   }
-
   private paintHardToggle(): void {
     const button = el<HTMLButtonElement>("hard-toggle");
     button.classList.toggle("is-on", this.hardActive);
@@ -1198,14 +1358,24 @@ class Dashboard {
     el<HTMLButtonElement>("hard-toggle").addEventListener("click", () => this.toggleHard());
     el<HTMLButtonElement>("dynamic-toggle").addEventListener("click", () => this.toggleDynamic());
     el<HTMLButtonElement>("blackout-toggle").addEventListener("click", () => this.toggleBlackout());
+
+    // Le geste courant de l'écran : lancer un morceau. Le lien mène au panneau,
+    // le focus suit pour que le clavier n'ait pas à le chercher.
+    el<HTMLAnchorElement>("btn-source-jump").addEventListener("click", (event) => {
+      event.preventDefault();
+      el<HTMLElement>("panel-source").scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => el<HTMLElement>("dropzone").focus({ preventScroll: true }), 320);
+    });
+
     window.addEventListener("keydown", (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const key = event.key.toLowerCase();
       const target = event.target;
-      // On ne vole jamais une frappe dans un champ de texte. Les curseurs, cases
-      // et menus laissent passer H et B.
+      // On ne vole jamais une frappe dans un champ de texte ni dans un menu.
+      // Les curseurs, cases et boutons laissent passer H, C et B.
       const textField =
         target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
         (target instanceof HTMLInputElement &&
           !["checkbox", "radio", "range", "button", "submit"].includes(target.type)) ||
         (target instanceof HTMLElement && target.isContentEditable);

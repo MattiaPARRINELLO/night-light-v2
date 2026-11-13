@@ -21,3 +21,6 @@ tests/fixtures/reference-shots/
 
 # Le projet utilise bun (bun.lock) : le lock npm n'est qu'un artefact.
 package-lock.json
+
+# Dossier de travail du skill design (captures, rapports), jamais committé.
+.taste-skill/
