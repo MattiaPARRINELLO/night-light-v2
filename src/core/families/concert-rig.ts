@@ -862,7 +862,9 @@ export function dessinerBlinders(
   // Douze cellules au lieu de quatre : on baisse légèrement chaque source pour
   // que la barre complète reste dans la même plage de luminosité.
   const gainBarre = 0.68;
-  const rave = (f.hard === true || f.dynamic === true) && !f.reduced;
+  // Le mur de blinders « rave » claque à chaque temps ; le concert garde le
+  // motif de rôle et laisse les gros blinders frapper seuls sur les impacts.
+  const rave = f.hard === true && !f.reduced;
   // En rave, le mur claque : toute la barre sur les pics, chenillard rapide
   // sinon. Le motif n'est plus celui du rôle de scène. Le concert garde le même
   // geste, avec un gain un peu plus bas.
@@ -1345,23 +1347,32 @@ const lyresArena: FamilyDraw = (ctx, f, view) => {
  * impacts. Le rendu est volontairement chaud et blanc, comme un vrai blinder
  * tungstène : c'est la seule source qui sort de la palette du morceau.
  */
+const GROS_BLINDERS_WINDOW_SEC = 0.5;
+
+/**
+ * Force des gros blinders à l'instant courant.
+ *
+ * Ils ne claquent pas sur chaque temps : uniquement dans la demi-seconde qui
+ * suit un vrai impact. Le reste du temps, ils sont éteints.
+ */
+export function forceGrosBlinders(f: FrameState, budgetFlash = 1): number {
+  if (f.dynamic !== true || f.reduced) return 0;
+  const budget = clamp01(budgetFlash);
+  if (budget <= 0) return 0;
+  const age = f.dropAge;
+  if (!Number.isFinite(age) || age < 0 || age > GROS_BLINDERS_WINDOW_SEC) return 0;
+  const envelope = Math.pow(1 - age / GROS_BLINDERS_WINDOW_SEC, 2);
+  return clamp01(envelope * (1.05 + 0.25 * f.energy) * budget);
+}
+
 export function dessinerGrosBlinders(
   ctx: CanvasRenderingContext2D,
   f: FrameState,
-  view: TrackView,
+  _view: TrackView,
   budgetFlash = 1,
 ): void {
   if (f.dynamic !== true || f.reduced) return;
-  const budget = clamp01(budgetFlash);
-  if (budget <= 0) return;
-  const impact = Math.max(
-    intensiteBlinder(f, view, 0) * 0.9,
-    intensiteBlinder(f, view, 6) * 0.9,
-    f.beat * (0.45 + 0.55 * clamp01(f.bass)),
-    clamp01(f.drop) * 0.75,
-    f.scene.role === "drop" ? f.beat * 0.6 : 0,
-  );
-  const force = clamp01(impact * (1.15 + 0.45 * f.energy)) * budget;
+  const force = forceGrosBlinders(f, budgetFlash);
   if (force <= 0.02) return;
 
   const { width: w, height: h } = f;
@@ -1398,8 +1409,8 @@ export function dessinerGrosBlinders(
   }
 
   // Éblouissement global : une nappe chaude très brève sur les gros impacts.
-  if (force > 0.35) {
-    ctx.fillStyle = paint(38, 0.12, 1, (force - 0.35) * 0.32 * f.alpha);
+  if (force > 0.2) {
+    ctx.fillStyle = paint(38, 0.1, 1, (force - 0.2) * 0.5 * f.alpha);
     ctx.fillRect(0, 0, w, h);
   }
 }
