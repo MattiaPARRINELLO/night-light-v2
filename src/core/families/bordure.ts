@@ -628,6 +628,26 @@ export function dessinerBordure(
     ctx.lineWidth = tube * 2.6;
     traceRuban();
 
+    // Boîtier sombre : il donne une vraie épaisseur physique au ruban et
+    // détache le tube lumineux du halo extérieur.
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.strokeStyle = paint(fil.hue, 0.32, 0.06, 0.92);
+    ctx.lineWidth = tube * 1.58;
+    traceRuban();
+    // Cornières métalliques aux quatre angles.
+    ctx.fillStyle = paint(fil.hue, 0.18, 0.16, 0.9);
+    const corniere = tube * 1.1;
+    for (const [cx, cy] of [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ] as const) {
+      ctx.fillRect(cx - corniere * 0.5, cy - corniere * 0.5, corniere, corniere);
+    }
+    ctx.restore();
+
     // Corps et cœur dessinés côté par côté : un léger gradient longitudinal
     // donne la respiration d'un vrai ruban, sans points visibles.
     const sides = [
