@@ -472,6 +472,7 @@ export function installSync(Target: { prototype: App }): void {
           frame: this.frame,
           haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
           liveAudio: outside ? this.liveAudio : undefined,
+          liveMusic: outside ? this.liveMusic : undefined,
         });
       }
       target.setTransform(1, 0, 0, 1, 0, 0);
@@ -489,6 +490,7 @@ export function installSync(Target: { prototype: App }): void {
         frame: this.frame,
         haze: this.hazeFor(this.quality, this.canvas.clientWidth, this.canvas.clientHeight),
         liveAudio: outside ? this.liveAudio : undefined,
+        liveMusic: outside ? this.liveMusic : undefined,
       });
       this.frame += 1;
       if (fade === null) {

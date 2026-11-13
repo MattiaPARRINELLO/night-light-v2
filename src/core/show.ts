@@ -70,27 +70,65 @@ export type FamilyId =
  */
 export type SceneRole = "intro" | "couplet" | "refrain" | "montee" | "drop" | "finale";
 
+/**
+ * Configuration du plateau déployée par un drop.
+ *
+ * Chaque valeur correspond à une famille de concert complète (voir
+ * `DROP_PLATEAU_FAMILIES`) : le drop ne réutilise plus le même pont d'un impact
+ * à l'autre, il change de scène. C'est le premier axe de diversité, celui qui
+ * se voit immédiatement.
+ */
+export type DropPlateau =
+  | "pont"
+  | "rideau"
+  | "tunnel"
+  | "diagonale"
+  | "zigzag"
+  | "helice"
+  | "orbite"
+  | "colisee"
+  | "cascade";
+
 /** Orientation des lyres pendant un drop. */
-export type DropLyres = "convergence" | "croisee" | "eventail";
+export type DropLyres =
+  | "convergence"
+  | "croisee"
+  | "eventail"
+  | "croix"
+  | "helice"
+  | "tunnel"
+  | "diagonale"
+  | "zigzag"
+  | "respiration"
+  | "pluie";
 /** Comportement des barres LED pendant un drop. */
 export type DropBarres = "onde" | "rideau" | "alterne";
 /** Motif de la barre de blinders pendant un drop. */
-export type DropBlinders = "tous" | "un-sur-deux" | "chenillard";
+export type DropBlinders = "tous" | "un-sur-deux" | "un-sur-quatre" | "chenillard";
+/** Motif du stroboscope plein écran pendant un drop. */
+export type DropStrobes = "aucun" | "simple" | "double" | "cascade";
+/** Couleur de l'impact : pôle du morceau, blanc ou dégradé bicolore. */
+export type DropHue = "accent" | "contraste" | "blanc" | "bicolore";
 
 /**
- * Signature d'un drop : quatre choix tirés du morceau, pas du rôle seul.
+ * Signature d'un drop : six choix tirés du morceau, pas du rôle seul.
  *
  * Deux drops ne doivent pas se ressembler, même quand ils tombent à quelques
  * secondes d'intervalle. La signature est calculée dans `buildShowPlan` à
  * partir de la graine, du rang du drop et de la force de la montée, puis
- * consommée par le rendu (`concert-rig.ts`).
+ * consommée par le rendu (`concert-rig.ts`, `render.ts`).
+ *
+ * 9 plateaux × 10 gestes de lyres × 3 barres × 4 blinders × 4 strobes ×
+ * 4 teintes = 17 280 combinaisons.
  */
 export interface DropSignature {
+  /** Scène complète déployée par l'impact (famille de concert). */
+  plateau: DropPlateau;
   lyres: DropLyres;
   barres: DropBarres;
   blinders: DropBlinders;
-  /** Ancre de teinte : complémentaire du morceau ou pôle opposé. */
-  hue: "accent" | "contraste";
+  strobes: DropStrobes;
+  hue: DropHue;
 }
 
 export const SCENE_ROLE_LABELS: Record<SceneRole, string> = {
@@ -938,16 +976,64 @@ function roleFor(
   return "couplet";
 }
 
-const DROP_LYRES: readonly DropLyres[] = ["convergence", "croisee", "eventail"];
+const DROP_PLATEAUX: readonly DropPlateau[] = [
+  "pont",
+  "rideau",
+  "tunnel",
+  "diagonale",
+  "zigzag",
+  "helice",
+  "orbite",
+  "colisee",
+  "cascade",
+];
+const DROP_LYRES: readonly DropLyres[] = [
+  "convergence",
+  "croisee",
+  "eventail",
+  "croix",
+  "helice",
+  "tunnel",
+  "diagonale",
+  "zigzag",
+  "respiration",
+  "pluie",
+];
 const DROP_BARRES: readonly DropBarres[] = ["onde", "rideau", "alterne"];
-const DROP_BLINDERS: readonly DropBlinders[] = ["tous", "un-sur-deux", "chenillard"];
+const DROP_BLINDERS: readonly DropBlinders[] = ["tous", "un-sur-deux", "un-sur-quatre", "chenillard"];
+const DROP_STROBES: readonly DropStrobes[] = ["aucun", "simple", "double", "cascade"];
+const DROP_HUES: readonly DropHue[] = ["accent", "contraste", "blanc", "bicolore"];
+
+/**
+ * Famille de concert déployée par chaque configuration de plateau.
+ *
+ * Toutes sont des familles pleines (`CONCERT_FAMILIES`) : un impact montre
+ * toujours une scène habitée, jamais une simple nappe. Le choix varie en
+ * revanche fortement d'un drop au suivant.
+ */
+export const DROP_PLATEAU_FAMILIES: Record<DropPlateau, FamilyId> = {
+  pont: "pont-concert",
+  rideau: "lyres-rideau",
+  tunnel: "lyres-tunnel",
+  diagonale: "lyres-diagonale",
+  zigzag: "lyres-zigzag",
+  helice: "lyres-helice",
+  orbite: "lyres-orbitale",
+  colisee: "lyres-colisee",
+  cascade: "lyres-cascade",
+};
+
+/** Nombre d'essais avant d'accepter une signature déjà jouée. */
+const MAX_DROP_ATTEMPTS = 256;
+
 /**
  * Signature déterministe d'un drop.
  *
- * La combinaison (3 orientations × 3 barres × 3 motifs × 2 teintes = 54) est
- * tirée de `hashString(graine|rang|force)`. `attempt` sert uniquement à
- * écarter une combinaison déjà utilisée par un drop trop proche : le résultat
- * reste une fonction pure de ses arguments.
+ * Chaque axe est tiré d'un hachage indépendant : une même tentative ne produit
+ * donc pas deux axes corrélés (tous les plateaux « cathédrale » avec le même
+ * geste de lyres, par exemple). `attempt` sert uniquement à écarter une
+ * combinaison déjà utilisée par un drop trop proche : le résultat reste une
+ * fonction pure de ses arguments.
  */
 export function dropSignature(
   seed: number,
@@ -956,21 +1042,21 @@ export function dropSignature(
   attempt = 0,
 ): DropSignature {
   const base = hashString(`${seed}|drop|${rank}|${strength.toFixed(3)}|${attempt}`);
-  const combo = Math.floor(hash01(base) * DROP_LYRES.length * DROP_BARRES.length * DROP_BLINDERS.length * 2);
+  const pick = <T,>(values: readonly T[], salt: string): T =>
+    values[Math.floor(hash01(hashString(`${base}|${salt}`)) * values.length)] ?? values[0]!;
   return {
-    lyres: DROP_LYRES[combo % DROP_LYRES.length]!,
-    barres: DROP_BARRES[Math.floor(combo / DROP_LYRES.length) % DROP_BARRES.length]!,
-    blinders:
-      DROP_BLINDERS[Math.floor(combo / (DROP_LYRES.length * DROP_BARRES.length)) % DROP_BLINDERS.length]!,
-    hue: Math.floor(combo / (DROP_LYRES.length * DROP_BARRES.length * DROP_BLINDERS.length)) % 2 === 0
-      ? "accent"
-      : "contraste",
+    plateau: pick(DROP_PLATEAUX, "plateau"),
+    lyres: pick(DROP_LYRES, "lyres"),
+    barres: pick(DROP_BARRES, "barres"),
+    blinders: pick(DROP_BLINDERS, "blinders"),
+    strobes: pick(DROP_STROBES, "strobes"),
+    hue: pick(DROP_HUES, "hue"),
   };
 }
 
-/** Clé stable d'une signature, pour garantir l'unicité dans un plan. */
-function signatureKey(signature: DropSignature): string {
-  return `${signature.lyres}/${signature.barres}/${signature.blinders}/${signature.hue}`;
+/** Clé stable d'une signature, pour garantir l'unicité dans un plan et la lire dans les rapports. */
+export function dropSignatureKey(signature: DropSignature): string {
+  return `${signature.plateau}/${signature.lyres}/${signature.barres}/${signature.blinders}/${signature.strobes}/${signature.hue}`;
 }
 
 /**
@@ -1524,6 +1610,7 @@ export function buildShowPlan(
   // Rang des drops et signatures déjà jouées : deux drops d'un même morceau,
   // a fortiori rapprochés, ne rejouent pas la même combinaison.
   let dropRank = 0;
+  let previousDropPlateau: DropPlateau | undefined;
   const usedDropSignatures = new Set<string>();
 
   for (let index = 0; index < segments.length; index += 1) {
@@ -1552,16 +1639,23 @@ export function buildShowPlan(
     let signature: DropSignature | undefined;
     if (concertRole) {
       const rank = dropRank;
-      signature = dropSignature(seed, rank, strength);
-      // Deux drops ne partagent jamais leur signature dans un même plan : la
-      // contrainte des 15 s est couverte, et un morceau très long épuise les
-      // 54 combinaisons avant de répéter. On décale la combinaison d'un cran,
-      // de façon déterministe.
-      for (let attempt = 1; attempt < 54; attempt += 1) {
-        if (!usedDropSignatures.has(signatureKey(signature))) break;
-        signature = dropSignature(seed, rank, strength, attempt);
+      // Deux drops ne partagent jamais leur signature dans un même plan. En
+      // concert, le plateau change aussi à chaque impact : deux drops voisins
+      // ne déploient pas la même scène, et l'impact ne reprend pas la famille
+      // de la scène précédente (invariant P3).
+      for (let attempt = 0; attempt < MAX_DROP_ATTEMPTS; attempt += 1) {
+        const candidate = dropSignature(seed, rank, strength, attempt);
+        if (usedDropSignatures.has(dropSignatureKey(candidate))) continue;
+        if (dynamic && candidate.plateau === previousDropPlateau) continue;
+        if (dynamic && DROP_PLATEAU_FAMILIES[candidate.plateau] === previousFamily) continue;
+        signature = candidate;
+        break;
       }
-      usedDropSignatures.add(signatureKey(signature));
+      // Plan démesuré (plus de 256 drops) : on accepte la première signature
+      // plutôt que de boucler. Le cas ne se produit pas sur un morceau réel.
+      signature ??= dropSignature(seed, rank, strength);
+      usedDropSignatures.add(dropSignatureKey(signature));
+      if (dynamic) previousDropPlateau = signature.plateau;
       dropRank += 1;
     }
     let family: FamilyId;
@@ -1572,13 +1666,16 @@ export function buildShowPlan(
     if (forceConcert) {
       // Le plateau complet est réservé aux vrais impacts ; une montée plus
       // douce alterne lyres suspendues et barres LED. En profil concert, les
-      // refrains et les montées déploient aussi le plateau.
+      // refrains et les montées déploient aussi le plateau. Un impact concert
+      // choisit en plus sa configuration : pont, cathédrale, arène, rideau…
       family =
-        concertRole && strength >= 0.6
-          ? "pont-concert"
-          : (concertRole ? dropRank : turn) % 2 === 1
-            ? "lyres-suspendues"
-            : "barres-led";
+        concertRole && dynamic && signature !== undefined
+          ? DROP_PLATEAU_FAMILIES[signature.plateau]
+          : concertRole && strength >= 0.6
+            ? "pont-concert"
+            : (concertRole ? dropRank : turn) % 2 === 1
+              ? "lyres-suspendues"
+              : "barres-led";
     } else if (cachedFamily !== undefined) {
       // Un groupe est un matériau musical qui revient : il garde sa famille.
       family = cachedFamily;

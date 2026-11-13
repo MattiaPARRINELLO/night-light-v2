@@ -314,14 +314,17 @@ export function installShow(Target: { prototype: App }): void {
     // Direct : pas d'analyse pour détecter, mais un forçage manuel doit quand
     // même allumer la scène de rave sur le son en cours.
     if (this.livePlan !== null) {
+      // En direct, il n'y a pas d'analyse pour choisir le profil. Le concert
+      // dynamique est le bon défaut : plateau habité, strobes sur les impacts
+      // réels. L'utilisateur peut forcer la rave (`on`) ou le standard (`off`).
       this.livePlan = {
         ...this.livePlan,
         profile:
           this.settings.hard === "on"
             ? "hard"
-            : this.settings.hard === "dynamic"
-              ? "dynamic"
-              : "standard",
+            : this.settings.hard === "off"
+              ? "standard"
+              : "dynamic",
       };
     }
   };

@@ -32,6 +32,7 @@ import {
   type MoodThresholds,
   type SceneReason,
   type SceneRole,
+  dropSignatureKey,
 } from "../../src/core/show";
 import type { Analysis, Section } from "../../src/types";
 import type { PlanTrack } from "./plan_corpus";
@@ -298,7 +299,7 @@ function measurePlan(track: PlanTrack, reduced: boolean): SceneMeasure[] {
       drop:
         scene.drop === undefined
           ? null
-          : `${scene.drop.lyres}/${scene.drop.barres}/${scene.drop.blinders}/${scene.drop.hue}`,
+          : dropSignatureKey(scene.drop),
       energy: caractere.energy,
       density: caractere.density,
       brightness: caractere.brightness,

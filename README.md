@@ -14,7 +14,9 @@ L'image est une **fonction du temps musical**, pas une réaction au volume :
 
 - **écoute en direct du PC** : le son système (PipeWire/PulseAudio) alimente l'ambiance
   immédiate, et le lecteur est suivi par MPRIS (`playerctl`) pour connaître titre, artiste
-  et position, sans toucher à ta bibliothèque ;
+  et position, sans toucher à ta bibliothèque. Le direct a sa propre direction musicale :
+  temps forts, impacts et montées sont déduits du signal, donc le plateau réagit, change
+  de scène et enchaîne les impacts comme le show analysé ;
 - **identification, récupération, analyse** : le morceau joué est résolu dans le catalogue
   Deezer et téléchargé en 128 kbps s'il n'est pas déjà en cache, puis analysé par librosa
   (tempo, temps forts, attaques, énergie, bandes, sections, montées) ;
@@ -254,7 +256,7 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 | **lyres** | une rangée de têtes fines au sol, la vague traverse la rangée par décalage de phase — chacune s'incline tour à tour |
 | **lyres suspendues** | huit têtes accrochées au pont technique, ballyhoo en refrain, éventail en montée et convergence au sol sur un impact |
 | **barres LED** | seize lames très serrées sur leur traverse : onde d'inclinaison progressive en couplet, rideau parallèle en refrain et en drop |
-| **pont concert** | le plateau complet, lyres et barres ensemble, déployé sur les impacts |
+| **pont concert** | le plateau complet, lyres et barres ensemble ; l'un des plateaux déployés sur les impacts, avec le rideau, le tunnel, la diagonale, le zigzag, l'hélice, l'orbite, le colisée et la cascade |
 | **rosace** | huit pétales en V répartis au tour, un hexagone et un triangle qui tournent en sens contraires |
 | **treillis** | deux nappes de faisceaux parallèles croisées en losanges, une grille lente qui s'écarte sur les temps forts |
 
@@ -435,9 +437,10 @@ somme saturée : les réservoirs de familles sont réellement distincts.
 
 - **drop** : quand une montée se résout sur l'impact, bascule sur l'autre couleur du
   morceau, wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage coloré
-  bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
-  lyres, geste des barres, motif des blinders, pôle de teinte — donc deux impacts ne se
-  ressemblent pas ;
+  bref. Chaque drop reçoit une **signature** tirée de la graine : plateau déployé
+  (pont, rideau, tunnel, diagonale, zigzag…), geste des lyres, barres, motif des blinders,
+  forme du strobe et pôle de teinte. Deux impacts ne se ressemblent pas et
+  deux drops voisins ne rejouent jamais la même scène ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
   spectacle pulse sur les temps forts ;
 - **temps forts** : flashs cadencés, pulsations du noyau lumineux, ondes des anneaux.
@@ -578,6 +581,8 @@ src/
     api.ts              client HTTP de l'API
     nowPlaying.ts       détection du morceau joué par un lecteur externe (pur)
     liveAudio.ts        caractéristiques audio live (normalisation, lissage)
+    liveDirector.ts     direction musicale du direct (beats, impacts, montées)
+    livePlan.ts         plan de scènes du direct (familles et palettes tournantes)
     playback.ts         position du lecteur, dérive, corrélation (purs)
     debug.ts            journal de debug partagé (console + overlay)
   shared/
