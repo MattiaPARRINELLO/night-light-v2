@@ -29,21 +29,61 @@ function cues(lines: LyricLine[], overrides: Partial<LyricsCues> = {}): LyricsCu
   };
 }
 
-function drawnText(lyrics: LyricsCues, timeSec: number): string[] {
+function drawnText(lyrics: LyricsCues, timeSec: number, beat = 0): string[] {
   const { ctx, operations } = fakeContext();
-  drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat: 0 });
+  drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat });
   return operations.filter((operation) => operation.startsWith("fillText:"));
 }
 
-describe("rendu des paroles", () => {
-  it("garde le motif répété visible dès le début de la phrase", () => {
-    // Le mot revient en fin de phrase : la ligne restait muette jusque-là.
-    const lyrics = cues([
-      line({ text: "Soleil dans la bulle, sur le Prado, Shifter pro' (Shifter pro')" }),
-    ]);
+function drawnScales(lyrics: LyricsCues, timeSec: number, beat = 0): string[] {
+  const { ctx, operations } = fakeContext();
+  drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat });
+  return operations.filter((operation) => operation.startsWith("scale:"));
+}
 
-    expect(drawnText(lyrics, 0.5)).toContain("fillText:SHIFTER");
-    expect(drawnText(lyrics, 2.2)).toContain("fillText:SHIFTER");
+function repeatedLine(): LyricsCues {
+  return cues([
+    line({
+      text: "Soleil dans la bulle, Shifter pro' (Shifter pro')",
+      words: [
+        { text: "Soleil", startMs: 0, endMs: 600 },
+        { text: "dans", startMs: 600, endMs: 900 },
+        { text: "la", startMs: 900, endMs: 1_100 },
+        { text: "bulle,", startMs: 1_100, endMs: 1_600 },
+        { text: "Shifter", startMs: 1_600, endMs: 2_100 },
+        { text: "pro'", startMs: 2_100, endMs: 2_400 },
+        { text: "(Shifter", startMs: 2_400, endMs: 2_800 },
+        { text: "pro')", startMs: 2_800, endMs: 3_000 },
+      ],
+    }),
+  ]);
+}
+
+describe("rendu des paroles", () => {
+  it("n'affiche le motif répété qu'au moment où il est chanté", () => {
+    const lyrics = repeatedLine();
+
+    // Avant le mot : la phrase se dit normalement, le motif n'est pas en avant.
+    expect(drawnText(lyrics, 0.3)).toEqual(["fillText:SOLEIL"]);
+    expect(drawnText(lyrics, 1.2)).toEqual(["fillText:BULLE,"]);
+
+    // Au moment où il est chanté, le motif prend la scène.
+    expect(drawnText(lyrics, 1.7)).toContain("fillText:SHIFTER");
+  });
+
+  it("frappe le motif à son occurrence sans battre avec le beat", () => {
+    const lyrics = repeatedLine();
+
+    // Le motif ne réagit pas au beat : même géométrie, quel que soit le temps fort.
+    expect(drawnScales(lyrics, 1.7, 1)).toEqual(drawnScales(lyrics, 1.7, 0));
+
+    // En revanche il frappe à son occurrence, puis se pose.
+    const hit = drawnScales(lyrics, 1.62);
+    const reste = drawnScales(lyrics, 1.95);
+    expect(hit).not.toEqual(reste);
+    expect(Number(hit[0]?.split(":")[1]?.split(",")[0])).toBeGreaterThan(
+      Number(reste[0]?.split(":")[1]?.split(",")[0]),
+    );
   });
 
   it("n'a aucun trou pendant une ligne, motif répété ou non", () => {
@@ -63,7 +103,7 @@ describe("rendu des paroles", () => {
     const lyrics = cues(lines);
 
     for (const item of lines) {
-      for (let ms = item.startMs + 200; ms < item.endMs - 200; ms += 100) {
+      for (let ms = item.startMs + 220; ms < item.endMs - 220; ms += 70) {
         const texts = drawnText(lyrics, ms / 1000);
         expect(texts.length, `rien de dessiné à ${ms} ms`).toBeGreaterThan(0);
       }

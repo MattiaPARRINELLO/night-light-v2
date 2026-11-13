@@ -18,8 +18,9 @@ export interface LyricsDrawOptions {
 /**
  * Dessine les paroles par-dessus la scène : des mots seuls, en très gros.
  *
- * Un mot marquant s'affiche où qu'il soit ; sinon, seul un refrain montre le
- * mot en cours. Hors de ces deux cas, rien n'est dessiné et la lumière respire.
+ * Une ligne se dit mot à mot ; un refrain ou une phrase criée s'affiche d'un
+ * bloc. Le motif répété d'une ligne prend la scène à chacune de ses occurrences,
+ * jamais avant. Entre deux lignes, rien n'est dessiné et la lumière respire.
  * Fonction pure du temps musical, sans état accumulé, donc identique après une
  * pause ou un retour en arrière.
  */
@@ -41,15 +42,19 @@ export function drawLyrics(
   const chorus = lyrics.chorusLines.includes(index);
   const shout = (lyrics.shoutLines ?? []).includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
-  const repeat = repeatedWord(line);
+  const tokens = withTimings(line);
+  const current = currentToken(tokens, ms);
+  const repeat = repeatedWord(tokens);
+  // Le motif ne prend la scène qu'au moment où il est chanté : hors de ses
+  // occurrences, la phrase continue de se dire mot à mot.
+  const occurrence = repeat !== null && current !== null ? occurrenceOf(repeat, current) : null;
   if (!line.text.trim()) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  if (repeat !== null) {
-    // Un mot répété dans la phrase prend toute la scène, et pulse à chaque fois.
-    drawRepeatedWord(ctx, repeat, ms, width, height, options);
+  if (repeat !== null && occurrence !== null) {
+    drawRepeatedWord(ctx, repeat, occurrence, ms, width, height, options);
   } else if (chorus) {
     // Refrain : la phrase entière, la plus grande de toutes.
     drawPhrase(ctx, line, ms, width, height, options, 1);
@@ -58,9 +63,30 @@ export function drawLyrics(
     drawPhrase(ctx, line, ms, width, height, options, 0.78);
   } else {
     // Tout le reste : mot à mot, taille courante, mis en avant s'il est marquant.
-    drawLineWord(ctx, line, ms, width, height, options, cue !== null);
+    drawLineWord(ctx, ms, width, height, options, cue !== null, current);
   }
   ctx.restore();
+}
+
+/** Dernier mot dont le chant a commencé, celui qui occupe la scène. */
+function currentToken(tokens: LyricWord[], ms: number): LyricWord | null {
+  let current: LyricWord | null = null;
+  for (const token of tokens) {
+    if (token.startMs > ms) break;
+    current = token;
+  }
+  return current;
+}
+
+/** Occurrence du motif correspondant au mot en cours, s'il en fait partie. */
+function occurrenceOf(
+  repeat: RepeatedWord,
+  token: LyricWord,
+): { startMs: number; endMs: number } | null {
+  for (const occurrence of repeat.occurrences) {
+    if (occurrence.startMs === token.startMs) return occurrence;
+  }
+  return null;
 }
 
 interface RepeatedWord {
@@ -69,9 +95,6 @@ interface RepeatedWord {
   occurrences: { startMs: number; endMs: number }[];
   /** Mots qui changent entre deux occurrences (« x », « y », « z »). */
   others: { text: string; startMs: number; endMs: number }[];
-  /** Bornes de la ligne : le motif occupe toute la phrase, pas seulement sa fin. */
-  lineStartMs: number;
-  lineEndMs: number;
 }
 
 /**
@@ -81,8 +104,7 @@ interface RepeatedWord {
  * revient est le motif de la ligne. Les mots variables sont conservés à part,
  * pour être montrés plus petits au moment où ils sont chantés.
  */
-function repeatedWord(line: LyricLine): RepeatedWord | null {
-  const tokens = withTimings(line);
+function repeatedWord(tokens: LyricWord[]): RepeatedWord | null {
   if (tokens.length < 2) return null;
   const groups = new Map<string, { text: string; occurrences: { startMs: number; endMs: number }[] }>();
   for (const token of tokens) {
@@ -119,8 +141,6 @@ function repeatedWord(line: LyricLine): RepeatedWord | null {
     text: cleanWord(best.text),
     occurrences: best.occurrences,
     others,
-    lineStartMs: line.startMs,
-    lineEndMs: line.endMs,
   };
 }
 
@@ -142,25 +162,26 @@ function cleanWord(text: string): string {
 function drawRepeatedWord(
   ctx: CanvasRenderingContext2D,
   repeat: RepeatedWord,
+  occurrence: { startMs: number; endMs: number },
   ms: number,
   width: number,
   height: number,
   options: LyricsDrawOptions,
 ): void {
-  // Le motif tient la scène dès le début de la phrase. Commencer à sa première
-  // occurrence laissait la ligne muette pendant plusieurs secondes quand le mot
-  // revenait en fin de phrase (« (vroum, vroum) », « (Shifter pro') »).
-  const alpha = envelope(ms, repeat.lineStartMs, repeat.lineEndMs, 140, 240);
+  const duration = Math.max(1, occurrence.endMs - occurrence.startMs);
+  const alpha = envelope(
+    ms,
+    occurrence.startMs,
+    occurrence.endMs + CUE_TAIL_MS,
+    Math.min(60, duration * 0.25),
+    Math.min(CUE_FADE_OUT_MS, duration * 0.45),
+  );
   if (alpha <= 0.01) return;
 
-  // Pulsation à chaque occurrence : le mot « frappe » quand il est chanté.
-  let pulse = 0;
-  let current: { startMs: number; endMs: number } | null = null;
-  for (const occurrence of repeat.occurrences) {
-    const age = (ms - occurrence.startMs) / 1000;
-    if (age >= 0 && age < 0.42) pulse = Math.max(pulse, 1 - age / 0.42);
-    if (occurrence.startMs <= ms && ms < occurrence.endMs) current = occurrence;
-  }
+  // Coup sec à l'occurrence, puis repos : le motif ne respire pas avec le
+  // beat, sinon son apparition se confond avec un temps fort de la lumière.
+  const age = Math.max(0, ms - occurrence.startMs) / 1000;
+  const hit = options.reduced ? 0 : Math.max(0, 1 - age / 0.18);
 
   const text = repeat.text.toUpperCase();
   const maxWidth = width * 0.92;
@@ -172,7 +193,8 @@ function drawRepeatedWord(
     ctx.font = `900 ${size}px ${FONT_STACK}`;
   }
 
-  const scale = 1 + (options.reduced ? 0 : 0.1 * pulse) + (options.reduced ? 0 : 0.02 * options.beat);
+  // Frappe franche : le mot arrive plus gros et se pose, au lieu de battre.
+  const scale = 1 + 0.16 * hit;
   const y = height * 0.43;
 
   ctx.globalAlpha = alpha;
@@ -182,11 +204,13 @@ function drawRepeatedWord(
   // Mot répété : blanc, souffle à la couleur du morceau, sans contour ni biais.
   ctx.fillStyle = "#ffffff";
   ctx.shadowColor = accentColor(options.palette, 0.9);
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.34, 72);
+  // Le halo s'allume sur le coup et retombe aussitôt : signature propre au
+  // motif, absente des mots ordinaires et des beats.
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.34 + 0.5 * hit), 104);
   ctx.fillText(text, 0, 0);
 
   // Le mot variable (« x », « y », « z ») apparaît plus petit sous le motif.
-  const companion = activeOther(repeat.others, current, ms);
+  const companion = activeOther(repeat.others, occurrence, ms);
   if (companion !== null) {
     const shown = envelope(ms, companion.startMs, companion.endMs + 220, 70, 170);
     if (shown > 0.01) {
@@ -253,27 +277,19 @@ function activeCue(cues: KeywordCue[], index: number, ms: number): KeywordCue | 
  */
 function drawLineWord(
   ctx: CanvasRenderingContext2D,
-  line: LyricLine,
   ms: number,
   width: number,
   height: number,
   options: LyricsDrawOptions,
   emphasised: boolean,
+  current: LyricWord | null,
 ): void {
-  const tokens = withTimings(line);
-  if (tokens.length === 0) return;
-  let index = -1;
-  for (let cursor = 0; cursor < tokens.length; cursor += 1) {
-    if (tokens[cursor]!.startMs <= ms) index = cursor;
-    else break;
-  }
-  if (index < 0) return;
-  const token = tokens[index]!;
+  if (current === null) return;
   paintWord(
     ctx,
-    token.text,
-    token.startMs,
-    token.endMs,
+    current.text,
+    current.startMs,
+    current.endMs,
     emphasised ? 0.95 : 0.55,
     false,
     ms,
