@@ -7,8 +7,6 @@ const FONT_STACK = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-
 const CUE_TAIL_MS = 420;
 const CUE_FADE_IN_MS = 90;
 const CUE_FADE_OUT_MS = 260;
-const LINE_FADE_IN_MS = 120;
-const LINE_FADE_OUT_MS = 220;
 
 export interface LyricsDrawOptions {
   palette: Palette;
@@ -18,11 +16,12 @@ export interface LyricsDrawOptions {
 }
 
 /**
- * Dessine les paroles par-dessus la scène.
+ * Dessine les paroles par-dessus la scène : des mots seuls, en très gros.
  *
- * Refrain : un mot seul, très gros, centré. Couplet : la ligne en bas, mot
- * courant surligné. Fonction pure du temps musical, sans état accumulé, donc
- * identique après une pause ou un retour en arrière.
+ * Un mot marquant s'affiche où qu'il soit ; sinon, seul un refrain montre le
+ * mot en cours. Hors de ces deux cas, rien n'est dessiné et la lumière respire.
+ * Fonction pure du temps musical, sans état accumulé, donc identique après une
+ * pause ou un retour en arrière.
  */
 export function drawLyrics(
   ctx: CanvasRenderingContext2D,
@@ -41,16 +40,14 @@ export function drawLyrics(
 
   const chorus = lyrics.chorusLines.includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
+  // Aucun mot à l'écran hors refrain : seuls les mots marquants prennent la
+  // scène, sinon la lumière respire seule.
+  if (cue === null && !chorus) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-
-  if (chorus) {
-    drawChorusWord(ctx, line, cue, ms, width, height, options);
-  } else {
-    drawVerseLine(ctx, line, ms, width, height, options);
-  }
+  drawBigWord(ctx, line, cue, ms, width, height, options);
   ctx.restore();
 }
 
@@ -83,7 +80,7 @@ function activeCue(cues: KeywordCue[], index: number, ms: number): KeywordCue | 
   return best;
 }
 
-function drawChorusWord(
+function drawBigWord(
   ctx: CanvasRenderingContext2D,
   line: LyricLine,
   cue: KeywordCue | null,
@@ -92,11 +89,20 @@ function drawChorusWord(
   height: number,
   options: LyricsDrawOptions,
 ): void {
-  const word = cue?.text ?? currentWordText(line, ms);
+  const fallback = cue === null ? contentWordAt(line, ms) : null;
+  const word = cue?.text ?? fallback?.text ?? null;
   if (word === null || word.trim().length === 0) return;
-  const start = cue?.startMs ?? currentWordStart(line, ms) ?? line.startMs;
-  const end = cue?.endMs ?? currentWordEnd(line, ms) ?? line.endMs;
-  const alpha = envelope(ms, start, end + (cue === null ? 0 : CUE_TAIL_MS), CUE_FADE_IN_MS, CUE_FADE_OUT_MS);
+  const start = cue?.startMs ?? fallback?.startMs ?? line.startMs;
+  const end = cue?.endMs ?? fallback?.endMs ?? line.endMs;
+  const duration = Math.max(1, end - start);
+  // Les mots courts durent parfois 100 ms : un fondu fixe les rendrait gris.
+  const alpha = envelope(
+    ms,
+    start,
+    end + (cue === null ? 0 : CUE_TAIL_MS),
+    Math.min(CUE_FADE_IN_MS, duration * 0.35),
+    Math.min(CUE_FADE_OUT_MS, duration * 0.45),
+  );
   if (alpha <= 0.01) return;
 
   const text = word.trim().toUpperCase();
@@ -125,66 +131,39 @@ function drawChorusWord(
   ctx.fillText(text, 0, 0);
 }
 
-function drawVerseLine(
-  ctx: CanvasRenderingContext2D,
-  line: LyricLine,
-  ms: number,
-  width: number,
-  height: number,
-  options: LyricsDrawOptions,
-): void {
-  const alpha = envelope(ms, line.startMs, line.endMs, LINE_FADE_IN_MS, LINE_FADE_OUT_MS);
-  if (alpha <= 0.01) return;
+/** Mots grammaticaux : jamais mis en gros, ils n'ont aucun impact visuel. */
+const STOPWORDS = new Set([
+  "alors", "avec", "aussi", "autre", "avant", "avoir", "bien", "cette", "comme", "comment",
+  "dans", "depuis", "deux", "donc", "elle", "encore", "entre", "etre", "faire", "faut",
+  "elle", "ils", "leur", "mais", "meme", "moins", "monde", "nous", "notre", "parce",
+  "pendant", "petit", "peut", "plus", "pour", "pourquoi", "presque", "quand", "rien",
+  "sans", "seulement", "sont", "sous", "souvent", "temps", "toujours", "toute", "tous",
+  "trop", "venir", "vers", "vouloir", "vraiment", "vous", "avec", "cest", "jai", "jai",
+]);
 
-  const words = line.words.length > 0 ? line.words : [{ text: line.text, startMs: line.startMs, endMs: line.endMs }];
-  const maxWidth = width * 0.9;
-  let size = Math.min(Math.max(width * 0.034, 16), 38);
-  const fullWidth = () => {
-    ctx.font = `600 ${size}px ${FONT_STACK}`;
-    return words.reduce((total, word) => total + ctx.measureText(word.text).width, 0);
-  };
-  let measured = fullWidth();
-  if (measured > maxWidth) {
-    size = Math.max(12, size * (maxWidth / measured));
-    measured = fullWidth();
+function cleanWord(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zà-öø-ÿ0-9']/g, "");
+}
+
+/**
+ * Dernier mot porteur de sens déjà chanté dans la ligne.
+ *
+ * Sans lui, un refrain afficherait « VA » ou « NE » en pleine largeur : court,
+ * grammatical, sans impact. Le mot précédent reste affiché jusqu'au suivant,
+ * donc l'écran n'est jamais vide au milieu d'une phrase.
+ */
+function contentWordAt(line: LyricLine, ms: number): { text: string; startMs: number; endMs: number } | null {
+  let best: { text: string; startMs: number; endMs: number } | null = null;
+  for (const word of line.words) {
+    if (word.startMs > ms) break;
+    const clean = cleanWord(word.text);
+    if (clean.length < 4 || STOPWORDS.has(clean)) continue;
+    best = word;
   }
-
-  const x0 = width * 0.5 - measured * 0.5;
-  const y = height * 0.88;
-  ctx.globalAlpha = alpha * 0.78;
-  ctx.textAlign = "left";
-  ctx.font = `600 ${size}px ${FONT_STACK}`;
-
-  let x = x0;
-  for (const word of words) {
-    const isCurrent = word.startMs <= ms && ms < word.endMs;
-    const isPast = ms >= word.endMs;
-    ctx.fillStyle = isCurrent ? "#ffffff" : isPast ? "rgba(255,255,255,0.42)" : "rgba(255,255,255,0.68)";
-    if (isCurrent) {
-      ctx.shadowColor = accentColor(options.palette, 1);
-      ctx.shadowBlur = options.reduced ? 0 : size * 0.55;
-    } else {
-      ctx.shadowBlur = 0;
-    }
-    ctx.fillText(word.text, x, y);
-    x += ctx.measureText(word.text).width;
-  }
-  ctx.shadowBlur = 0;
-}
-
-function currentWordText(line: LyricLine, ms: number): string | null {
-  const word = line.words.find((candidate) => candidate.startMs <= ms && ms < candidate.endMs);
-  return word?.text ?? line.words[line.words.length - 1]?.text ?? null;
-}
-
-function currentWordStart(line: LyricLine, ms: number): number | null {
-  const word = line.words.find((candidate) => candidate.startMs <= ms && ms < candidate.endMs);
-  return word?.startMs ?? null;
-}
-
-function currentWordEnd(line: LyricLine, ms: number): number | null {
-  const word = line.words.find((candidate) => candidate.startMs <= ms && ms < candidate.endMs);
-  return word?.endMs ?? null;
+  return best;
 }
 
 /** Enveloppe d'apparition : montée courte, sortie douce, nulle hors fenêtre. */
