@@ -242,7 +242,7 @@ de scène.
   seule image. Un **petit blinder** pulse en plus
   sur chaque beat (`f.beat × (0,3 + 0,4 × basse)`), léger et présent même hors
   impact ; le gros éclat prend le maximum des deux. Il est plus sensible que la barre
-  tungstène : drop, refrain, finale, fin de montée et couplet énergique
+  du pont : drop, refrain, finale, fin de montée et couplet énergique
   (énergie > 0,55), avec un gain de 1,2. Il reste **de la couleur de la
   scène** : pas de tungstène, seulement plus de saturation et de luminosité.
   Jamais en mode réduit.
@@ -331,7 +331,7 @@ vocabulaire agressif.
 - **panneaux LED** (`drawRavePanels`) : deux bandes verticales sur les bords, en
   chenillard et damier sur les pics ;
 - **mur de blinders** : en rave, les douze cellules passent en `tous` sur les pics et en
-  `chenillard` sinon, avec un pulse sur chaque kick et une teinte arc-en-ciel ;
+  `chenillard` sinon, avec un pulse sur chaque kick et les teintes de la palette ;
 - **coupes glitch** (`drawGlitchCuts`) : trois bandes horizontales décalées sur les drops
   (`drop > 0,3`), déterministes et sans état ;
 - **balayage arc-en-ciel** : `lampHue` décale la teinte de `f.t × 55 + index × 22` en mode

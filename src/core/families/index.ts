@@ -36,7 +36,6 @@ export { drawCoreGlow, drawWash } from "./projectors";
 export {
   angleBatten,
   couleurBlinder,
-  couleurBlinderConcert,
   decroissanceFilament,
   dessinerBlinders,
   dessinerGrosBlinders,

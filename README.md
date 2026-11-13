@@ -264,7 +264,7 @@ Quelques figures méritent un mot, parce qu'elles ont une intention :
 
 Le spectacle se joue désormais sur un plateau : un pont en treillis à 12-16 % de la
 hauteur, une seconde traverse pour les barres LED, deux totems latéraux et une barre de
-douze blinders tungstène. La structure est permanente ; seuls les faisceaux changent de
+douze blinders LED. La structure est permanente ; seuls les faisceaux changent de
 figure.
 
 La barre de blinders se pilote par motifs : toute la barre sur un impact, une cellule
@@ -272,9 +272,13 @@ sur deux en refrain, une sur quatre en couplet, et un chenillard sur les montée
 cellule garde son inertie thermique, donc les motifs se lisent comme des mouvements de
 console et non comme des interrupteurs.
 
-Les blinders ne s'éteignent pas d'un coup : leur filament suit `exp(-Δt / 0,22 s)`, puis
-passe du blanc chaud à l'ambre et au rouge avant de tomber au noir. Au-dessus de 0,6
-d'intensité, un flare anamorphique étire le halo horizontalement.
+Les blinders ne s'éteignent pas d'un coup : leur filament suit `exp(-Δt / 0,22 s)`. La
+couleur ne sort jamais du budget du morceau : la teinte principale occupe la majorité
+des cellules, la secondaire et la tertiaire n'en marquent que quelques-unes. À pleine
+puissance la diode se délave vers un blanc de capteur sans virer à l'ambre. Chaque
+cellule projette trois cônes emboîtés (fumée, enveloppe, cœur) et une tache elliptique
+au sol, pour un champ de lumière lisible sans aplat. Au-dessus de 0,6 d'intensité, un
+flare anamorphique étire le halo horizontalement.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
