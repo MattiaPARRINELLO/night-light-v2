@@ -20,6 +20,7 @@ declare module "./app" {
     buildPlan(analysis: Analysis, seed?: number): ShowPlan;
     effectiveReduced(): boolean;
     rebuildPlan(transition: boolean): void;
+    paintLyricsBadge(analysis: Analysis): void;
     refreshPlan(transition?: boolean): void;
     applyPendingPlanIfDue(time: number): void;
     togglePlay(): Promise<void>;
@@ -210,6 +211,7 @@ export function installShow(Target: { prototype: App }): void {
     el<HTMLElement>("np-title").textContent = title;
     el<HTMLElement>("np-info").textContent = `${formatTime(analysis.duration)} · ${analysis.tempo.toFixed(1)} BPM`;
     el<HTMLElement>("hud-track").textContent = title;
+    this.paintLyricsBadge(analysis);
     el<HTMLElement>("time-total").textContent = formatTime(analysis.duration);
 
     showScreen("show");
@@ -450,6 +452,20 @@ export function installShow(Target: { prototype: App }): void {
           break;
       }
     });
+  };
+
+  Target.prototype.paintLyricsBadge = function (this: App, analysis: Analysis): void {
+    const badge = el<HTMLElement>("np-lyrics");
+    const lyrics = analysis.lyrics;
+    badge.hidden = false;
+    if (lyrics === undefined || lyrics.lines.length === 0) {
+      badge.textContent = "paroles : non trouvées";
+      badge.className = "np-lyrics is-none";
+      return;
+    }
+    const wordSynced = lyrics.wordSynced;
+    badge.textContent = wordSynced ? "paroles : mot à mot" : "paroles : ligne à ligne";
+    badge.className = `np-lyrics ${wordSynced ? "is-words" : "is-lines"}`;
   };
 
   Target.prototype.bumpVolume = function (this: App, delta: number): void {
