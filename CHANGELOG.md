@@ -86,6 +86,22 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   l'auto-similarité MFCC et les sections reçoivent des rôles de progression
   (exposition, développement, climax, résolution).
 
+### Corrigé
+
+- **Résolution d'un morceau annoncé avec une durée périmée** : un lecteur peut
+  publier le nouveau titre avant sa durée. La résolution partait alors avec
+  l'ancienne durée, tous les candidats étaient écartés (`durée incompatible`) et
+  le morceau restait en échec jusqu'au suivant : il fallait changer de morceau
+  puis revenir. Une correction de la durée du même morceau réarme désormais la
+  résolution.
+- **Piste Deezer exacte** : quand le lecteur expose l'URL Deezer de la piste
+  (`xesam:url`), son identifiant est transmis à la résolution au lieu d'une
+  recherche par titre seul, qui pouvait retomber sur une autre version
+  (live/studio). Un identifiant local ou refusé par Deezer laisse la recherche
+  reprendre la main.
+- **Erreur de durée plus claire** : le message nomme la version téléchargée et
+  précise qu'il s'agit d'une autre version du morceau.
+
 ### Retiré
 
 - **Découpage du morceau en sections (couplet/refrain)** : la détection coûtait

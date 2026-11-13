@@ -214,7 +214,11 @@ directement échantillonnables depuis le navigateur.
 - **Récupération Deezer** : la recherche de streamrip ne renvoie pas la durée d'un
   résultat. La durée est donc vérifiée sur le fichier téléchargé (`ffprobe`, tolérance
   0,5 %) : un écart franc écarte le candidat au lieu d'accepter une autre version (live,
-  remix, edit).
+  remix, edit). Quand le lecteur expose l'URL Deezer de la piste (`xesam:url`), son
+  identifiant est utilisé directement : la piste exacte est téléchargée, sans recherche
+  par titre seul. Un identifiant local (négatif) ou refusé par Deezer laisse la recherche
+  reprendre la main. Si le lecteur corrige après coup la durée du morceau, la résolution
+  automatique est relancée au lieu de rester en échec.
 
 ## Le spectacle
 

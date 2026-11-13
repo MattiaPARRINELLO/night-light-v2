@@ -14,7 +14,7 @@ import {
   type JobTimings,
 } from "../core/api";
 import { dbgThrottled } from "../core/debug";
-import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve, shouldFallbackToPolling } from "../core/nowPlaying";
+import { detectedTrackKey, detectedTrackLabel, shouldAutoResolve, shouldFallbackToPolling, shouldRetryAfterDurationChange } from "../core/nowPlaying";
 import { el, setShowError, setUploadState, showScreen } from "./ui";
 
 declare module "./app" {
@@ -26,6 +26,7 @@ declare module "./app" {
       duration: number | undefined,
       trackKey?: string,
       auto?: boolean,
+      deezerId?: string,
     ): Promise<void>;
     pollNowPlaying(): Promise<void>;
     updateNowPlayingUI(): void;
@@ -35,6 +36,7 @@ declare module "./app" {
       artist: string,
       duration: number | undefined,
       trackKey: string,
+      deezerId?: string,
     ): boolean;
     cancelAutoRetry(): void;
     bindNowPlayingStream(): void;
@@ -127,6 +129,7 @@ export function installResolve(Target: { prototype: App }): void {
     artist: string,
     duration: number | undefined,
     trackKey: string,
+    deezerId?: string,
   ): boolean {
     const delay = resolveRetryDelayMs(this.autoRetryAttempt);
     if (delay === null) return false;
@@ -145,7 +148,7 @@ export function installResolve(Target: { prototype: App }): void {
       if (!shouldAutoResolve(this.nowPlaying)) return;
       // Une action manuelle a repris la main : elle ne doit pas être doublée.
       if (this.analysisController !== null) return;
-      void this.handleResolve(title, artist, duration, trackKey, true);
+      void this.handleResolve(title, artist, duration, trackKey, true, deezerId);
     }, delay);
     return true;
   };
@@ -185,6 +188,7 @@ export function installResolve(Target: { prototype: App }): void {
     duration: number | undefined,
     trackKey?: string,
     auto = false,
+    deezerId?: string,
   ): Promise<void> {
     const status = el<HTMLElement>("resolve-status");
     // Une action manuelle prend la main : elle annule toute relance programmée.
@@ -206,6 +210,7 @@ export function installResolve(Target: { prototype: App }): void {
     // pour une action manuelle : une résolution automatique doit laisser
     // l'écran de dépôt intact si elle échoue.
     this.resolveFailure = null;
+    this.lastAutoFailure = null;
     if (!auto) el<HTMLElement>("dock-panel").classList.add("is-hidden");
     this.debug("analyse", `recherche par titre · ${title} / ${artist}`, { dureeSec: duration ?? "—" });
     setUploadState({
@@ -251,6 +256,7 @@ export function installResolve(Target: { prototype: App }): void {
           },
         },
         trackKey,
+        deezerId,
       );
       if (seq !== this.resolveSeq) return;
       this.jobId = jobId;
@@ -306,13 +312,17 @@ export function installResolve(Target: { prototype: App }): void {
           at: Date.now(),
         };
         // Même clé = même morceau : le suivi du lecteur ne doit pas relancer
-        // une résolution qui vient d'échouer.
-        if (trackKey !== undefined) this.lastAutoTrackKey = trackKey;
+        // une résolution qui vient d'échouer. On retient la durée annoncée :
+        // si le lecteur la corrige, `maybeAutoResolve` réarme la résolution.
+        if (trackKey !== undefined) {
+          this.lastAutoTrackKey = trackKey;
+          this.lastAutoFailure = { key: trackKey, durationSec: duration ?? null };
+        }
         el<HTMLElement>("dock-panel").classList.remove("is-hidden");
         if (!retryable) {
           this.cancelAutoRetry();
         } else if (trackKey !== undefined) {
-          this.scheduleAutoRetry(title, artist, duration, trackKey);
+          this.scheduleAutoRetry(title, artist, duration, trackKey, deezerId);
         }
         return;
       }
@@ -479,7 +489,17 @@ export function installResolve(Target: { prototype: App }): void {
     const data = this.nowPlaying;
     if (data === null || !shouldAutoResolve(data)) return;
     const key = detectedTrackKey(data);
-    if (key === this.lastAutoTrackKey) return;
+    if (key === this.lastAutoTrackKey) {
+      // Le même morceau peut d'abord être annoncé avec la durée du précédent,
+      // puis avec la sienne : sans ce réarmement, l'échec de la première
+      // tentative restait définitif jusqu'au morceau suivant.
+      if (!shouldRetryAfterDurationChange(this.lastAutoFailure, key, data.durationSec)) return;
+      this.lastAutoTrackKey = "";
+      this.debug("analyse", "durée annoncée corrigée · nouvelle tentative", {
+        titre: data.title,
+        dureeSec: data.durationSec ?? "inconnue",
+      });
+    }
     // Nouveau morceau : la relance éventuellement programmée pour le précédent
     // n'a plus lieu d'être, et le compteur d'essais repart de zéro.
     if (this.autoRetryTimer !== null || this.autoRetryKey !== "") this.cancelAutoRetry();
@@ -499,6 +519,13 @@ export function installResolve(Target: { prototype: App }): void {
     if (data.durationSec !== null && data.durationSec !== undefined && data.durationSec > 0) {
       el<HTMLInputElement>("resolve-duration").value = String(Math.round(data.durationSec));
     }
-    await this.handleResolve(data.title, data.artist, data.durationSec ?? undefined, key, true);
+    await this.handleResolve(
+      data.title,
+      data.artist,
+      data.durationSec ?? undefined,
+      key,
+      true,
+      data.deezerId,
+    );
   };
 }

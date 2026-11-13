@@ -6,6 +6,7 @@ import {
   hasDetectedTrack,
   shouldAutoResolve,
   shouldFallbackToPolling,
+  shouldRetryAfterDurationChange,
   SSE_SILENCE_MS,
 } from "../../src/core/nowPlaying";
 
@@ -45,6 +46,12 @@ describe("now playing normalization", () => {
     expect(result.positionSec).toBeCloseTo(91.45);
     expect(result.updatedAt).toBeCloseTo(1792138482.5);
     expect(result.ambiguous).toBe(false);
+  });
+
+  it("transmet l'identifiant Deezer exact du lecteur", () => {
+    const result = normalizeNowPlaying({ title: "Σ. MOROSE", deezer_id: "3152150703" });
+    expect(result.deezerId).toBe("3152150703");
+    expect(normalizeNowPlaying({ title: "Sans identifiant" }).deezerId).toBeUndefined();
   });
 
   it("tolère des champs absents ou invalides", () => {
@@ -110,5 +117,32 @@ describe("santé du flux SSE du lecteur", () => {
 
   it("déclenche le repli dès que le flux est fermé", () => {
     expect(shouldFallbackToPolling({ readyState: 2, lastEventAt: now, now })).toBe(true);
+  });
+});
+
+describe("réarmement après correction de durée", () => {
+  const key = "Σ. MOROSE (LIVE)|";
+
+  it("réarme quand la durée annoncée change nettement pour le même morceau", () => {
+    const failure = { key, durationSec: 264 };
+    expect(shouldRetryAfterDurationChange(failure, key, 703.03)).toBe(true);
+  });
+
+  it("ne réarme pas sur un frémissement de durée", () => {
+    const failure = { key, durationSec: 703.03 };
+    expect(shouldRetryAfterDurationChange(failure, key, 703.2)).toBe(false);
+    expect(shouldRetryAfterDurationChange(failure, key, 703.03)).toBe(false);
+  });
+
+  it("réarme quand une durée inconnue devient connue, ou l'inverse", () => {
+    expect(shouldRetryAfterDurationChange({ key, durationSec: null }, key, 703)).toBe(true);
+    expect(shouldRetryAfterDurationChange({ key, durationSec: 703 }, key, null)).toBe(true);
+  });
+
+  it("ignore un autre morceau et l'absence d'échec", () => {
+    expect(shouldRetryAfterDurationChange({ key, durationSec: 120 }, "Autre|", 200)).toBe(
+      false,
+    );
+    expect(shouldRetryAfterDurationChange(null, key, 200)).toBe(false);
   });
 });

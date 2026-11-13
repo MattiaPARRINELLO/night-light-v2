@@ -336,6 +336,8 @@ export interface ResolveRequest {
   artist?: string;
   durationSec?: number;
   trackKey?: string;
+  /** Identifiant Deezer exact, quand le lecteur l'expose. */
+  deezerId?: string;
 }
 
 export async function submitResolve(
@@ -352,6 +354,7 @@ export async function submitResolve(
         artist: request.artist ?? "",
         duration_sec: request.durationSec,
         track_key: request.trackKey,
+        deezer_id: request.deezerId,
       }),
       signal,
     });
@@ -402,10 +405,11 @@ export function resolveAndAnalyze(
     signal?: AbortSignal;
   } = {},
   trackKey?: string,
+  deezerId?: string,
 ): Promise<{ jobId: string; analysis: Analysis; timings?: JobTimings }> {
   const { onPhase, onPartial, signal } = handlers;
   return new Promise((resolve, reject) => {
-    submitResolve({ title, artist, durationSec, trackKey }, signal)
+    submitResolve({ title, artist, durationSec, trackKey, deezerId }, signal)
       .then(async (job) => {
         try {
           const { analysis, timings } = await pollJob(job.jobId, onPhase, signal, onPartial);
@@ -431,6 +435,8 @@ export interface NowPlayingResponse {
   updatedAt: number;
   ambiguous: boolean;
   error?: string;
+  /** Piste Deezer exacte, quand le lecteur l'expose. */
+  deezerId?: string;
 }
 
 /**
@@ -457,6 +463,7 @@ export function normalizeNowPlaying(raw: Record<string, unknown>): NowPlayingRes
     updatedAt: numberOrNull(raw.updated_at) ?? 0,
     ambiguous: Boolean(raw.ambiguous),
     error: typeof raw.error === "string" ? raw.error : undefined,
+    deezerId: typeof raw.deezer_id === "string" ? raw.deezer_id : undefined,
   };
 }
 

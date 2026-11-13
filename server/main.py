@@ -59,7 +59,7 @@ from .queue.models import QueueTrack
 from .relay import attach_control_relay
 from .retrieve.cache import AudioCache
 from .retrieve.deezer import DeezerProvider
-from .retrieve.models import TrackQuery, audio_cache_key, normalize_text
+from .retrieve.models import Candidate, TrackQuery, audio_cache_key, normalize_text
 from .retrieve.resolver import RetrievalError, resolve_track
 from .store import SessionStore
 
@@ -476,27 +476,59 @@ class AppState:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
             _LOGGER.info("Résolution %s : %s (%.0f%%) %s", job_id, phase, progress * 100, message)
 
-        try:
-            result = resolve_track(
-                query,
-                provider,
-                cache,
-                thresholds=provider.thresholds,
-                progress=report,
-                preselected=preselected,
-            )
-        except RetrievalError as error:
+        # L'identifiant Deezer du lecteur désigne la piste exacte (aucune
+        # recherche, donc aucune confusion live/studio). Il peut pourtant
+        # pointer une piste locale absente du catalogue : dans ce cas on
+        # retombe sur la recherche par métadonnées.
+        plans: list[list[Candidate] | None] = (
+            [preselected, None] if preselected is not None else [None]
+        )
+        result = None
+        failure: RetrievalError | None = None
+        for position, plan in enumerate(plans):
+            try:
+                result = resolve_track(
+                    query,
+                    provider,
+                    cache,
+                    thresholds=provider.thresholds,
+                    progress=report,
+                    preselected=plan,
+                )
+                break
+            except RetrievalError as error:
+                failure = error
+                if position == 0 and len(plans) > 1:
+                    timings["resolutionMethod"] = f"{lookup.method}+search"
+                    _LOGGER.info(
+                        "Résolution par identifiant Deezer échouée id=%s (%s), "
+                        "repli sur la recherche",
+                        job_id,
+                        error.code,
+                    )
+                    report(
+                        "Recherche",
+                        0.0,
+                        "Identifiant Deezer inutilisable · recherche par métadonnées",
+                    )
+                continue
+            except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
+                self.resolve_pending = False
+                self.store.set_error(
+                    job_id,
+                    "resolve_failed",
+                    "La récupération du morceau a échoué.",
+                    str(error)[:300],
+                )
+                return
+        if result is None:
             self.resolve_pending = False
-            self.store.set_error(job_id, error.code, error.message)
-            return
-        except Exception as error:  # noqa: BLE001 - on renvoie une erreur lisible
-            self.resolve_pending = False
-            self.store.set_error(
-                job_id,
-                "resolve_failed",
-                "La récupération du morceau a échoué.",
-                str(error)[:300],
-            )
+            if failure is not None:
+                self.store.set_error(job_id, failure.code, failure.message)
+            else:
+                self.store.set_error(
+                    job_id, "resolve_failed", "La récupération du morceau a échoué."
+                )
             return
 
         # Chronologie du retrieval : c'est le premier endroit où ces mesures

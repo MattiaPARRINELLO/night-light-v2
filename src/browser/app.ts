@@ -24,6 +24,7 @@ import { fetchHealth, type Limits, type NowPlayingResponse } from "../core/api";
 import { dbgLog, type DebugCategory } from "../core/debug";
 import type { HazeTarget } from "../core/families";
 import { EMPTY_LIVE_AUDIO, type LiveAudioFeatures } from "../core/liveAudio";
+import type { AutoResolveFailure } from "../core/nowPlaying";
 import type { ExternalPlaybackState } from "../core/playback";
 import { renderPixelRatio } from "../core/series";
 import type { ShowPlan } from "../core/show";
@@ -136,6 +137,12 @@ export class App {
   pendingAnalysis: Analysis | null = null;
   pendingTitle = "";
   lastAutoTrackKey = "";
+  /**
+   * Dernier échec automatique (durée annoncée comprise). Si le lecteur corrige
+   * ensuite la durée du même morceau, la résolution est réarmée au lieu de
+   * rester bloquée jusqu'au morceau suivant.
+   */
+  lastAutoFailure: AutoResolveFailure | null = null;
   /** Relance programmée après un échec passager d'une récupération automatique. */
   autoRetryTimer: number | null = null;
   /** Morceau concerné par la relance programmée. */

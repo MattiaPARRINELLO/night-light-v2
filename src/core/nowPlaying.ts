@@ -27,6 +27,42 @@ export function detectedTrackKey(data: NowPlayingResponse): string {
   return `${data.title.trim()}|${data.artist.trim()}`;
 }
 
+/**
+ * Échec retenu pour un morceau, afin de réarmer la résolution si le lecteur
+ * annonce ensuite une autre durée pour le même morceau.
+ *
+ * Certains lecteurs publient d'abord le nouveau titre avec l'ancienne durée :
+ * la résolution part alors avec une durée fausse, tous les candidats échouent
+ * au contrôle de durée, et sans réarmement le morceau restait définitivement
+ * en échec (il fallait changer de morceau puis revenir).
+ */
+export interface AutoResolveFailure {
+  key: string;
+  durationSec: number | null;
+}
+
+/** Écart à partir duquel deux durées annoncées sont jugées différentes. */
+export const AUTO_RESOLVE_DURATION_CHANGE_SEC = 1.0;
+
+/**
+ * Faut-il retenter un morceau déjà en échec parce que sa durée a changé ?
+ *
+ * Seul un changement franc réarme : une durée qui se stabilise à quelques
+ * millièmes près ne doit pas relancer une résolution en boucle.
+ */
+export function shouldRetryAfterDurationChange(
+  failure: AutoResolveFailure | null,
+  key: string,
+  durationSec: number | null | undefined,
+): boolean {
+  if (failure === null || failure.key !== key) return false;
+  const current = durationSec ?? null;
+  if (current === null || failure.durationSec === null) {
+    return current !== failure.durationSec;
+  }
+  return Math.abs(current - failure.durationSec) >= AUTO_RESOLVE_DURATION_CHANGE_SEC;
+}
+
 /** Seul un morceau réellement en lecture peut être résolu automatiquement. */
 export function shouldAutoResolve(data: NowPlayingResponse | null): boolean {
   return (
