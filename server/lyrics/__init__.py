@@ -22,6 +22,7 @@ from .lrclib import (
 )
 from .models import LyricLine, Lyrics, LyricWord
 from .parsers import parse_lrc, parse_lyricsfile
+from .service import LyricsService
 
 __all__ = [
     "DEFAULT_MAX_KEYWORDS",
@@ -37,6 +38,7 @@ __all__ = [
     "LyricLine",
     "LyricWord",
     "Lyrics",
+    "LyricsService",
     "build_messages",
     "cue_cache_key",
     "cues_from_json",

@@ -67,6 +67,51 @@ export interface DropEvent {
   source?: string;
 }
 
+/** Un mot (ou fragment) daté, en millisecondes depuis le début du morceau. */
+export interface LyricWord {
+  text: string;
+  startMs: number;
+  endMs: number;
+}
+
+/** Une ligne de paroles, éventuellement découpée en mots. */
+export interface LyricLine {
+  text: string;
+  startMs: number;
+  endMs: number;
+  words: LyricWord[];
+}
+
+export type KeywordKind = "image" | "action" | "emotion" | "lieu" | "nom";
+
+/** Mot marquant choisi par le modèle, remappé sur les timings réels. */
+export interface KeywordCue {
+  text: string;
+  /** Index dans `LyricsCues.lines`. */
+  lineIndex: number;
+  startMs: number;
+  endMs: number;
+  /** Force visuelle voulue, 0..1. */
+  impact: number;
+  kind: KeywordKind;
+}
+
+/**
+ * Paroles prêtes à afficher, calculées côté serveur.
+ *
+ * `chorusLines` contient les index de `lines` qui appartiennent au refrain :
+ * le rendu y montre un mot seul, et une ligne surlignée ailleurs.
+ */
+export interface LyricsCues {
+  recordId: number;
+  wordSynced: boolean;
+  keywords: KeywordCue[];
+  chorusLines: number[];
+  lines: LyricLine[];
+  source: "llm" | "heuristic" | "empty";
+  model?: string;
+}
+
 export interface Analysis {
   schema: typeof ANALYSIS_SCHEMA;
   /** Durée du morceau, en secondes. */
@@ -104,6 +149,11 @@ export interface Analysis {
   builds: Build[];
   /** Reprises de production détectées (drops), optionnelles. */
   drops?: DropEvent[];
+  /**
+   * Paroles et mots marquants, optionnels : un serveur sans LyricsService ou
+   * un morceau sans paroles renvoie simplement ce champ absent.
+   */
+  lyrics?: LyricsCues;
   /**
    * Fenêtre réellement analysée pour une analyse rapide, en secondes.
    * Absent = analyse complète.
