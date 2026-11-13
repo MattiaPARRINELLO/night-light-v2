@@ -173,17 +173,15 @@ function drawRepeatedWord(
     ms,
     occurrence.startMs,
     occurrence.endMs + CUE_TAIL_MS,
-    Math.min(CUE_FADE_IN_MS, duration * 0.35),
+    Math.min(60, duration * 0.25),
     Math.min(CUE_FADE_OUT_MS, duration * 0.45),
   );
   if (alpha <= 0.01) return;
 
-  // Pulsation à chaque occurrence : le mot « frappe » quand il est chanté.
-  let pulse = 0;
-  for (const item of repeat.occurrences) {
-    const age = (ms - item.startMs) / 1000;
-    if (age >= 0 && age < 0.42) pulse = Math.max(pulse, 1 - age / 0.42);
-  }
+  // Coup sec à l'occurrence, puis repos : le motif ne respire pas avec le
+  // beat, sinon son apparition se confond avec un temps fort de la lumière.
+  const age = Math.max(0, ms - occurrence.startMs) / 1000;
+  const hit = options.reduced ? 0 : Math.max(0, 1 - age / 0.18);
 
   const text = repeat.text.toUpperCase();
   const maxWidth = width * 0.92;
@@ -195,7 +193,8 @@ function drawRepeatedWord(
     ctx.font = `900 ${size}px ${FONT_STACK}`;
   }
 
-  const scale = 1 + (options.reduced ? 0 : 0.1 * pulse) + (options.reduced ? 0 : 0.02 * options.beat);
+  // Frappe franche : le mot arrive plus gros et se pose, au lieu de battre.
+  const scale = 1 + 0.16 * hit;
   const y = height * 0.43;
 
   ctx.globalAlpha = alpha;
@@ -205,7 +204,9 @@ function drawRepeatedWord(
   // Mot répété : blanc, souffle à la couleur du morceau, sans contour ni biais.
   ctx.fillStyle = "#ffffff";
   ctx.shadowColor = accentColor(options.palette, 0.9);
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.34, 72);
+  // Le halo s'allume sur le coup et retombe aussitôt : signature propre au
+  // motif, absente des mots ordinaires et des beats.
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.34 + 0.5 * hit), 104);
   ctx.fillText(text, 0, 0);
 
   // Le mot variable (« x », « y », « z ») apparaît plus petit sous le motif.
