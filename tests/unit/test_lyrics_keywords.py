@@ -9,6 +9,7 @@ from server.lyrics.keywords import (
     detect_chorus,
     extract_cues,
     parse_cues,
+    title_cues,
 )
 from server.lyrics.models import LyricLine, Lyrics, LyricWord
 
@@ -183,3 +184,101 @@ def test_cue_cache_key_changes_with_model() -> None:
     a = cue_cache_key(1, model="a", max_keywords=10)
     b = cue_cache_key(1, model="b", max_keywords=10)
     assert a != b
+
+
+YO_VOY_LINE = LyricLine(
+    text="Y yo voy, voy, voy",
+    start_ms=12_900,
+    end_ms=15_200,
+    words=(
+        LyricWord("Y ", 12_900, 12_980),
+        LyricWord("yo ", 12_980, 13_200),
+        LyricWord("voy, ", 13_200, 13_600),
+        LyricWord("voy, ", 13_600, 14_100),
+        LyricWord("voy", 14_100, 14_600),
+    ),
+)
+
+
+def _yo_voy() -> Lyrics:
+    return Lyrics(
+        record_id=2, track_name="Yo Voy", artist_name="Zion & Lennox", lines=(YO_VOY_LINE,)
+    )
+
+
+def test_title_cues_find_the_title_in_the_words() -> None:
+    cues = title_cues(_yo_voy())
+
+    assert len(cues) == 1
+    cue = cues[0]
+    assert cue.kind == "titre"
+    assert cue.text == "Yo Voy"
+    assert cue.start_ms == 12_980
+    assert cue.end_ms == 13_600
+    assert cue.impact == 1.0
+
+
+def test_title_cues_respect_the_cooldown() -> None:
+    second = LyricLine(
+        text="Y yo voy, voy, voy",
+        start_ms=16_000,
+        end_ms=18_000,
+        words=(
+            LyricWord("Y ", 16_000, 16_100),
+            LyricWord("yo ", 16_100, 16_300),
+            LyricWord("voy", 16_300, 16_800),
+        ),
+    )
+    lyrics = Lyrics(
+        record_id=3, track_name="Yo Voy", artist_name="Zion & Lennox", lines=(YO_VOY_LINE, second)
+    )
+    # 16,1 s - 13,0 s = 3,1 s, sous le refroidissement de 10 s.
+    assert len(title_cues(lyrics)) == 1
+    assert len(title_cues(lyrics, cooldown_ms=0)) == 2
+
+
+def test_title_cues_ignore_parentheticals() -> None:
+    line = LyricLine(
+        text="Otto, Otto",
+        start_ms=1000,
+        end_ms=2000,
+        words=(LyricWord("Otto, ", 1000, 1500), LyricWord("Otto", 1500, 2000)),
+    )
+    lyrics = Lyrics(record_id=4, track_name="Otto (Explicit)", artist_name="SCH", lines=(line,))
+
+    cues = title_cues(lyrics)
+    assert len(cues) == 1
+    assert cues[0].text == "Otto"
+    assert cues[0].start_ms == 1000
+
+
+def test_title_cues_skip_short_titles() -> None:
+    line = LyricLine(text="Go go go", start_ms=0, end_ms=1000)
+    lyrics = Lyrics(record_id=5, track_name="Go", artist_name="X", lines=(line,))
+    assert title_cues(lyrics) == ()
+
+
+def test_extract_cues_adds_title_cue_and_drops_duplicate_keyword() -> None:
+    def poster(url, headers, body):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "keywords": [
+                                    {"line": 0, "text": "yo", "impact": 0.4, "kind": "image"}
+                                ]
+                            }
+                        )
+                    }
+                }
+            ]
+        }
+
+    cues = extract_cues(_yo_voy(), client=GroqClient(api_key="test", poster=poster))
+
+    titles = [cue for cue in cues.keywords if cue.kind == "titre"]
+    assert len(titles) == 1
+    # Le mot marquant au même instant est remplacé par le titre.
+    assert all(cue.kind != "image" for cue in cues.keywords)

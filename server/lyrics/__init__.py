@@ -13,6 +13,7 @@ from .keywords import (
     extract_cues,
     heuristic_keywords,
     parse_cues,
+    title_cues,
 )
 from .lrclib import (
     LrclibClient,
@@ -50,4 +51,5 @@ __all__ = [
     "parse_cues",
     "parse_lrc",
     "parse_lyricsfile",
+    "title_cues",
 ]

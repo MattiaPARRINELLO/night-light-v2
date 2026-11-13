@@ -82,7 +82,7 @@ export interface LyricLine {
   words: LyricWord[];
 }
 
-export type KeywordKind = "image" | "action" | "emotion" | "lieu" | "nom";
+export type KeywordKind = "image" | "action" | "emotion" | "lieu" | "nom" | "titre";
 
 /** Mot marquant choisi par le modèle, remappé sur les timings réels. */
 export interface KeywordCue {

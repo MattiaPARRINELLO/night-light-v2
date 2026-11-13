@@ -22,6 +22,8 @@ PROMPT_VERSION = "1"
 DEFAULT_MAX_KEYWORDS = 10
 MIN_KEYWORDS = 4
 KINDS = {"image", "action", "emotion", "lieu", "nom"}
+# Type réservé aux cues produites localement, jamais demandé au modèle.
+TITLE_KIND = "titre"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -152,6 +154,38 @@ def _cue_from_item(item: Any, lyrics: Lyrics) -> KeywordCue | None:
         impact=min(max(impact_value, 0.0), 1.0),
         kind=kind_value,
     )
+
+
+_PARENTHETICAL = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+
+
+def _title_tokens(track_name: str) -> tuple[str, ...]:
+    """Mots normalisés du titre, sans mention entre parenthèses (Remix, Explicit)."""
+    cleaned = _PARENTHETICAL.sub(" ", track_name)
+    return tuple(normalize_text(cleaned).split())
+
+
+def _find_title(line: LyricLine, tokens: tuple[str, ...]) -> tuple[int, int] | None:
+    """Bornes du titre dans une ligne, par correspondance de mots entiers."""
+    if not tokens:
+        return None
+    wanted = " ".join(tokens)
+    count = len(tokens)
+    if line.words:
+        for index in range(len(line.words) - count + 1):
+            chunk = line.words[index : index + count]
+            if normalize_text("".join(word.text for word in chunk)) == wanted:
+                return chunk[0].start_ms, chunk[-1].end_ms
+    # Repli sans timings de mots : répartition proportionnelle dans la ligne.
+    normalized = normalize_text(line.text)
+    position = normalized.find(wanted)
+    if position < 0:
+        return None
+    span = max(1, len(normalized))
+    duration = max(0, line.end_ms - line.start_ms)
+    start = line.start_ms + round(duration * position / span)
+    end = line.start_ms + round(duration * (position + len(wanted)) / span)
+    return start, max(end, start)
 
 
 def _locate(line: LyricLine, needle: str) -> tuple[int, int] | None:
@@ -324,6 +358,61 @@ def heuristic_keywords(
     return tuple(sorted(selected, key=lambda cue: cue.start_ms))
 
 
+def title_cues(
+    lyrics: Lyrics,
+    *,
+    cooldown_ms: int = 10_000,
+    max_cues: int = 8,
+) -> tuple[KeywordCue, ...]:
+    """Repère les moments où le titre du morceau est chanté.
+
+    Déterministe et gratuit : le titre vient des métadonnées, on le cherche dans
+    les mots datés. Un intervalle minimal évite de le réafficher en boucle quand
+    il revient à chaque phrase (cas d'un refrain-titre).
+    """
+    tokens = _title_tokens(lyrics.track_name)
+    if len(" ".join(tokens)) < 3:
+        return ()
+    display = _PARENTHETICAL.sub(" ", lyrics.track_name).strip() or lyrics.track_name
+    cues: list[KeywordCue] = []
+    last_start: int | None = None
+    for index, line in enumerate(lyrics.lines):
+        window = _find_title(line, tokens)
+        if window is None:
+            continue
+        start_ms, end_ms = window
+        if last_start is not None and start_ms - last_start < cooldown_ms:
+            continue
+        cues.append(
+            KeywordCue(
+                text=display,
+                line_index=index,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                impact=1.0,
+                kind=TITLE_KIND,
+            )
+        )
+        last_start = start_ms
+        if len(cues) >= max_cues:
+            break
+    return tuple(cues)
+
+
+def _merge_title_cues(lyrics: Lyrics, keywords: tuple[KeywordCue, ...]) -> tuple[KeywordCue, ...]:
+    """Insère les cues de titre et retire un mot marquant au même instant."""
+    titles = title_cues(lyrics)
+    if not titles:
+        return keywords
+    merged = list(titles)
+    for cue in keywords:
+        if any(abs(cue.start_ms - title.start_ms) < 400 for title in titles):
+            continue
+        merged.append(cue)
+    merged.sort(key=lambda cue: cue.start_ms)
+    return tuple(merged)
+
+
 def extract_cues(
     lyrics: Lyrics,
     *,
@@ -342,7 +431,7 @@ def extract_cues(
             cues = parse_cues(payload, lyrics)
             if cues.keywords:
                 return LyricCues(
-                    keywords=cues.keywords,
+                    keywords=_merge_title_cues(lyrics, cues.keywords),
                     chorus_lines=cues.chorus_lines or chorus,
                     source="llm",
                     model=llm.model,
@@ -351,7 +440,7 @@ def extract_cues(
             _LOGGER.warning("Extraction Groq en échec (%s), repli local", error)
 
     return LyricCues(
-        keywords=heuristic_keywords(lyrics, max_keywords=max_keywords),
+        keywords=_merge_title_cues(lyrics, heuristic_keywords(lyrics, max_keywords=max_keywords)),
         chorus_lines=chorus,
         source="heuristic",
     )

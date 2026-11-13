@@ -106,8 +106,9 @@ function drawBigWord(
   if (alpha <= 0.01) return;
 
   const text = word.trim().toUpperCase();
+  const isTitle = cue?.kind === "titre";
   const maxWidth = width * 0.88;
-  let size = Math.min(width * 0.17, height * 0.26);
+  let size = Math.min(width * 0.17, height * 0.26) * (isTitle ? 1.08 : 1);
   ctx.font = `800 ${size}px ${FONT_STACK}`;
   const measured = ctx.measureText(text).width;
   if (measured > maxWidth) {
@@ -125,9 +126,12 @@ function drawBigWord(
   ctx.globalAlpha = alpha;
   ctx.translate(width * 0.5, y);
   ctx.scale(scale, scale);
-  ctx.fillStyle = "#ffffff";
+  // Le titre se distingue par sa couleur d'accent, pas par sa taille : c'est
+  // une signature, pas un mot marquant de plus.
+  ctx.fillStyle = isTitle ? accentSolid(options.palette) : "#ffffff";
   ctx.shadowColor = accentColor(options.palette, 0.85);
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * impact), 52);
+  const blurCeiling = isTitle ? 64 : 52;
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * impact), blurCeiling);
   ctx.fillText(text, 0, 0);
 }
 
@@ -160,7 +164,7 @@ function contentWordAt(line: LyricLine, ms: number): { text: string; startMs: nu
   for (const word of line.words) {
     if (word.startMs > ms) break;
     const clean = cleanWord(word.text);
-    if (clean.length < 4 || STOPWORDS.has(clean)) continue;
+    if (clean.length < 3 || STOPWORDS.has(clean)) continue;
     best = word;
   }
   return best;
@@ -178,4 +182,10 @@ function accentColor(palette: Palette, alpha: number): string {
   const hue = palette.accent;
   const saturation = Math.round(clamp01(palette.saturation) * 100);
   return `hsla(${hue.toFixed(1)}, ${saturation}%, 62%, ${alpha.toFixed(3)})`;
+}
+
+function accentSolid(palette: Palette): string {
+  const hue = palette.accent;
+  const saturation = Math.round(clamp01(palette.saturation) * 100);
+  return `hsl(${hue.toFixed(1)}, ${saturation}%, 78%)`;
 }
