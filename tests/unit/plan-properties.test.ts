@@ -8,21 +8,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildShowPlan, minHueStepEff, type FamilyId, type Scene } from "../../src/core/show";
+import { buildShowPlan, type FamilyId, type Scene } from "../../src/core/show";
 import type { Analysis } from "../../src/types";
 import { corpusAnalyses, longTrackAnalysis } from "../support/corpus";
 
 /** `src/core/show.ts:270` — longueur minimale d'une scène, en secondes. */
 const MIN_SCENE_SPAN = 5;
-/** `src/core/show.ts:262` — écart minimal de teinte entre scènes voisines. */
-const MIN_HUE_STEP = 34;
 
 const tracks = corpusAnalyses();
-
-/** Distance angulaire dans [0, 180]. */
-function circular(left: number, right: number): number {
-  return Math.abs((((left - right) % 360) + 540) % 360 - 180);
-}
 
 function firstNonFinite(value: unknown, path = "plan"): string | null {
   if (typeof value === "number") return Number.isFinite(value) ? null : path;
@@ -214,47 +207,41 @@ describe("P8 — diversité sur un morceau de 3 minutes", () => {
   });
 });
 
-describe("P9 — fenêtre de teinte et écart entre scènes voisines", () => {
+describe("P9 — palette déterministe de une à trois couleurs par morceau", () => {
   for (const { name, analysis } of tracks) {
-    test(`teinte dans ±spread de l'ancre : ${name}`, () => {
+    test(`teinte dans la palette du morceau : ${name}`, () => {
       const plan = buildShowPlan(analysis, false);
+      const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+      expect(colors.length).toBeGreaterThanOrEqual(1);
+      expect(colors.length).toBeLessThanOrEqual(3);
       for (const scene of plan.scenes) {
-        // show.ts:601-620 : l'ancre est la complémentaire pour les moments
-        // forts, la teinte du morceau sinon ; la teinte finale est ramenée dans
-        // ±track.spread de cette ancre.
-        const distance = Math.min(
-          circular(scene.palette.hue, plan.track.hue),
-          circular(scene.palette.hue, plan.track.accent),
-        );
+        // Chaque scène joue exactement une couleur du morceau : aucune teinte
+        // intermédiaire n'est inventée.
         expect(
-          distance,
-          `${describeScene(scene)} : teinte ${scene.palette.hue.toFixed(1)}° à ${distance.toFixed(1)}° de l'ancre (spread ${plan.track.spread}°)`,
-        ).toBeLessThanOrEqual(plan.track.spread + 1e-6);
+          colors,
+          `${describeScene(scene)} : teinte ${scene.palette.hue.toFixed(1)}°`,
+        ).toContain(scene.palette.hue);
       }
     });
   }
 
-  // BUG D'ORIGINE : l'écart minimal (`MIN_HUE_STEP`) était appliqué avant le
-  // clamp vers la fenêtre ±spread de l'ancre, qui pouvait l'annuler. Corrigé
-  // par la PR #30 (`hueWithGap` résout les deux contraintes ensemble) : le
-  // test n'est plus marqué `failing`.
-  test(`écart ≥ ${MIN_HUE_STEP}° entre scènes voisines (show.ts:611-620)`, () => {
+  test("la couleur principale domine les autres", () => {
     const violations: string[] = [];
     for (const { name, analysis } of tracks) {
       const plan = buildShowPlan(analysis, false);
-      // Le contrat réel est `minHueStepEff(spread)` : un morceau à palette
-      // resserrée (profil hard) accepte un écart plus petit.
-      const step = minHueStepEff(plan.track.spread);
-      for (let index = 1; index < plan.scenes.length; index += 1) {
-        const gap = circular(plan.scenes[index]!.palette.hue, plan.scenes[index - 1]!.palette.hue);
-        if (gap < step - 1e-6) {
-          violations.push(
-            `${name}: ${plan.scenes[index - 1]!.start.toFixed(1)}s→${plan.scenes[index]!.start.toFixed(1)}s = ${gap.toFixed(1)}° (seuil ${step.toFixed(1)}°)`,
-          );
-        }
+      const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+      let principale = 0;
+      let secondaire = 0;
+      for (const scene of plan.scenes) {
+        if (scene.palette.hue === plan.track.hue) principale += 1;
+        else if (colors.includes(scene.palette.hue)) secondaire += 1;
+        else violations.push(`${name}: ${describeScene(scene)} à ${scene.palette.hue.toFixed(1)}°`);
+      }
+      if (principale < secondaire) {
+        violations.push(`${name}: secondaire ${secondaire} > principale ${principale}`);
       }
     }
-    expect(violations, `écarts < seuil effectif : ${violations.join(" | ")}`).toEqual([]);
+    expect(violations, `scènes hors palette ou secondaire trop présente : ${violations.join(" | ")}`).toEqual([]);
   });
 });
 

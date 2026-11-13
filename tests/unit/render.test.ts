@@ -1249,45 +1249,45 @@ describe("accords de couleurs", () => {
 
   const ecart = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
 
-  test("l'accord reste dans la gamme du morceau", () => {
+  test("l'accord se limite aux couleurs du morceau", () => {
     const palette = scene.palette;
     const accord = sceneChord(palette, scene.index, plan.seed);
-    // Une scène n'est jamais monochrome : au moins trois teintes.
-    expect(accord.length).toBeGreaterThanOrEqual(3);
-    for (const hue of accord) {
-      // Toutes les teintes dérivent de celle de la scène : jamais à plus d'un
-      // demi-cercle, sinon ce serait une autre couleur, pas la même gamme.
-      expect(ecart(hue, palette.hue)).toBeLessThanOrEqual(200);
-    }
-    // L'accent du morceau fait partie de l'accord : la palette se reconnaît.
-    expect(accord.some((hue) => ecart(hue, palette.accent) < 20)).toBe(true);
+    // Une à trois teintes maximum : les couleurs de la palette du morceau.
+    expect(accord.length).toBeGreaterThanOrEqual(1);
+    expect(accord.length).toBeLessThanOrEqual(3);
+    expect(accord).toContain(palette.hue);
+    if (palette.accent !== palette.hue) expect(accord).toContain(palette.accent);
+    if (palette.tertiary !== undefined) expect(accord).toContain(palette.tertiary);
   });
 
-  test("les lampes d'une même scène portent plusieurs teintes", () => {
+  test("les lampes d'une même scène restent dans la palette", () => {
     const f = frame();
     const hues = Array.from({ length: 15 }, (_, index) => lampHue(f, index));
-    // Aucune lampe ne répète exactement sa voisine...
-    for (let index = 0; index < hues.length - 1; index += 1) {
-      expect(ecart(hues[index]!, hues[index + 1]!)).toBeGreaterThan(3);
+    const distinctes = new Set(hues.map((hue) => Math.round(hue)));
+    expect(distinctes.size).toBeLessThanOrEqual(3);
+    // Deux lampes voisines changent de teinte tant que la palette le permet.
+    if (f.palette.accent !== f.palette.hue) {
+      for (let index = 0; index < hues.length - 1; index += 1) {
+        expect(ecart(hues[index]!, hues[index + 1]!)).toBeGreaterThan(0);
+      }
     }
-    // ...et la rangée déploie au moins trois couleurs distinctes.
-    expect(new Set(hues.map((hue) => Math.round(hue / 12))).size).toBeGreaterThanOrEqual(3);
   });
 
-  test("une scène garde ses couleurs, le morceau les renouvelle", () => {
+  test("une scène garde ses couleurs, le morceau aussi", () => {
     // Stable à l'intérieur d'une scène, quelle que soit la position...
     for (let index = 0; index < 8; index += 1) {
       expect(lampHue(frame({ t: 10 }), index)).toBe(lampHue(frame({ t: 40 }), index));
     }
-    // ...et l'accord change d'une scène à l'autre : l'univers se déploie.
+    // ...et le morceau entier ne dépasse jamais ses trois couleurs, quel que soit
+    // le rang de scène : aucun accord plus large ne s'invente.
     const tirages = new Set<string>();
     for (let index = 0; index < 24; index += 1) {
       tirages.add(sceneChord(scene.palette, index, plan.seed).map((hue) => Math.round(hue)).join(","));
     }
-    expect(tirages.size).toBeGreaterThanOrEqual(3);
+    expect(tirages.size).toBe(1);
   });
 
-  test("l'accord s'ouvre avec l'humeur du passage", () => {
+  test("l'humeur ne fait pas varier le nombre de couleurs", () => {
     const palette = scene.palette;
     const maxLongueur = (mood: "sombre" | "explosif") => {
       let max = 0;
@@ -1296,9 +1296,9 @@ describe("accords de couleurs", () => {
       }
       return max;
     };
-    // Même tirage, seule l'humeur change : un passage explosif déploie plus de
-    // teintes qu'un passage sombre, volontairement serré.
-    expect(maxLongueur("explosif")).toBeGreaterThan(maxLongueur("sombre"));
+    // Trois teintes maximum, quelle que soit l'humeur.
+    expect(maxLongueur("explosif")).toBeLessThanOrEqual(3);
+    expect(maxLongueur("sombre")).toBeLessThanOrEqual(3);
   });
 
   test("la teinte de contraste s'écarte de la dominante", () => {
@@ -1903,15 +1903,10 @@ describe("couleur", () => {
     return Math.abs(((b - a + 540) % 360) - 180);
   }
 
-  test("un impact change la lumiere sans sortir de la palette", () => {
+  test("une scène garde sa couleur du début à la fin", () => {
     const scene = buildShowPlan(analysis(), false).scenes[0]!;
-    const ecart = (a: number, b: number) => Math.abs(((b - a + 540) % 360) - 180);
-    // Impact et variation au maximum : le saut doit se voir…
     const hue = sceneHue(scene, 12, 1, 1, false);
-    expect(ecart(hue, scene.palette.hue)).toBeGreaterThan(10);
-    // …sans faire apparaître une troisième couleur étrangère au morceau. La
-    // borne couvre l'impact (32°), la respiration (14°) et la dérive lente.
-    expect(ecart(hue, scene.palette.hue)).toBeLessThan(55);
+    expect(hue).toBe(scene.palette.hue);
   });
 
   test("la dérive de teinte porte sur le temps du morceau, pas sur la scène", () => {
@@ -1934,17 +1929,15 @@ describe("couleur", () => {
     }
   });
 
-  test("sur toute la durée, la teinte ne quitte jamais le budget d'ancre", () => {
+  test("sur toute la durée, la teinte reste l'une des deux couleurs du morceau", () => {
     const data = analysis({ duration: 600 });
     const plan = buildShowPlan(data, false, 41);
     const view = new TrackView(data);
     for (let t = 0; t < 600; t += 0.5) {
       const scene =
         plan.scenes.find((candidate) => t >= candidate.start && t < candidate.end) ?? plan.scenes[plan.scenes.length - 1]!;
-      const anchor = sceneAnchor(scene, plan.track);
-      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false, anchor);
-      const budget = scene.palette.spread + HUE_BUDGET_MARGIN_DEG;
-      expect(hueGap(anchor, hue)).toBeLessThanOrEqual(budget);
+      const hue = sceneHue(scene, t, view.buildIntensity(t), 0, false);
+      expect([scene.palette.hue, scene.palette.accent]).toContain(hue);
     }
   });
 

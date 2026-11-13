@@ -2,6 +2,7 @@ import type { FamilyId } from "../show";
 import type { TrackView } from "../view";
 import { AMBIENT_FAMILIES } from "./ambient";
 import { CONCERT_FAMILIES } from "./concert-rig";
+import { CONCERT_LIGHT_FAMILIES } from "./concert-lights";
 import { FIGURE_FAMILIES } from "./figures";
 import { PROJECTOR_FAMILIES } from "./projectors";
 import { RIDEAU_FAMILIES } from "./rideaux";
@@ -17,6 +18,7 @@ export {
   blinderBordure,
   couleurBordure,
   dessinerBordure,
+  epaisseurBordure,
   intensiteBordure,
   motifBordure,
   moyenneBordure,
@@ -67,6 +69,7 @@ export const FAMILY_GROUPS = {
   formes: SHAPE_FAMILIES,
   figures: FIGURE_FAMILIES,
   concert: CONCERT_FAMILIES,
+  "concert-lumieres": CONCERT_LIGHT_FAMILIES,
 } as const;
 
 export const FAMILIES: Record<FamilyId, FamilyDraw> = {
@@ -76,6 +79,7 @@ export const FAMILIES: Record<FamilyId, FamilyDraw> = {
   ...FAMILY_GROUPS.formes,
   ...FAMILY_GROUPS.figures,
   ...FAMILY_GROUPS.concert,
+  ...FAMILY_GROUPS["concert-lumieres"],
 };
 
 export function drawFamily(

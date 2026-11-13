@@ -259,7 +259,8 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const lamps = count(16, f.quality, f.reduced);
   const length = Math.hypot(w, h) * 1.35;
   const sweep = 0.26;
-  const alpha = (0.13 + 0.12 * f.energy + 0.04 * f.beat) * f.alpha;
+  const alpha =
+    (0.13 + 0.12 * f.energy + 0.04 * f.beat) * f.alpha * (f.dynamic === true ? 0.6 : 1);
 
   for (let i = 0; i < lamps; i += 1) {
     const origin = spotOrigin(i * 3 + 1, w, h, f.seed + 17);
@@ -285,7 +286,7 @@ export function drawWash(ctx: CanvasRenderingContext2D, f: FrameState): void {
       width: Math.tan(aperture) * range,
       hue,
       saturation: 0.85,
-      lightness: 0.74,
+      lightness: f.dynamic === true ? 0.6 : 0.74,
       alpha,
       // Le wash couvre tout l'écran : ses seize faisceaux sont larges, donc tous
       // déposés dans la surface de fumée et floutés en une seule passe. C'est

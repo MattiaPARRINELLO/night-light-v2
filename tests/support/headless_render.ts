@@ -20,6 +20,10 @@ export interface RenderSetup {
   analysis: unknown;
   /** Rendu d'un plan réduit. */
   reduced?: boolean;
+  /** Profil forcé, pour inspecter le mode concert. */
+  hard?: "auto" | "dynamic" | "on" | "off";
+  /** Force toutes les scènes sur une famille, pour l'inspection visuelle. */
+  family?: string;
   width: number;
   height: number;
   dpr: number;

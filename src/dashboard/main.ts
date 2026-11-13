@@ -313,6 +313,8 @@ class Dashboard {
   private readonly chart: TrackChart;
   /** Profil hard réellement actif ou forcé, pour le bouton rapide du header. */
   private hardActive = false;
+  /** Profil concert réellement actif ou forcé, pour son bouton rapide. */
+  private dynamicActive = false;
 
   constructor() {
     // Le tracé a sa propre boucle d'animation : la position lissée qu'il produit
@@ -699,6 +701,7 @@ class Dashboard {
     const hardMode = el<HTMLSelectElement>("hard-mode");
     if (document.activeElement !== hardMode) hardMode.value = state.settings.hard ?? "auto";
     this.syncHardToggle(state);
+    this.syncDynamicToggle(state);
     this.syncBlackout(state);
 
     // canvases
@@ -1055,7 +1058,39 @@ class Dashboard {
     const patch: Partial<ShowState["settings"]> = { hard: this.hardActive ? "off" : "on" };
     this.send({ type: "set-settings", patch });
     this.hardActive = patch.hard === "on";
+    this.dynamicActive = false;
     this.paintHardToggle();
+    this.paintDynamicToggle();
+  }
+
+  /** Reflète l'état réel du profil concert dans son bouton du header. */
+  private syncDynamicToggle(state: ShowState): void {
+    this.dynamicActive = state.profile === "dynamic" || state.settings.hard === "dynamic";
+    this.paintDynamicToggle();
+  }
+
+  private paintDynamicToggle(): void {
+    const button = el<HTMLButtonElement>("dynamic-toggle");
+    button.classList.toggle("is-on", this.dynamicActive);
+    button.setAttribute("aria-pressed", String(this.dynamicActive));
+    el<HTMLElement>("dynamic-toggle-label").textContent = this.dynamicActive
+      ? "Concert on"
+      : "Concert off";
+    button.title = this.dynamicActive
+      ? "Mode concert actif, touche C pour couper"
+      : "Mode concert inactif, touche C pour forcer";
+  }
+
+  /** Bascule rapide concert on/off. Rave et concert sont exclusifs. */
+  private toggleDynamic(): void {
+    const patch: Partial<ShowState["settings"]> = {
+      hard: this.dynamicActive ? "off" : "dynamic",
+    };
+    this.send({ type: "set-settings", patch });
+    this.dynamicActive = patch.hard === "dynamic";
+    this.hardActive = false;
+    this.paintHardToggle();
+    this.paintDynamicToggle();
   }
 
   /** Reflète le blackout dans le bouton du header. */
@@ -1098,6 +1133,7 @@ class Dashboard {
     const latency = el<HTMLInputElement>("latency");
 
     el<HTMLButtonElement>("hard-toggle").addEventListener("click", () => this.toggleHard());
+    el<HTMLButtonElement>("dynamic-toggle").addEventListener("click", () => this.toggleDynamic());
     el<HTMLButtonElement>("blackout-toggle").addEventListener("click", () => this.toggleBlackout());
     window.addEventListener("keydown", (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1114,6 +1150,10 @@ class Dashboard {
       if (key === "h") {
         event.preventDefault();
         this.toggleHard();
+      }
+      if (key === "c") {
+        event.preventDefault();
+        this.toggleDynamic();
       }
       if (key === "b") {
         event.preventDefault();

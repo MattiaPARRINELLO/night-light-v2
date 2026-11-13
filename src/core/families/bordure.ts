@@ -24,6 +24,16 @@ export const NOMBRE_DIODES_BORDURE = 240;
  * Quasi nul : le ruban est collé au bord, seul son halo déborde hors cadre.
  */
 const MARGE_BORDURE = 0.003;
+/**
+ * Retrait du ruban en mode concert.
+ *
+ * Le tube est bien plus épais : il faut l'éloigner du bord pour que toute son
+ * épaisseur reste visible dans le cadre.
+ */
+const MARGE_BORDURE_CONCERT = 0.02;
+/** Épaisseur relative du tube, en fraction du petit côté. */
+const TUBE_BORDURE = 0.011;
+const TUBE_BORDURE_CONCERT = 0.026;
 
 export type MotifBordure =
   | "rail"
@@ -69,8 +79,13 @@ function modulo(value: number, total: number): number {
  * (`index ± 0,55`) : ils se raccordent exactement, y compris dans les coins où
  * le sens change. Un tronçon centré sur sa diode laissait un trou à chaque angle.
  */
-function pointBordure(position: number, largeur: number, hauteur: number): DiodeBordure {
-  const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
+function pointBordure(
+  position: number,
+  largeur: number,
+  hauteur: number,
+  margeRatio = MARGE_BORDURE,
+): DiodeBordure {
+  const marge = Math.min(largeur, hauteur) * margeRatio;
   const largeurUtile = Math.max(largeur - 2 * marge, 0);
   const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
   const perimetre = 2 * (largeurUtile + hauteurUtile);
@@ -114,8 +129,13 @@ function pointBordure(position: number, largeur: number, hauteur: number): Diode
  * est calculée sur le petit côté : en portrait comme en paysage, la bordure
  * reste entièrement dans le cadre.
  */
-export function positionBordure(index: number, largeur: number, hauteur: number): DiodeBordure {
-  return pointBordure(index, largeur, hauteur);
+export function positionBordure(
+  index: number,
+  largeur: number,
+  hauteur: number,
+  margeRatio = MARGE_BORDURE,
+): DiodeBordure {
+  return pointBordure(index, largeur, hauteur, margeRatio);
 }
 
 /**
@@ -134,9 +154,12 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   // Un drop n'est pas un mur de lumière continu : les blocs alternent entre
   // plein et des motifs qui laissent le ruban s'éteindre par endroits.
   if (f.scene.role === "drop") {
-    // Le profil hard réserve une part plus large au strobe : sur ce répertoire,
-    // l'impact doit claquer au lieu de dérouler un motif.
+    // Le profil hard réserve une part large au strobe : sur ce répertoire,
+    // l'impact doit claquer au lieu de dérouler un motif. Le profil concert en
+    // garde une part plus discrète : un bloc de temps en temps, pas toutes les
+    // mesures.
     if (f.hard && tirage < 0.18) return "strobe";
+    if (f.dynamic === true && tirage < 0.08) return "strobe";
     // Le strobe « fort et sale » est réservé aux gros drops : une montée qui
     // n'a pas assez de force ne le déclenche jamais.
     const grosDrop = clamp01(f.buildStrength) >= 0.8;
@@ -153,6 +176,9 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return grosDrop ? "strobe" : "plein";
   }
   if (f.scene.role === "refrain") {
+    // En concert, le refrain peut lui aussi partir en strobe par blocs, mais
+    // rarement.
+    if (f.dynamic === true && tirage < 0.05) return "strobe";
     if (tirage < 0.16) return "chenillard";
     if (tirage < 0.3) return "comete";
     if (tirage < 0.42) return "alternance";
@@ -165,6 +191,7 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
     return "vumetre";
   }
   if (f.scene.role === "montee") {
+    if (f.dynamic === true && tirage < 0.03) return "strobe";
     if (tirage < 0.26) return "haut";
     if (tirage < 0.46) return "chenillard";
     if (tirage < 0.62) return "progression";
@@ -174,6 +201,8 @@ function motifPourBloc(f: FrameState, bloc: number): MotifBordure {
   }
   if (f.scene.role === "intro") return tirage < 0.45 ? "rail" : tirage < 0.75 ? "respiration" : "progression";
   if (f.hard && tirage > 0.92) return "strobe";
+  // Concert : environ un bloc sur trente sur les couplets et passages neutres.
+  if (f.dynamic === true && tirage > 0.97) return "strobe";
   if (tirage < 0.2) return "rail";
   if (tirage < 0.36) return "cote";
   if (tirage < 0.5) return "respiration";
@@ -218,7 +247,12 @@ export function poidsMotif(
   motif: MotifBordure = motifBordure(f, view),
   budgetFlash = 1,
 ): number {
-  const diode = positionBordure(index, f.width, f.height);
+  const diode = positionBordure(
+    index,
+    f.width,
+    f.height,
+    f.dynamic === true ? MARGE_BORDURE_CONCERT : MARGE_BORDURE,
+  );
   const temps = tempsTempsFort(f, view);
   const marge = Math.min(f.width, f.height) * MARGE_BORDURE;
   const largeurUtile = Math.max(f.width - 2 * marge, 1);
@@ -319,9 +353,10 @@ export function poidsMotif(
       return avecVeilleuse(eclat * clamp01(f.high));
     }
     case "strobe": {
-      // Strobe rapide, dosé par le budget de flashs. En mode réduit, le motif
-      // n'est jamais choisi.
-      const allumage = modulo(temps * 8, 1) < 0.5 ? 1 : 0;
+      // Strobe dosé par le budget de flashs. Le hard claque vite ; le concert
+      // bat deux fois moins vite pour rester lisible sur le pourtour.
+      const cadence = f.dynamic === true && f.hard !== true ? 4 : 8;
+      const allumage = modulo(temps * cadence, 1) < 0.5 ? 1 : 0;
       return avecVeilleuse(allumage * clamp01(budgetFlash));
     }
     case "plein":
@@ -492,8 +527,9 @@ function tracerTroncon(
   versIndex: number,
   largeur: number,
   hauteur: number,
+  margeRatio = MARGE_BORDURE,
 ): void {
-  const marge = Math.min(largeur, hauteur) * MARGE_BORDURE;
+  const marge = Math.min(largeur, hauteur) * margeRatio;
   const largeurUtile = Math.max(largeur - 2 * marge, 0);
   const hauteurUtile = Math.max(hauteur - 2 * marge, 0);
   const perimetre = 2 * (largeurUtile + hauteurUtile);
@@ -506,17 +542,27 @@ function tracerTroncon(
     NOMBRE_DIODES_BORDURE,
   ];
 
-  const debut = pointBordure(deIndex, largeur, hauteur);
+  const debut = pointBordure(deIndex, largeur, hauteur, margeRatio);
   ctx.beginPath();
   ctx.moveTo(debut.x, debut.y);
   for (const coin of coins) {
     if (coin <= deIndex || coin >= versIndex) continue;
-    const point = pointBordure(coin, largeur, hauteur);
+    const point = pointBordure(coin, largeur, hauteur, margeRatio);
     ctx.lineTo(point.x, point.y);
   }
-  const fin = pointBordure(versIndex, largeur, hauteur);
+  const fin = pointBordure(versIndex, largeur, hauteur, margeRatio);
   ctx.lineTo(fin.x, fin.y);
   ctx.stroke();
+}
+
+/** Épaisseur du tube de bordure pour une image. */
+export function epaisseurBordure(f: FrameState): number {
+  const petitCote = Math.min(f.width, f.height);
+  const concert = f.dynamic === true;
+  return Math.max(
+    concert ? 12 : 5.5,
+    petitCote * (concert ? TUBE_BORDURE_CONCERT : TUBE_BORDURE),
+  );
 }
 
 /**
@@ -534,8 +580,9 @@ export function dessinerBordure(
   budgetFlash = 1,
 ): void {
   const { width: w, height: h } = f;
-  const marge = Math.min(w, h) * MARGE_BORDURE;
-  const petitCote = Math.min(w, h);
+  const concert = f.dynamic === true;
+  const margeRatio = concert ? MARGE_BORDURE_CONCERT : MARGE_BORDURE;
+  const marge = Math.min(w, h) * margeRatio;
   const energie = clamp01(f.energy);
   const fil = teinteBordure(f, view, 0, budgetFlash);
 
@@ -549,7 +596,49 @@ export function dessinerBordure(
     ctx.stroke();
   };
 
-  const tube = Math.max(5.5, petitCote * 0.011);
+  const tube = epaisseurBordure(f);
+
+  if (concert) {
+    // Barre LED de concert : une bande continue et épaisse, avec un halo
+    // extérieur, un corps saturé et un cœur clair. Les motifs restent lisibles
+    // par variations de lumière internes, sans grosses diodes rondes.
+    const intensiteMoyenne = moyenneBordure(f, view);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation * 0.9,
+      0.52,
+      (0.06 + 0.09 * energie) * (0.4 + 0.6 * intensiteMoyenne),
+    );
+    ctx.lineWidth = tube * 2.6;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.56, 0.1 + 0.12 * energie);
+    ctx.lineWidth = tube;
+    traceRuban();
+
+    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.76, 0.06 + 0.08 * energie);
+    ctx.lineWidth = Math.max(1.2, tube * 0.18);
+    traceRuban();
+
+    // Le motif éclaire l'intérieur du tube, à épaisseur constante.
+    for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
+      const intensite = intensiteBordure(f, view, index, budgetFlash);
+      const couleur = teinteBordure(f, view, index, budgetFlash);
+      const variation = 0.94 + 0.12 * hash01(index * 97 + f.seed);
+      ctx.strokeStyle = paint(
+        couleur.hue,
+        couleur.saturation,
+        0.66,
+        clamp01(0.04 + 0.52 * intensite) * variation,
+      );
+      ctx.lineWidth = tube * 0.86;
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
+    }
+    return;
+  }
 
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
@@ -563,7 +652,7 @@ export function dessinerBordure(
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
     const intensite = intensiteBordure(f, view, index, budgetFlash);
-    const { x, y } = positionBordure(index, w, h);
+    const { x, y } = positionBordure(index, w, h, margeRatio);
     const couleur = teinteBordure(f, view, index, budgetFlash);
     // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
@@ -573,7 +662,7 @@ export function dessinerBordure(
     if (intensite > 0.12) {
       ctx.strokeStyle = paint(couleur.hue, couleur.saturation * 0.7, 0.55, 0.12 * intensite);
       ctx.lineWidth = tube * (1.9 + 0.9 * intensite);
-      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h);
+      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
     }
 
     // Corps : c'est lui qui porte le contraste allumé/éteint.

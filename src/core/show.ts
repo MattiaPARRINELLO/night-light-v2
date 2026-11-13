@@ -37,7 +37,29 @@ export type FamilyId =
   | "pont-concert"
   | "lyres-poursuite"
   | "lyres-duo"
-  | "lyres-eventail";
+  | "lyres-eventail"
+  // Lyres cinématiques du mode concert : plusieurs étages de têtes, pour
+  // remplir la scène sans lasers ni artifices de rave.
+  | "lyres-cathedrale"
+  | "lyres-orbitale"
+  | "lyres-rideau"
+  | "lyres-aurore"
+  | "lyres-helice"
+  | "lyres-tunnel"
+  | "lyres-diagonale"
+  | "lyres-respiration"
+  | "lyres-zigzag"
+  | "lyres-cascade"
+  | "lyres-colisee"
+  | "lyres-arena"
+  // Autres lumières de scène du mode concert : PAR wash, découpes, tours,
+  // rampe, barres de projecteurs et poursuites croisées.
+  | "par-wash"
+  | "decoupes"
+  | "tours-lumiere"
+  | "rampe-facade"
+  | "barres-projecteurs"
+  | "poursuites-croisees";
 
 /**
  * Rôle d'une scène dans la dramaturgie du concert.
@@ -143,12 +165,15 @@ export type Mood = "calme" | "pulse" | "explosif" | "aerien" | "sombre";
  * Profil esthétique d'un morceau, décidé une fois pour tout le plan.
  *
  * `standard` garde l'identité historique : palettes franches, familles
- * mélangées, respiration entre les scènes. `hard` réserve un vocabulaire plus
- * sombre et plus tranchant aux morceaux de rap agressif (trap, phonk, type
- * « PTSD ») : palette rouge/glacée, familles de stroboscope, coupes plus
- * courtes. Le profil ne remplace pas l'humeur de scène : il colore tout le plan.
+ * mélangées, respiration entre les scènes. `dynamic` est le profil concert :
+ * la scène reste presque toujours occupée par les lyres et les projecteurs,
+ * avec des strobes plus faciles à déclencher et une énergie générale plus
+ * haute, sans la noirceur du hard. `hard` réserve un vocabulaire plus sombre et
+ * plus tranchant aux morceaux de rap agressif (trap, phonk, type « PTSD ») :
+ * palette rouge/glacée, familles de stroboscope, coupes plus courtes. Le profil
+ * ne remplace pas l'humeur de scène : il colore tout le plan.
  */
-export type ShowProfile = "standard" | "hard";
+export type ShowProfile = "standard" | "dynamic" | "hard";
 
 export interface Palette {
   name: string;
@@ -166,13 +191,15 @@ export interface Palette {
   saturation: number;
   /** Luminosité, 0..1. */
   lightness: number;
+  /** Troisième couleur du morceau, quand la palette en compte trois. */
+  tertiary?: number;
 }
 
 export interface ShowPlan {
   duration: number;
   seed: number;
   scenes: Scene[];
-  /** Profil esthétique du morceau : standard ou hard. */
+  /** Profil esthétique du morceau : standard, concert dynamique ou hard. */
   profile: ShowProfile;
   /** Fenêtre analysée disponible ; absente pour une analyse complète. */
   coverage?: [number, number];
@@ -191,12 +218,14 @@ export interface ShowPlan {
   backdrop: FamilyId;
 }
 
-/** Palette d'un morceau : une teinte, sa complémentaire, et leur écart. */
+/** Palette d'un morceau : une à trois couleurs, tenues du début à la fin. */
 export interface TrackPalette {
   name: string;
   hue: number;
   accent: number;
   spread: number;
+  /** Toutes les couleurs du morceau, dans l'ordre : 1, 2 ou 3 teintes. */
+  colors?: number[];
 }
 
 export const FAMILY_LABELS: Record<FamilyId, string> = {
@@ -232,6 +261,24 @@ export const FAMILY_LABELS: Record<FamilyId, string> = {
   "lyres-poursuite": "lyres en poursuite",
   "lyres-duo": "lyres et barres en duo",
   "lyres-eventail": "éventail de lyres",
+  "lyres-cathedrale": "cathédrale de lyres",
+  "lyres-orbitale": "lyres orbitales",
+  "lyres-rideau": "rideau de lyres",
+  "lyres-aurore": "aurore de lyres",
+  "lyres-helice": "hélice de lyres",
+  "lyres-tunnel": "tunnel de lyres",
+  "lyres-diagonale": "balayage diagonal",
+  "lyres-respiration": "respiration de lyres",
+  "lyres-zigzag": "zigzag de lyres",
+  "lyres-cascade": "cascade de lyres",
+  "lyres-colisee": "colisée de lyres",
+  "lyres-arena": "arène de lyres",
+  "par-wash": "PAR wash",
+  decoupes: "découpes",
+  "tours-lumiere": "tours lumière",
+  "rampe-facade": "rampe de façade",
+  "barres-projecteurs": "barres de projecteurs",
+  "poursuites-croisees": "poursuites croisées",
 };
 
 export const MOOD_LABELS: Record<Mood, string> = {
@@ -274,6 +321,10 @@ export const RHYTHMIC_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
 ];
 export const ENERGETIC_FAMILIES: FamilyId[] = [
   "beams",
@@ -304,6 +355,10 @@ export const ENERGETIC_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
 ];
 /** Familles du plateau de concert (impact, refrain, montée). */
 export const CONCERT_FAMILIES: FamilyId[] = [
@@ -313,6 +368,24 @@ export const CONCERT_FAMILIES: FamilyId[] = [
   "lyres-poursuite",
   "lyres-duo",
   "lyres-eventail",
+  "lyres-cathedrale",
+  "lyres-orbitale",
+  "lyres-rideau",
+  "lyres-aurore",
+  "lyres-helice",
+  "lyres-tunnel",
+  "lyres-diagonale",
+  "lyres-respiration",
+  "lyres-zigzag",
+  "lyres-cascade",
+  "lyres-colisee",
+  "lyres-arena",
+  "par-wash",
+  "decoupes",
+  "tours-lumiere",
+  "rampe-facade",
+  "barres-projecteurs",
+  "poursuites-croisees",
 ];
 /** Familles de la branche « brillance » : passages clairs dans le spectre. */
 export const BRIGHT_FAMILIES: FamilyId[] = [
@@ -362,6 +435,16 @@ export const HARD_FAMILIES: FamilyId[] = [
 export const HARD_BACKDROPS: FamilyId[] = ["grid", "tunnel", "waves"];
 
 /**
+ * Réservoir du profil concert dynamique.
+ *
+ * Uniquement le plateau de lyres et ses variantes cinématiques : lyres
+ * suspendues, barres LED, pont, poursuite, duo, éventail, cathédrale, orbitales,
+ * rideau et aurore. Aucun laser, confetti, CO2 ni nappe calme : le concert est
+ * une accumulation de têtes mobiles, pas une rave.
+ */
+export const DYNAMIC_FAMILIES: FamilyId[] = [...CONCERT_FAMILIES];
+
+/**
  * Branche de l'arbre de décision de `familyFor`.
  *
  * Le nom de la branche est une donnée d'instrumentation : il est exporté pour
@@ -375,6 +458,7 @@ export const FAMILY_BRANCHES = [
   "montee",
   "drop",
   "calme",
+  "concert",
   "hard",
   "brillance",
   "densite",
@@ -397,6 +481,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
   montee: ["barres-led"],
   drop: CONCERT_FAMILIES,
   calme: CALM_FAMILIES,
+  concert: DYNAMIC_FAMILIES,
   hard: HARD_FAMILIES,
   brillance: BRIGHT_FAMILIES,
   densite: RHYTHMIC_FAMILIES,
@@ -409,9 +494,7 @@ export const FAMILY_BRANCH_RESERVOIRS: Record<FamilyBranch, readonly FamilyId[]>
  *
  * Le spectacle éclaire une salle de soirée, pas un musée : les teintes sont
  * franches et saturées, et chaque morceau garde la même identité d'un bout à
- * l'autre (voir `buildShowPlan`). La complémentaire sert aux sources
- * secondaires, pour qu'un faisceau sur deux parte dans l'autre couleur sans
- * jamais jurer avec l'ensemble.
+ * l'autre (voir `buildShowPlan`).
  */
 const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
   { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
@@ -425,18 +508,47 @@ const TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread:
 ];
 
 /**
- * Palettes du profil hard.
+ * Teintes d'accent disponibles, indépendantes de la teinte principale.
  *
- * Deux pôles très écartés (rouge/glace, violet/acide, braise/cyan) et un spread
- * plus serré que les palettes standard : la couleur reste lisible sur un fond
- * noir, et le contraste porte l'agressivité sans multiplier les teintes.
+ * L'accent n'est pas figé par la palette du morceau : deux morceaux qui
+ * partagent la même dominante peuvent recevoir une secondaire très différente.
+ * L'accent reste écarté de la dominante pour rester lisible.
  */
-const HARD_TRACK_PALETTES: Array<{ name: string; hue: number; accent: number; spread: number }> = [
-  { name: "sang-glace", hue: 352, accent: 186, spread: 54 },
-  { name: "violet-acide", hue: 284, accent: 90, spread: 58 },
-  { name: "braise-nuit", hue: 14, accent: 196, spread: 52 },
-  { name: "magenta-arc", hue: 324, accent: 172, spread: 56 },
-];
+const ACCENT_HUES = [8, 26, 52, 90, 140, 172, 196, 222, 268, 300, 336, 352];
+
+function hueGap(a: number, b: number): number {
+  return Math.abs((((a - b + 540) % 360) - 180));
+}
+
+/** Accent du morceau, choisi à partir de la graine et écarté de la dominante. */
+function pickTrackAccent(hue: number, seed: number): number {
+  const candidats = ACCENT_HUES.filter((accent) => hueGap(accent, hue) >= 55);
+  const pool = candidats.length > 0 ? candidats : ACCENT_HUES;
+  return pool[Math.floor(hash01(seed * 29 + 17) * pool.length)] ?? (hue + 140) % 360;
+}
+
+/** Troisième teinte, écartée des deux premières. */
+function pickTrackTertiary(hue: number, accent: number, seed: number): number {
+  const candidats = ACCENT_HUES.filter(
+    (candidate) => hueGap(candidate, hue) >= 55 && hueGap(candidate, accent) >= 30,
+  );
+  const pool = candidats.length > 0 ? candidats : ACCENT_HUES;
+  return pool[Math.floor(hash01(seed * 53 + 7) * pool.length)] ?? (accent + 120) % 360;
+}
+
+/**
+ * Couleurs du morceau : une, deux ou trois teintes, tirées de la graine.
+ *
+ * Le tirage ne dépend que du morceau (durée, tempo, nombre de temps), donc deux
+ * lectures donnent exactement la même palette, quel que soit le profil choisi.
+ */
+function pickTrackColors(hue: number, seed: number): number[] {
+  const count = 1 + Math.floor(hash01(seed * 71 + 13) * 3);
+  const accent = pickTrackAccent(hue, seed);
+  if (count <= 1) return [hue];
+  if (count === 2) return [hue, accent];
+  return [hue, accent, pickTrackTertiary(hue, accent, seed)];
+}
 
 /** Teintes de scènes voisines jamais à moins de `MIN_HUE_STEP` degrés. */
 const MIN_HUE_STEP = 34;
@@ -544,9 +656,10 @@ export function detectShowProfile(analysis: Analysis): ShowProfile {
     : "standard";
 }
 
-/** Résout le profil selon le réglage utilisateur : auto, forcé ou désactivé. */
+/** Résout le profil selon le réglage utilisateur : auto, concert, forcé ou désactivé. */
 export function resolveShowProfile(analysis: Analysis, mode: HardMode = "auto"): ShowProfile {
   if (mode === "on") return "hard";
+  if (mode === "dynamic") return "dynamic";
   if (mode === "off") return "standard";
   return detectShowProfile(analysis);
 }
@@ -742,6 +855,7 @@ export function familyBranchFor(
   concertDrop = false,
   calm?: boolean,
   hard = false,
+  dynamic = false,
 ): FamilyBranch {
   const { energy, density, brightness } = caractere;
   if (reduced) {
@@ -749,6 +863,7 @@ export function familyBranchFor(
     if (density < REDUCED_DENSITY_THRESHOLD) return "reduit-calme";
     return "reduit-rythmique";
   }
+  if (dynamic) return "concert";
   if (concertDrop) return "drop";
   // Orchestration par rôle : un refrain alterne lyres et barres LED, une
   // montée déploie franchement la vague des barres.
@@ -785,8 +900,9 @@ export function familyFor(
   calm?: boolean,
   used?: ReadonlyMap<FamilyId, number>,
   hard = false,
+  dynamic = false,
 ): FamilyId {
-  const branch = familyBranchFor(caractere, reduced, role, false, calm, hard);
+  const branch = familyBranchFor(caractere, reduced, role, false, calm, hard, dynamic);
   if (branch === "refrain") {
     return pickFamily(FAMILY_BRANCH_RESERVOIRS.refrain, seed, turn, excluded, used);
   }
@@ -862,8 +978,9 @@ function signatureKey(signature: DropSignature): string {
  * forts sont franchement saturés, les passages calmes se permettent une couleur
  * plus retenue (mais jamais grise — c'est une soirée, pas un aquarium).
  */
-function paletteSaturation(mood: Mood, hard = false): number {
+function paletteSaturation(mood: Mood, hard = false, dynamic = false): number {
   if (hard && mood !== "calme" && mood !== "sombre") return 1;
+  if (dynamic && mood !== "calme" && mood !== "sombre") return 0.98;
   if (mood === "sombre") return 0.55;
   // Calme lumineux : une salle éclairée en pastel, pas un aquarium gris. La
   // saturation baisse (pastel) mais la lumière reste franche.
@@ -879,7 +996,7 @@ function paletteSaturation(mood: Mood, hard = false): number {
  * qui « allume la salle » — et les passages calmes s'éclairent par le voile de
  * scène (`calmGlow`), sans jamais devenir un plein blanc.
  */
-function paletteLightness(mood: Mood, hard = false): number {
+function paletteLightness(mood: Mood, hard = false, dynamic = false): number {
   if (mood === "sombre") return 0.38;
   if (mood === "calme") return 0.58;
   if (mood === "aerien") return 0.62;
@@ -888,6 +1005,10 @@ function paletteLightness(mood: Mood, hard = false): number {
   // sa chroma au lieu de virer au blanc.
   if (hard && mood === "explosif") return 0.64;
   if (hard && mood === "pulse") return 0.58;
+  // Profil concert : plus lumineux qu'un fond noir, mais assez bas pour que la
+  // couleur reste saturée sur les faisceaux au lieu de virer au blanc.
+  if (dynamic && mood === "explosif") return 0.56;
+  if (dynamic && mood === "pulse") return 0.54;
   if (mood === "explosif") return 0.76;
   if (mood === "pulse") return 0.68;
   return 0.6;
@@ -1273,62 +1394,6 @@ function hueDelta(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
 }
 
-/** Ramène une teinte dans la fenêtre ±spread de son ancre. */
-function clampToAnchor(hue: number, anchor: number, spread: number): number {
-  const delta = hueDelta(anchor, hue);
-  const borne = Math.max(0, Math.min(spread, Math.abs(delta)));
-  return (anchor + (delta >= 0 ? borne : -borne) + 360) % 360;
-}
-
-/**
- * Choisit une teinte qui respecte à la fois le budget de l'ancre et l'écart
- * minimal avec la scène précédente.
- *
- * L'ordre est celui du contrat : l'écart gagne sur le clamp. Si décaler la
- * teinte dans la fenêtre de l'ancre préféré ne suffit pas, on bascule sur
- * l'autre pôle du morceau (ancre ↔ complémentaire) plutôt que de réduire
- * l'écart.
- */
-function hueWithGap(
-  anchor: number,
-  otherAnchor: number,
-  derive: number,
-  previousHue: number,
-  spread: number,
-): { hue: number; anchor: number } {
-  const step = minHueStepEff(spread);
-  const candidate = (anchor + derive + 360) % 360;
-  if (Math.abs(hueDelta(previousHue, candidate)) >= step) {
-    return { hue: clampToAnchor(candidate, anchor, spread), anchor };
-  }
-
-  // Même ancre : on pousse la teinte du côté qui s'éloigne de la précédente.
-  const direction = hueDelta(previousHue, candidate) >= 0 ? 1 : -1;
-  const pushed = clampToAnchor((candidate + direction * step + 360) % 360, anchor, spread);
-  if (Math.abs(hueDelta(previousHue, pushed)) >= step) {
-    return { hue: pushed, anchor };
-  }
-
-  // L'écart gagne : on change d'ancre (l'autre pôle du morceau).
-  const switched = (otherAnchor + derive + 360) % 360;
-  const switchedDirection = hueDelta(previousHue, switched) >= 0 ? 1 : -1;
-  const switchedPushed = clampToAnchor(
-    (switched + switchedDirection * step + 360) % 360,
-    otherAnchor,
-    spread,
-  );
-  if (Math.abs(hueDelta(previousHue, switchedPushed)) >= step) {
-    return { hue: switchedPushed, anchor: otherAnchor };
-  }
-
-  // Repli mesuré : on garde la solution qui offre le plus grand écart réel.
-  const same = clampToAnchor(candidate, anchor, spread);
-  const other = clampToAnchor(switched, otherAnchor, spread);
-  return Math.abs(hueDelta(previousHue, same)) >= Math.abs(hueDelta(previousHue, other))
-    ? { hue: same, anchor }
-    : { hue: other, anchor: otherAnchor };
-}
-
 /** Options du plan de spectacle. */
 export interface ShowPlanOptions {
   /**
@@ -1342,8 +1407,8 @@ export interface ShowPlanOptions {
    */
   dramaturgy?: boolean;
   /**
-   * Profil hard : `auto` (détection sur le morceau), `on` (forcé) ou `off`.
-   * Par défaut `auto`.
+   * Profil : `auto` (détection sur le morceau), `dynamic` (concert, forcé),
+   * `on` (rave forcé) ou `off` (standard). Par défaut `auto`.
    */
   hard?: HardMode;
 }
@@ -1369,6 +1434,7 @@ export function buildShowPlan(
   // même quand le réglage force le profil hard.
   const profile = reduced ? "standard" : resolveShowProfile(analysis, options.hard ?? "auto");
   const hard = profile === "hard";
+  const dynamic = profile === "dynamic";
   const seed =
     seedOverride ??
     hashString(`${analysis.duration.toFixed(2)}|${analysis.tempo.toFixed(3)}|${analysis.beats.length}`);
@@ -1378,18 +1444,26 @@ export function buildShowPlan(
   const measureSec = Math.max(1, (analysis.meter ?? 4) * beatPeriod);
   const events = sceneBoundaries(analysis);
   // Identité du morceau : tirée du morceau lui-même, donc stable d'une lecture à
-  // l'autre, et tenue du premier au dernier plan.
-  const palettes = hard ? HARD_TRACK_PALETTES : TRACK_PALETTES;
-  const track = palettes[Math.floor(hash01(seed * 13 + 5) * palettes.length)] ?? palettes[0]!;
+  // l'autre, et tenue du premier au dernier plan. Le profil ne change jamais la
+  // palette : un même morceau garde ses couleurs en standard, concert ou rave.
+  const baseTrack =
+    TRACK_PALETTES[Math.floor(hash01(seed * 13 + 5) * TRACK_PALETTES.length)] ??
+    TRACK_PALETTES[0]!;
+  const colors = pickTrackColors(baseTrack.hue, seed);
+  const track = {
+    ...baseTrack,
+    accent: colors[1] ?? colors[0]!,
+    colors,
+  };
   // Couche de fond commune à toutes les scènes : c'est l'élément qui reste à
   // l'écran quand tout le reste change, et qui fait qu'un changement de scène se
   // remarque à peine. Choisie une fois, tenue du début à la fin.
   // Un fond fait partie de l'écran du début à la fin : s'il anime une figure
   // centrée et pulsée (les anneaux), elle tourne en boucle pendant tout le
   // morceau et finit par gêner. Le fond se prend donc parmi les familles
-  // calmes qui n'imposent pas cet effet de cercle permanent. Le profil hard
-  // garde ses propres fonds, déjà compatibles avec ses scènes dures.
-  const backdropFamilies = hard
+  // calmes qui n'imposent pas cet effet de cercle permanent. Les profils hard et
+  // concert gardent leurs propres fonds, déjà compatibles avec leurs scènes.
+  const backdropFamilies = hard || dynamic
     ? HARD_BACKDROPS
     : CALM_FAMILIES.filter((family) => family !== "rings");
   const fond = backdropFamilies[Math.floor(hash01(seed * 31 + 7) * backdropFamilies.length)] ?? "waves";
@@ -1435,7 +1509,6 @@ export function buildShowPlan(
   );
 
   const scenes: Scene[] = [];
-  let previousHue = -999;
   // Mémoire par groupe de structure : deux sections du même matériau musical
   // (deux refrains, deux couplets) doivent se ressembler. On fige donc leur
   // famille et leur teinte à la première apparition et on les réutilise.
@@ -1470,12 +1543,14 @@ export function buildShowPlan(
     // groupe : c'est le moment où la scène doit se lire comme un vrai concert.
     // On ne mémorise pas cette famille dans le groupe, sinon tout le refrain
     // resterait un pont concert.
-    const forceConcert = !reduced && role === "drop";
+    const concertRole = !reduced && role === "drop";
+    const forceConcert =
+      concertRole || (!reduced && dynamic && (role === "refrain" || role === "montee"));
     // Force de la montée qui a produit ce drop (0 pour un drop hors build).
     const strength =
       event.reason === "build" || event.reason === "drop" ? clamp01(event.weight) : 0;
     let signature: DropSignature | undefined;
-    if (forceConcert) {
+    if (concertRole) {
       const rank = dropRank;
       signature = dropSignature(seed, rank, strength);
       // Deux drops ne partagent jamais leur signature dans un même plan : la
@@ -1496,11 +1571,12 @@ export function buildShowPlan(
     if (beforePreviousFamily !== undefined) excluded.push(beforePreviousFamily);
     if (forceConcert) {
       // Le plateau complet est réservé aux vrais impacts ; une montée plus
-      // douce alterne lyres suspendues et barres LED.
+      // douce alterne lyres suspendues et barres LED. En profil concert, les
+      // refrains et les montées déploient aussi le plateau.
       family =
-        strength >= 0.6
+        concertRole && strength >= 0.6
           ? "pont-concert"
-          : dropRank % 2 === 1
+          : (concertRole ? dropRank : turn) % 2 === 1
             ? "lyres-suspendues"
             : "barres-led";
     } else if (cachedFamily !== undefined) {
@@ -1520,6 +1596,7 @@ export function buildShowPlan(
             mood === "calme",
             familyUse,
             hard,
+            dynamic,
           )
         : familyFor(
             caractere,
@@ -1531,12 +1608,20 @@ export function buildShowPlan(
             mood === "calme",
             familyUse,
             hard,
+            dynamic,
           );
       if (grouped) groupFamilies.set(group, family);
     }
 
     const calm = CALM_FAMILIES.includes(family);
-    const pool = hard && !calm ? HARD_FAMILIES : calm ? ALL_FAMILIES : CALM_FAMILIES;
+    const pool =
+      hard && !calm
+        ? HARD_FAMILIES
+        : dynamic && !calm
+          ? DYNAMIC_FAMILIES
+          : calm
+            ? ALL_FAMILIES
+            : CALM_FAMILIES;
     const others = pool.filter((candidate) => candidate !== family);
     const variantCandidate =
       others[(turn + Math.floor(hash01(seed * 7 + turn) * others.length)) % others.length] ?? family;
@@ -1551,7 +1636,7 @@ export function buildShowPlan(
     // scène calme ne devient pas agitée pour autant.
     let principale = family;
     if (principale === fond) {
-      const memeClasse = (hard ? HARD_FAMILIES : CALM_FAMILIES).filter(
+      const memeClasse = (hard ? HARD_FAMILIES : dynamic ? DYNAMIC_FAMILIES : CALM_FAMILIES).filter(
         (candidate) => candidate !== fond,
       );
       const pickSeed = grouped ? hashString(`${seed}|${group}|fond`) : seed * 17 + turn;
@@ -1564,12 +1649,10 @@ export function buildShowPlan(
     previousFamily = principale;
     familyUse.set(principale, (familyUse.get(principale) ?? 0) + 1);
 
-    // Les moments forts basculent sur la complémentaire du morceau : c'est le
-    // saut de couleur qui marque un refrain, sans quitter l'identité du morceau.
-    const fort =
-      section?.kind === "refrain" ||
-      mood === "explosif" ||
-      (mood === "pulse" && caractere.energy > 0.6);
+    // La couleur secondaire reste un accent : elle est réservée aux vrais
+    // impacts et aux refrains identifiés. Le reste du morceau tient sa couleur
+    // principale, au lieu de changer de teinte à chaque scène énergique.
+    const fort = role === "drop" || section?.kind === "refrain";
     const ancre =
       signature?.hue === "contraste"
         ? fort
@@ -1578,22 +1661,22 @@ export function buildShowPlan(
         : fort
           ? track.accent
           : track.hue;
-    const derive = grouped
-      ? (hash01(hashString(`${seed}|${group}|hue`)) - 0.5) * track.spread
-      : (hash01(seed + turn * 977) - 0.5) * track.spread;
-    const autreAncre = ancre === track.hue ? track.accent : track.hue;
     let hue: number;
     const cachedHue = grouped ? groupHues.get(group) : undefined;
     if (cachedHue !== undefined) {
       // L'identité d'un groupe prime : deux refrains portent la même teinte.
       hue = cachedHue;
     } else {
-      // Le couple (écart minimal, budget d'ancre) est résolu ensemble : voir
-      // `hueWithGap`. L'écart gagne sur le clamp, quitte à changer d'ancre.
-      hue = hueWithGap(ancre, autreAncre, derive, previousHue, track.spread).hue;
+      // La couleur principale domine : on ne force plus une alternance à chaque
+      // scène. Seuls les impacts et refrains prennent la secondaire via `ancre`.
+      hue = ancre;
       if (grouped) groupHues.set(group, hue);
     }
-    previousHue = hue;
+    const compAccent =
+      track.colors?.find((candidate) => candidate !== hue) ?? (hue === track.hue ? track.accent : track.hue);
+    const tertiary = track.colors?.find(
+      (candidate) => candidate !== hue && candidate !== compAccent,
+    );
 
     scenes.push({
       index: turn,
@@ -1605,23 +1688,25 @@ export function buildShowPlan(
       palette: {
         name: track.name,
         hue,
-        accent: (track.accent + derive + 360) % 360,
+        accent: compAccent,
         spread: track.spread,
-        saturation: paletteSaturation(mood, hard),
-        lightness: paletteLightness(mood, hard),
+        saturation: paletteSaturation(mood, hard, dynamic),
+        lightness: paletteLightness(mood, hard, dynamic),
+        ...(tertiary !== undefined ? { tertiary } : {}),
       },
       intensity: clamp01(
-        moodIntensity(mood, caractere.energy) + (hard && mood !== "calme" ? 0.06 : 0),
+        moodIntensity(mood, caractere.energy) +
+          (hard && mood !== "calme" ? 0.06 : dynamic && mood !== "calme" ? 0.08 : 0),
       ),
       fadeIn:
         event.reason === "drop"
           ? 0.05
           : index === 0
-            ? hard ? 0.45 : 0.7
+            ? hard ? 0.45 : dynamic ? 0.6 : 0.7
             : event.weight >= 1
-              ? hard ? 0.5 : 1.2
-              : hard ? 0.35 : 0.7,
-      fadeOut: hard ? 0.45 : 0.9,
+              ? hard ? 0.5 : dynamic ? 0.9 : 1.2
+              : hard ? 0.35 : dynamic ? 0.55 : 0.7,
+      fadeOut: hard ? 0.45 : dynamic ? 0.7 : 0.9,
       mood,
       role,
       reason: event.reason,
@@ -1636,45 +1721,23 @@ export function buildShowPlan(
     });
   }
 
-  // Saut de teinte des reprises après un calme. On agit après la construction
-  // pour ne pas décaler la chaîne de teintes des scènes suivantes : seule la
-  // première scène qui suit le calme change. Le candidat reste dans le budget
-  // de l'une des deux ancres et maximise l'écart avec le calme ET avec la
-  // scène suivante (le contrat de couleur exige aussi un écart entre voisines).
+  // Saut de teinte des reprises après un calme. La scène qui suit le calme
+  // prend, parmi les une à trois couleurs du morceau, celle qui s'éloigne le
+  // plus du calme ; les autres deviennent ses couleurs secondaires.
   for (let index = 1; index < scenes.length; index += 1) {
     const scene = scenes[index];
     const previous = scenes[index - 1];
     if (scene === undefined || previous === undefined) continue;
     if (previous.mood !== "calme" || scene.mood === "calme") continue;
     const previousHue = previous.palette.hue;
-    const nextHue = scenes[index + 1]?.palette.hue ?? (previousHue + 180) % 360;
-    const candidates: number[] = [];
-    for (let degree = 0; degree < 360; degree += 1) {
-      const candidate = degree;
-      const inBudget = [track.hue, track.accent].some(
-        (anchor) => Math.abs(hueDelta(anchor, candidate)) <= track.spread + 1e-6,
-      );
-      if (inBudget) candidates.push(candidate);
-    }
-    // Priorité à l'écart ≥ 90° avec le calme ; ensuite on maximise l'écart
-    // avec la scène suivante pour respecter le contrat de couleur.
-    const farFromCalm = candidates.filter(
-      (candidate) => Math.abs(hueDelta(previousHue, candidate)) >= 90,
-    );
-    const pool = farFromCalm.length > 0 ? farFromCalm : candidates;
-    let best = scene.palette.hue;
-    let bestNext = -1;
-    let bestCalm = -1;
-    for (const candidate of pool) {
-      const fromCalm = Math.abs(hueDelta(previousHue, candidate));
-      const fromNext = Math.abs(hueDelta(candidate, nextHue));
-      if (fromNext > bestNext || (fromNext === bestNext && fromCalm > bestCalm)) {
-        bestNext = fromNext;
-        bestCalm = fromCalm;
-        best = candidate;
-      }
-    }
+    const colors = track.colors ?? [track.hue, track.accent];
+    const fromCalm = (hue: number) => Math.abs(hueDelta(previousHue, hue));
+    const best = [...colors].sort((a, b) => fromCalm(b) - fromCalm(a))[0] ?? track.hue;
+    const rest = colors.filter((candidate) => candidate !== best);
     scene.palette.hue = best;
+    scene.palette.accent = rest[0] ?? best;
+    if (rest[1] !== undefined) scene.palette.tertiary = rest[1];
+    else delete scene.palette.tertiary;
   }
 
   if (scenes.length === 0) {
@@ -1682,20 +1745,21 @@ export function buildShowPlan(
       index: 0,
       start: 0,
       end: duration,
-      family: hard && !reduced ? "shutters" : "beams",
-      variant: hard && !reduced ? "bars" : "tunnel",
+      family: hard && !reduced ? "shutters" : dynamic && !reduced ? "lyres-suspendues" : "beams",
+      variant: hard && !reduced ? "bars" : dynamic && !reduced ? "barres-led" : "tunnel",
       backdrop: fond,
       palette: {
         name: track.name,
         hue: track.hue,
         accent: track.accent,
         spread: track.spread,
-        saturation: hard ? 1 : 0.88,
-        lightness: hard ? 0.55 : 0.64,
+        saturation: hard ? 1 : dynamic ? 0.98 : 0.88,
+        lightness: hard ? 0.55 : dynamic ? 0.62 : 0.64,
+        ...(colors[2] !== undefined ? { tertiary: colors[2] } : {}),
       },
-      intensity: hard ? 0.7 : 0.6,
-      fadeIn: hard ? 0.45 : 0.7,
-      fadeOut: hard ? 0.45 : 0.9,
+      intensity: hard ? 0.7 : dynamic ? 0.74 : 0.6,
+      fadeIn: hard ? 0.45 : dynamic ? 0.6 : 0.7,
+      fadeOut: hard ? 0.45 : dynamic ? 0.7 : 0.9,
       mood: "pulse",
       role: "intro",
       reason: "ouverture",

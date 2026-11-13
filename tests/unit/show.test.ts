@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { barStarts, buildShowPlan, caractereAt, FAMILY_BRANCH_RESERVOIRS, FAMILY_LABELS, familyFor, minHueStepEff, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
+import { barStarts, buildShowPlan, caractereAt, FAMILY_BRANCH_RESERVOIRS, FAMILY_LABELS, familyFor, RHYTHMIC_FAMILIES, sceneAt, sceneCadence, sceneWeight, type FamilyId, type ShowPlan } from "../../src/core/show";
 import { hslToRgb, shiftHue, shorthand } from "../../src/core/color";
 import { flashAlpha } from "../../src/core/render";
 import type { FrameState } from "../../src/core/render";
@@ -53,16 +53,15 @@ describe("show plan", () => {
     );
   });
 
-  test("des teintes voisines restent éloignées (pas d'alternance agressive)", () => {
+  test("les couleurs restent dans la palette du morceau, la principale domine", () => {
     const plan = buildShowPlan(analysis(), false);
-    for (let index = 1; index < plan.scenes.length; index += 1) {
-      const previous = plan.scenes[index - 1];
-      const current = plan.scenes[index];
-      if (previous === undefined || current === undefined) continue;
-      let delta = Math.abs(current.palette.hue - previous.palette.hue) % 360;
-      if (delta > 180) delta = 360 - delta;
-      expect(delta).toBeGreaterThanOrEqual(30);
+    const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+    for (const scene of plan.scenes) {
+      expect(colors).toContain(scene.palette.hue);
     }
+    const principale = plan.scenes.filter((scene) => scene.palette.hue === plan.track.hue).length;
+    const secondaire = plan.scenes.length - principale;
+    expect(principale).toBeGreaterThanOrEqual(secondaire);
   });
 
   test("le mode réduit retire les familles agitées", () => {
@@ -399,23 +398,42 @@ describe("palette du morceau", () => {
     for (const scene of plan.scenes) expect(scene.palette.name).toBe(plan.track.name);
   });
 
-  test("chaque scene reste dans la teinte du morceau ou sa complementaire", () => {
+  test("la palette est déterministe et indépendante du profil", () => {
+    const data = analysis();
+    const tailles = new Set<number>();
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const standard = buildShowPlan(data, false, seed);
+      const concert = buildShowPlan(data, false, seed, { hard: "dynamic" });
+      const rave = buildShowPlan(data, false, seed, { hard: "on" });
+      const colors = standard.track.colors ?? [];
+      expect(concert.track.colors).toEqual(colors);
+      expect(rave.track.colors).toEqual(colors);
+      expect(buildShowPlan(data, false, seed).track.colors).toEqual(colors);
+      tailles.add(colors.length);
+    }
+    // Le tirage couvre les trois schémas : monochrome, duo et triade.
+    expect(tailles).toEqual(new Set([1, 2, 3]));
+  });
+
+  test("chaque scene reste dans la palette du morceau", () => {
     const plan = buildShowPlan(morceau(), false);
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
     for (const scene of plan.scenes) {
-      const presDeLaBase = ecart(scene.palette.hue, plan.track.hue) <= plan.track.spread;
-      const presDuComplement = ecart(scene.palette.hue, plan.track.accent) <= plan.track.spread;
-      expect(presDeLaBase || presDuComplement).toBe(true);
+      expect(colors).toContain(scene.palette.hue);
     }
   });
 
-  test("les moments forts basculent sur la complementaire", () => {
+  test("les moments forts jouent une couleur du morceau", () => {
     const plan = buildShowPlan(morceau(), false);
+    const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
     const forts = plan.scenes.filter((scene) => scene.mood === "explosif");
     expect(forts.length).toBeGreaterThan(0);
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     for (const scene of forts) {
-      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+      expect(colors).toContain(scene.palette.hue);
+    }
+    // La complémentaire reste la couleur des moments forts quand elle est libre.
+    if (colors.length > 1) {
+      expect(forts.some((scene) => scene.palette.hue === plan.track.accent)).toBe(true);
     }
   });
 
@@ -494,8 +512,12 @@ describe("diversite du spectacle", () => {
     const families = new Set(plan.scenes.map((scene) => scene.family));
     expect(families.size).toBeGreaterThanOrEqual(5);
 
-    const hueBuckets = new Set(plan.scenes.map((scene) => Math.floor(scene.palette.hue / 30)));
-    expect(hueBuckets.size).toBeGreaterThanOrEqual(4);
+    // Le morceau possède une à trois couleurs, même si les scènes changent.
+    const palette = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+    expect(palette.length).toBeGreaterThanOrEqual(1);
+    expect(palette.length).toBeLessThanOrEqual(3);
+    const hues = new Set(plan.scenes.map((scene) => scene.palette.hue));
+    expect(hues.size).toBeLessThanOrEqual(palette.length);
   });
 
   test("un long morceau exploite toutes les familles visuelles", () => {
@@ -521,10 +543,16 @@ describe("diversite du spectacle", () => {
     // l'atteignabilité se mesure donc sur plusieurs tirages, pas sur un seul.
     const dessinees = new Set<FamilyId>();
     for (let seed = 1; seed <= 20; seed += 1) {
-      for (const scene of buildShowPlan(long, false, seed).scenes) {
-        dessinees.add(scene.family);
-        dessinees.add(scene.variant);
-        dessinees.add(scene.backdrop);
+      const plans = [
+        buildShowPlan(long, false, seed),
+        buildShowPlan(long, false, seed, { hard: "dynamic" }),
+      ];
+      for (const plan of plans) {
+        for (const scene of plan.scenes) {
+          dessinees.add(scene.family);
+          dessinees.add(scene.variant);
+          dessinees.add(scene.backdrop);
+        }
       }
     }
     // Le compte vient des libellés : ajouter une famille sans la rendre
@@ -551,7 +579,6 @@ describe("diversite du spectacle", () => {
   });
 
   test("le contrat de couleur tient sur 6 morceaux × 400 graines", () => {
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     const morceaux = [58, 74, 96, 118, 142, 170].map((tempo, index) =>
       analysis({
         duration: 64 + index * 8,
@@ -565,28 +592,26 @@ describe("diversite du spectacle", () => {
         builds: index % 3 === 0 ? [{ start: 30, end: 34, strength: 0.8 }] : [],
       }),
     );
-    let paires = 0;
+    let scenes = 0;
     for (const morceau of morceaux) {
       for (let seed = 1; seed <= 400; seed += 1) {
         const plan = buildShowPlan(morceau, false, seed);
-        let precedent: number | undefined;
+        const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+        let principale = 0;
+        let secondaire = 0;
         for (const scene of plan.scenes) {
-          const presDeLaBase = ecart(scene.palette.hue, plan.track.hue);
-          const presDuComplement = ecart(scene.palette.hue, plan.track.accent);
-          // Toutes les teintes restent dans le budget de l'un des deux pôles.
-          expect(Math.min(presDeLaBase, presDuComplement)).toBeLessThanOrEqual(plan.track.spread + 1e-6);
-          if (precedent !== undefined) {
-            paires += 1;
-            expect(ecart(scene.palette.hue, precedent)).toBeGreaterThanOrEqual(
-              minHueStepEff(plan.track.spread) - 1e-6,
-            );
-          }
-          precedent = scene.palette.hue;
+          // Chaque scène joue exactement l'une des couleurs du morceau.
+          expect(colors).toContain(scene.palette.hue);
+          if (scene.palette.hue === plan.track.hue) principale += 1;
+          else secondaire += 1;
         }
+        // La principale domine : la secondaire reste un accent.
+        expect(principale).toBeGreaterThanOrEqual(secondaire);
+        scenes += plan.scenes.length;
       }
     }
     // 6 pistes × 400 graines, plusieurs scènes chacune.
-    expect(paires).toBeGreaterThan(13_200);
+    expect(scenes).toBeGreaterThan(10_000);
   });
 
   test("à 170 BPM en 3/4, les scènes restent dans la fenêtre 5–9 s", () => {
@@ -670,6 +695,10 @@ describe("diversite du spectacle", () => {
         sequences.add(suite.slice(start, start + 6).join(">"));
       }
       for (const family of suite) familles.add(family);
+      // Les familles de concert (lyres cinématiques) ne sortent qu'en profil
+      // dynamique : on les compte aussi pour vérifier leur atteignabilité.
+      const concert = buildShowPlan(data, false, seed, { hard: "dynamic" });
+      for (const scene of concert.scenes) familles.add(scene.family);
     }
     expect(sequences.size).toBeGreaterThanOrEqual(20);
     // Toutes les familles du réservoir général apparaissent : la couche de fond
@@ -696,7 +725,8 @@ describe("diversite du spectacle", () => {
       // La signature est complète sur chaque drop.
       for (const drop of drops) expect(drop.drop).toBeDefined();
       const signatures = drops.map(
-        (drop) => `${drop.family}|${drop.drop!.lyres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
+        (drop) =>
+          `${drop.family}|${drop.drop!.lyres}|${drop.drop!.barres}|${drop.drop!.blinders}|${drop.palette.hue.toFixed(3)}`,
       );
       expect(new Set(signatures).size).toBe(signatures.length);
       // Les impacts forts déploient le pont, les plus doux alternent lyres et
@@ -907,8 +937,11 @@ describe("répétition des passages (couplet / refrain)", () => {
     // … et un refrain aussi.
     expect(new Set(refrains.map((scene) => scene.family)).size).toBe(1);
     expect(new Set(refrains.map((scene) => scene.palette.hue)).size).toBe(1);
-    // Deux groupes différents ne se ressemblent pas pour autant.
-    expect(refrains[0]!.palette.hue).not.toBe(couplets[0]!.palette.hue);
+    // Deux groupes différents ne se ressemblent pas quand la palette le permet.
+    const colors = plan.track.colors ?? [plan.track.hue, plan.track.accent];
+    if (colors.length > 1) {
+      expect(refrains[0]!.palette.hue).not.toBe(couplets[0]!.palette.hue);
+    }
   });
 
   test("la dramaturgie des sections ne s'active que sur demande explicite", () => {
@@ -930,13 +963,12 @@ describe("répétition des passages (couplet / refrain)", () => {
     expect(dramatise.scenes.some((scene) => scene.role === "montee")).toBe(true);
   });
 
-  test("le refrain s'allume : humeur explosive et complémentaire", () => {
+  test("le refrain s'allume : humeur explosive et couleur du morceau", () => {
     const plan = buildShowPlan(morceau(), false, undefined, { dramaturgy: true });
     const refrains = [...scenesIn(plan, 20, 40), ...scenesIn(plan, 60, 80)];
-    const ecart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
     for (const scene of refrains) {
       expect(scene.mood).toBe("explosif");
-      expect(ecart(scene.palette.hue, plan.track.accent)).toBeLessThanOrEqual(plan.track.spread);
+      expect(plan.track.colors ?? [plan.track.hue, plan.track.accent]).toContain(scene.palette.hue);
     }
   });
 

@@ -42,6 +42,7 @@ from .analysis import (
 from .analysis_cache import AnalysisCache
 from .audio_capture import get_audio_capture
 from .config import Settings, is_loopback_host, load_settings
+from .local_cache import LocalUploadCache, content_hash, probe_metadata
 from .mpris import (
     add_now_playing_listener,
     get_now_playing,
@@ -116,6 +117,10 @@ class AppState:
             Path(settings.cache_dir) / "analysis",
             version=ANALYZER_VERSION,
             max_bytes=settings.analysis_cache_max_bytes,
+        )
+        self.local_cache = LocalUploadCache(
+            Path(settings.cache_dir) / "local-uploads",
+            max_bytes=settings.local_cache_max_bytes,
         )
         self.executor = ThreadPoolExecutor(
             max_workers=settings.workers, thread_name_prefix="analysis"
@@ -333,6 +338,19 @@ class AppState:
                     self.analysis_cache.put(analysis_key, schema)
                 except Exception as error:  # noqa: BLE001 - le cache ne doit pas casser l'analyse
                     _LOGGER.warning("Écriture cache analyse impossible id=%s: %s", job_id, error)
+            # Un fichier déposé à la main devient un morceau de la bibliothèque
+            # locale : audio + analyse, pour le retrouver quand MPRIS le joue.
+            if job.upload_meta is not None:
+                try:
+                    self.local_cache.put(job.audio_path, schema, **job.upload_meta)
+                    _LOGGER.info(
+                        "Dépôt mis en cache id=%s titre=%r artiste=%r",
+                        job_id,
+                        job.upload_meta.get("title"),
+                        job.upload_meta.get("artist"),
+                    )
+                except Exception as error:  # noqa: BLE001 - le cache ne casse pas l'analyse
+                    _LOGGER.warning("Écriture cache local impossible id=%s: %s", job_id, error)
             self.store.set_result(
                 job_id,
                 schema,
@@ -378,6 +396,36 @@ class AppState:
     ) -> None:
         job = self.store.get(job_id)
         if job is None:
+            return
+        # Avant Deezer : un fichier déjà déposé à la main est la meilleure source.
+        cached_upload = self.local_cache.find(title, artist, duration_sec)
+        if cached_upload is not None:
+            now = time.time()
+            job.audio_path = cached_upload.audio_path
+            job.owns_audio = False
+            job.filename = cached_upload.filename
+            with suppress(OSError):
+                job.size_bytes = cached_upload.audio_path.stat().st_size
+            self.resolve_pending = False
+            self.store.set_result(
+                job_id,
+                cached_upload.analysis,
+                timings={
+                    "detectedAt": round(job.created_at * 1000),
+                    "analysisMs": 0,
+                    "analyzedMs": round((now - job.created_at) * 1000),
+                    "totalMs": round((now - job.created_at) * 1000),
+                    "analysisCache": True,
+                    "localCache": True,
+                    "resolutionMethod": "local-upload",
+                },
+            )
+            _LOGGER.info(
+                "Morceau local servi depuis le cache id=%s titre=%r artiste=%r",
+                job_id,
+                cached_upload.title,
+                cached_upload.artist,
+            )
             return
         self.resolve_pending = True
         used_key = (track_key or f"{title.strip()}|{artist.strip()}").strip()
@@ -719,10 +767,47 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
     job = state.store.create(filename, len(content))
     if job.audio_path is None:
         raise HTTPException(status_code=500, detail="Impossible de créer l'espace de travail.")
+    key = content_hash(content)
+
+    # Même fichier déjà déposé : l'audio et l'analyse sont déjà sur disque.
+    cached = state.local_cache.get(key)
+    if cached is not None:
+        job.audio_path = cached.audio_path
+        job.owns_audio = False
+        job.filename = filename
+        with suppress(OSError):
+            job.size_bytes = cached.audio_path.stat().st_size
+        state.store.set_result(
+            job.id,
+            cached.analysis,
+            timings={"analysisMs": 0, "analysisCache": True, "localCache": True},
+        )
+        return JSONResponse(
+            status_code=202,
+            content={
+                "jobId": job.id,
+                "status": "done",
+                "progress": 1,
+                "phase": "Terminé",
+                "message": "Morceau déjà en cache.",
+                "filename": job.filename,
+                "sizeBytes": job.size_bytes,
+                "cacheKey": key,
+            },
+        )
+
     audio_path = job.audio_path.with_name(f"audio.{detected.extension_hint or 'bin'}")
     job.audio_path = audio_path
     audio_path.write_bytes(content)
     del content
+    title, artist, duration = probe_metadata(audio_path, filename)
+    job.upload_meta = {
+        "key": key,
+        "title": title,
+        "artist": artist,
+        "filename": filename,
+        "duration_sec": duration,
+    }
 
     state.executor.submit(state.run_analysis, job.id)
     return JSONResponse(
@@ -735,6 +820,7 @@ async def analyze(file: UploadFile = File(...)) -> JSONResponse:
             "message": "Fichier reçu, analyse en préparation.",
             "filename": job.filename,
             "sizeBytes": job.size_bytes,
+            "cacheKey": key,
         },
     )
 

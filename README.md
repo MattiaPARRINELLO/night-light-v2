@@ -97,8 +97,21 @@ lisent dans l'environnement, à définir dans ton shell ou via un `.env` sourcé
    volume (`↑`/`↓`), position (`←`/`→`), intensité, flashs, profil standard/rave,
    mode rave (`H`), blackout instantané (`B`), intensité réduite, sans flashs,
    retour à l'écran de dépôt.
-6. Tu peux relancer le show autant de fois que tu veux : tant que la session vit, l'analyse
-   et le fichier audio sont gardés côté serveur, il n'y a rien à recalculer.
+6. Tu peux relancer le show autant de fois que tu veux : le fichier déposé et son analyse
+   sont conservés dans un cache persistant, même après la fin de la session.
+
+### Le cache des fichiers déposés
+
+Un MP3 déposé à la main n'est pas jetable. Le serveur lit ses métadonnées (`titre`,
+`artiste`), copie l'audio et l'analyse dans `CACHE_DIR/local-uploads`, puis les réutilise :
+
+- si tu relances le même fichier, aucune ré-analyse ;
+- si tu le joues ensuite sur le PC via un lecteur MPRIS, le suivi automatique le retrouve
+  par titre/artiste/durée et le show se synchronise sur l'analyse déjà en cache ;
+- ce chemin passe avant Deezer : pas besoin d'ARL ni de réseau pour un morceau déposé.
+
+Le cache survit au redémarrage du serveur et est purgé en LRU au-delà de
+`LOCAL_CACHE_MAX_MB`.
 
 ## Identification et récupération (Deezer)
 
@@ -305,26 +318,23 @@ machine qui souffle, où seule la résolution de la surface baisse. À défaut d
 
 Le spectacle éclaire une salle de soirée : les teintes sont franches, et **chaque morceau a
 sa palette**, choisie une fois d'après le morceau lui-même et tenue du premier au dernier
-plan (`plan.track`). Elle se compose d'une teinte principale et d'une complémentaire :
+plan (`plan.track`). **Une à trois couleurs par morceau** : monochrome, duo ou triade, tirées
+de la graine du morceau. Le choix est déterministe et **indépendant du profil** : le même
+morceau garde exactement les mêmes couleurs en standard, concert ou rave.
 
-- chaque scène reste dans la fenêtre de l'une ou de l'autre ;
-- les **moments forts basculent sur la complémentaire** — c'est le saut de couleur qui marque
-  un refrain ou un drop ;
-- dès qu'une scène a plusieurs sources, ses projecteurs ne sont pas monochromes : ils se
-  répartissent sur un **accord** tiré du cercle chromatique (`lampHue`). Quatre accords
-  alternent d'une scène à l'autre — demi-complémentaire, triade, carré, hexade — et l'accent
-  du morceau remplace toujours son 180 : la scène est multicolore, mais ses couleurs viennent
-  toutes de la palette du morceau. Les lampes parcourent l'accord avec un pas qui ne retombe
-  jamais sur la voisine, donc une rangée se lit comme un dégradé d'univers, pas comme deux
-  tons alternés ;
-- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur la couleur
-  opposée** (`colorFlip`) : le passage à l'opposée est une rotation de la roue de couleurs, donc
-  progressif — c'est le déplacement remplacé par la couleur, là où un motif de plus ne se lirait
-  pas ;
+- chaque scène joue exactement l'une des couleurs, jamais une teinte intermédiaire ;
+- la **couleur principale domine** le morceau ; les autres marquent seulement les impacts,
+  les refrains identifiés et les lampes ;
+- les projecteurs, lyres et lampes parcourent les une à trois teintes (`lampHue`) : une scène
+  reste lisible et cohérente au lieu de partir en arc-en-ciel ;
+- quand les formes projetées sont nombreuses, **une ou deux basculent brièvement sur une
+  autre couleur** (`colorFlip`) : c'est le déplacement remplacé par la couleur, là où un
+  motif de plus ne se lirait pas ;
 - l'éclairage suit l'humeur : explosif à 0,96 de saturation et 0,76 de luminosité — près du
   blanc, c'est ce qui « allume la salle » — contre 0,62 / 0,44 pour les passages calmes, afin
   que l'impact se voie ;
-- les sauts de teinte à l'impact sont bornés à 32° : la lumière change, la palette tient.
+- les gradients de faisceaux et de rideaux peuvent varier de quelques degrés pour la
+  profondeur, mais ils restent dans la palette du morceau.
 
 ### Le mode rave (profil hard)
 
@@ -335,13 +345,14 @@ mou. Le plan bascule donc sur un profil `hard`, affiché partout comme le **mode
 quand le morceau est à la fois **fort**, **sombre** et **tenu dans les basses** (énergie
 médiane ≥ 0,70, écart médian basses − aigus ≥ 0,30, majorité de fenêtres fortes sous 0,30
 d'aigus). Le réglage **Profil** du HUD et le bouton **Rave / H** du dashboard permettent
-de le forcer ou de le couper quand l'analyse se trompe.
+de le forcer ou de le couper quand l'analyse se trompe. Le profil **Concert** (bouton
+**Concert / C**, touche `C`) se place entre les deux.
 
 Le profil change quatre choses, sans toucher aux humeurs de scène :
 
 - une palette néon, saturation maximale et luminosité moyenne (0,58 à 0,64) posée sur un
-  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec des écarts
-  de teintes larges pour multiplier les couleurs vives d'une même scène ;
+  fond presque noir : rouge/glace, violet/acide, braise/cyan, magenta/arc, avec deux pôles
+  très écartés pour que la couleur claque sans multiplier les teintes ;
 - un réservoir de familles qui découpent l'image — volets, barres, grille, tirs croisés,
   rayons, maillages, poursuites de lyres — au lieu des nappes et figures rondes ;
 - des fonds permanents compatibles (grille, tunnel, vagues lentes) et des coupes plus
@@ -349,8 +360,9 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - un rendu plus noir : fond abaissé, flashs plus secs (attaque de 20 ms au lieu de 40 ms,
   gain de 12 %) et un vrai stroboscope hard : chaque temps fort claque, puis l'écran
   clignote 4 à 12 fois par temps selon l'énergie et l'impact, soit environ 9 à 28 Hz à
-  140 BPM. Les flashs et le strobe sont colorés dans l'accord de la scène, pas blancs :
-  chaque éclat alterne entre la teinte principale et la complémentaire. En mode rave,
+  140 BPM. Les flashs et le strobe prennent la couleur principale de la scène, pas du
+  blanc : la teinte reste stable pendant tout le passage au lieu de clignoter d'une
+  couleur à l'autre. En mode rave,
   la scène est en permanence un **mur de quatre rangées de lyres** (32 têtes), avec
   quatre gestes différents : éventail, croisement, vague et cercle. Deux à trois
   rangées lointaines, petites et discrètes, remplissent le fond de la scène. Deux
@@ -372,6 +384,37 @@ Le profil change quatre choses, sans toucher aux humeurs de scène :
 - le mode réduit reste prioritaire : il garde son vocabulaire calme, même si le profil est
   forcé.
 
+### Le mode concert (profil dynamique)
+
+Entre le standard et le rave, le profil **concert** garde l'énergie d'une vraie scène sans
+la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bouton
+**Concert / C** du dashboard, ou la touche `C` sur l'écran de show.
+
+- la scène reste presque toujours habitée : lyres suspendues, barres LED, pont concert,
+  poursuites, duo et éventail, complétés par douze scènes de lyres cinématiques —
+  cathédrale, orbitales, rideau, aurore, hélice, tunnel, diagonale, respiration, zigzag,
+  cascade, colisée et arène. Les plus denses empilent six étages de huit têtes plus deux
+  colonnes latérales, soit jusqu'à 64 lyres par scène ;
+- plusieurs nappes restent allumées en même temps derrière la scène : PAR wash, découpes
+  et tours lumière, pour un plateau haut budget au lieu d'une seule rangée de têtes ;
+- le fond de scène est presque noir : en concert, ce sont les lyres et les barres LED qui
+  éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
+- de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
+  éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
+- d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
+  tours lumière latérales, rampe de façade, barres de projecteurs et poursuites
+  croisées ;
+- aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
+  réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
+- les refrains et les montées déploient le plateau complet ;
+- pas de flash à chaque temps : les lyres tiennent la salle. Seuls les vrais impacts
+  ouvrent le strobe, avec 2 à 4 éclats par temps et la couleur principale de la scène ;
+- la bordure LED strobe rarement, à cadence lente (2 éclats par temps), mais son tube est
+  nettement plus épais qu'ailleurs : c'est elle qui éclaire la pièce en concert ;
+- l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans
+  atteindre le fond presque noir du rave ;
+- le budget de flashs et le mode réduit restent maîtres.
+
 ### La transition
 
 Le passage du direct au show programmé (et le retour) n'est pas une coupure : l'image s'ouvre
@@ -382,14 +425,13 @@ une image montre toujours deux mondes superposés, même quand la scène change.
 
 **Réactions aux moments forts** :
 
-La dérive de teinte est une sinusoïde bornée (période 90 s) et la teinte rendue est
-ramenée dans la fenêtre du morceau : elle ne sort jamais du budget de couleur, même après
-plusieurs minutes. La brillance d'une scène est la **moyenne** de la courbe aiguë, plus une
+La couleur ne dérive plus : chaque morceau garde ses une à trois teintes, et la scène joue l'une
+ou l'autre. La brillance d'une scène est la **moyenne** de la courbe aiguë, pas une
 somme saturée : les réservoirs de familles sont réellement distincts.
 
-- **drop** : quand une montée se résout sur l'impact, saut de teinte borné à 26°
-  (`DROP_HUE_JUMP`), wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage
-  blanc bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
+- **drop** : quand une montée se résout sur l'impact, bascule sur l'autre couleur du
+  morceau, wash complet de projecteurs pendant 6,5 s (`WASH_SPAN_SEC`) et lavage coloré
+  bref. Chaque drop reçoit une **signature** tirée de la graine — orientation des
   lyres, geste des barres, motif des blinders, pôle de teinte — donc deux impacts ne se
   ressemblent pas ;
 - **montée d'énergie** : quand le morceau prend de l'ampleur, l'intensité augmente et le
@@ -412,10 +454,10 @@ seek. La qualité s'adapte d'elle-même (nombre d'éléments réduit sous 52 fps
 - curseur de flashs réglable de 0 à 150 %, avec un plafond d'opacité et une cadence
   musicale (temps forts pendant un drop, une phrase hors drop) ;
 - `prefers-reduced-motion` du système est respecté et active automatiquement le mode réduit ;
-- deux teintes voisines sont toujours séparées d'au moins ~34°, pour éviter les alternances
-  de couleur agressives ;
-- les flashs sont suffisamment espacés pour ne pas former de stroboscope ; ce n'est pas une
-  garantie, et le mieux reste de les couper si tu y es sensible.
+- chaque morceau reste limité à une, deux ou trois couleurs, tirées de façon déterministe,
+  avec une principale qui tient le morceau et les autres réservées aux impacts et aux lampes ;
+- le mode standard garde des flashs espacés ; les profils concert et rave ajoutent des
+  stroboscopes, à couper avec « Sans flashs » ou « Intensité réduite » si tu y es sensible.
 
 ## Développement
 
@@ -523,8 +565,9 @@ src/
     view.ts             accès à l'état musical à un instant donné
     show.ts             composition des scènes (palettes, familles)
     effects.ts          inventaire des effets et timeline synthétique du studio
-    families/           les trente-deux familles d'effets, groupées par provenance
+    families/           les familles d'effets, groupées par provenance
       concert-rig.ts    structure, lyres, barres LED et blinders
+      concert-lights.ts PAR wash, découpes, tours, rampe, barres, poursuites
       index.ts          agrégation de la table des familles
     render.ts           rendu d'une image complète
     color.ts            HSL → RGB
@@ -557,6 +600,7 @@ server/
   sniff.py              détection du format réel par octets
   analysis.py           moteur librosa (décodage, courbes, rythme, section, montées)
   analysis_cache.py     cache persistant des analyses (clé morceau + version d'analyseur)
+  local_cache.py        cache persistant des fichiers déposés (audio, analyse, métadonnées)
   audio_capture.py      capture audio système locale (PipeWire/PulseAudio)
   store.py              sessions et travaux d'analyse
   main.py               API FastAPI
@@ -577,7 +621,8 @@ docs/                   spec et audit des effets, harnais de tests, mesures, rap
 | variable | défaut | rôle |
 | --- | --- | --- |
 | `SESSION_DIR` | `/tmp/night-light-sessions` | répertoire des sessions (fichiers audio de lecture) |
-| `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés (survit au redémarrage) |
+| `CACHE_DIR` | `~/.local/share/night-light/cache` | cache persistant des morceaux récupérés et déposés (survit au redémarrage) |
+| `LOCAL_CACHE_MAX_MB` | `2048` | taille maximale du cache des fichiers déposés à la main |
 | `MAX_FILE_MB` | `40` | taille d'envoi maximale |
 | `MAX_DURATION_SEC` | `900` | durée de morceau maximale |
 | `ANALYZE_TIMEOUT_SEC` | `240` | limite dure d'une analyse (le process est interrompu et l'erreur `timeout` renvoyée) |

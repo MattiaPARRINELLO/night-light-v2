@@ -27,6 +27,7 @@ class Job:
     created_at: float = field(default_factory=time.time)
     audio_path: Path | None = None
     owns_audio: bool = True
+    upload_meta: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {

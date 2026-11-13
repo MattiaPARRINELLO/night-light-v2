@@ -17,14 +17,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 340.085,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 11.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "beams",
-          "hue": 190.085,
+          "family": "lyres-aurore",
+          "hue": 186,
           "intensity": 0.558,
           "lightness": 0.68,
           "mood": "pulse",
@@ -35,14 +35,14 @@
           "variant": "tunnel"
         },
         {
-          "accent": 315.898,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 23.522,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "treillis",
-          "hue": 144,
+          "family": "crossfire",
+          "hue": 186,
           "intensity": 0.567,
           "lightness": 0.68,
           "mood": "pulse",
@@ -53,14 +53,14 @@
           "variant": "spiral"
         },
         {
-          "accent": 332.5,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 30.07,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "rideaux",
-          "hue": 182.5,
+          "family": "lyres-eventail",
+          "hue": 186,
           "intensity": 0.65,
           "lightness": 0.68,
           "mood": "pulse",
@@ -68,10 +68,10 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 23.522,
-          "variant": "rideaux"
+          "variant": "lyres-eventail"
         },
         {
-          "accent": 323.665,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": {
             "barres": "alterne",
@@ -83,7 +83,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 144,
+          "hue": 186,
           "intensity": 0.956,
           "lightness": 0.76,
           "mood": "explosif",
@@ -94,14 +94,14 @@
           "variant": "spiral"
         },
         {
-          "accent": 353.898,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyres-eventail",
-          "hue": 353.898,
+          "family": "lyres-suspendues",
+          "hue": 186,
           "intensity": 0.969,
           "lightness": 0.76,
           "mood": "explosif",
@@ -109,17 +109,17 @@
           "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyres-eventail"
+          "variant": "lyres-suspendues"
         },
         {
-          "accent": 326.965,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 60,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "vortex",
-          "hue": 294,
+          "family": "bars",
+          "hue": 186,
           "intensity": 0.966,
           "lightness": 0.76,
           "mood": "explosif",
@@ -132,7 +132,7 @@
       ],
       "seed": 1233980852,
       "track": {
-        "accent": 336,
+        "accent": 52,
         "hue": 186,
         "name": "cyan-rose",
         "spread": 42
@@ -155,14 +155,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 340.085,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 11.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "beams",
-          "hue": 190.085,
+          "family": "lyres-aurore",
+          "hue": 186,
           "intensity": 0.558,
           "lightness": 0.68,
           "mood": "pulse",
@@ -173,14 +173,14 @@
           "variant": "tunnel"
         },
         {
-          "accent": 315.898,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 23.522,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "treillis",
-          "hue": 144,
+          "family": "crossfire",
+          "hue": 186,
           "intensity": 0.567,
           "lightness": 0.68,
           "mood": "pulse",
@@ -191,14 +191,14 @@
           "variant": "spiral"
         },
         {
-          "accent": 332.5,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 30.07,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "rideaux",
-          "hue": 182.5,
+          "family": "lyres-eventail",
+          "hue": 186,
           "intensity": 0.65,
           "lightness": 0.68,
           "mood": "pulse",
@@ -206,10 +206,10 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 23.522,
-          "variant": "rideaux"
+          "variant": "lyres-eventail"
         },
         {
-          "accent": 323.665,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": {
             "barres": "alterne",
@@ -221,7 +221,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 144,
+          "hue": 186,
           "intensity": 0.956,
           "lightness": 0.76,
           "mood": "explosif",
@@ -232,14 +232,14 @@
           "variant": "spiral"
         },
         {
-          "accent": 353.898,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 49.76,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyres-eventail",
-          "hue": 353.898,
+          "family": "lyres-suspendues",
+          "hue": 186,
           "intensity": 0.969,
           "lightness": 0.76,
           "mood": "explosif",
@@ -247,17 +247,17 @@
           "role": "couplet",
           "saturation": 0.96,
           "start": 41.796,
-          "variant": "lyres-eventail"
+          "variant": "lyres-suspendues"
         },
         {
-          "accent": 326.965,
+          "accent": 52,
           "backdrop": "pluie",
           "drop": null,
           "end": 60,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "vortex",
-          "hue": 294,
+          "family": "bars",
+          "hue": 186,
           "intensity": 0.966,
           "lightness": 0.76,
           "mood": "explosif",
@@ -270,7 +270,7 @@
       ],
       "seed": 1233980852,
       "track": {
-        "accent": 336,
+        "accent": 52,
         "hue": 186,
         "name": "cyan-rose",
         "spread": 42
@@ -295,14 +295,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 35.141,
+          "accent": 300,
           "backdrop": "particles",
           "drop": null,
           "end": 11.726,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "gobos",
-          "hue": 221.141,
+          "family": "mirror",
+          "hue": 212,
           "intensity": 0.551,
           "lightness": 0.68,
           "mood": "pulse",
@@ -313,14 +313,14 @@
           "variant": "waves"
         },
         {
-          "accent": 7.21,
+          "accent": 300,
           "backdrop": "particles",
           "drop": null,
           "end": 28.143,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "pluie",
-          "hue": 172,
+          "family": "barres-led",
+          "hue": 212,
           "intensity": 0.589,
           "lightness": 0.68,
           "mood": "pulse",
@@ -328,10 +328,10 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.726,
-          "variant": "tunnel"
+          "variant": "particles"
         },
         {
-          "accent": 26.45,
+          "accent": 212,
           "backdrop": "particles",
           "drop": {
             "barres": "rideau",
@@ -343,7 +343,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 26.45,
+          "hue": 300,
           "intensity": 0.962,
           "lightness": 0.76,
           "mood": "explosif",
@@ -354,14 +354,14 @@
           "variant": "waves"
         },
         {
-          "accent": 13.951,
+          "accent": 300,
           "backdrop": "particles",
           "drop": null,
           "end": 60,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "mirror",
-          "hue": 346,
+          "family": "rings",
+          "hue": 212,
           "intensity": 0.975,
           "lightness": 0.76,
           "mood": "explosif",
@@ -369,12 +369,12 @@
           "role": "finale",
           "saturation": 0.96,
           "start": 43.119,
-          "variant": "spiral"
+          "variant": "curtain"
         }
       ],
       "seed": 1773180794,
       "track": {
-        "accent": 26,
+        "accent": 300,
         "hue": 212,
         "name": "azur-orange",
         "spread": 40
@@ -396,14 +396,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 325.385,
+          "accent": 352,
           "backdrop": "spiral",
           "drop": null,
           "end": 11.587,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "gobos",
-          "hue": 157.385,
+          "family": "waves",
+          "hue": 152,
           "intensity": 0.578,
           "lightness": 0.68,
           "mood": "pulse",
@@ -411,17 +411,17 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 0,
-          "variant": "waves"
+          "variant": "rings"
         },
         {
-          "accent": 307.297,
+          "accent": 352,
           "backdrop": "spiral",
           "drop": null,
           "end": 27.074,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "waves",
-          "hue": 110,
+          "family": "lyres-eventail",
+          "hue": 152,
           "intensity": 0.588,
           "lightness": 0.68,
           "mood": "pulse",
@@ -429,10 +429,10 @@
           "role": "couplet",
           "saturation": 0.9,
           "start": 11.587,
-          "variant": "curtain"
+          "variant": "rings"
         },
         {
-          "accent": 301.012,
+          "accent": 152,
           "backdrop": "spiral",
           "drop": {
             "barres": "rideau",
@@ -444,7 +444,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 301.012,
+          "hue": 352,
           "intensity": 0.924,
           "lightness": 0.76,
           "mood": "explosif",
@@ -455,14 +455,14 @@
           "variant": "pont-concert"
         },
         {
-          "accent": 318.267,
+          "accent": 352,
           "backdrop": "spiral",
           "drop": null,
           "end": 44.582,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "vortex",
-          "hue": 352.267,
+          "family": "lyres-cathedrale",
+          "hue": 152,
           "intensity": 0.955,
           "lightness": 0.76,
           "mood": "explosif",
@@ -473,14 +473,14 @@
           "variant": "particles"
         },
         {
-          "accent": 316.881,
+          "accent": 352,
           "backdrop": "spiral",
           "drop": null,
           "end": 60,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "shutters",
-          "hue": 316.881,
+          "family": "pendule",
+          "hue": 152,
           "intensity": 0.958,
           "lightness": 0.76,
           "mood": "explosif",
@@ -493,7 +493,7 @@
       ],
       "seed": 3402730341,
       "track": {
-        "accent": 320,
+        "accent": 352,
         "hue": 152,
         "name": "émeraude-magenta",
         "spread": 42
@@ -513,14 +513,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 307.72,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 11.401,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "barres-led",
-          "hue": 139.72,
+          "hue": 152,
           "intensity": 0.385,
           "lightness": 0.58,
           "mood": "calme",
@@ -531,14 +531,14 @@
           "variant": "waves"
         },
         {
-          "accent": 307.165,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 24.752,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "barres-led",
-          "hue": 341.165,
+          "hue": 152,
           "intensity": 0.39,
           "lightness": 0.58,
           "mood": "calme",
@@ -549,14 +549,14 @@
           "variant": "tunnel"
         },
         {
-          "accent": 318.153,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 38.058,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
-          "family": "lyres-eventail",
-          "hue": 157,
+          "family": "mirror",
+          "hue": 152,
           "intensity": 0.695,
           "lightness": 0.68,
           "mood": "pulse",
@@ -567,7 +567,7 @@
           "variant": "particles"
         },
         {
-          "accent": 336.943,
+          "accent": 152,
           "backdrop": "waves",
           "drop": {
             "barres": "onde",
@@ -579,7 +579,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 336.943,
+          "hue": 152,
           "intensity": 0.962,
           "lightness": 0.76,
           "mood": "explosif",
@@ -590,14 +590,14 @@
           "variant": "rings"
         },
         {
-          "accent": 323.103,
+          "accent": 152,
           "backdrop": "waves",
           "drop": null,
           "end": 60,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "couronne",
-          "hue": 289.103,
+          "family": "etoile",
+          "hue": 152,
           "intensity": 0.961,
           "lightness": 0.76,
           "mood": "explosif",
@@ -610,7 +610,7 @@
       ],
       "seed": 1478502844,
       "track": {
-        "accent": 320,
+        "accent": 152,
         "hue": 152,
         "name": "émeraude-magenta",
         "spread": 42
@@ -631,14 +631,14 @@
       "profile": "standard",
       "scenes": [
         {
-          "accent": 228.8,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 15.302,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "barres-led",
-          "hue": 14.8,
+          "family": "treillis",
+          "hue": 34,
           "intensity": 0.561,
           "lightness": 0.68,
           "mood": "pulse",
@@ -649,7 +649,7 @@
           "variant": "spiral"
         },
         {
-          "accent": 199.502,
+          "accent": 34,
           "backdrop": "waves",
           "drop": {
             "barres": "onde",
@@ -661,7 +661,7 @@
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 53.502,
+          "hue": 34,
           "intensity": 0.963,
           "lightness": 0.76,
           "mood": "explosif",
@@ -672,14 +672,14 @@
           "variant": "rings"
         },
         {
-          "accent": 210.208,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 42.26,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
-          "family": "lyres-poursuite",
-          "hue": 210.208,
+          "family": "mandala",
+          "hue": 34,
           "intensity": 0.758,
           "lightness": 0.68,
           "mood": "pulse",
@@ -690,14 +690,14 @@
           "variant": "particles"
         },
         {
-          "accent": 210.355,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 53.94,
           "fadeIn": 1.2,
           "fadeOut": 0.9,
           "family": "mirror",
-          "hue": 30.355,
+          "hue": 34,
           "intensity": 0.425,
           "lightness": 0.62,
           "mood": "aerien",
@@ -708,14 +708,14 @@
           "variant": "pluie"
         },
         {
-          "accent": 224.097,
+          "accent": 34,
           "backdrop": "waves",
           "drop": null,
           "end": 60,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "spiral",
-          "hue": 72,
+          "hue": 34,
           "intensity": 0.422,
           "lightness": 0.62,
           "mood": "aerien",
@@ -728,7 +728,7 @@
       ],
       "seed": 600798831,
       "track": {
-        "accent": 214,
+        "accent": 34,
         "hue": 34,
         "name": "ambre-azur",
         "spread": 38

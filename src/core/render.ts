@@ -14,7 +14,7 @@ import {
 } from "./families";
 import type { FrameState, HazeTarget } from "./families";
 import type { Palette, Scene } from "./show";
-import { hslToRgb, shiftHue, shorthand } from "./color";
+import { hslToRgb, shorthand } from "./color";
 import { sceneAt, sceneWeight, type ShowPlan } from "./show";
 import {
   hardStrobeAllowsFull,
@@ -100,6 +100,28 @@ export const FLASH_ATTACK_DROP_SEC = 0.12;
 export const FLASH_ATTACK_DROP_HARD_SEC = 0.08;
 /** Gain d'opacité des flashs en profil hard, pour compenser le fond plus noir. */
 export const HARD_FLASH_BOOST = 1.12;
+/** Gain d'opacité des flashs en profil concert. */
+export const DYNAMIC_FLASH_BOOST = 1.05;
+/**
+ * Poids d'un temps fort dans le flash, en profil concert.
+ *
+ * Entre la caresse du standard (0,55) et le claquement du hard (0,9) : la salle
+ * s'allume franchement, mais la scène de concert garde un peu de respiration.
+ */
+export const DYNAMIC_BEAT_FLASH_WEIGHT = 0.72;
+/** Durée de montée d'un flash de temps fort en profil concert, en secondes. */
+export const DYNAMIC_FLASH_ATTACK_BEAT_SEC = 0.03;
+/** Durée de montée d'un flash de drop en profil concert, en secondes. */
+export const DYNAMIC_FLASH_ATTACK_DROP_SEC = 0.1;
+/**
+ * Éclats du stroboscope concert par temps fort.
+ *
+ * Moins dense que le hard (4 à 12) mais bien plus que le standard : 2 à 6
+ * éclats, sur un seuil d'énergie plus bas, pour que le strobe parte plus
+ * facilement sans transformer chaque morceau en rave.
+ */
+export const DYNAMIC_STROBE_DIVISIONS_MIN = 2;
+export const DYNAMIC_STROBE_DIVISIONS_MAX = 4;
 /**
  * Poids d'un temps fort dans le flash, en profil hard.
  *
@@ -139,45 +161,19 @@ export function hardStrobeDivisions(f: FrameState, drop: number): number {
  */
 const PHRASE_BEATS = 8;
 /**
- * Glissement continu de la teinte, en degrés par seconde.
+ * Ancienne vitesse de dérive de teinte, conservée pour les diagnostics.
  *
- * Volontairement très lent : il fait vivre la couleur sans la faire dériver hors
- * de l'identité du morceau. À 14 °/s, un tour complet prenait 26 s — la palette
- * choisie pour le morceau était perdue au bout d'une demi-minute.
+ * La couleur ne dérive plus : un morceau ne possède que deux teintes, et la
+ * scène joue l'une ou l'autre. La constante reste exportée pour les rapports.
  */
 export const HUE_DRIFT_PER_SEC = 0.4;
-/** Respiration de la teinte autour de celle de la scène, en degrés. */
-const HUE_BREATH_DEG = 14;
 /**
- * Marge de teinte au-delà du `spread` de la palette, en degrés.
+ * Marge de teinte historique, conservée pour les diagnostics et les tests.
  *
- * Le contrat de couleur borne la teinte rendue autour de l'ancre du morceau :
- * `|teinte − ancre| ≤ spread + HUE_BUDGET_MARGIN_DEG`, dérive, respiration,
- * sauts d'impact et variante compris.
- *
- * À remplacer par l'import de `show.ts` après fusion de la branche du plan.
+ * Le rendu ne dérive plus autour de l'ancre : il choisit exactement l'une des
+ * deux couleurs du morceau.
  */
 export const HUE_BUDGET_MARGIN_DEG = 12;
-/**
- * Période de la dérive de teinte, en secondes.
- *
- * Une dérive linéaire (`0,4 °/s × t`) sortait de l'identité du morceau au bout
- * de quelques minutes : à 4 min, 96° de dérive cumulée. Une sinusoïde bornée à
- * une demi-largeur de palette fait respirer la couleur sans jamais la quitter.
- */
-const HUE_DRIFT_PERIOD_SEC = 90;
-/**
- * Saut de teinte à l'impact, en degrés.
- *
- * L'impact doit se voir — la couleur change franchement — mais il ne doit pas
- * sortir le morceau de sa palette : la complémentaire joue déjà ce rôle, un
- * saut trop grand ajoutait une troisième couleur qui ne voulait rien dire.
- */
-const DROP_HUE_JUMP = 26;
-/** Saut de teinte quand la variation d'une phrase surgit. */
-const VARIATION_HUE_JUMP = 30;
-/** Écart maximal à la teinte de scène, impacts compris. */
-const HUE_IMPACT_LIMIT = 32;
 
 function paint(h: number, s: number, l: number, a: number): string {
   return shorthand(hslToRgb({ h, s, l }), a);
@@ -187,15 +183,28 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
   // Le profil hard veut un fond plus noir : c'est ce qui fait ressortir les
   // barres, les volets et les strobes au lieu de baigner l'image dans une
-  // lueur de salle. La lueur reste liée à l'énergie, simplement divisée.
+  // lueur de salle. Le concert va plus loin : la salle reste noire, ce sont les
+  // lyres qui l'éclairent.
   const glow = f.hard
     ? 0.012 + f.energy * 0.032 + f.bass * 0.028
-    : 0.02 + f.energy * 0.05 + f.bass * 0.05;
+    : f.dynamic === true
+      ? 0.006 + f.energy * 0.016 + f.bass * 0.014
+      : 0.02 + f.energy * 0.05 + f.bass * 0.05;
   // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
   // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
   const contraste = contrastHue(f);
-  const top = paint(f.palette.hue, f.palette.saturation, (f.hard ? 0.018 : 0.035) + glow * 0.5, 1);
-  const bottom = paint(contraste, f.palette.saturation, (f.hard ? 0.026 : 0.05) + glow, 1);
+  const top = paint(
+    f.palette.hue,
+    f.palette.saturation,
+    (f.hard ? 0.018 : f.dynamic === true ? 0.012 : 0.035) + glow * 0.5,
+    1,
+  );
+  const bottom = paint(
+    contraste,
+    f.palette.saturation,
+    (f.hard ? 0.026 : f.dynamic === true ? 0.018 : 0.05) + glow,
+    1,
+  );
   const gradient = ctx.createLinearGradient(0, 0, 0, h);
   gradient.addColorStop(0, top);
   gradient.addColorStop(1, bottom);
@@ -208,7 +217,9 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
   const haloAlpha =
-    (0.03 + 0.08 * f.energy + 0.06 * f.beat) * f.alpha * (f.hard ? 0.65 : 1);
+    (0.03 + 0.08 * f.energy + 0.06 * f.beat) *
+    f.alpha *
+    (f.hard ? 0.65 : f.dynamic === true ? 0.4 : 1);
   halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
@@ -365,18 +376,42 @@ export function flashAlpha(f: FrameState, settings: RenderSettings): number {
         Math.min(settings.flashes, 1.5) *
         HARD_BEAT_FLASH_WEIGHT
       : 0;
+  // Profil concert : entre les deux. Le temps fort s'allume plus fort que le
+  // standard, sans le claquement du hard.
+  const dynamicBeatAlpha =
+    f.dynamic === true && !f.reduced
+      ? clamp01(f.beat * (0.45 + 0.55 * f.bass)) *
+        FLASH_CEILING *
+        Math.min(settings.flashes, 1.5) *
+        DYNAMIC_BEAT_FLASH_WEIGHT
+      : 0;
+  const beatAttackSec = f.hard
+    ? FLASH_ATTACK_BEAT_HARD_SEC
+    : f.dynamic === true
+      ? DYNAMIC_FLASH_ATTACK_BEAT_SEC
+      : FLASH_ATTACK_BEAT_SEC;
+  const dropAttackSec = f.hard
+    ? FLASH_ATTACK_DROP_HARD_SEC
+    : f.dynamic === true
+      ? DYNAMIC_FLASH_ATTACK_DROP_SEC
+      : FLASH_ATTACK_DROP_SEC;
   // Âge infini = aucun déclencheur : pas d'attaque en cours (facteur 1), sinon
   // `clamp01` ramènerait l'infini à 0 et éteindrait le flash.
   const attackBeat = Number.isFinite(f.beatAge)
-    ? clamp01(f.beatAge / (f.hard ? FLASH_ATTACK_BEAT_HARD_SEC : FLASH_ATTACK_BEAT_SEC))
+    ? clamp01(f.beatAge / beatAttackSec)
     : 1;
   const attackDrop = Number.isFinite(f.dropAge)
-    ? clamp01(f.dropAge / (f.hard ? FLASH_ATTACK_DROP_HARD_SEC : FLASH_ATTACK_DROP_SEC))
+    ? clamp01(f.dropAge / dropAttackSec)
     : 1;
-  const boost = f.hard ? HARD_FLASH_BOOST : 1;
+  const boost = f.hard ? HARD_FLASH_BOOST : f.dynamic === true ? DYNAMIC_FLASH_BOOST : 1;
   return Math.min(
     FLASH_CEILING * Math.min(settings.flashes, 1.5),
-    Math.max(beatAlpha * attackBeat, hardBeatAlpha * attackBeat, dropAlpha * attackDrop) * boost,
+    Math.max(
+      beatAlpha * attackBeat,
+      hardBeatAlpha * attackBeat,
+      dynamicBeatAlpha * attackBeat,
+      dropAlpha * attackDrop,
+    ) * boost,
   );
 }
 
@@ -408,6 +443,47 @@ export function hardStrobeAlpha(
   const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
   if (!on) return 0;
   const amount = gate * (0.45 + 0.55 * kick);
+  return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
+}
+
+/**
+ * Éclats du stroboscope concert par temps fort, de 2 à 6.
+ *
+ * Le profil concert doit pouvoir strober sur des passages simplement énergiques,
+ * pas seulement sur les pics du hard.
+ */
+export function dynamicStrobeDivisions(f: FrameState, drop: number): number {
+  const energy = clamp01(f.energy);
+  const violence = clamp01(drop);
+  const extra = Math.round(
+    (DYNAMIC_STROBE_DIVISIONS_MAX - DYNAMIC_STROBE_DIVISIONS_MIN) * 0.5 * (energy + violence),
+  );
+  return Math.min(DYNAMIC_STROBE_DIVISIONS_MAX, DYNAMIC_STROBE_DIVISIONS_MIN + extra);
+}
+
+/**
+ * Opacité du stroboscope concert à l'instant courant, 0 s'il ne doit pas clignoter.
+ *
+ * En concert, le strobe n'est pas une texture de fond : il est réservé aux vrais
+ * impacts. Le reste du temps, ce sont les lyres qui tiennent la salle. Le budget
+ * de flashs et le mode réduit restent maîtres.
+ */
+export function dynamicStrobeAlpha(
+  f: FrameState,
+  settings: RenderSettings,
+  drop: number,
+): number {
+  if (f.dynamic !== true || f.reduced || settings.flashes <= 0) return 0;
+  // Seuls les impacts francs ouvrent le strobe.
+  if (drop < 0.4) return 0;
+  const gate = smoothstep(0.62, 0.9, f.energy);
+  if (gate <= 0.01) return 0;
+  const kick = clamp01(0.5 * f.beat + 0.5 * f.bass);
+  if (kick < 0.1) return 0;
+  const divisions = dynamicStrobeDivisions(f, drop);
+  const on = Math.floor(f.beatPhase * divisions) % 2 === 0;
+  if (!on) return 0;
+  const amount = gate * (0.25 + 0.45 * kick);
   return clamp01(amount) * FLASH_CEILING * Math.min(settings.flashes, 1.5);
 }
 
@@ -637,38 +713,22 @@ export function clampHueToAnchor(hue: number, anchor: number, spread: number): n
 /**
  * Teinte réellement dessinée à l'instant `t`.
  *
- * Le glissement porte sur le temps du morceau, jamais sur le temps écoulé
- * depuis le début de la scène : en repartant de zéro à chaque changement de
- * scène, la couleur faisait un bond de plusieurs dizaines de degrés en plein
- * spectacle. Fonction partagée avec l'affichage, pour que le HUD annonce la
- * teinte qui est vraiment à l'écran.
- *
- * `anchor` est l'ancre du morceau (voir `sceneAnchor`). Sans elle, la fonction
- * se rabat sur la teinte de la scène : le résultat reste borné, mais c'est le
- * rendu qui applique le budget exact.
+ * Un morceau ne possède que deux couleurs : la teinte de scène et sa
+ * complémentaire. Un impact ou une variation peut basculer de l'une à l'autre,
+ * mais le rendu n'invente jamais de teinte intermédiaire. `t`, `reduced` et
+ * `anchor` restent dans la signature pour les diagnostics.
  */
 export function sceneHue(
   scene: Scene,
-  t: number,
-  drop: number,
-  variation: number,
-  reduced: boolean,
-  anchor: number = scene.palette.hue,
+  _t: number,
+  _drop: number,
+  _variation: number,
+  _reduced: boolean,
+  _anchor: number = scene.palette.hue,
 ): number {
-  const spread = scene.palette.spread;
-  // Dérive périodique, d'amplitude une demi-largeur de palette : la couleur
-  // respire autour de l'ancre au lieu de s'en éloigner sans fin.
-  const drift =
-    (0.5 * spread * Math.sin((2 * Math.PI * t) / HUE_DRIFT_PERIOD_SEC)) * (reduced ? 0.4 : 1) +
-    Math.sin(t * 0.11) * HUE_BREATH_DEG * (reduced ? 0.5 : 1);
-  // Les sauts sont bornés : un impact fait changer la lumière, il ne change pas
-  // de morceau.
-  const impact = Math.max(
-    -HUE_IMPACT_LIMIT,
-    Math.min(HUE_IMPACT_LIMIT, DROP_HUE_JUMP * drop + VARIATION_HUE_JUMP * variation),
-  );
-  const base = scene.palette.hue;
-  return clampHueToAnchor(base + drift + impact, anchor, spread);
+  // Une scène tient UNE couleur du début à la fin. Les impacts sont marqués par
+  // la lumière et le flash, jamais par un changement de teinte en plein strobe.
+  return scene.palette.hue;
 }
 
 /**
@@ -686,7 +746,7 @@ export function sceneHue(
  *
  * Aucun état n'est conservé : `t` seul décide.
  */
-export function flashAdmitted(view: TrackView, t: number, hard = false): boolean {
+export function flashAdmitted(view: TrackView, t: number, hard = false, _dynamic = false): boolean {
   // Fenêtre d'éligibilité : latence nulle + la plus longue des montées. Un
   // flash reste admis pendant toute son attaque, jamais au-delà.
   const window = FLASH_LATENCY_SEC + Math.max(FLASH_ATTACK_BEAT_SEC, FLASH_ATTACK_DROP_SEC) + 0.05;
@@ -705,6 +765,10 @@ export function flashAdmitted(view: TrackView, t: number, hard = false): boolean
   // Profil hard : chaque temps fort claque, y compris dans la traîne d'un
   // impact. C'est exactement le geste d'un strobe de club.
   if (hard) return true;
+
+  // Le concert ne flashe pas à chaque temps : la salle est tenue par les lyres.
+  // Les impacts restent admis par la branche du dessus, et les temps forts
+  // gardent la cadence espacée du standard.
 
   // Dans les 1,5 s qui suivent un impact, aucun flash de temps fort : l'impact
   // lui-même est déjà admis par `lastDrop >= lastBeat` juste au-dessus. Sans
@@ -786,7 +850,7 @@ function drawRaveLasers(ctx: CanvasRenderingContext2D, f: FrameState): void {
       const time = f.t - trail * 0.045;
       const phase = time * (0.55 + (index % 3) * 0.09) + index * 0.73;
       const angle = baseAngle + Math.sin(phase) * 0.95;
-      const hue = shiftHue(f.palette.hue, index * (360 / count) + time * 70);
+      const hue = index % 2 === 0 ? f.palette.hue : f.palette.accent;
       const trailAlpha = alpha * (trail === 0 ? 1 : 0.3 / trail);
       const endX = originX + Math.cos(angle) * reach;
       const endY = originY + Math.sin(angle) * reach;
@@ -839,7 +903,7 @@ function drawRaveConfetti(
     const size = (2.4 + hash01(seed + 4) * 4.2) * (0.6 + f.quality * 0.4);
     const alpha = (1 - phase) * intensity;
     if (alpha <= 0.01) continue;
-    const hue = shiftHue(f.palette.hue, hash01(seed + 5) * 360 + f.t * 70);
+    const hue = hash01(seed + 5) < 0.5 ? f.palette.hue : f.palette.accent;
     ctx.fillStyle = paint(hue, 1, 0.65, alpha);
     ctx.fillRect(x, y, size, size * 1.8);
   }
@@ -923,7 +987,7 @@ function drawRaveShockwave(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const progress = age / 0.9;
   const radius = Math.min(f.width, f.height) * (0.08 + progress * 0.8);
   const alpha = (1 - progress) * (0.55 + 0.35 * f.energy);
-  const hue = shiftHue(contrastHue(f), f.t * 60);
+  const hue = contrastHue(f);
   ctx.strokeStyle = paint(hue, 1, 0.62, alpha * 0.7);
   ctx.lineWidth = 5 + 12 * (1 - progress);
   ctx.beginPath();
@@ -956,7 +1020,7 @@ function drawRavePanels(
         const x = originX + (panelWidth * (col + 0.5)) / cols;
         const y = (f.height * (row + 0.5)) / rows;
         const alpha = 0.35 + 0.5 * clamp01(f.beat);
-        const hue = shiftHue(f.palette.hue, row * 14 + col * 22 + f.t * 80);
+        const hue = row % 2 === 0 ? f.palette.hue : f.palette.accent;
         ctx.fillStyle = paint(hue, 1, 0.6, alpha);
         ctx.fillRect(x - panelWidth * 0.07, y - f.height * 0.007, panelWidth * 0.14, f.height * 0.014);
       }
@@ -977,7 +1041,7 @@ function drawRaveFloor(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // Lignes de fuite.
   for (let index = 0; index <= 14; index += 1) {
     const x = f.width * (-0.25 + (1.5 * index) / 14);
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 40 + index * 18), 1, 0.55, alpha);
+    ctx.strokeStyle = paint(index % 2 === 0 ? f.palette.hue : f.palette.accent, 1, 0.55, alpha);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(center, horizon);
@@ -992,7 +1056,7 @@ function drawRaveFloor(ctx: CanvasRenderingContext2D, f: FrameState): void {
     const spread = 0.15 + progress * 0.95;
     const x0 = center - f.width * 0.62 * spread;
     const x1 = center + f.width * 0.62 * spread;
-    ctx.strokeStyle = paint(shiftHue(f.palette.hue, f.t * 50 + step * 22), 1, 0.6, alpha * 0.9);
+    ctx.strokeStyle = paint(step % 2 === 0 ? f.palette.hue : f.palette.accent, 1, 0.6, alpha * 0.9);
     ctx.lineWidth = 1 + progress * 1.6;
     ctx.beginPath();
     ctx.moveTo(x0, y);
@@ -1171,6 +1235,7 @@ export function renderFrame(input: RenderInput): void {
   }
   const scene = sceneAt(plan, t);
   const hard = plan.profile === "hard";
+  const dynamic = plan.profile === "dynamic";
   // En mode live, `transient` est déjà une détection d'attaque réelle. En mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
@@ -1196,12 +1261,14 @@ export function renderFrame(input: RenderInput): void {
   const surge = liveAudio !== undefined ? liveAudio.transient : view.energyTrend(t, 1.2);
   const anchor = sceneAnchor(scene, plan.track);
   const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
+  const paletteAccent =
+    paletteHue === scene.palette.hue ? scene.palette.accent : scene.palette.hue;
   const palette: Palette = {
     name: scene.palette.name,
     hue: paletteHue,
-    // La complémentaire suit la dérive de la principale : l'écart entre les deux
-    // reste celui voulu par le morceau, quel que soit le glissement de teinte.
-    accent: (paletteHue + (scene.palette.accent - scene.palette.hue) + 360) % 360,
+    // L'autre couleur du morceau, jamais une teinte intermédiaire.
+    accent: paletteAccent,
+    ...(scene.palette.tertiary !== undefined ? { tertiary: scene.palette.tertiary } : {}),
     spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la
@@ -1220,7 +1287,10 @@ export function renderFrame(input: RenderInput): void {
     dpr,
     scene,
     palette,
-    energy: liveAudio !== undefined ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3) : visibleEnergy(view.energyAt(t)),
+    energy:
+      liveAudio !== undefined
+        ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3)
+        : clamp01(visibleEnergy(view.energyAt(t)) * (dynamic ? 1.12 : 1)),
     bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
     mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
     high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),
@@ -1233,10 +1303,17 @@ export function renderFrame(input: RenderInput): void {
     beatAge,
     dropAge,
     surge,
-    intensity: scene.intensity * settings.intensity * (isLive ? (1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85) : (1 + surge * 0.6 + beatDriveValue * 0.5)),
+    intensity:
+      scene.intensity *
+      settings.intensity *
+      (dynamic ? 1.12 : 1) *
+      (isLive
+        ? 1.35 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.85
+        : 1 + surge * 0.6 + beatDriveValue * 0.5),
     alpha: sceneWeight(scene, t),
     reduced,
     hard,
+    dynamic,
     quality,
     seed: plan.seed,
     haze,
@@ -1252,7 +1329,8 @@ export function renderFrame(input: RenderInput): void {
 
   drawBackground(ctx, { ...base, palette });
   const calmBlock = calmBlockFor(plan, scene);
-  if (calmBlock !== null) drawCalmVeil(ctx, { ...base, palette }, calmBlock);
+  // En concert, la salle reste sombre : pas de voile pastel de calme.
+  if (calmBlock !== null && !dynamic) drawCalmVeil(ctx, { ...base, palette }, calmBlock);
 
   // Couche permanente : le fond, le halo et la poussière ne dépendent pas du
   // fondu de scène. C'est ce qui garantit qu'il reste toujours quelque chose à
@@ -1282,7 +1360,20 @@ export function renderFrame(input: RenderInput): void {
   if (hard) {
     drawRaveFloor(ctx, base);
     drawRaveLyreWall(ctx, base, view);
-  } else drawFamily(ctx, base, view, sceneFamily);
+  } else {
+    // Concert haut budget : plusieurs nappes de lumière restent allumées en
+    // même temps derrière la famille principale. Le plateau n'est jamais une
+    // seule rangée de têtes.
+    if (dynamic) {
+      if (sceneFamily !== "par-wash") {
+        drawFamily(ctx, { ...base, alpha: base.alpha * 0.22 }, view, "par-wash");
+      }
+      if (sceneFamily !== "tours-lumiere") {
+        drawFamily(ctx, { ...base, alpha: base.alpha * 0.14 }, view, "tours-lumiere");
+      }
+    }
+    drawFamily(ctx, base, view, sceneFamily);
+  }
   if (strobeFull) drawRaveLayers(ctx, base, view);
   drawCoreGlow(ctx, permanent);
 
@@ -1296,10 +1387,9 @@ export function renderFrame(input: RenderInput): void {
       ...base,
       palette: {
         ...palette,
-        // La variante garde son écart de 48°, ramené lui aussi dans le budget
-        // autour de l'ancre : le spectacle ne doit jamais sortir de l'identité
-        // colorée du morceau, même quand une autre famille surgit.
-        hue: clampHueToAnchor(palette.hue + 48, anchor, scene.palette.spread),
+        // La variante joue l'autre couleur du morceau, jamais une troisième.
+        hue: palette.accent,
+        accent: palette.hue,
         saturation: Math.min(1, palette.saturation + 0.1),
       },
       alpha: base.alpha * variation * 0.8,
@@ -1318,7 +1408,7 @@ export function renderFrame(input: RenderInput): void {
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
-      palette: { ...palette, hue: clampHueToAnchor(palette.hue + 25, anchor, scene.palette.spread) },
+      palette: { ...palette, hue: palette.accent, accent: palette.hue },
       alpha: base.alpha * wash,
       intensity: base.intensity,
     };
@@ -1338,10 +1428,12 @@ export function renderFrame(input: RenderInput): void {
     const realDrop = isLive ? 0 : view.buildIntensity(t);
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
-      // En mode rave, l'impact est coloré au lieu d'être un blanc de salle.
-      ctx.fillStyle = hard
-        ? paint(shiftHue(contrastHue(base), base.t * 45), 1, 0.62, washAlpha)
-        : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
+      // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
+      // salle, et reste dans les deux couleurs du morceau.
+      ctx.fillStyle =
+        hard || dynamic
+          ? paint(contrastHue(base), 1, 0.62, washAlpha)
+          : `rgba(255,255,255,${washAlpha.toFixed(3)})`;
       ctx.fillRect(0, 0, width, height);
     }
   }
@@ -1407,27 +1499,28 @@ export function renderFrame(input: RenderInput): void {
 
   const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
   const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
-  if (flash > 0.002 && flashAdmitted(view, t, hard)) {
+  if (flash > 0.002 && flashAdmitted(view, t, hard, dynamic)) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
-    // Flash de temps fort rave : une couleur de l'accord, jamais du blanc.
-    ctx.fillStyle = hard
-      ? paint(shiftHue(contrastHue(base), base.t * 50), 1, 0.6, strength)
-      : `rgba(255,255,255,${strength.toFixed(3)})`;
+    // Flash de temps fort rave ou concert : la couleur principale du morceau,
+    // jamais du blanc, et jamais une alternance d'une image à l'autre.
+    ctx.fillStyle =
+      hard || dynamic
+        ? paint(base.palette.hue, 1, 0.6, strength)
+        : `rgba(255,255,255,${strength.toFixed(3)})`;
     ctx.fillRect(0, 0, width, height);
   }
-  // Stroboscope hard : la couche qui fait vraiment « clignoter » le profil. Elle
-  // s'ajoute au flash de temps fort, sans dépendre de `flashAdmitted`, car elle
-  // bat plusieurs fois à l'intérieur d'un même temps. Chaque éclat alterne entre
-  // la teinte principale et la complémentaire : le strobe est multicolore.
-  const strobe = hardStrobeAlpha(base, settings, drop);
+  // Stroboscope hard ou concert : la couche qui fait vraiment « clignoter » le
+  // profil. Elle s'ajoute au flash de temps fort, sans dépendre de
+  // `flashAdmitted`, car elle bat plusieurs fois à l'intérieur d'un même temps.
+  const strobe = Math.max(
+    hardStrobeAlpha(base, settings, drop),
+    dynamicStrobeAlpha(base, settings, drop),
+  );
   if (strobe > 0.002) {
-    const divisions = hardStrobeDivisions(base, drop);
-    const strobeIndex = Math.floor(base.beatPhase * divisions);
-    const strobeHue = shiftHue(
-      strobeIndex % 2 === 0 ? base.palette.hue : base.palette.accent,
-      base.t * 60 + strobeIndex * 30,
-    );
-    ctx.fillStyle = paint(strobeHue, 1, 0.62, strobe);
+    // Un seul éclat, une seule couleur : la couleur principale du morceau. On
+    // ne bascule plus sur la complémentaire à chaque flash, sinon la teinte
+    // change toutes les demi-secondes.
+    ctx.fillStyle = paint(base.palette.hue, 1, 0.62, strobe);
     ctx.fillRect(0, 0, width, height);
   }
 

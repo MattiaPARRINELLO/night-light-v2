@@ -36,6 +36,7 @@ export const EFFECT_CATEGORY_LABELS: Record<EffectCategoryId, string> = {
   formes: "Formes",
   figures: "Figures",
   concert: "Scène de concert",
+  "concert-lumieres": "Lumières de scène",
 };
 
 export interface EffectInfo {
