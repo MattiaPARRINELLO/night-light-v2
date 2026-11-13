@@ -981,7 +981,17 @@ function dessinerLyres(
       Math.hypot(w, h) * 1.25,
       (h * 1.04 - y) / Math.max(Math.sin(orientation.angle), 0.32),
     );
-    const largeur = Math.tan(orientation.ouverture) * portee;
+    // Effet console : faisceau fin en couplet, plus large en refrain et en drop.
+    // La brume des montées/impacts épaissit aussi le cône.
+    const role = f.scene.role;
+    const ouvertureRole =
+      role === "drop" ? 1.55 : role === "refrain" ? 1.3 : role === "montee" ? 1.15 : 1;
+    const brume = 1 + 0.12 * clamp01(f.build) + 0.2 * clamp01(f.drop);
+    const largeur = Math.tan(orientation.ouverture) * portee * ouvertureRole * brume;
+    const prisme = Math.max(
+      orientation.prisme,
+      f.dynamic === true && (role === "refrain" || role === "drop") ? 0.45 : 0,
+    );
     const teinte = lampHue(f, index);
     const spec = {
       x,
@@ -999,13 +1009,13 @@ function dessinerLyres(
       tailHue: shiftHue(teinte, 16),
     };
 
-    if (orientation.prisme > 0.02 && !f.reduced) {
+    if (prisme > 0.02 && !f.reduced) {
       // Trois sous-cônes très fins : le prisme d'une lyre ne double pas la
       // largeur du faisceau, il la démultiplie en lames. Les lames latérales
       // s'allument avec `prisme` (0..1) : jamais un interrupteur.
-      const delta = 0.012 * orientation.prisme * Math.sin(f.t * 3);
+      const delta = 0.012 * prisme * Math.sin(f.t * 3);
       const central = alpha * orientation.intensite;
-      const force = orientation.prisme;
+      const force = prisme;
       softBeam(ctx, {
         ...spec,
         angle: orientation.angle,
@@ -1175,17 +1185,39 @@ function dessinerEtageLyres(
   ctx.restore();
 }
 
-/** 
+/**
+ * Formations de groupe du concert.
+ *
+ * Chaque entrée est un jeu de gestes pour les étages, du fond vers l'avant. La
+ * formation change toutes les 32 pulsations (8 mesures en 4/4), comme un vrai
+ * show programmé qui réutilise quelques « looks » au lieu de tout changer en
+ * permanence.
+ */
+const FORMATIONS_CONCERT: readonly (readonly GesteLyre[])[] = [
+  ["vague", "croisement", "eventail", "cercle", "helice", "respiration"],
+  ["tunnel", "eventail", "helice", "vague", "croisement", "respiration"],
+  ["diagonale", "zigzag", "vague", "eventail", "cercle", "pluie"],
+  ["respiration", "tunnel", "croisement", "helice", "vague", "eventail"],
+];
+
+/** Geste de l'étage `row` dans la formation courante. */
+function gesteFormation(f: FrameState, row: number): GesteLyre {
+  const look = Math.floor(Math.max(0, f.beatIndex) / 32);
+  const formation = FORMATIONS_CONCERT[look % FORMATIONS_CONCERT.length] ?? FORMATIONS_CONCERT[0]!;
+  return formation[row % formation.length] ?? "eventail";
+}
+
+/**
  * Cathédrale de lyres : deux étages lointains et deux étages frontaux, tous en
  * mouvement lent. C'est la scène la plus dense du profil concert, sans aucun
  * laser ni artifice de rave.
  */
 const lyresCathedrale: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "vague", 0.16, -f.height * 0.24, 0.34);
-  dessinerEtageLyres(ctx, f, view, "vague", 0.2, -f.height * 0.17, 0.42);
-  dessinerEtageLyres(ctx, f, view, "croisement", 0.28, -f.height * 0.09, 0.55);
-  dessinerEtageLyres(ctx, f, view, "eventail", 0.55, 0, 0.78);
-  dessinerEtageLyres(ctx, f, view, "cercle", 0.72, f.height * 0.11, 0.94);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 0), 0.16, -f.height * 0.24, 0.34);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 1), 0.2, -f.height * 0.17, 0.42);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 2), 0.28, -f.height * 0.09, 0.55);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 3), 0.55, 0, 0.78);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 4), 0.72, f.height * 0.11, 0.94);
 };
 
 /**
@@ -1212,11 +1244,11 @@ const lyresRideau: FamilyDraw = (ctx, f, view) => {
  * vers l'avant. La scène brille par accumulation de têtes, pas par stroboscope.
  */
 const lyresAurore: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "vague", 0.14, -f.height * 0.26, 0.34);
-  dessinerEtageLyres(ctx, f, view, "vague", 0.18, -f.height * 0.2, 0.4);
-  dessinerEtageLyres(ctx, f, view, "croisement", 0.32, -f.height * 0.1, 0.58);
-  dessinerEtageLyres(ctx, f, view, "eventail", 0.52, 0, 0.8);
-  dessinerEtageLyres(ctx, f, view, "cercle", 0.75, f.height * 0.12, 0.96);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 0), 0.14, -f.height * 0.26, 0.34);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 1), 0.18, -f.height * 0.2, 0.4);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 2), 0.32, -f.height * 0.1, 0.58);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 3), 0.52, 0, 0.8);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 4), 0.75, f.height * 0.12, 0.96);
 };
 
 /**
@@ -1256,11 +1288,11 @@ const lyresDiagonale: FamilyDraw = (ctx, f, view) => {
  * sur quatre étages. C'est l'effet le plus ample du plateau.
  */
 const lyresRespiration: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.16, -f.height * 0.26, 0.38);
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.2, -f.height * 0.2, 0.45);
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.36, -f.height * 0.08, 0.65);
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.56, f.height * 0.04, 0.86);
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.76, f.height * 0.16, 1.04);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 0), 0.16, -f.height * 0.26, 0.38);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 1), 0.2, -f.height * 0.2, 0.45);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 2), 0.36, -f.height * 0.08, 0.65);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 3), 0.56, f.height * 0.04, 0.86);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 4), 0.76, f.height * 0.16, 1.04);
 };
 
 /**
@@ -1278,11 +1310,11 @@ const lyresZigzag: FamilyDraw = (ctx, f, view) => {
  * dans le temps. Aucun stroboscope, seulement un ruissellement de lumière.
  */
 const lyresCascade: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "pluie", 0.14, -f.height * 0.26, 0.36);
-  dessinerEtageLyres(ctx, f, view, "pluie", 0.2, -f.height * 0.2, 0.42);
-  dessinerEtageLyres(ctx, f, view, "pluie", 0.36, -f.height * 0.07, 0.62);
-  dessinerEtageLyres(ctx, f, view, "pluie", 0.56, f.height * 0.05, 0.84);
-  dessinerEtageLyres(ctx, f, view, "pluie", 0.78, f.height * 0.17, 1.04);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 0), 0.14, -f.height * 0.26, 0.36);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 1), 0.2, -f.height * 0.2, 0.42);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 2), 0.36, -f.height * 0.07, 0.62);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 3), 0.56, f.height * 0.05, 0.84);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 4), 0.78, f.height * 0.17, 1.04);
 };
 
 /**
@@ -1300,12 +1332,12 @@ const lyresColisee: FamilyDraw = (ctx, f, view) => {
  * allumé en même temps.
  */
 const lyresArena: FamilyDraw = (ctx, f, view) => {
-  dessinerEtageLyres(ctx, f, view, "vague", 0.12, -f.height * 0.28, 0.32);
-  dessinerEtageLyres(ctx, f, view, "respiration", 0.16, -f.height * 0.22, 0.4);
-  dessinerEtageLyres(ctx, f, view, "croisement", 0.24, -f.height * 0.15, 0.52);
-  dessinerEtageLyres(ctx, f, view, "helice", 0.38, -f.height * 0.06, 0.68);
-  dessinerEtageLyres(ctx, f, view, "eventail", 0.58, f.height * 0.04, 0.86);
-  dessinerEtageLyres(ctx, f, view, "cercle", 0.78, f.height * 0.14, 1.04);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 0), 0.12, -f.height * 0.28, 0.32);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 1), 0.16, -f.height * 0.22, 0.4);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 2), 0.24, -f.height * 0.15, 0.52);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 3), 0.38, -f.height * 0.06, 0.68);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 4), 0.58, f.height * 0.04, 0.86);
+  dessinerEtageLyres(ctx, f, view, gesteFormation(f, 5), 0.78, f.height * 0.14, 1.04);
 };
 
 /** Familles de la scénographie concert. */

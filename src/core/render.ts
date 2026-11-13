@@ -1180,17 +1180,33 @@ interface RaveCamera {
 }
 
 function raveCamera(f: FrameState, drop: number): RaveCamera | null {
-  if (f.hard !== true) return null;
-  return {
-    x: Math.sin(f.t * 0.42) * 0.012 * f.width,
-    y: Math.cos(f.t * 0.31) * 0.008 * f.height,
-    rotation: Math.sin(f.t * 0.28) * 0.04 + Math.sin(f.t * 0.11) * 0.02,
-    scale:
-      1.04 +
-      0.04 * clamp01(f.beat) +
-      0.05 * clamp01(drop) +
-      0.012 * Math.sin(f.t * 0.8),
-  };
+  if (f.hard === true) {
+    return {
+      x: Math.sin(f.t * 0.42) * 0.012 * f.width,
+      y: Math.cos(f.t * 0.31) * 0.008 * f.height,
+      rotation: Math.sin(f.t * 0.28) * 0.04 + Math.sin(f.t * 0.11) * 0.02,
+      scale:
+        1.04 +
+        0.04 * clamp01(f.beat) +
+        0.05 * clamp01(drop) +
+        0.012 * Math.sin(f.t * 0.8),
+    };
+  }
+  if (f.dynamic === true) {
+    // Caméra de concert : très lente, elle avance sur les montées et s'ouvre
+    // au moment de l'impact. Aucun tremblement, juste une respiration.
+    return {
+      x: Math.sin(f.t * 0.16) * 0.008 * f.width,
+      y: Math.cos(f.t * 0.12) * 0.005 * f.height,
+      rotation: Math.sin(f.t * 0.1) * 0.007,
+      scale:
+        1.018 +
+        0.045 * clamp01(f.build) -
+        0.022 * clamp01(drop) +
+        0.008 * Math.sin(f.t * 0.22),
+    };
+  }
+  return null;
 }
 
 /**
@@ -1461,9 +1477,14 @@ export function renderFrame(input: RenderInput): void {
   // tenable — puis remontée, agrandie d'autant : l'agrandissement finit d'adoucir
   // les bords. Une nappe que rien n'a nourrie n'est même pas floutée.
   if (haze !== undefined) {
+    // En concert, la fumée s'épaissit dans les montées et les impacts : les
+    // faisceaux deviennent plus volumétriques au lieu de rester des traits.
+    const brume = dynamic
+      ? 1.16 + 0.22 * clamp01(build) + 0.32 * clamp01(drop)
+      : 1;
     const nappes = [
-      { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) },
-      { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) },
+      { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) * brume },
+      { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) * brume },
     ];
     // Le flou de chaque nappe coûte à lui seul plusieurs millisecondes par image
     // (le filtre est synchrone, contrairement aux remplissages). La fumée se

@@ -401,6 +401,11 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
+- des formations de groupe changent toutes les 8 mesures : les étages de lyres passent
+  ensemble d'un éventail à un tunnel, un rideau ou une vague, comme un show programmé ;
+- la fumée s'épaissit dans les montées et les impacts, et les faisceaux s'élargissent
+  sur les refrains et les drops (prisme, diffusion, zoom lent) ;
+- une caméra de concert très lente avance sur les montées et s'ouvre à l'impact ;
 - d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
   tours lumière latérales, rampe de façade, barres de projecteurs et poursuites
   croisées ;
