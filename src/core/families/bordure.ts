@@ -587,12 +587,38 @@ export function dessinerBordure(
 
   if (f.dynamic === true) {
     // Barre LED de concert : une bande continue et épaisse, avec un halo
-    // extérieur, un corps saturé et un cœur clair. Les motifs restent lisibles
-    // par variations de lumière internes, sans grosses diodes rondes.
+    // extérieur, un corps saturé, un cœur clair et un vrai déversement de
+    // lumière dans la salle. Aucune diode ronde, aucune micro-segmentation.
     const intensiteMoyenne = moyenneBordure(f, view);
+    const force = clamp01(0.3 + 0.7 * intensiteMoyenne);
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
+    const x0 = marge;
+    const y0 = marge;
+    const x1 = w - marge;
+    const y1 = h - marge;
+
+    // Déversement : la barre éclaire la salle, pas seulement son propre tube.
+    const spill = Math.min(w, h) * 0.13;
+    const spillAlpha = (0.035 + 0.06 * force) * (0.7 + 0.3 * energie) * f.alpha;
+    const transparent = paint(fil.hue, fil.saturation, 0.5, 0);
+    const teinteSpill = paint(fil.hue, fil.saturation, 0.5, spillAlpha);
+    const halos = [
+      [0, 0, w, spill, 0, 0, 0, spill],
+      [w - spill, 0, spill, h, w, 0, w, 0],
+      [0, h - spill, w, spill, 0, h, 0, h - spill],
+      [0, 0, spill, h, 0, 0, spill, 0],
+    ] as const;
+    for (const [rx, ry, rw, rh, gx0, gy0, gx1, gy1] of halos) {
+      const gradient = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+      gradient.addColorStop(0, teinteSpill);
+      gradient.addColorStop(1, transparent);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(rx, ry, rw, rh);
+    }
+
+    // Halo extérieur du tube.
     ctx.strokeStyle = paint(
       fil.hue,
       fil.saturation * 0.9,
@@ -602,24 +628,42 @@ export function dessinerBordure(
     ctx.lineWidth = tube * 2.6;
     traceRuban();
 
-    const force = clamp01(0.3 + 0.7 * intensiteMoyenne);
-    ctx.strokeStyle = paint(
-      fil.hue,
-      fil.saturation,
-      0.56,
-      (0.28 + 0.38 * force) * (0.75 + 0.25 * energie),
-    );
-    ctx.lineWidth = tube;
-    traceRuban();
+    // Corps et cœur dessinés côté par côté : un léger gradient longitudinal
+    // donne la respiration d'un vrai ruban, sans points visibles.
+    const sides = [
+      [x0, y0, x1, y0],
+      [x1, y0, x1, y1],
+      [x1, y1, x0, y1],
+      [x0, y1, x0, y0],
+    ] as const;
+    for (let side = 0; side < sides.length; side += 1) {
+      const [ax, ay, bx, by] = sides[side]!;
+      const hue = couleurBordure(f, side * 47 + 11);
+      const onde = Math.sin(f.t * 0.42 + side * 1.9) * 0.08;
+      const bodyAlpha = (0.28 + 0.38 * force) * (0.75 + 0.25 * energie);
+      const gradient = ctx.createLinearGradient(ax, ay, bx, by);
+      gradient.addColorStop(0, paint(hue, fil.saturation, 0.56, bodyAlpha * (1 - onde)));
+      gradient.addColorStop(0.5, paint(hue, fil.saturation, 0.58, bodyAlpha));
+      gradient.addColorStop(1, paint(hue, fil.saturation, 0.56, bodyAlpha * (1 + onde)));
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = tube;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
 
-    ctx.strokeStyle = paint(
-      fil.hue,
-      fil.saturation,
-      0.76,
-      (0.1 + 0.16 * force) * (0.75 + 0.25 * energie),
-    );
-    ctx.lineWidth = Math.max(1.2, tube * 0.4);
-    traceRuban();
+      const coreAlpha = (0.1 + 0.16 * force) * (0.75 + 0.25 * energie);
+      const core = ctx.createLinearGradient(ax, ay, bx, by);
+      core.addColorStop(0, paint(hue, fil.saturation, 0.78, coreAlpha * (1 - onde)));
+      core.addColorStop(0.5, paint(hue, fil.saturation, 0.8, coreAlpha));
+      core.addColorStop(1, paint(hue, fil.saturation, 0.78, coreAlpha * (1 + onde)));
+      ctx.strokeStyle = core;
+      ctx.lineWidth = Math.max(1.2, tube * 0.34);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
     return;
   }
 
