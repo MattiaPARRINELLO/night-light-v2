@@ -8,9 +8,11 @@ import {
   ApiError,
   fetchNowPlaying,
   isTransientResolveError,
+  isUnrecognizedTrackError,
   normalizeNowPlaying,
   resolveAndAnalyze,
   resolveRetryDelayMs,
+  resolveUnrecognizedRetryDelayMs,
   type JobTimings,
 } from "../core/api";
 import { dbgThrottled } from "../core/debug";
@@ -39,6 +41,7 @@ declare module "./app" {
       duration: number | undefined,
       trackKey: string,
       deezerId?: string,
+      unrecognized?: boolean,
     ): boolean;
     cancelAutoRetry(): void;
     bindNowPlayingStream(): void;
@@ -117,13 +120,14 @@ export function installResolve(Target: { prototype: App }): void {
     }
     this.autoRetryKey = "";
     this.autoRetryAttempt = 0;
+    this.autoRetryUnrecognized = false;
   };
 
   /**
    * Programme une nouvelle tentative après un échec passager (serveur
-   * redémarré, 5xx, réseau). Une seule relance à la fois, et uniquement si le
-   * lecteur joue toujours le même morceau : sinon le morceau suivant a déjà
-   * pris la main.
+   * redémarré, 5xx, réseau) ou un morceau non reconnu. Une seule relance à la
+   * fois, et uniquement si le lecteur joue toujours le même morceau : sinon le
+   * morceau suivant a déjà pris la main.
    */
   Target.prototype.scheduleAutoRetry = function (
     this: App,
@@ -132,8 +136,18 @@ export function installResolve(Target: { prototype: App }): void {
     duration: number | undefined,
     trackKey: string,
     deezerId?: string,
+    unrecognized = false,
   ): boolean {
-    const delay = resolveRetryDelayMs(this.autoRetryAttempt);
+    // Les deux motifs n'ont pas la même urgence : un morceau non reconnu se
+    // retente en 1 à 2 s, une panne serveur s'espace. Le compteur repart de
+    // zéro quand le motif change pour ne pas mélanger les deux séquences.
+    if (this.autoRetryUnrecognized !== unrecognized) {
+      this.autoRetryUnrecognized = unrecognized;
+      this.autoRetryAttempt = 0;
+    }
+    const delay = unrecognized
+      ? resolveUnrecognizedRetryDelayMs(this.autoRetryAttempt)
+      : resolveRetryDelayMs(this.autoRetryAttempt);
     if (delay === null) return false;
     if (this.nowPlaying === null || detectedTrackKey(this.nowPlaying) !== trackKey) return false;
     if (!shouldAutoResolve(this.nowPlaying)) return false;
@@ -321,14 +335,19 @@ export function installResolve(Target: { prototype: App }): void {
       const detail =
         error instanceof ApiError ? `${error.code}${error.detail ? ` — ${error.detail}` : ""}` : String(error);
       // Une résolution automatique qui échoue n'est pas forcément définitive :
-      // un serveur redémarré ou un 5xx momentané mérite une relance. On garde le
-      // show en direct dans tous les cas, sans écran d'erreur.
+      // un serveur redémarré ou un 5xx momentané mérite une relance. Un morceau
+      // non reconnu aussi : les métadonnées annoncées par le lecteur peuvent se
+      // corriger juste après. On garde le show en direct dans tous les cas,
+      // sans écran d'erreur.
       const retryable = auto && isTransientResolveError(error);
+      const unrecognized = auto && !retryable && isUnrecognizedTrackError(error);
       this.debug(
         "attention",
         retryable
           ? `morceau non récupéré automatiquement · ${message} · nouvel essai programmé`
-          : `morceau non récupéré automatiquement · ${message}`,
+          : unrecognized
+            ? `morceau non reconnu · ${message} · nouvel essai dans 1 à 2 s`
+            : `morceau non récupéré automatiquement · ${message}`,
         { message, detail },
       );
       if (auto) {
@@ -348,10 +367,10 @@ export function installResolve(Target: { prototype: App }): void {
           this.lastAutoFailure = { key: trackKey, durationSec: duration ?? null };
         }
         el<HTMLElement>("dock-panel").classList.remove("is-hidden");
-        if (!retryable) {
+        if (!retryable && !unrecognized) {
           this.cancelAutoRetry();
         } else if (trackKey !== undefined) {
-          this.scheduleAutoRetry(title, artist, duration, trackKey, deezerId);
+          this.scheduleAutoRetry(title, artist, duration, trackKey, deezerId, unrecognized);
         }
         return;
       }
