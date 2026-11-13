@@ -407,14 +407,20 @@ la noirceur du hard. Il se force avec le réglage **Profil → Concert**, le bou
   éclairent la salle, avec une puissance et une lumière très au-dessus du standard ;
 - de nouveaux gestes de console : hélice, convergence en tunnel, balayage diagonal,
   éventail qui respire, zigzag alterné, pluie en cascade et croisement en colisée ;
+- des formations de groupe changent toutes les 8 mesures : les étages de lyres passent
+  ensemble d'un éventail à un tunnel, un rideau ou une vague, comme un show programmé ;
+- la fumée s'épaissit dans les montées et les impacts, et les faisceaux s'élargissent
+  sur les refrains et les drops (prisme, diffusion, zoom lent) ;
+- une caméra de concert très lente avance sur les montées et s'ouvre à l'impact ;
 - d'autres lumières de scène viennent compléter les lyres : PAR wash, découpes,
   tours lumière latérales, rampe de façade, barres de projecteurs et poursuites
   croisées ;
 - aucune laser, aucun confetti, aucun CO2, aucune onde de choc : ces effets restent
   réservés au mode rave. Le concert se remplit uniquement par les lyres et le plateau ;
 - les refrains et les montées déploient le plateau complet ;
-- pas de flash à chaque temps : les lyres tiennent la salle. Seuls les vrais impacts
-  ouvrent le strobe, avec 2 à 4 éclats par temps et la couleur principale de la scène ;
+- pas de flash à chaque temps : les lyres tiennent la salle ;
+- les gros blinders ne claquent que dans la demi-seconde qui suit un vrai impact, et
+  éblouissent franchement la salle à ce moment-là ;
 - la bordure LED strobe rarement, à cadence lente (2 éclats par temps), mais son tube est
   nettement plus épais qu'ailleurs : c'est elle qui éclaire la pièce en concert ;
 - l'intensité globale et les blinders sont poussés, les fondus de scène raccourcis, sans

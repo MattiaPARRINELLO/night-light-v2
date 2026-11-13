@@ -7,6 +7,7 @@ import {
   resolveShowProfile,
 } from "../../src/core/show";
 import { dynamicStrobeAlpha, dynamicStrobeDivisions, flashAdmitted } from "../../src/core/render";
+import { forceGrosBlinders } from "../../src/core/families/concert-rig";
 import { motifBordure } from "../../src/core/families/bordure";
 import type { FrameState } from "../../src/core/families";
 import { TrackView } from "../../src/core/view";
@@ -118,6 +119,23 @@ describe("profil concert dynamique", () => {
       if (flashAdmitted(view, time, false, true)) admitted += 1;
     }
     expect(admitted).toBeGreaterThan(0);
+  });
+
+  test("les gros blinders ne claquent que sur un impact récent", () => {
+    const frame = (overrides: Partial<FrameState> = {}) =>
+      ({
+        dynamic: true,
+        reduced: false,
+        dropAge: Infinity,
+        energy: 0.9,
+        ...overrides,
+      }) as unknown as FrameState;
+    expect(forceGrosBlinders(frame({ dropAge: 0.05 }), 1)).toBeGreaterThan(0.5);
+    expect(forceGrosBlinders(frame({ dropAge: 0.3 }), 1)).toBeGreaterThan(0);
+    expect(forceGrosBlinders(frame({ dropAge: 1 }), 1)).toBe(0);
+    expect(forceGrosBlinders(frame(), 1)).toBe(0);
+    expect(forceGrosBlinders(frame({ dropAge: 0.05, reduced: true }), 1)).toBe(0);
+    expect(forceGrosBlinders(frame({ dropAge: 0.05 }), 0)).toBe(0);
   });
 
   test("la bordure LED strobe souvent en concert, sans être permanente", () => {
