@@ -23,6 +23,7 @@ import {
 } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
+import { drawLyrics } from "./lyrics";
 import type { LiveMusic } from "./liveDirector";
 
 export interface RenderInput {
@@ -1642,6 +1643,14 @@ export function renderFrame(input: RenderInput): void {
   dessinerBordure(ctx, permanent, view, settings.flashes);
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
+
+  // Les paroles passent au-dessus de tout : texte net, jamais fondu dans les
+  // faisceaux. Absent du payload (morceau sans paroles), rien n'est dessiné.
+  const lyrics = view.analysis.lyrics;
+  if (lyrics !== undefined && lyrics.lines.length > 0) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawLyrics(ctx, lyrics, t, width, height, { palette, reduced, beat });
+  }
 }
 
 /** Vignettes déjà créées, par contexte puis par dimensions. */

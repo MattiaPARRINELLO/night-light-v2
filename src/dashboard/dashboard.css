@@ -690,7 +690,7 @@ canvas {
 
 .nowline {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   background: var(--rule);
   border-radius: var(--radius-inner);
@@ -724,6 +724,14 @@ canvas {
 
 .now-card b.is-idle {
   color: var(--faint);
+}
+
+/* Les paroles changent à chaque mot : elles se lisent sur deux lignes plutôt
+   que d'être coupées. */
+#now-lyrics {
+  white-space: normal;
+  font-size: 15px;
+  line-height: 1.35;
 }
 
 .track-line {
@@ -1413,6 +1421,11 @@ input[type="range"]::-moz-range-thumb {
 
   .nowline {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Cinq repères sur deux colonnes : le dernier prend la ligne seule. */
+  .nowline > .now-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 
   /* Trois colonnes : le cinquième fait prend la fin de la seconde ligne. */

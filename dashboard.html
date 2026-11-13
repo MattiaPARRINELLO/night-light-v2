@@ -57,7 +57,7 @@
         </div>
       </div>
 
-      <!-- La bande d'état : cinq faits, un seul cadre divisé. Chaque fait mène
+      <!-- La bande d'état : six faits, un seul cadre divisé. Chaque fait mène
            au panneau qui le détaille. -->
       <section class="strip" aria-label="État du spectacle">
         <button class="stat" id="sb-link" type="button" data-jump="panel-sync">
@@ -85,6 +85,11 @@
           <b class="stat-value" id="sb-render-value">—</b>
           <span class="stat-note" id="sb-render-note">—</span>
         </button>
+        <button class="stat" id="sb-lyrics" type="button" data-jump="panel-track">
+          <span class="stat-label">Paroles</span>
+          <b class="stat-value" id="sb-lyrics-value">—</b>
+          <span class="stat-note" id="sb-lyrics-note">aucune analyse</span>
+        </button>
       </section>
 
       <!-- Ce qui demande une action : erreur du show, repli, liaison perdue. -->
@@ -110,6 +115,7 @@
           </div>
           <p class="track-facts" id="track-facts">—</p>
         </div>
+        <p class="note" id="track-lyrics">Paroles : —</p>
 
         <div class="track-plot" id="track-plot">
           <canvas id="track-canvas" width="1120" height="340" tabindex="0" aria-label="Analyse du morceau : énergie, bandes, sections, temps et montées. Survole pour lire les valeurs, molette pour zoomer, glisse pour te déplacer."></canvas>
@@ -122,6 +128,7 @@
           <div class="now-card"><span>Section</span><b id="now-section">—</b></div>
           <div class="now-card"><span>Énergie instantanée</span><b id="now-energy">—</b></div>
           <div class="now-card"><span>Prochaine montée</span><b id="now-build">—</b></div>
+          <div class="now-card"><span>Paroles</span><b id="now-lyrics">—</b></div>
         </div>
 
         <div class="track-line">
