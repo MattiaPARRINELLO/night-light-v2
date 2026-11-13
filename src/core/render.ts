@@ -3,6 +3,7 @@ import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
 import {
   contrastHue,
   dessinerBlinders,
+  dessinerGrosBlinders,
   dessinerBordure,
   dessinerLyresRave,
   dessinerStructure,
@@ -1512,6 +1513,7 @@ export function renderFrame(input: RenderInput): void {
   // l'impact d'un drop s'éteindrait au moment précis où il doit frapper.
   ctx.globalCompositeOperation = "lighter";
   dessinerBlinders(ctx, permanent, view, settings.flashes);
+  dessinerGrosBlinders(ctx, permanent, view, settings.flashes);
 
   // Bordure LED : dessinée APRÈS la vignette (plus bas), pour ne pas être
   // assombrie sur les bords de l'écran.

@@ -1340,6 +1340,70 @@ const lyresArena: FamilyDraw = (ctx, f, view) => {
   dessinerEtageLyres(ctx, f, view, gesteFormation(f, 5), 0.78, f.height * 0.14, 1.04);
 };
 
+/**
+ * Gros blinders de concert : quatre pods qui éblouissent la salle sur les
+ * impacts. Le rendu est volontairement chaud et blanc, comme un vrai blinder
+ * tungstène : c'est la seule source qui sort de la palette du morceau.
+ */
+export function dessinerGrosBlinders(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  budgetFlash = 1,
+): void {
+  if (f.dynamic !== true || f.reduced) return;
+  const budget = clamp01(budgetFlash);
+  if (budget <= 0) return;
+  const impact = Math.max(
+    intensiteBlinder(f, view, 0) * 0.9,
+    intensiteBlinder(f, view, 6) * 0.9,
+    f.beat * (0.45 + 0.55 * clamp01(f.bass)),
+    clamp01(f.drop) * 0.75,
+    f.scene.role === "drop" ? f.beat * 0.6 : 0,
+  );
+  const force = clamp01(impact * (1.15 + 0.45 * f.energy)) * budget;
+  if (force <= 0.02) return;
+
+  const { width: w, height: h } = f;
+  const positions = [0.14, 0.38, 0.62, 0.86];
+  const y = h * 0.105;
+  for (let index = 0; index < positions.length; index += 1) {
+    const x = w * positions[index]!;
+    const variation = 0.85 + 0.3 * hash01(index * 97 + f.seed);
+    const intensite = clamp01(force * variation);
+    const rayon = Math.min(w, h) * (0.11 + 0.17 * intensite);
+    const halo = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rayon, 1));
+    halo.addColorStop(0, paint(38, 0.08, 1, 1 * intensite * f.alpha));
+    halo.addColorStop(0.22, paint(36, 0.18, 0.98, 0.82 * intensite * f.alpha));
+    halo.addColorStop(0.55, paint(34, 0.3, 0.88, 0.42 * intensite * f.alpha));
+    halo.addColorStop(1, paint(32, 0.42, 0.72, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(rayon, 1), 0, Math.PI * 2);
+    ctx.fill();
+
+    // Flare anamorphique : la signature des blinders de concert.
+    const demi = Math.max(w * 0.24, rayon * 7);
+    const bande = ctx.createLinearGradient(x - demi, 0, x + demi, 0);
+    bande.addColorStop(0, paint(38, 0.2, 1, 0));
+    bande.addColorStop(0.5, paint(38, 0.08, 1, 0.72 * intensite * f.alpha));
+    bande.addColorStop(1, paint(38, 0.2, 1, 0));
+    ctx.fillStyle = bande;
+    ctx.fillRect(x - demi, y - 2 - 5 * intensite, demi * 2, 4 + 10 * intensite);
+
+    ctx.fillStyle = paint(40, 0.05, 1, intensite * f.alpha);
+    ctx.beginPath();
+    ctx.arc(x, y, 4 + 11 * intensite, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Éblouissement global : une nappe chaude très brève sur les gros impacts.
+  if (force > 0.35) {
+    ctx.fillStyle = paint(38, 0.12, 1, (force - 0.35) * 0.32 * f.alpha);
+    ctx.fillRect(0, 0, w, h);
+  }
+}
+
 /** Familles de la scénographie concert. */
 export const CONCERT_FAMILIES = {
   "lyres-suspendues": lyresSuspendues,
