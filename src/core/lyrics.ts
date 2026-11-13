@@ -64,8 +64,11 @@ export function drawLyrics(
 }
 
 interface RepeatedWord {
+  /** Texte affiché, sans ponctuation. */
   text: string;
   occurrences: { startMs: number; endMs: number }[];
+  /** Mots qui changent entre deux occurrences (« x », « y », « z »). */
+  others: { text: string; startMs: number; endMs: number }[];
   lineEndMs: number;
 }
 
@@ -73,7 +76,8 @@ interface RepeatedWord {
  * Mot répété dans la phrase, s'il y en a un.
  *
  * « nique x, nique y, nique z » comme « nique, nique, nique » : le mot qui
- * revient est le vrai motif de la ligne, c'est lui qu'on montre.
+ * revient est le motif de la ligne. Les mots variables sont conservés à part,
+ * pour être montrés plus petits au moment où ils sont chantés.
  */
 function repeatedWord(line: LyricLine): RepeatedWord | null {
   const tokens = withTimings(line);
@@ -86,20 +90,35 @@ function repeatedWord(line: LyricLine): RepeatedWord | null {
     entry.occurrences.push({ startMs: token.startMs, endMs: token.endMs });
     groups.set(key, entry);
   }
-  let best: { text: string; occurrences: { startMs: number; endMs: number }[] } | null = null;
-  for (const entry of groups.values()) {
+  let bestKey: string | null = null;
+  let best = null as { text: string; occurrences: { startMs: number; endMs: number }[] } | null;
+  for (const [key, entry] of groups.entries()) {
     if (entry.occurrences.length < 2) continue;
     if (
       best === null ||
       entry.occurrences.length > best.occurrences.length ||
       (entry.occurrences.length === best.occurrences.length &&
-        normalizeWord(entry.text).length > normalizeWord(best.text).length)
+        key.length > normalizeWord(best.text).length)
     ) {
       best = entry;
+      bestKey = key;
     }
   }
-  if (best === null) return null;
-  return { text: best.text, occurrences: best.occurrences, lineEndMs: line.endMs };
+  if (best === null || bestKey === null) return null;
+
+  const others: { text: string; startMs: number; endMs: number }[] = [];
+  for (const token of tokens) {
+    if (normalizeWord(token.text) === bestKey) continue;
+    const text = cleanWord(token.text);
+    if (text.length === 0) continue;
+    others.push({ text, startMs: token.startMs, endMs: token.endMs });
+  }
+  return {
+    text: cleanWord(best.text),
+    occurrences: best.occurrences,
+    others,
+    lineEndMs: line.endMs,
+  };
 }
 
 function normalizeWord(text: string): string {
@@ -107,6 +126,14 @@ function normalizeWord(text: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^a-zà-öø-ÿ0-9]/g, "");
+}
+
+/** Retire la ponctuation autour d'un mot, sans toucher aux apostrophes internes. */
+function cleanWord(text: string): string {
+  return text
+    .replace(/[.,;:!?…«»“”"()[\]{}]/g, "")
+    .replace(/^-+|-+$/g, "")
+    .trim();
 }
 
 function drawRepeatedWord(
@@ -124,14 +151,16 @@ function drawRepeatedWord(
 
   // Pulsation à chaque occurrence : le mot « frappe » quand il est chanté.
   let pulse = 0;
+  let current: { startMs: number; endMs: number } | null = null;
   for (const occurrence of repeat.occurrences) {
     const age = (ms - occurrence.startMs) / 1000;
     if (age >= 0 && age < 0.42) pulse = Math.max(pulse, 1 - age / 0.42);
+    if (occurrence.startMs <= ms && ms < occurrence.endMs) current = occurrence;
   }
 
   const text = repeat.text.toUpperCase();
   const maxWidth = width * 0.92;
-  let size = Math.min(width * 0.24, height * 0.34);
+  let size = Math.min(width * 0.22, height * 0.32);
   ctx.font = `900 ${size}px ${FONT_STACK}`;
   const measured = ctx.measureText(text).width;
   if (measured > maxWidth) {
@@ -139,22 +168,48 @@ function drawRepeatedWord(
     ctx.font = `900 ${size}px ${FONT_STACK}`;
   }
 
-  const scale = 1 + (options.reduced ? 0 : 0.12 * pulse) + (options.reduced ? 0 : 0.03 * options.beat);
+  const scale = 1 + (options.reduced ? 0 : 0.1 * pulse) + (options.reduced ? 0 : 0.02 * options.beat);
+  const y = height * 0.43;
+
   ctx.globalAlpha = alpha;
-  ctx.translate(width * 0.5, height * 0.46);
-  // Légère inclinaison : le mot ne ressemble pas à un titre bien sage.
-  ctx.rotate(options.reduced ? 0 : -0.028);
+  ctx.translate(width * 0.5, y);
   ctx.scale(scale, scale);
 
-  // Contour sombre puis remplissage accent : lisible même sur un flash.
-  ctx.lineJoin = "round";
-  ctx.lineWidth = Math.max(2, size * 0.045);
-  ctx.strokeStyle = "rgba(6, 3, 12, 0.72)";
-  ctx.strokeText(text, 0, 0);
-  ctx.fillStyle = accentSolid(options.palette);
-  ctx.shadowColor = accentColor(options.palette, 1);
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.45, 90);
+  // Mot répété : blanc, souffle à la couleur du morceau, sans contour ni biais.
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = accentColor(options.palette, 0.9);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.34, 72);
   ctx.fillText(text, 0, 0);
+
+  // Le mot variable (« x », « y », « z ») apparaît plus petit sous le motif.
+  const companion = activeOther(repeat.others, current, ms);
+  if (companion !== null) {
+    const shown = envelope(ms, companion.startMs, companion.endMs + 220, 70, 170);
+    if (shown > 0.01) {
+      const small = size * 0.28;
+      ctx.globalAlpha = alpha * shown;
+      ctx.font = `700 ${small}px ${FONT_STACK}`;
+      ctx.shadowColor = accentColor(options.palette, 0.7);
+      ctx.shadowBlur = options.reduced ? 0 : small * 0.5;
+      ctx.fillStyle = accentSolid(options.palette);
+      ctx.fillText(companion.text.toUpperCase(), 0, size * 0.52);
+    }
+  }
+}
+
+/** Mot variable chanté à cet instant, ou juste avant/après l'occurrence. */
+function activeOther(
+  others: { text: string; startMs: number; endMs: number }[],
+  occurrence: { startMs: number; endMs: number } | null,
+  ms: number,
+): { text: string; startMs: number; endMs: number } | null {
+  for (const other of others) {
+    if (other.startMs - 120 <= ms && ms <= other.endMs + 220) return other;
+    if (occurrence !== null && other.startMs >= occurrence.startMs - 150 && other.startMs <= occurrence.endMs + 250) {
+      return other;
+    }
+  }
+  return null;
 }
 
 function lineIndexAt(lines: LyricLine[], ms: number): number {
