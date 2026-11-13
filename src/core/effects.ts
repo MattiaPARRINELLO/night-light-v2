@@ -159,16 +159,42 @@ export interface EffectTimeline {
 }
 
 function defaultDrop(seed: number): DropSignature {
-  const modes: DropSignature["lyres"][] = ["convergence", "croisee", "eventail"];
+  const plateaux: DropSignature["plateau"][] = [
+    "pont",
+    "cathedrale",
+    "colisee",
+    "arena",
+    "rideau",
+    "aurore",
+    "helice",
+    "tunnel",
+    "cascade",
+  ];
+  const modes: DropSignature["lyres"][] = [
+    "convergence",
+    "croisee",
+    "eventail",
+    "croix",
+    "helice",
+    "tunnel",
+    "diagonale",
+    "zigzag",
+    "respiration",
+    "pluie",
+  ];
   const barres: DropSignature["barres"][] = ["onde", "rideau", "alterne"];
-  const blinders: DropSignature["blinders"][] = ["tous", "un-sur-deux", "chenillard"];
+  const blinders: DropSignature["blinders"][] = ["tous", "un-sur-deux", "un-sur-quatre", "chenillard"];
+  const strobes: DropSignature["strobes"][] = ["aucun", "simple", "double", "cascade"];
+  const hues: DropSignature["hue"][] = ["accent", "contraste", "blanc", "bicolore"];
   const pick = <T,>(values: readonly T[], offset: number): T =>
     values[(seed + offset) % values.length] ?? values[0]!;
   return {
+    plateau: pick(plateaux, 4),
     lyres: pick(modes, 1),
     barres: pick(barres, 2),
     blinders: pick(blinders, 3),
-    hue: seed % 2 === 0 ? "accent" : "contraste",
+    strobes: pick(strobes, 5),
+    hue: pick(hues, 0),
   };
 }
 

@@ -71,19 +71,19 @@
           "variant": "lyres-eventail"
         },
         {
-          "accent": 52,
+          "accent": 186,
           "backdrop": "pluie",
           "drop": {
             "barres": "alterne",
-            "blinders": "un-sur-deux",
-            "hue": "contraste",
-            "lyres": "convergence"
+            "blinders": "tous",
+            "hue": "blanc",
+            "lyres": "tunnel"
           },
           "end": 41.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 186,
+          "hue": 52,
           "intensity": 0.956,
           "lightness": 0.76,
           "mood": "explosif",
@@ -209,19 +209,19 @@
           "variant": "lyres-eventail"
         },
         {
-          "accent": 52,
+          "accent": 186,
           "backdrop": "pluie",
           "drop": {
             "barres": "alterne",
-            "blinders": "un-sur-deux",
-            "hue": "contraste",
-            "lyres": "convergence"
+            "blinders": "tous",
+            "hue": "blanc",
+            "lyres": "tunnel"
           },
           "end": 41.796,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 186,
+          "hue": 52,
           "intensity": 0.956,
           "lightness": 0.76,
           "mood": "explosif",
@@ -334,10 +334,10 @@
           "accent": 212,
           "backdrop": "particles",
           "drop": {
-            "barres": "rideau",
-            "blinders": "chenillard",
-            "hue": "accent",
-            "lyres": "convergence"
+            "barres": "alterne",
+            "blinders": "un-sur-quatre",
+            "hue": "bicolore",
+            "lyres": "croix"
           },
           "end": 43.119,
           "fadeIn": 0.7,
@@ -432,19 +432,19 @@
           "variant": "rings"
         },
         {
-          "accent": 152,
+          "accent": 352,
           "backdrop": "spiral",
           "drop": {
             "barres": "rideau",
-            "blinders": "un-sur-deux",
-            "hue": "accent",
+            "blinders": "chenillard",
+            "hue": "contraste",
             "lyres": "croisee"
           },
           "end": 33.065,
           "fadeIn": 0.7,
           "fadeOut": 0.9,
           "family": "pont-concert",
-          "hue": 352,
+          "hue": 152,
           "intensity": 0.924,
           "lightness": 0.76,
           "mood": "explosif",
@@ -570,10 +570,10 @@
           "accent": 152,
           "backdrop": "waves",
           "drop": {
-            "barres": "onde",
-            "blinders": "un-sur-deux",
-            "hue": "accent",
-            "lyres": "convergence"
+            "barres": "alterne",
+            "blinders": "tous",
+            "hue": "blanc",
+            "lyres": "zigzag"
           },
           "end": 49.412,
           "fadeIn": 0.7,
@@ -652,9 +652,9 @@
           "accent": 34,
           "backdrop": "waves",
           "drop": {
-            "barres": "onde",
-            "blinders": "chenillard",
-            "hue": "contraste",
+            "barres": "rideau",
+            "blinders": "un-sur-deux",
+            "hue": "blanc",
             "lyres": "croisee"
           },
           "end": 27.26,

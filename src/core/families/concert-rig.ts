@@ -210,10 +210,27 @@ export function orientationLyre(
     case "drop": {
       // La signature du drop décide du geste. Aucune enveloppe ne change :
       // une lyre part toujours de la verticale et rejoint sa cible en 0,9 s.
-      const geste = f.scene.drop?.lyres ?? "convergence";
+      const gesteDrop = f.scene.drop?.lyres ?? "convergence";
+      // Gestes étendus : on les confie au bloc commun des gestes imposés, plus
+      // bas, qui sait déjà les dessiner. Le plateau change ainsi de geste sans
+      // dupliquer une seule formule.
+      if (
+        gesteDrop === "croix" ||
+        gesteDrop === "helice" ||
+        gesteDrop === "tunnel" ||
+        gesteDrop === "diagonale" ||
+        gesteDrop === "zigzag" ||
+        gesteDrop === "respiration" ||
+        gesteDrop === "pluie"
+      ) {
+        geste = gesteDrop;
+        ouverture = 0.021;
+        intensite = 0.92;
+        break;
+      }
       const local = clamp01((f.t - f.scene.start) / 0.9);
       const convergence = smoothstep(0, 1, local);
-      if (geste === "eventail") {
+      if (gesteDrop === "eventail") {
         // Éventail symétrique : même ouverture lente que la montée, tenue
         // pendant tout le drop.
         const ouvertureEventail = 0.11 * (0.7 + 0.3 * Math.sin(f.t * 0.22));
@@ -221,7 +238,7 @@ export function orientationLyre(
       } else {
         // Convergence centrale, ou croisée : chaque tête vise le côté opposé.
         const cibleX =
-          geste === "croisee"
+          gesteDrop === "croisee"
             ? f.width * (0.5 + ((centre - i) / (NOMBRE_LYRES - 1)) * 0.9)
             : f.width * (0.5 + 0.035 * Math.sin(f.t * 0.35));
         const cibleY = f.height * 1.02;
@@ -229,7 +246,7 @@ export function orientationLyre(
         const angleCible = Math.atan2(cibleY - y, cibleX - x);
         angle = base + (angleCible - base) * convergence;
       }
-      ouverture = geste === "eventail" ? 0.023 : 0.017;
+      ouverture = gesteDrop === "eventail" ? 0.023 : 0.017;
       prisme = f.reduced ? 0 : smoothstep(0.55, 0.85, f.energy);
       intensite = 0.95;
       break;
