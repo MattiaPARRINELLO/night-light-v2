@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -30,8 +31,17 @@ DURATION_TOLERANCE_SEC = 6.0
 DURATION_REJECT_SEC = 15.0
 # Score minimal pour accepter un résultat de recherche.
 MIN_MATCH_SCORE = 2.0
+# Score atteint quand le titre et l'artiste correspondent exactement : inutile
+# d'interroger les autres variantes d'artiste.
+EXACT_MATCH_SCORE = 5.0
+# Nombre maximal de variantes d'artiste interrogées pour un même morceau.
+MAX_ARTIST_VARIANTS = 4
 # Plafond d'attente quand LRCLIB répond 429.
 MAX_RETRY_AFTER_SEC = 30.0
+
+# Séparateurs d'artistes multiples dans les métadonnées MPRIS ou les tags :
+# « Jok'air, Linema, Kady, Shadow », « A & B », « A feat. B », « A x B ».
+_ARTIST_SEPARATORS = re.compile(r"\s*[,;/&]\s*|\s+(?:feat\.?|ft\.?|x)\s+", re.IGNORECASE)
 
 Fetcher = Callable[[str], Any]
 
@@ -74,6 +84,32 @@ def _retry_after_seconds(error: urllib.error.HTTPError) -> float:
     except (TypeError, ValueError):
         value = 1.0
     return min(max(value, 0.0), MAX_RETRY_AFTER_SEC)
+
+
+def artist_variants(artist_name: str) -> tuple[str, ...]:
+    """Artistes à interroger, du plus complet au plus simple, sans doublon.
+
+    LRCLIB ne gère pas la recherche multi-artistes : une valeur comme
+    « Jok'air, Linema, Kady, Shadow » ne renvoie rien, alors que le premier
+    artiste seul trouve l'enregistrement. On garde donc la chaîne complète en
+    premier (certaines entrées la stockent telle quelle) puis chaque artiste
+    séparément.
+    """
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        cleaned = value.strip()
+        key = normalize_text(cleaned)
+        if not cleaned or not key or key in seen:
+            return
+        seen.add(key)
+        variants.append(cleaned)
+
+    add(artist_name)
+    for part in _ARTIST_SEPARATORS.split(artist_name):
+        add(part)
+    return tuple(variants)
 
 
 class LrclibClient:
@@ -130,14 +166,27 @@ class LrclibClient:
         """Cherche le meilleur enregistrement pour un morceau, ou None.
 
         Le score combine le titre, l'artiste et la durée ; un enregistrement
-        synchronisé mot à mot est légèrement préféré à qualité égale.
+        synchronisé mot à mot est légèrement préféré à qualité égale. Les
+        morceaux à plusieurs artistes sont cherchés avec la chaîne complète puis
+        avec chaque artiste pris séparément, LRCLIB n'acceptant qu'un seul nom.
         """
         best: Lyrics | None = None
         best_score = 0.0
-        for lyrics in self.search(track_name, artist_name):
-            score = _match_score(lyrics, track_name, artist_name, duration_sec)
-            if score > best_score:
-                best, best_score = lyrics, score
+        variants = artist_variants(artist_name)[:MAX_ARTIST_VARIANTS] or ("",)
+        for candidate in variants:
+            try:
+                results = self.search(track_name, candidate)
+            except LrclibError:
+                # Un candidat en échec ne doit pas jeter un match déjà trouvé.
+                if best is None:
+                    raise
+                break
+            for lyrics in results:
+                score = _match_score(lyrics, track_name, candidate, duration_sec)
+                if score > best_score:
+                    best, best_score = lyrics, score
+            if best_score >= EXACT_MATCH_SCORE:
+                break
         if best is None or best_score < MIN_MATCH_SCORE:
             return None
         return best
