@@ -8,11 +8,13 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
 
 ### Ajouté
 
-- **Refrain et lumière de salle** : en mode concert, un refrain détecté dans
-  les paroles relève le fond et le halo de toute l'image. Les lignes de refrain
-  sont fusionnées en blocs (les respirations courtes ne coupent pas la lumière),
-  avec une montée et une extinction douces. Le profil standard et le direct sans
-  paroles calées restent inchangés.
+- **Refrain et lumière de la salle projetée** : en mode concert, un refrain
+  détecté dans les paroles allume toute la surface projetée, qui sert de source
+  de lumière pour la soirée. Une nappe additive pleine image s'ajoute aux
+  faisceaux, avec une respiration légère sur le temps fort. Les lignes de
+  refrain sont fusionnées en blocs (les respirations courtes ne coupent pas la
+  lumière), avec une montée et une extinction douces. Le profil standard et le
+  direct sans paroles calées restent inchangés.
 - **Direction musicale du mode direct** : le direct ne se contente plus de
   niveaux lissés. `liveDirector.ts` détecte les temps forts (seuil adaptatif,
   intervalle estimé, BPM), les impacts (saut de rms relatif au niveau habituel)

@@ -300,8 +300,9 @@ Trois règles, toutes vérifiées par des tests :
 
 L'ampleur d'un balayage et la cadence des allumages suivent l'énergie : un couplet se
 contente d'un mouvement étroit et lent, un refrain ouvre largement et vit plus vite.
-En mode concert, un refrain détecté dans les paroles relève en plus la lumière de salle :
-le fond et le halo s'ouvrent pendant le bloc chanté, puis retombent doucement.
+En mode concert, un refrain détecté dans les paroles allume toute la surface projetée,
+qui sert de lumière pour la soirée : une nappe additive pleine image fait monter la
+lumière émise par le mur pendant le bloc chanté, puis retombe doucement.
 
 ### Des faisceaux diffus
 

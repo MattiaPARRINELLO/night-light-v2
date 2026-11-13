@@ -142,6 +142,15 @@ export const DYNAMIC_STROBE_DIVISIONS_MAX = 4;
  */
 export const CHORUS_ROOM_GLOW = 0.075;
 /**
+ * Nappe additive pleine image pendant un refrain, en mode concert.
+ *
+ * La projection est la lumière de la soirée : elle est projetée sur un mur, donc
+ * un refrain doit faire monter la lumière émise par toute la surface, pas
+ * seulement éclaircir le fond derrière les faisceaux. Cette nappe est ajoutée
+ * en `lighter`, comme une vraie source dans la salle.
+ */
+export const CHORUS_ROOM_WASH = 0.3;
+/**
  * Poids d'un temps fort dans le flash, en profil hard.
  *
  * Le flash ordinaire est dosé pour une salle de soirée : il marque le temps sans
@@ -250,6 +259,21 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // exactement ce qui fait ramer le compositing.
   const span = Math.min(radius, Math.max(w, h));
   ctx.fillRect(Math.max(0, cx - span), Math.max(0, cy - span), Math.min(w, span * 2), Math.min(h, span * 2));
+
+  // Refrain : la projection est la lumière de la salle. Une nappe additive
+  // pleine image fait donc monter la lumière émise par tout le mur, pas
+  // seulement le fond derrière les projecteurs. Elle respire à peine sur le
+  // temps fort et ne change ni la palette ni les faisceaux.
+  if (chorus > 0.002) {
+    const washAlpha = chorus * CHORUS_ROOM_WASH * (0.9 + 0.1 * f.beat);
+    ctx.globalCompositeOperation = "lighter";
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, paint(f.palette.hue, 0.58, 0.5, washAlpha));
+    wash.addColorStop(1, paint(contraste, 0.62, 0.62, washAlpha * 0.9));
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
 }
 
 /** Bloc de scènes calmes contiguës : le voile ne doit pas clignoter entre elles. */
