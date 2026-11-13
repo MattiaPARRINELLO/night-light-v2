@@ -420,7 +420,9 @@ class AppState:
                 " · mot à mot" if payload.get("wordSynced") else "",
             )
         elif allow_network:
-            _LOGGER.info("Aucune parole trouvée · %r", track.title)
+            # Une absence de paroles est normale (morceau instrumental, catalogue
+            # incomplet) : elle n'a pas sa place dans le journal live.
+            _LOGGER.debug("Aucune parole trouvée · %r", track.title)
 
     def run_resolve(
         self,
@@ -517,13 +519,12 @@ class AppState:
 
         def report(phase: str, progress: float, message: str) -> None:
             self.store.update(job_id, progress=progress, phase=phase, message=message)
-            _LOGGER.info(
-                "%r · %s · %3.0f %% · %s",
-                title,
-                phase,
-                progress * 100,
-                message,
-            )
+            # Le journal ne suit que le début du téléchargement : c'est la seule
+            # étape assez longue pour qu'on se demande ce que fait le serveur.
+            # Les allers-retours cache/validation 0 → 100 % n'apprennent rien et
+            # noyaient les événements utiles.
+            if phase == "Téléchargement" and progress <= 0.01:
+                _LOGGER.info("Téléchargement · %r", title)
 
         # L'identifiant Deezer du lecteur désigne la piste exacte (aucune
         # recherche, donc aucune confusion live/studio). Il peut pourtant
