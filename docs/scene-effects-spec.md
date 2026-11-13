@@ -120,28 +120,35 @@ séquences distinctes de longueur 6, toutes les familles atteignables.
 ## 5. Signature des drops
 
 Un `drop` ne se contente plus du rôle : il reçoit une signature déterministe de
-`hashString("graine|drop|rang|force")`.
+`hashString("graine|drop|rang|force")`. Chaque axe est tiré d'un hachage
+indépendant, pour éviter les combinaisons corrélées (tous les plateaux
+« cathédrale » avec le même geste de lyres, par exemple).
 
 | Axe | Valeurs | Effet |
 | --- | --- | --- |
-| `lyres` | convergence, croisée, éventail | cible des huit lyres |
+| `plateau` | pont, rideau, tunnel, diagonale, zigzag, hélice, orbite, colisée, cascade | scène complète déployée par l'impact (`DROP_PLATEAU_FAMILIES`) |
+| `lyres` | convergence, croisée, éventail, croix, hélice, tunnel, diagonale, zigzag, respiration, pluie | cible des huit lyres |
 | `barres` | onde, rideau, alterné | rideau LED (une lame sur deux possible) |
-| `blinders` | tous, un sur deux, chenillard | motif de la barre |
-| `hue` | accent, contraste | pôle de teinte du drop |
+| `blinders` | tous, un sur deux, un sur quatre, chenillard | motif de la barre |
+| `strobes` | aucun, simple, double, cascade | forme du stroboscope d'impact |
+| `hue` | accent, contraste, blanc, bicolore | couleur du lavage d'impact |
 
-- 54 combinaisons ; une signature n'est **jamais réutilisée dans le même
+- 17 280 combinaisons ; une signature n'est **jamais réutilisée dans le même
   plan**, donc deux drops à moins de 15 s diffèrent forcément.
-- `pont-concert` est réservé aux montées de force ≥ 0,6 ; en dessous, les
-  familles de concert du réservoir alternent, dont `lyres-poursuite`,
-  `lyres-duo` et `lyres-eventail`.
-- `orientationLyre` accepte un geste optionnel (`"auto"` par défaut, donc
-  comportement historique inchangé) : `poursuite` (une tête court le long du
-  pont), `eventail` (ouverture large), `croisement` (les faisceaux se croisent)
-  et `vague` (onde d'inclinaison). Ces gestes ne sont utilisés que par les
-  nouvelles familles.
-- Le mode réduit ne produit ni signature ni pont forcé.
+- En profil concert, le **plateau change à chaque impact** : deux drops voisins
+  ne déploient pas la même scène, et l'impact ne reprend jamais la famille de la
+  scène précédente (invariant P3). Les autres profils gardent `pont-concert`.
+- `lyres` étend le geste de convergence historique : les valeurs supplémentaires
+  réutilisent les gestes imposés déjà connus de `orientationLyre` (`croix`,
+  `helice`, `tunnel`, `diagonale`, `zigzag`, `respiration`, `pluie`).
+- `strobes` module `dynamicStrobeDivisions` : `aucun` réserve l'impact au lavage
+  coloré, `simple` garde deux éclats par temps, `double` en pose quatre, et
+  `cascade` fait varier la cadence d'un temps à l'autre.
+- `hue` ne s'applique qu'au profil concert : `blanc` lave l'écran en blanc,
+  `bicolore` dégrade entre les deux pôles du morceau.
+- Le mode réduit ne produit ni signature ni plateau forcé.
 - Les cycles, enveloppes et géométries existants ne changent pas : seule la
-  cible (angle, rideau, motif) est choisie.
+  cible (plateau, angle, rideau, motif, couleur) est choisie.
 
 ## 6. Durées et variation
 

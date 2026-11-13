@@ -177,6 +177,13 @@ diversité est portée par `DropSignature` (lyres / barres / blinders / teinte).
 La lecture littérale « familles de drop distinctes » n'est donc pas améliorée,
 la lecture « les drops ne se ressemblent plus » l'est.
 
+> **Mise à jour (diversité des impacts, mode concert).** La décision « famille
+> unique » est levée : en profil concert, `DropSignature` porte désormais un
+> `plateau` (pont, rideau, tunnel, diagonale, zigzag, hélice, orbite, colisée,
+> cascade), un motif de `strobes` et un mode de `hue` (accent, contraste, blanc,
+> bicolore), soit 17 280 combinaisons. Deux impacts voisins ne déploient plus la
+> même scène. Voir `docs/scene-effects-spec.md` §5.
+
 ### d) Brillance
 
 | seuil | baseline | AB |
@@ -314,8 +321,10 @@ fix/integration`), sans le worktree d'origine :
 - **`scene.backdrop` / `plan.backdrop`** restent du code mort ; `reason` reste
   inutilisé par le rendu. À supprimer ou à consommer dans une PR dédiée.
 - **Famille de drop unique** (`pont-concert`) : la diversité passe par la
-  signature, pas par la famille. Si le critère « famille distincte » est
-  littéral, c'est un travail de DA à rouvrir sur #30.
+  signature, pas par la famille. ~~Si le critère « famille distincte » est
+  littéral, c'est un travail de DA à rouvrir sur #30.~~ **Rouvert et traité :**
+  en profil concert, le plateau varie à chaque impact (voir la mise à jour de
+  la section c). Les autres profils gardent `pont-concert`.
 - **Seuil de brillance 0,62** : devenu hors échelle après passage à la moyenne ;
   le seuil utile est 0,30. Les comparaisons « 69 % d'origine » et « 98,3 % »
   proviennent de corpus différents.

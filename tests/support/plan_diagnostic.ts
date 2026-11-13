@@ -23,6 +23,7 @@ import {
   ENERGY_THRESHOLD,
   type Scene,
   type ShowPlan,
+  dropSignatureKey,
 } from "../../src/core/show";
 import type { Analysis } from "../../src/types";
 
@@ -143,7 +144,7 @@ function main(): void {
       }
       const signature = scene.drop === undefined
         ? "—"
-        : `${scene.drop.lyres}/${scene.drop.barres}/${scene.drop.blinders}/${scene.drop.hue}`;
+        : dropSignatureKey(scene.drop);
       if (scene.role === "drop") {
         summary.drops.push({
           track: track.name,
