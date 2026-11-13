@@ -14,8 +14,10 @@ from collections.abc import Callable
 from typing import Any
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
-DEFAULT_MODEL = "llama-3.1-8b-instant"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 DEFAULT_TIMEOUT_SEC = 20.0
+# Cloudflare devant l'API Groq refuse l'agent par défaut d'urllib.
+HTTP_USER_AGENT = "night-light/2.0 (+https://github.com/MattiaPARRINELLO/night-light-v2)"
 
 Poster = Callable[[str, dict[str, str], bytes], dict[str, Any]]
 
@@ -50,7 +52,7 @@ class GroqClient:
         self,
         api_key: str | None = None,
         *,
-        model: str = DEFAULT_MODEL,
+        model: str = "",
         base_url: str = DEFAULT_BASE_URL,
         timeout_sec: float = DEFAULT_TIMEOUT_SEC,
         poster: Poster | None = None,
@@ -58,7 +60,7 @@ class GroqClient:
         self.api_key = (
             api_key if api_key is not None else os.environ.get("GROQ_API_KEY", "")
         ).strip()
-        self.model = model
+        self.model = model or os.environ.get("GROQ_MODEL", DEFAULT_MODEL)
         self.base_url = base_url.rstrip("/")
         self.timeout_sec = timeout_sec
         self._poster = poster
@@ -72,24 +74,29 @@ class GroqClient:
         messages: list[dict[str, str]],
         *,
         temperature: float = 0.2,
-        max_tokens: int = 1_200,
+        max_tokens: int = 3_000,
     ) -> dict[str, Any]:
         """Envoie une conversation et renvoie l'objet JSON de la réponse."""
         if not self.api_key:
             raise GroqNotConfigured("GROQ_API_KEY est absente")
-        body = json.dumps(
-            {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "response_format": {"type": "json_object"},
-            }
-        ).encode("utf-8")
+        body_object: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        # Les modèles gpt-oss raisonnent avant de répondre : sans effort réduit,
+        # les jetons de raisonnement peuvent manger tout le budget et la réponse
+        # JSON revient vide.
+        if self.model.startswith("openai/gpt-oss"):
+            body_object["reasoning_effort"] = "low"
+        body = json.dumps(body_object).encode("utf-8")
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": HTTP_USER_AGENT,
         }
         post = self._poster or (
             lambda url, headers, body: _http_post_json(

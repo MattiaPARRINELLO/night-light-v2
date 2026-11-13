@@ -131,7 +131,7 @@ def test_extract_cues_uses_llm_when_configured() -> None:
     cues = extract_cues(LYRICS, client=client)
 
     assert cues.source == "llm"
-    assert cues.model == "llama-3.1-8b-instant"
+    assert cues.model == "openai/gpt-oss-20b"
     assert cues.keywords[0].start_ms == 3720
     assert cues.chorus_lines == (0,)
 

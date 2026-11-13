@@ -8,6 +8,7 @@ inventé, ou absent de la ligne citée, est simplement écarté.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +22,8 @@ PROMPT_VERSION = "1"
 DEFAULT_MAX_KEYWORDS = 10
 MIN_KEYWORDS = 4
 KINDS = {"image", "action", "emotion", "lieu", "nom"}
+
+_LOGGER = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
     "Tu prépares un light show pour un morceau de musique. Tu choisis les mots "
@@ -344,8 +347,8 @@ def extract_cues(
                     source="llm",
                     model=llm.model,
                 )
-        except Exception:  # noqa: BLE001 - un modèle indisponible ne casse pas le show
-            pass
+        except Exception as error:  # noqa: BLE001 - un modèle indisponible ne casse pas le show
+            _LOGGER.warning("Extraction Groq en échec (%s), repli local", error)
 
     return LyricCues(
         keywords=heuristic_keywords(lyrics, max_keywords=max_keywords),
