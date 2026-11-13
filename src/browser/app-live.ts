@@ -5,7 +5,9 @@
 
 import type { App } from "./app";
 import { dbgThrottled } from "../core/debug";
-import { normalizeLiveLevels, smoothLiveFeatures } from "../core/liveAudio";
+import { EMPTY_LIVE_AUDIO, normalizeLiveLevels, smoothLiveFeatures } from "../core/liveAudio";
+import { EMPTY_LIVE_MUSIC } from "../core/liveDirector";
+import { buildLivePlan } from "../core/livePlan";
 import { renderFrame } from "../core/render";
 import { quantizeQuality } from "../core/series";
 import { TrackView } from "../core/view";
@@ -93,6 +95,7 @@ export function installLive(Target: { prototype: App }): void {
         }
         const next = normalizeLiveLevels(data);
         this.liveAudioRaw = next;
+        this.liveAudioSeenAt = performance.now();
         if (data.error) {
           level.textContent = String(data.error);
           return;
@@ -144,6 +147,9 @@ export function installLive(Target: { prototype: App }): void {
     this.debugCapture.active = "?";
     this.debugCapture.error = "";
     this.debugLastSseState = "";
+    this.liveAudioSeenAt = 0;
+    this.liveAudioRaw = EMPTY_LIVE_AUDIO;
+    this.liveDirector.reset();
     this.stopLiveRender();
   };
 
@@ -165,36 +171,18 @@ export function installLive(Target: { prototype: App }): void {
       builds: [],
     };
     this.liveView = new TrackView(analysis);
-    this.livePlan = {
-      duration: 1_000_000,
-      seed: 1,
-      profile: "standard",
-      scenes: [
-        {
-          index: 0,
-          start: 0,
-          end: 1_000_000,
-          family: "beams",
-          variant: "tunnel",
-          backdrop: "waves",
-          palette: { name: "magenta-cyan", hue: 318, accent: 188, spread: 44, saturation: 0.88, lightness: 0.64 },
-          intensity: 0.6,
-          fadeIn: 0.7,
-          fadeOut: 0.9,
-          mood: "pulse",
-          role: "intro",
-          reason: "ouverture",
-        },
-      ],
-      barStarts: [],
-      track: { name: "magenta-cyan", hue: 318, accent: 188, spread: 44 },
-      backdrop: "waves",
-    };
+    // Plan long et varié : une scène toutes les 24 à 42 s, palettes par blocs,
+    // familles brassées. La direction musicale frappe ce plan en temps réel.
+    this.livePlan = buildLivePlan();
   };
 
   Target.prototype.startLiveMode = async function (this: App): Promise<void> {
     this.liveMode = true;
     this.liveTimeStart = performance.now();
+    // L'horloge du direct repart de zéro : la direction musicale aussi, sinon
+    // elle comparerait les nouveaux échantillons à ses anciens horodatages.
+    this.liveDirector.reset();
+    this.liveMusic = EMPTY_LIVE_MUSIC;
     this.resize();
     this.debugSync.phase = "LIVE";
     this.debugSync.match = "";
@@ -269,7 +257,12 @@ export function installLive(Target: { prototype: App }): void {
     if (target.updatedAt > this.liveAudio.updatedAt) {
       this.liveAudio = smoothLiveFeatures(this.liveAudio, target, 0.4);
     }
-    const time = (performance.now() - this.liveTimeStart) / 1000;
+    const now = performance.now();
+    const time = (now - this.liveTimeStart) / 1000;
+    // Une capture muette ne doit pas figer la dernière image musicale : au-delà
+    // d'une seconde sans message, la direction reçoit un état vide et retombe.
+    const fresh = this.liveAudioSeenAt > 0 && now - this.liveAudioSeenAt < 1200;
+    this.liveMusic = this.liveDirector.update(time, fresh ? target : EMPTY_LIVE_AUDIO);
     this.renderLive(time);
   };
 
@@ -303,6 +296,7 @@ export function installLive(Target: { prototype: App }): void {
           frame: this.liveFrame,
           haze: this.hazeFor(this.liveQuality, this.canvas.clientWidth, this.canvas.clientHeight),
           liveAudio: this.liveAudio,
+          liveMusic: this.liveMusic,
         });
       }
       target.setTransform(1, 0, 0, 1, 0, 0);
@@ -320,6 +314,7 @@ export function installLive(Target: { prototype: App }): void {
         frame: this.liveFrame,
         haze: this.hazeFor(this.liveQuality, this.canvas.clientWidth, this.canvas.clientHeight),
         liveAudio: this.liveAudio,
+        liveMusic: this.liveMusic,
       });
       this.liveFrame += 1;
       this.drawTransitionIfNeeded(time, plan);
@@ -335,7 +330,9 @@ export function installLive(Target: { prototype: App }): void {
             qualite: this.liveQuality.toFixed(2),
             images: this.liveFrame,
             rms: num(this.liveAudio.rms),
-            energie: num(this.liveAudio.energy),
+            energie: num(this.liveMusic.energy),
+            tempo: Math.round(this.liveMusic.bpm),
+            impact: num(this.liveMusic.drop),
           },
           4000,
         );

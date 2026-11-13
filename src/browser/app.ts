@@ -24,6 +24,7 @@ import { fetchHealth, type Limits, type NowPlayingResponse } from "../core/api";
 import { dbgLog, type DebugCategory } from "../core/debug";
 import type { HazeTarget } from "../core/families";
 import { EMPTY_LIVE_AUDIO, type LiveAudioFeatures } from "../core/liveAudio";
+import { EMPTY_LIVE_MUSIC, LiveDirector, type LiveMusic } from "../core/liveDirector";
 import type { AutoResolveFailure } from "../core/nowPlaying";
 import type { ExternalPlaybackState } from "../core/playback";
 import { renderPixelRatio } from "../core/series";
@@ -169,6 +170,11 @@ export class App {
   liveLevels: Record<string, number> = {};
   liveAudioRaw: LiveAudioFeatures = EMPTY_LIVE_AUDIO;
   liveAudio: LiveAudioFeatures = EMPTY_LIVE_AUDIO;
+  /** Horodatage local du dernier message reçu, pour détecter une capture muette. */
+  liveAudioSeenAt = 0;
+  /** Direction musicale du direct : temps forts, impacts, montées. */
+  liveDirector = new LiveDirector();
+  liveMusic: LiveMusic = EMPTY_LIVE_MUSIC;
   liveView: TrackView | null = null;
   livePlan: ShowPlan | null = null;
 

@@ -14,7 +14,9 @@ L'image est une **fonction du temps musical**, pas une réaction au volume :
 
 - **écoute en direct du PC** : le son système (PipeWire/PulseAudio) alimente l'ambiance
   immédiate, et le lecteur est suivi par MPRIS (`playerctl`) pour connaître titre, artiste
-  et position, sans toucher à ta bibliothèque ;
+  et position, sans toucher à ta bibliothèque. Le direct a sa propre direction musicale :
+  temps forts, impacts et montées sont déduits du signal, donc le plateau réagit, change
+  de scène et enchaîne les impacts comme le show analysé ;
 - **identification, récupération, analyse** : le morceau joué est résolu dans le catalogue
   Deezer et téléchargé en 128 kbps s'il n'est pas déjà en cache, puis analysé par librosa
   (tempo, temps forts, attaques, énergie, bandes, sections, montées) ;
@@ -579,6 +581,8 @@ src/
     api.ts              client HTTP de l'API
     nowPlaying.ts       détection du morceau joué par un lecteur externe (pur)
     liveAudio.ts        caractéristiques audio live (normalisation, lissage)
+    liveDirector.ts     direction musicale du direct (beats, impacts, montées)
+    livePlan.ts         plan de scènes du direct (familles et palettes tournantes)
     playback.ts         position du lecteur, dérive, corrélation (purs)
     debug.ts            journal de debug partagé (console + overlay)
   shared/
