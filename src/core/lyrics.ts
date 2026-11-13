@@ -41,19 +41,20 @@ export function drawLyrics(
   const chorus = lyrics.chorusLines.includes(index);
   const shout = (lyrics.shoutLines ?? []).includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
-  if (!chorus && !shout && cue === null) return;
+  if (!line.text.trim()) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   if (chorus) {
-    // Refrain : la phrase entière, lisible d'un coup d'œil.
-    drawChorusLine(ctx, line, ms, width, height, options);
+    // Refrain : la phrase entière, la plus grande de toutes.
+    drawPhrase(ctx, line, ms, width, height, options, 1);
   } else if (shout) {
-    // Ligne criée : un mot à la fois, jamais le bloc.
-    drawLineWord(ctx, line, ms, width, height, options);
-  } else if (cue !== null) {
-    drawBigWord(ctx, cue, ms, width, height, options);
+    // Phrase criée : entière aussi, un cran en dessous du refrain.
+    drawPhrase(ctx, line, ms, width, height, options, 0.78);
+  } else {
+    // Tout le reste : mot à mot, taille courante, mis en avant s'il est marquant.
+    drawLineWord(ctx, line, ms, width, height, options, cue !== null);
   }
   ctx.restore();
 }
@@ -87,28 +88,6 @@ function activeCue(cues: KeywordCue[], index: number, ms: number): KeywordCue | 
   return best;
 }
 
-function drawBigWord(
-  ctx: CanvasRenderingContext2D,
-  cue: KeywordCue,
-  ms: number,
-  width: number,
-  height: number,
-  options: LyricsDrawOptions,
-): void {
-  paintWord(
-    ctx,
-    cue.text,
-    cue.startMs,
-    cue.endMs,
-    cue.impact,
-    cue.kind === "titre",
-    ms,
-    width,
-    height,
-    options,
-  );
-}
-
 /**
  * Ligne criée : un mot à la fois, en très gros.
  *
@@ -122,6 +101,7 @@ function drawLineWord(
   width: number,
   height: number,
   options: LyricsDrawOptions,
+  emphasised: boolean,
 ): void {
   const tokens = withTimings(line);
   if (tokens.length === 0) return;
@@ -132,7 +112,19 @@ function drawLineWord(
   }
   if (index < 0) return;
   const token = tokens[index]!;
-  paintWord(ctx, token.text, token.startMs, token.endMs, 0.85, false, ms, width, height, options);
+  paintWord(
+    ctx,
+    token.text,
+    token.startMs,
+    token.endMs,
+    emphasised ? 0.95 : 0.55,
+    false,
+    ms,
+    width,
+    height,
+    options,
+    emphasised ? 1 : 0.55,
+  );
 }
 
 /** Mots de la ligne, avec des timings répartis si le morceau n'en fournit pas. */
@@ -160,6 +152,7 @@ function paintWord(
   width: number,
   height: number,
   options: LyricsDrawOptions,
+  sizeScale = 1,
 ): void {
   const word = rawText.trim();
   if (word.length === 0) return;
@@ -175,7 +168,7 @@ function paintWord(
 
   const text = word.toUpperCase();
   const maxWidth = width * 0.88;
-  let size = Math.min(width * 0.17, height * 0.26) * (isTitle ? 1.08 : 1);
+  let size = Math.min(width * 0.17, height * 0.26) * (isTitle ? 1.08 : 1) * sizeScale;
   ctx.font = `800 ${size}px ${FONT_STACK}`;
   const measured = ctx.measureText(text).width;
   if (measured > maxWidth) {
@@ -202,18 +195,20 @@ function paintWord(
 }
 
 /**
- * Refrain : la phrase entière, en grand, sur une à trois lignes.
+ * Phrase importante (refrain, ligne criée) : le texte entier, sur une à trois
+ * lignes, avec le mot en cours en couleur d'accent.
  *
  * Le mot en cours est mis en couleur d'accent, les mots déjà chantés sont
  * atténués. Une phrase longue rétrécit jusqu'à tenir, plutôt que d'être coupée.
  */
-function drawChorusLine(
+function drawPhrase(
   ctx: CanvasRenderingContext2D,
   line: LyricLine,
   ms: number,
   width: number,
   height: number,
   options: LyricsDrawOptions,
+  scaleFactor: number,
 ): void {
   const duration = Math.max(1, line.endMs - line.startMs);
   const alpha = envelope(
@@ -233,7 +228,7 @@ function drawChorusLine(
         .filter((word) => word.length > 0)
         .map((word) => ({ text: word, startMs: 0, endMs: 0 }));
   const maxWidth = width * 0.9;
-  let size = Math.min(width * 0.105, height * 0.16);
+  let size = Math.min(width * 0.15, height * 0.21) * scaleFactor;
   let rows: number[][] = [];
   for (let attempt = 0; attempt < 10; attempt += 1) {
     ctx.font = `800 ${size}px ${FONT_STACK}`;
