@@ -26,7 +26,6 @@ export const NOMBRE_DIODES_BORDURE = 240;
 const MARGE_BORDURE = 0.003;
 /** Épaisseur relative du tube, en fraction du petit côté. */
 const TUBE_BORDURE = 0.011;
-const TUBE_BORDURE_CONCERT = 0.026;
 
 export type MotifBordure =
   | "rail"
@@ -546,11 +545,7 @@ function tracerTroncon(
 /** Épaisseur du tube de bordure pour une image. */
 export function epaisseurBordure(f: FrameState): number {
   const petitCote = Math.min(f.width, f.height);
-  const concert = f.dynamic === true;
-  return Math.max(
-    concert ? 12 : 5.5,
-    petitCote * (concert ? TUBE_BORDURE_CONCERT : TUBE_BORDURE),
-  );
+  return Math.max(5.5, petitCote * TUBE_BORDURE);
 }
 
 /**
@@ -584,108 +579,6 @@ export function dessinerBordure(
   };
 
   const tube = epaisseurBordure(f);
-
-  if (f.dynamic === true) {
-    // Barre LED de concert : une bande continue et épaisse, avec un halo
-    // extérieur, un corps saturé, un cœur clair et un vrai déversement de
-    // lumière dans la salle. Aucune diode ronde, aucune micro-segmentation.
-    const intensiteMoyenne = moyenneBordure(f, view);
-    const force = clamp01(0.3 + 0.7 * intensiteMoyenne);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-
-    const x0 = marge;
-    const y0 = marge;
-    const x1 = w - marge;
-    const y1 = h - marge;
-
-    // Déversement : la barre éclaire la salle, pas seulement son propre tube.
-    const spill = Math.min(w, h) * 0.13;
-    const spillAlpha = (0.035 + 0.06 * force) * (0.7 + 0.3 * energie) * f.alpha;
-    const transparent = paint(fil.hue, fil.saturation, 0.5, 0);
-    const teinteSpill = paint(fil.hue, fil.saturation, 0.5, spillAlpha);
-    const halos = [
-      [0, 0, w, spill, 0, 0, 0, spill],
-      [w - spill, 0, spill, h, w, 0, w, 0],
-      [0, h - spill, w, spill, 0, h, 0, h - spill],
-      [0, 0, spill, h, 0, 0, spill, 0],
-    ] as const;
-    for (const [rx, ry, rw, rh, gx0, gy0, gx1, gy1] of halos) {
-      const gradient = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
-      gradient.addColorStop(0, teinteSpill);
-      gradient.addColorStop(1, transparent);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(rx, ry, rw, rh);
-    }
-
-    // Halo extérieur du tube.
-    ctx.strokeStyle = paint(
-      fil.hue,
-      fil.saturation * 0.9,
-      0.52,
-      (0.06 + 0.09 * energie) * (0.4 + 0.6 * intensiteMoyenne),
-    );
-    ctx.lineWidth = tube * 2.6;
-    traceRuban();
-
-    // Boîtier sombre : il donne une vraie épaisseur physique au ruban et
-    // détache le tube lumineux du halo extérieur.
-    ctx.save();
-    ctx.globalCompositeOperation = "source-over";
-    ctx.strokeStyle = paint(fil.hue, 0.32, 0.06, 0.92);
-    ctx.lineWidth = tube * 1.58;
-    traceRuban();
-    // Cornières métalliques aux quatre angles.
-    ctx.fillStyle = paint(fil.hue, 0.18, 0.16, 0.9);
-    const corniere = tube * 1.1;
-    for (const [cx, cy] of [
-      [x0, y0],
-      [x1, y0],
-      [x1, y1],
-      [x0, y1],
-    ] as const) {
-      ctx.fillRect(cx - corniere * 0.5, cy - corniere * 0.5, corniere, corniere);
-    }
-    ctx.restore();
-
-    // Corps et cœur dessinés côté par côté : un léger gradient longitudinal
-    // donne la respiration d'un vrai ruban, sans points visibles.
-    const sides = [
-      [x0, y0, x1, y0],
-      [x1, y0, x1, y1],
-      [x1, y1, x0, y1],
-      [x0, y1, x0, y0],
-    ] as const;
-    for (let side = 0; side < sides.length; side += 1) {
-      const [ax, ay, bx, by] = sides[side]!;
-      const hue = couleurBordure(f, side * 47 + 11);
-      const onde = Math.sin(f.t * 0.42 + side * 1.9) * 0.08;
-      const bodyAlpha = (0.28 + 0.38 * force) * (0.75 + 0.25 * energie);
-      const gradient = ctx.createLinearGradient(ax, ay, bx, by);
-      gradient.addColorStop(0, paint(hue, fil.saturation, 0.56, bodyAlpha * (1 - onde)));
-      gradient.addColorStop(0.5, paint(hue, fil.saturation, 0.58, bodyAlpha));
-      gradient.addColorStop(1, paint(hue, fil.saturation, 0.56, bodyAlpha * (1 + onde)));
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = tube;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-
-      const coreAlpha = (0.1 + 0.16 * force) * (0.75 + 0.25 * energie);
-      const core = ctx.createLinearGradient(ax, ay, bx, by);
-      core.addColorStop(0, paint(hue, fil.saturation, 0.78, coreAlpha * (1 - onde)));
-      core.addColorStop(0.5, paint(hue, fil.saturation, 0.8, coreAlpha));
-      core.addColorStop(1, paint(hue, fil.saturation, 0.78, coreAlpha * (1 + onde)));
-      ctx.strokeStyle = core;
-      ctx.lineWidth = Math.max(1.2, tube * 0.34);
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-    }
-    return;
-  }
 
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
