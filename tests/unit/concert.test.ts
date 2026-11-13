@@ -4,23 +4,28 @@ import {
   angleBatten,
   CONCERT_FAMILIES,
   couleurBlinder,
+  couleurBlinderConcert,
   decroissanceFilament,
   drawFamily,
   intensiteBlinder,
   motifBlinder,
+  motifBlinderFacade,
   NOMBRE_BATTENS,
   NOMBRE_BLINDERS,
+  NOMBRE_BLINDERS_FACADE,
   NOMBRE_LYRES,
   orientationLyre,
   poidsBlinder,
+  poidsBlinderFacade,
   positionBatten,
   positionBlinder,
+  positionBlinderFacade,
   positionLyre,
   TAU_FILAMENT,
 } from "../../src/core/families";
 import { fakeContext } from "../support/fake_canvas";
 import type { FrameState } from "../../src/core/families";
-import { buildShowPlan, type SceneRole } from "../../src/core/show";
+import { buildShowPlan, type DropSignature, type SceneRole } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
 import type { Analysis } from "../../src/types";
 
@@ -230,6 +235,58 @@ describe("barre de blinders", () => {
     for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
       expect(poidsBlinder(debut, index)).toBeGreaterThan(0.99);
     }
+  });
+
+  test("la façade du concert complète le motif du pont", () => {
+    expect(NOMBRE_BLINDERS_FACADE).toBe(8);
+    for (let index = 0; index < NOMBRE_BLINDERS_FACADE; index += 1) {
+      const point = positionBlinderFacade(index, 1280, 720);
+      expect(point.y).toBeCloseTo(720 * 0.455, 6);
+      expect(point.x).toBeGreaterThanOrEqual(1280 * 0.2 - 1e-6);
+      expect(point.x).toBeLessThanOrEqual(1280 * 0.8 + 1e-6);
+    }
+    // Le pont allume tout sur un drop : la façade alterne au lieu de répéter.
+    const signature = (blinders: "tous" | "un-sur-deux"): DropSignature => ({
+      plateau: "pont",
+      lyres: "convergence",
+      barres: "rideau",
+      blinders,
+      strobes: "simple",
+      hue: "accent",
+    });
+    expect(motifBlinderFacade("drop", signature("tous"))).toBe("un-sur-deux");
+    expect(motifBlinderFacade("drop", signature("un-sur-deux"))).toBe("tous");
+    expect(motifBlinderFacade("refrain")).toBe("un-sur-quatre");
+    expect(motifBlinderFacade("montee")).toBe("chenillard");
+  });
+
+  test("la façade ne s'allume que sur les cellules projetées", () => {
+    const f = frame("refrain", 12);
+    const poids = Array.from({ length: NOMBRE_BLINDERS_FACADE }, (_, index) =>
+      poidsBlinderFacade(f, index),
+    );
+    // Projection sur douze positions : le motif « un sur quatre » garde un quart
+    // des cellules, sans jamais s'éteindre complètement.
+    const allumes = poids.filter((valeur) => valeur > 0.6);
+    expect(allumes.length).toBeGreaterThan(0);
+    expect(allumes.length).toBeLessThan(NOMBRE_BLINDERS_FACADE);
+  });
+
+  test("le concert éclaire les blinders dans la palette, comme des LED", () => {
+    const f = frame("refrain", 12, { dynamic: true });
+    // Deux cellules voisines n'ont pas la même teinte : la barre joue les deux
+    // couleurs du morceau en alternance.
+    const premiere = couleurBlinderConcert(f, 0, 0.4, 1);
+    const seconde = couleurBlinderConcert(f, 1, 0.4, 1);
+    const ecart = Math.abs(premiere.hue - seconde.hue);
+    expect(ecart).toBeGreaterThan(5);
+    expect(premiere.saturation).toBeGreaterThan(0.8);
+    // À pleine puissance, la source reste colorée : une LED ne vire pas au
+    // tungstène, elle monte seulement en luminosité.
+    const impact = couleurBlinderConcert(f, 0, 1, 1);
+    expect(impact.saturation).toBeGreaterThan(0.6);
+    expect(impact.lightness).toBeGreaterThan(0.72);
+    expect(impact.lightness).toBeLessThan(0.92);
   });
 });
 
