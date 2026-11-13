@@ -272,18 +272,21 @@ describe("barre de blinders", () => {
     expect(allumes.length).toBeLessThan(NOMBRE_BLINDERS_FACADE);
   });
 
-  test("le concert teinte les blinders avec la palette du morceau", () => {
+  test("le concert éclaire les blinders dans la palette, comme des LED", () => {
     const f = frame("refrain", 12, { dynamic: true });
-    // À intensité moyenne, le gélatinate prend le dessus : deux cellules
-    // voisines n'ont pas la même teinte.
+    // Deux cellules voisines n'ont pas la même teinte : la barre joue les deux
+    // couleurs du morceau en alternance.
     const premiere = couleurBlinderConcert(f, 0, 0.4, 1);
     const seconde = couleurBlinderConcert(f, 1, 0.4, 1);
     const ecart = Math.abs(premiere.hue - seconde.hue);
     expect(ecart).toBeGreaterThan(5);
-    expect(premiere.saturation).toBeGreaterThan(0.4);
-    // À pleine puissance, le filament blanc chaud reprend le dessus.
+    expect(premiere.saturation).toBeGreaterThan(0.8);
+    // À pleine puissance, la source reste colorée : une LED ne vire pas au
+    // tungstène, elle monte seulement en luminosité.
     const impact = couleurBlinderConcert(f, 0, 1, 1);
-    expect(impact.lightness).toBeGreaterThan(0.85);
+    expect(impact.saturation).toBeGreaterThan(0.6);
+    expect(impact.lightness).toBeGreaterThan(0.72);
+    expect(impact.lightness).toBeLessThan(0.92);
   });
 });
 
