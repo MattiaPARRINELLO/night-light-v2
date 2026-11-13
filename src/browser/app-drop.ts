@@ -113,8 +113,8 @@ export function installDrop(Target: { prototype: App }): void {
     const controller = new AbortController();
     this.analysisController = controller;
     this.autoResolving = false;
-    this.debug("analyse", `fichier déposé · ${title}`, {
-      tailleMo: Number((file.size / 1048576).toFixed(1)),
+    this.debug("analyse", `fichier reçu · « ${title} »`, {
+      taille: `${(file.size / 1048576).toFixed(1)} Mo`,
       type: file.type || "inconnu",
     });
     try {
@@ -126,7 +126,7 @@ export function installDrop(Target: { prototype: App }): void {
             progress: ratio * 0.25,
             detail: `${Math.round(ratio * 100)} % envoyé`,
           });
-          dbgThrottled("upload", "analyse", "envoi vers le serveur", { progression: `${Math.round(ratio * 100)} %` }, 2000);
+          dbgThrottled("upload", "analyse", `envoi au serveur · ${Math.round(ratio * 100)} %`, undefined, 2000);
         },
         onPhase: ({ progress, phase, detail }) => {
           setUploadState({
@@ -139,13 +139,13 @@ export function installDrop(Target: { prototype: App }): void {
       this.jobId = jobId;
       this.pendingAnalysis = analysis;
       document.body.dataset.analysisReady = "true";
-      this.debug("analyse", "analyse terminée", {
-        titre: title,
-        dureeSec: Number(analysis.duration.toFixed(1)),
+      this.debug("analyse", `analyse prête · « ${title} »`, {
+        duree: `${analysis.duration.toFixed(1)} s`,
         tempo: Number(analysis.tempo.toFixed(1)),
         temps: analysis.beats.length,
         montees: analysis.builds.length,
         sections: analysis.sections.length,
+        paroles: analysis.lyrics === undefined ? "aucune" : `${analysis.lyrics.lines.length} lignes`,
       });
       void this.tryAutoSynced(title, "", analysis.duration, analysis);
     } catch (error) {

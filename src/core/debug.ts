@@ -1,13 +1,15 @@
 /**
- * Journal de debug partagé.
+ * Journal live partagé.
  *
- * Double sortie : la console du navigateur (ce qu'il se passe, événement par
- * événement) et un tampon circulaire que l'overlay (touche D) affiche en direct.
+ * Double sortie : la console du navigateur (une ligne par événement, lisible
+ * d'un coup d'œil) et un tampon circulaire que l'overlay (touche D) affiche en
+ * direct.
  *
- * La règle est simple : les événements (ouverture de capture, changement de
- * morceau, resynchronisation…) sont toujours écrits dans la console ; les
- * valeurs rafraîchies en continu passent par `dbgThrottled` pour ne pas noyer
- * la console sous des centaines de lignes par seconde.
+ * Le journal n'est pas un mode debug : il raconte ce qui se passe vraiment
+ * pendant un show — morceau détecté, téléchargement, analyse, paroles,
+ * synchronisation — avec des valeurs déjà formatées (durées, unités, oui/non)
+ * et sans objets bruts à déplier. `dbgThrottled` existe pour les valeurs qui
+ * changent en continu, afin de ne pas noyer la console.
  */
 
 export type DebugCategory =
@@ -33,18 +35,31 @@ export interface DebugEntry {
   routine?: boolean;
 }
 
-const CATEGORY_ICON: Record<DebugCategory, string> = {
-  boot: "boot",
-  capture: "capture",
-  analyse: "analyse",
-  sync: "sync",
-  live: "live",
-  show: "show",
+const CATEGORY_LABEL: Record<DebugCategory, string> = {
+  boot: "DÉMARRAGE",
+  capture: "CAPTURE",
+  analyse: "MORCEAU",
+  sync: "SYNC",
+  live: "LIVE",
+  show: "SHOW",
   erreur: "ERREUR",
-  attention: "attention",
+  attention: "ATTENTION",
+};
+
+/** Couleur du préfixe dans la console, une teinte par domaine. */
+const CATEGORY_STYLE: Record<DebugCategory, string> = {
+  boot: "color:#8b95a5",
+  capture: "color:#3fc5d4",
+  analyse: "color:#b48cf2",
+  sync: "color:#6f9bff",
+  live: "color:#2fbfa8",
+  show: "color:#4cc46a",
+  erreur: "color:#ff5c5c;font-weight:700",
+  attention: "color:#e8a33d;font-weight:700",
 };
 
 const MAX_ENTRIES = 240;
+const DETAIL_LIMIT = 260;
 
 function stamp(at: number): string {
   const date = new Date(at);
@@ -52,14 +67,61 @@ function stamp(at: number): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
 }
 
-function preview(data: unknown): string {
-  if (data === undefined) return "";
-  try {
-    const raw = typeof data === "string" ? data : JSON.stringify(data);
-    return raw === undefined ? "" : ` ${raw.length > 220 ? `${raw.slice(0, 220)}…` : raw}`;
-  } catch {
-    return " (données non sérialisables)";
+/** Nombre sans zéros inutiles : 128, 3.2, 0.42. */
+function numberText(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function valueText(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "oui" : "non";
+  if (typeof value === "number") return numberText(value);
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  if (Array.isArray(value)) {
+    const shown = value.slice(0, 6).map(valueText).join(", ");
+    return value.length > 6 ? `${shown}…` : shown;
   }
+  try {
+    return JSON.stringify(value) ?? "—";
+  } catch {
+    return "—";
+  }
+}
+
+/**
+ * Rend les données d'un événement sous forme `clé=valeur`, sur la même ligne.
+ * Une chaîne seule est ajoutée telle quelle ; un objet vide ne produit rien.
+ */
+function detailText(data: unknown): string {
+  if (data === undefined) return "";
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    const text = valueText(data);
+    return text === "" ? "" : ` · ${text}`;
+  }
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (value === undefined || value === null || value === "") continue;
+    parts.push(`${key}=${valueText(value)}`);
+  }
+  return parts.length === 0 ? "" : ` · ${parts.join(" · ")}`;
+}
+
+function clip(text: string): string {
+  return text.length > DETAIL_LIMIT ? `${text.slice(0, DETAIL_LIMIT)}…` : text;
+}
+
+/** Durée lisible : « 320 ms », « 2,4 s », « 1 min 12 s ». */
+export function msText(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1).replace(".", ",")} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return `${minutes} min ${rest} s`;
 }
 
 class DebugLog {
@@ -70,11 +132,15 @@ class DebugLog {
     const at = Date.now();
     this.entries.push({ at, category, message, data, routine });
     if (this.entries.length > MAX_ENTRIES) this.entries.splice(0, this.entries.length - MAX_ENTRIES);
-    if (echo) {
-      const line = `[${CATEGORY_ICON[category]}] ${stamp(at)} ${message}${preview(data)}`;
-      if (category === "erreur") console.error(line, data ?? "");
-      else if (category === "attention") console.warn(line, data ?? "");
-      else console.log(line, data ?? "");
+    if (!echo) return;
+    const label = CATEGORY_LABEL[category].padEnd(9);
+    const line = `${label} ${stamp(at)}  ${message}${clip(detailText(data))}`;
+    if (category === "erreur") {
+      console.error(`%c${line}`, CATEGORY_STYLE[category]);
+    } else if (category === "attention") {
+      console.warn(`%c${line}`, CATEGORY_STYLE[category]);
+    } else {
+      console.log(`%c${line}`, CATEGORY_STYLE[category]);
     }
   }
 
@@ -107,7 +173,7 @@ class DebugLog {
         routine += 1;
         if (routine > routineMax) continue;
       }
-      out.push(`${stamp(entry.at)} ${CATEGORY_ICON[entry.category].padEnd(7)} ${entry.message}`);
+      out.push(`${stamp(entry.at)} ${CATEGORY_LABEL[entry.category].padEnd(9)} ${entry.message}`);
     }
     return out;
   }

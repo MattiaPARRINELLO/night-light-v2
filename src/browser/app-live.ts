@@ -4,14 +4,12 @@
  */
 
 import type { App } from "./app";
-import { dbgThrottled } from "../core/debug";
 import { EMPTY_LIVE_AUDIO, normalizeLiveLevels, smoothLiveFeatures } from "../core/liveAudio";
 import { EMPTY_LIVE_MUSIC } from "../core/liveDirector";
 import { buildLivePlan } from "../core/livePlan";
 import { renderFrame } from "../core/render";
 import { quantizeQuality } from "../core/series";
 import { TrackView } from "../core/view";
-import { num } from "./format";
 import { el } from "./ui";
 import type { Analysis } from "../types";
 
@@ -102,20 +100,6 @@ export function installLive(Target: { prototype: App }): void {
         }
         const percent = Math.round((Number(data.rms ?? 0)) * 100);
         level.textContent = `Capture ${data.state ?? (data.active ? "active" : "inactive")} · niveau ${percent} %`;
-        dbgThrottled(
-          "levels",
-          "capture",
-          "caractéristiques reçues",
-          {
-            rms: next.rms.toFixed(3),
-            energie: next.energy.toFixed(3),
-            basses: next.bass.toFixed(2),
-            mediums: next.mid.toFixed(2),
-            aigus: next.high.toFixed(2),
-            transitoire: next.transient.toFixed(3),
-          },
-          1000,
-        );
       } catch {
         /* ignore malformed event */
       }
@@ -320,23 +304,6 @@ export function installLive(Target: { prototype: App }): void {
       this.drawTransitionIfNeeded(time, plan);
       this.composeCrossfade();
       this.applyBlackout();
-      if (this.liveFrame % 120 === 0) {
-        dbgThrottled(
-          "live-render",
-          "live",
-          "rendu live en cours",
-          {
-            fps: this.liveFps.toFixed(1),
-            qualite: this.liveQuality.toFixed(2),
-            images: this.liveFrame,
-            rms: num(this.liveAudio.rms),
-            energie: num(this.liveMusic.energy),
-            tempo: Math.round(this.liveMusic.bpm),
-            impact: num(this.liveMusic.drop),
-          },
-          4000,
-        );
-      }
     } catch (error) {
       this.liveQuality = quantizeQuality(this.liveQuality * 0.7);
       this.debug("erreur", "rendu live interrompu", error instanceof Error ? error.message : String(error));
