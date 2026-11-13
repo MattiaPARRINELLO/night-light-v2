@@ -41,12 +41,16 @@ export function drawLyrics(
   const chorus = lyrics.chorusLines.includes(index);
   const shout = (lyrics.shoutLines ?? []).includes(index);
   const cue = activeCue(lyrics.keywords, index, ms);
+  const repeat = repeatedWord(line);
   if (!line.text.trim()) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  if (chorus) {
+  if (repeat !== null) {
+    // Un mot répété dans la phrase prend toute la scène, et pulse à chaque fois.
+    drawRepeatedWord(ctx, repeat, ms, width, height, options);
+  } else if (chorus) {
     // Refrain : la phrase entière, la plus grande de toutes.
     drawPhrase(ctx, line, ms, width, height, options, 1);
   } else if (shout) {
@@ -57,6 +61,100 @@ export function drawLyrics(
     drawLineWord(ctx, line, ms, width, height, options, cue !== null);
   }
   ctx.restore();
+}
+
+interface RepeatedWord {
+  text: string;
+  occurrences: { startMs: number; endMs: number }[];
+  lineEndMs: number;
+}
+
+/**
+ * Mot répété dans la phrase, s'il y en a un.
+ *
+ * « nique x, nique y, nique z » comme « nique, nique, nique » : le mot qui
+ * revient est le vrai motif de la ligne, c'est lui qu'on montre.
+ */
+function repeatedWord(line: LyricLine): RepeatedWord | null {
+  const tokens = withTimings(line);
+  if (tokens.length < 2) return null;
+  const groups = new Map<string, { text: string; occurrences: { startMs: number; endMs: number }[] }>();
+  for (const token of tokens) {
+    const key = normalizeWord(token.text);
+    if (key.length < 3) continue;
+    const entry = groups.get(key) ?? { text: token.text.trim(), occurrences: [] };
+    entry.occurrences.push({ startMs: token.startMs, endMs: token.endMs });
+    groups.set(key, entry);
+  }
+  let best: { text: string; occurrences: { startMs: number; endMs: number }[] } | null = null;
+  for (const entry of groups.values()) {
+    if (entry.occurrences.length < 2) continue;
+    if (
+      best === null ||
+      entry.occurrences.length > best.occurrences.length ||
+      (entry.occurrences.length === best.occurrences.length &&
+        normalizeWord(entry.text).length > normalizeWord(best.text).length)
+    ) {
+      best = entry;
+    }
+  }
+  if (best === null) return null;
+  return { text: best.text, occurrences: best.occurrences, lineEndMs: line.endMs };
+}
+
+function normalizeWord(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zà-öø-ÿ0-9]/g, "");
+}
+
+function drawRepeatedWord(
+  ctx: CanvasRenderingContext2D,
+  repeat: RepeatedWord,
+  ms: number,
+  width: number,
+  height: number,
+  options: LyricsDrawOptions,
+): void {
+  const first = repeat.occurrences[0];
+  if (first === undefined) return;
+  const alpha = envelope(ms, first.startMs - 120, repeat.lineEndMs, 140, 240);
+  if (alpha <= 0.01) return;
+
+  // Pulsation à chaque occurrence : le mot « frappe » quand il est chanté.
+  let pulse = 0;
+  for (const occurrence of repeat.occurrences) {
+    const age = (ms - occurrence.startMs) / 1000;
+    if (age >= 0 && age < 0.42) pulse = Math.max(pulse, 1 - age / 0.42);
+  }
+
+  const text = repeat.text.toUpperCase();
+  const maxWidth = width * 0.92;
+  let size = Math.min(width * 0.24, height * 0.34);
+  ctx.font = `900 ${size}px ${FONT_STACK}`;
+  const measured = ctx.measureText(text).width;
+  if (measured > maxWidth) {
+    size = Math.max(22, size * (maxWidth / measured));
+    ctx.font = `900 ${size}px ${FONT_STACK}`;
+  }
+
+  const scale = 1 + (options.reduced ? 0 : 0.12 * pulse) + (options.reduced ? 0 : 0.03 * options.beat);
+  ctx.globalAlpha = alpha;
+  ctx.translate(width * 0.5, height * 0.46);
+  // Légère inclinaison : le mot ne ressemble pas à un titre bien sage.
+  ctx.rotate(options.reduced ? 0 : -0.028);
+  ctx.scale(scale, scale);
+
+  // Contour sombre puis remplissage accent : lisible même sur un flash.
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(2, size * 0.045);
+  ctx.strokeStyle = "rgba(6, 3, 12, 0.72)";
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = accentSolid(options.palette);
+  ctx.shadowColor = accentColor(options.palette, 1);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.45, 90);
+  ctx.fillText(text, 0, 0);
 }
 
 function lineIndexAt(lines: LyricLine[], ms: number): number {
