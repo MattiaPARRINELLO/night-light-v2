@@ -69,6 +69,8 @@ interface RepeatedWord {
   occurrences: { startMs: number; endMs: number }[];
   /** Mots qui changent entre deux occurrences (« x », « y », « z »). */
   others: { text: string; startMs: number; endMs: number }[];
+  /** Bornes de la ligne : le motif occupe toute la phrase, pas seulement sa fin. */
+  lineStartMs: number;
   lineEndMs: number;
 }
 
@@ -117,6 +119,7 @@ function repeatedWord(line: LyricLine): RepeatedWord | null {
     text: cleanWord(best.text),
     occurrences: best.occurrences,
     others,
+    lineStartMs: line.startMs,
     lineEndMs: line.endMs,
   };
 }
@@ -144,9 +147,10 @@ function drawRepeatedWord(
   height: number,
   options: LyricsDrawOptions,
 ): void {
-  const first = repeat.occurrences[0];
-  if (first === undefined) return;
-  const alpha = envelope(ms, first.startMs - 120, repeat.lineEndMs, 140, 240);
+  // Le motif tient la scène dès le début de la phrase. Commencer à sa première
+  // occurrence laissait la ligne muette pendant plusieurs secondes quand le mot
+  // revenait en fin de phrase (« (vroum, vroum) », « (Shifter pro') »).
+  const alpha = envelope(ms, repeat.lineStartMs, repeat.lineEndMs, 140, 240);
   if (alpha <= 0.01) return;
 
   // Pulsation à chaque occurrence : le mot « frappe » quand il est chanté.

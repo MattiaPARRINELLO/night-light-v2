@@ -9,6 +9,7 @@
  */
 export function fakeContext() {
   const operations: string[] = [];
+  let font = "16px sans-serif";
   const gradient = {
     addColorStop: (offset: number, color: string) => operations.push(`stop:${offset}:${color}`),
   };
@@ -19,6 +20,25 @@ export function fakeContext() {
     lineCap: "butt",
     lineJoin: "miter",
     strokeStyle: "",
+    textAlign: "start",
+    textBaseline: "alphabetic",
+    shadowColor: "",
+    shadowBlur: 0,
+    // Le texte n'est enregistré que s'il est réellement visible : c'est ce qui
+    // permet de vérifier qu'une ligne de paroles ne disparaît pas.
+    get font() {
+      return font;
+    },
+    set font(value: string) {
+      font = value;
+    },
+    measureText: (text: string) => {
+      const size = Number(/(\d+(?:\.\d+)?)px/.exec(font)?.[1] ?? 16);
+      return { width: text.length * size * 0.55 };
+    },
+    fillText: (text: string) => {
+      if (ctx._alpha > 0.02) operations.push(`fillText:${text}`);
+    },
     // Les styles et l'alpha sont enregistrés à l'affectation : sans ça, on ne
     // peut pas vérifier qu'un élément est réellement visible.
     _alpha: 1,
