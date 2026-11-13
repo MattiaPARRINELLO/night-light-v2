@@ -24,7 +24,7 @@ import {
 } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
-import { drawLyrics } from "./lyrics";
+import { chorusIntensityAt, drawLyrics } from "./lyrics";
 import type { LiveMusic } from "./liveDirector";
 
 export interface RenderInput {
@@ -134,6 +134,23 @@ export const DYNAMIC_FLASH_ATTACK_DROP_SEC = 0.1;
 export const DYNAMIC_STROBE_DIVISIONS_MIN = 2;
 export const DYNAMIC_STROBE_DIVISIONS_MAX = 4;
 /**
+ * Lumière ajoutée à la salle pendant un refrain, en profil concert.
+ *
+ * Le concert garde volontairement une salle noire, tenue par les lyres. Un
+ * refrain chanté mérite pourtant d'ouvrir la salle : on relève le fond et le
+ * halo d'une fraction fixe, sans toucher aux projecteurs ni à la teinte.
+ */
+export const CHORUS_ROOM_GLOW = 0.075;
+/**
+ * Nappe additive pleine image pendant un refrain, en mode concert.
+ *
+ * La projection est la lumière de la soirée : elle est projetée sur un mur, donc
+ * un refrain doit faire monter la lumière émise par toute la surface, pas
+ * seulement éclaircir le fond derrière les faisceaux. Cette nappe est ajoutée
+ * en `lighter`, comme une vraie source dans la salle.
+ */
+export const CHORUS_ROOM_WASH = 0.3;
+/**
  * Poids d'un temps fort dans le flash, en profil hard.
  *
  * Le flash ordinaire est dosé pour une salle de soirée : il marque le temps sans
@@ -192,14 +209,17 @@ function paint(h: number, s: number, l: number, a: number): string {
 
 function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   const { width: w, height: h } = f;
+  // Un refrain détecté dans les paroles ouvre la salle : en concert, le fond
+  // noir reste la règle, mais le refrain gagne une lumière d'ambiance franche.
+  const chorus = f.dynamic === true ? clamp01(f.chorus ?? 0) : 0;
   // Le profil hard veut un fond plus noir : c'est ce qui fait ressortir les
   // barres, les volets et les strobes au lieu de baigner l'image dans une
   // lueur de salle. Le concert va plus loin : la salle reste noire, ce sont les
-  // lyres qui l'éclairent.
+  // lyres qui l'éclairent, sauf pendant un refrain chanté.
   const glow = f.hard
     ? 0.012 + f.energy * 0.032 + f.bass * 0.028
     : f.dynamic === true
-      ? 0.006 + f.energy * 0.016 + f.bass * 0.014
+      ? 0.006 + f.energy * 0.016 + f.bass * 0.014 + chorus * CHORUS_ROOM_GLOW
       : 0.02 + f.energy * 0.05 + f.bass * 0.05;
   // Le fond est bicolore : la teinte dominante en haut, la teinte de contraste
   // de l'accord en bas. C'est lui qui donnait son uniformité à toute l'image.
@@ -225,12 +245,12 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // Lueur centrale très douce, liée à l'énergie.
   const cx = w * 0.5;
   const cy = h * 0.55;
-  const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15);
+  const radius = Math.hypot(w, h) * (0.35 + f.energy * 0.15 + chorus * 0.06);
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(radius, 1));
   const haloAlpha =
     (0.03 + 0.08 * f.energy + 0.06 * f.beat) *
     f.alpha *
-    (f.hard ? 0.65 : f.dynamic === true ? 0.4 : 1);
+    (f.hard ? 0.65 : f.dynamic === true ? 0.4 + 0.5 * chorus : 1);
   halo.addColorStop(0, paint(contraste, 0.85, 0.6, haloAlpha));
   halo.addColorStop(1, paint(contraste, 0.85, 0.5, 0));
   ctx.fillStyle = halo;
@@ -239,6 +259,21 @@ function drawBackground(ctx: CanvasRenderingContext2D, f: FrameState): void {
   // exactement ce qui fait ramer le compositing.
   const span = Math.min(radius, Math.max(w, h));
   ctx.fillRect(Math.max(0, cx - span), Math.max(0, cy - span), Math.min(w, span * 2), Math.min(h, span * 2));
+
+  // Refrain : la projection est la lumière de la salle. Une nappe additive
+  // pleine image fait donc monter la lumière émise par tout le mur, pas
+  // seulement le fond derrière les projecteurs. Elle respire à peine sur le
+  // temps fort et ne change ni la palette ni les faisceaux.
+  if (chorus > 0.002) {
+    const washAlpha = chorus * CHORUS_ROOM_WASH * (0.9 + 0.1 * f.beat);
+    ctx.globalCompositeOperation = "lighter";
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, paint(f.palette.hue, 0.58, 0.5, washAlpha));
+    wash.addColorStop(1, paint(contraste, 0.62, 0.62, washAlpha * 0.9));
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
 }
 
 /** Bloc de scènes calmes contiguës : le voile ne doit pas clignoter entre elles. */
@@ -1335,8 +1370,7 @@ export function renderFrame(input: RenderInput): void {
         ? liveAudio.transient
         : view.energyTrend(t, 1.2);
   const anchor = sceneAnchor(scene, plan.track);
-  const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);
-  const paletteAccent =
+  const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);  const paletteAccent =
     paletteHue === scene.palette.hue ? scene.palette.accent : scene.palette.hue;
   const palette: Palette = {
     name: scene.palette.name,
@@ -1362,6 +1396,9 @@ export function renderFrame(input: RenderInput): void {
     dpr,
     scene,
     palette,
+    // Refrain chanté : les paroles datées sont la seule source fiable. En
+    // direct, aucune parole n'est calée sur l'audio, donc la salle reste noire.
+    chorus: isLive ? 0 : chorusIntensityAt(view.analysis.lyrics, t),
     energy:
       liveMusic !== undefined
         ? liveMusic.energy

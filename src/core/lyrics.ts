@@ -8,6 +8,20 @@ const CUE_TAIL_MS = 420;
 const CUE_FADE_IN_MS = 90;
 const CUE_FADE_OUT_MS = 260;
 
+/**
+ * Écart maximal entre deux lignes de refrain pour n'en faire qu'un bloc, en
+ * secondes. Même valeur que le serveur : une respiration courte entre deux
+ * lignes ne doit pas rallumer puis rééteindre la salle.
+ */
+const CHORUS_MERGE_GAP_SEC = 2.5;
+/** Montée de la lumière de salle à l'entrée d'un refrain, en secondes. */
+const CHORUS_FADE_IN_SEC = 0.35;
+/** Extinction à la sortie du refrain, en secondes. */
+const CHORUS_FADE_OUT_SEC = 0.55;
+
+/** Plages de refrain fusionnées, mémorisées par jeu de paroles. */
+const chorusRangeCache = new WeakMap<LyricsCues, Array<[number, number]>>();
+
 export interface LyricsDrawOptions {
   palette: Palette;
   reduced: boolean;
@@ -66,6 +80,51 @@ export function drawLyrics(
     drawLineWord(ctx, ms, width, height, options, cue !== null, current);
   }
   ctx.restore();
+}
+
+/**
+ * Présence du refrain à un instant donné, 0..1, d'après les paroles.
+ *
+ * Les lignes marquées `chorusLines` sont fusionnées en blocs (une respiration
+ * courte entre deux lignes ne coupe pas le refrain), puis la valeur monte et
+ * retombe doucement sur les bords du bloc. Sert à éclairer la salle en mode
+ * concert : le rendu y ajoute une lumière d'ambiance, sans changer la couleur
+ * du morceau ni les projecteurs.
+ */
+export function chorusIntensityAt(lyrics: LyricsCues | undefined, timeSec: number): number {
+  if (lyrics === undefined || lyrics.chorusLines.length === 0) return 0;
+  const ranges = chorusRanges(lyrics);
+  for (const [start, end] of ranges) {
+    if (timeSec < start || timeSec > end) continue;
+    const rise = clamp01((timeSec - start) / CHORUS_FADE_IN_SEC);
+    const fall = clamp01((end - timeSec) / CHORUS_FADE_OUT_SEC);
+    return Math.min(rise, fall);
+  }
+  return 0;
+}
+
+/** Blocs de refrain, en secondes, fusionnés quand deux lignes se suivent. */
+function chorusRanges(lyrics: LyricsCues): Array<[number, number]> {
+  const cached = chorusRangeCache.get(lyrics);
+  if (cached !== undefined) return cached;
+  const wanted = new Set(lyrics.chorusLines);
+  const ranges: Array<[number, number]> = [];
+  for (let index = 0; index < lyrics.lines.length; index += 1) {
+    if (!wanted.has(index)) continue;
+    const line = lyrics.lines[index];
+    if (line === undefined) continue;
+    const start = line.startMs / 1000;
+    const end = line.endMs / 1000;
+    if (!(end > start)) continue;
+    const previous = ranges[ranges.length - 1];
+    if (previous !== undefined && start - previous[1] <= CHORUS_MERGE_GAP_SEC) {
+      previous[1] = Math.max(previous[1], end);
+    } else {
+      ranges.push([start, end]);
+    }
+  }
+  chorusRangeCache.set(lyrics, ranges);
+  return ranges;
 }
 
 /** Dernier mot dont le chant a commencé, celui qui occupe la scène. */

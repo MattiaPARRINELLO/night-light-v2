@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { drawLyrics } from "../../src/core/lyrics";
+import { chorusIntensityAt, drawLyrics } from "../../src/core/lyrics";
 import type { Palette } from "../../src/core/show";
 import type { LyricLine, LyricsCues } from "../../src/types";
 import { fakeContext } from "../support/fake_canvas";
@@ -123,5 +123,39 @@ describe("rendu des paroles", () => {
     ]);
 
     expect(drawnText(lyrics, 0.7)).toEqual(["fillText:DEUXIÈME"]);
+  });
+});
+
+describe("refrain des paroles", () => {
+  const refrain = (): LyricsCues =>
+    cues(
+      [
+        line({ text: "couplet", startMs: 0, endMs: 8_000 }),
+        line({ text: "refrain une", startMs: 10_000, endMs: 14_000 }),
+        line({ text: "refrain deux", startMs: 15_000, endMs: 20_000 }),
+        line({ text: "couplet final", startMs: 24_000, endMs: 30_000 }),
+      ],
+      { chorusLines: [1, 2] },
+    );
+
+  it("vaut zéro sans paroles ou hors refrain", () => {
+    expect(chorusIntensityAt(undefined, 12)).toBe(0);
+    expect(chorusIntensityAt(cues([line({ text: "a", startMs: 0, endMs: 5_000 })]), 2)).toBe(0);
+    expect(chorusIntensityAt(refrain(), 5)).toBe(0);
+    expect(chorusIntensityAt(refrain(), 22)).toBe(0);
+  });
+
+  it("monte à plein pendant le refrain et fond sur les bords", () => {
+    const lyrics = refrain();
+
+    expect(chorusIntensityAt(lyrics, 12)).toBeCloseTo(1, 5);
+    // Les deux lignes séparées de 1 s forment un seul bloc : la salle ne
+    // retombe pas entre les deux.
+    expect(chorusIntensityAt(lyrics, 14.5)).toBeCloseTo(1, 5);
+    // Entrée et sortie progressives, jamais un interrupteur.
+    expect(chorusIntensityAt(lyrics, 10.1)).toBeGreaterThan(0);
+    expect(chorusIntensityAt(lyrics, 10.1)).toBeLessThan(1);
+    expect(chorusIntensityAt(lyrics, 19.8)).toBeGreaterThan(0);
+    expect(chorusIntensityAt(lyrics, 19.8)).toBeLessThan(1);
   });
 });

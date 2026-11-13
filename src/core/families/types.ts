@@ -42,6 +42,11 @@ export interface FrameState {
   hard?: boolean;
   /** Profil concert : scène habitée, strobes plus faciles, sans la noirceur du hard. */
   dynamic?: boolean;
+  /**
+   * Refrain courant d'après les paroles, 0..1 (0 hors refrain ou sans paroles).
+   * Le rendu s'en sert pour éclairer la salle en mode concert.
+   */
+  chorus?: number;
   /** Rendu du mode direct : couches d'impact autorisées hors profil hard. */
   live?: boolean;
   /** Qualité adaptative 0..1 : pilote le nombre d'éléments dessinés. */

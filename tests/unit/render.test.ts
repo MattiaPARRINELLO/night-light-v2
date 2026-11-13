@@ -1952,3 +1952,52 @@ describe("couleur", () => {
     expect(hueGap(150, tresLoin)).toBeGreaterThan(limit * 0.95);
   });
 });
+
+describe("lumière de salle pendant un refrain", () => {
+  /** Analyse identique, avec ou sans refrain marqué dans les paroles. */
+  function withChorus(active: boolean): Analysis {
+    return analysis({
+      lyrics: {
+        recordId: 1,
+        wordSynced: false,
+        keywords: [],
+        chorusLines: active ? [0] : [],
+        lines: [{ text: "refrain", startMs: 0, endMs: 60_000, words: [] }],
+        source: "heuristic",
+      },
+    });
+  }
+
+  function backgroundTop(data: Analysis, mode: "dynamic" | "off"): number {
+    const { ctx, operations } = fakeContext();
+    const view = new TrackView(data);
+    const plan = buildShowPlan(data, false, undefined, { hard: mode });
+    renderFrame({
+      ctx,
+      width: 1280,
+      height: 720,
+      dpr: 1,
+      time: 30,
+      view,
+      plan,
+      settings: DEFAULT_SETTINGS,
+      reducedMotion: false,
+      quality: 1,
+      frame: 1800,
+    });
+    const stop = operations.find((operation) => operation.startsWith("stop:0:"));
+    const rgb = /rgb\((\d+),(\d+),(\d+)\)/.exec(stop ?? "");
+    if (rgb === null) throw new Error(`fond introuvable : ${stop ?? "aucun"}`);
+    return Number(rgb[1]) + Number(rgb[2]) + Number(rgb[3]);
+  }
+
+  test("le refrain éclaire davantage le fond en mode concert", () => {
+    expect(backgroundTop(withChorus(true), "dynamic")).toBeGreaterThan(
+      backgroundTop(withChorus(false), "dynamic"),
+    );
+  });
+
+  test("le profil standard garde son fond inchangé", () => {
+    expect(backgroundTop(withChorus(true), "off")).toBe(backgroundTop(withChorus(false), "off"));
+  });
+});
