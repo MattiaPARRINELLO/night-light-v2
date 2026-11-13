@@ -1213,7 +1213,8 @@ export function renderFrame(input: RenderInput): void {
   const { ctx, width, height, dpr, view, plan, settings, reducedMotion, frame } = input;
   const t = input.time;
   const liveAudio = input.liveAudio;
-  const isLive = liveAudio !== undefined;
+  const liveMusic = input.liveMusic;
+  const isLive = liveAudio !== undefined || liveMusic !== undefined;
   const reduced = settings.reduced || reducedMotion;
   // Blackout : coupe tout, y compris les flashs et la fumée. Le retour est
   // immédiat, sans reconstruire le plan : la prochaine image se redessine.
@@ -1247,7 +1248,6 @@ export function renderFrame(input: RenderInput): void {
   const scene = sceneAt(plan, t);
   const hard = plan.profile === "hard";
   const dynamic = plan.profile === "dynamic";
-  const liveMusic = input.liveMusic;
   // En direct, la direction musicale fournit un vrai temps fort (attaque suivie
   // et enveloppe). À défaut, on retombe sur le transitoire brut ; en mode
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
