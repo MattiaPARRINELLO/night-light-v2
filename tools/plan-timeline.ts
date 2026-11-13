@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { buildShowPlan, FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, SCENE_ROLE_LABELS, type ShowPlan } from "../src/core/show";
+import { buildShowPlan, dropSignatureKey, FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, SCENE_ROLE_LABELS, type ShowPlan } from "../src/core/show";
 import type { Analysis } from "../src/types";
 import { DEFAULT_CORPUS_DIR, loadCorpusAnalyses, type PlanTrack } from "../tests/support/plan_corpus";
 
@@ -115,7 +115,7 @@ export function timelineHtml(track: PlanTrack): string {
         `<td><span class="chip" style="background:${color}"></span>${escapeHtml(FAMILY_LABELS[scene.family])}</td>` +
         `<td>${escapeHtml(SCENE_REASON_LABELS[scene.reason])}</td><td>${scene.palette.hue.toFixed(0)}°</td>` +
         `<td>${scene.intensity.toFixed(2)}</td>` +
-        `<td>${scene.drop === undefined ? "—" : escapeHtml(`${scene.drop.lyres}/${scene.drop.barres}/${scene.drop.blinders}/${scene.drop.hue}`)}</td></tr>`
+        `<td>${scene.drop === undefined ? "—" : escapeHtml(dropSignatureKey(scene.drop))}</td></tr>`
       );
     })
     .join("\n");
