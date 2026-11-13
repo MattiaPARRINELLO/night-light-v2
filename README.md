@@ -280,6 +280,11 @@ cellule projette trois cônes emboîtés (fumée, enveloppe, cœur) et une tache
 au sol, pour un champ de lumière lisible sans aplat. Au-dessus de 0,6 d'intensité, un
 flare anamorphique étire le halo horizontalement.
 
+Une rangée de six blinders de face occupe l'avant-scène, au bord bas du cadre. Elle est
+tournée vers le public : pas de cône vers le sol, mais un halo frontal qui envahit
+l'image, un voile vertical et un flare en croix. Elle passe après le lavage d'impact,
+pour rester visible au moment où elle doit éblouir la salle.
+
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en
 boucle :
 

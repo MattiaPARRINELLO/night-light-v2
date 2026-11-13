@@ -36,6 +36,13 @@ export const NOMBRE_BLINDERS = 12;
  */
 export const NOMBRE_BLINDERS_FACADE = 8;
 /**
+ * Nombre de blinders de face, à l'avant-scène, tournés vers le public.
+ *
+ * Ce sont eux qui éblouissent la salle : ils ne projettent pas un cône vers le
+ * sol, leur champ de lumière part vers la caméra et remplit tout le cadre.
+ */
+export const NOMBRE_BLINDERS_FACE = 6;
+/**
  * Constante de refroidissement du filament tungstène, en secondes.
  *
  * Un vrai blinders ne s'éteint pas : son filament rougeoie encore longtemps
@@ -56,6 +63,8 @@ const LIGNE_BATTENS = 0.3;
 const LIGNE_BLINDERS = 0.132;
 /** Hauteur de la barre de blinders de façade, sous les barres LED. */
 const LIGNE_BLINDERS_FACADE = 0.455;
+/** Hauteur de la barre de face, au bord bas de la scène, tournée vers le public. */
+const LIGNE_BLINDERS_FACE = 0.94;
 /** Fenêtre de recherche du dernier impact, en secondes. */
 const FENETRE_IMPACT = 2.6;
 
@@ -158,6 +167,21 @@ export function positionBlinderFacade(index: number, largeur: number, hauteur: n
   return {
     x: largeur * (0.2 + 0.6 * (i / (NOMBRE_BLINDERS_FACADE - 1))),
     y: hauteur * LIGNE_BLINDERS_FACADE,
+  };
+}
+
+/**
+ * Position du blinder de face `index`.
+ *
+ * La rangée est posée au bord bas de la scène, face au public : ses cellules ne
+ * sont pas des projecteurs qui éclairent le sol, mais des sources qui regardent
+ * la salle.
+ */
+export function positionBlinderFace(index: number, largeur: number, hauteur: number): PointScene {
+  const i = borner(index, NOMBRE_BLINDERS_FACE);
+  return {
+    x: largeur * (0.14 + 0.72 * (i / (NOMBRE_BLINDERS_FACE - 1))),
+    y: hauteur * LIGNE_BLINDERS_FACE,
   };
 }
 
@@ -1069,6 +1093,174 @@ export function dessinerBlinders(
     voile.addColorStop(1, paint(f.palette.accent, 1, 0.56, 0.045 * nappe * f.alpha));
     ctx.fillStyle = voile;
     ctx.fillRect(0, 0, w, h);
+  }
+}
+
+/**
+ * Rangée de blinders de face, tournés vers le public.
+ *
+ * Ce sont les seules sources du plateau qui regardent la caméra : au lieu de
+ * projeter un cône vers le sol, elles éblouissent la salle. En 2D, leur champ se
+ * lit comme un grand halo frontal qui envahit le cadre, un voile vertical qui
+ * lave le bas de l'image et une croix de flare — jamais une tache au sol.
+ */
+export function dessinerBlindersFace(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  budgetFlash = 1,
+): void {
+  if (f.dynamic !== true || f.reduced) return;
+  const budget = clamp01(budgetFlash);
+  if (budget <= 0) return;
+  const { width: w } = f;
+  const veilleuse =
+    clamp01(0.22 + 0.24 * f.energy) * (0.4 + 0.6 * FACTEUR_ROLE[f.scene.role]);
+
+  // Le boîtier reste fin et bas : c'est une barre d'avant-scène.
+  dessinerBarreBlinders(ctx, f, NOMBRE_BLINDERS_FACE, positionBlinderFace, f.palette.hue, 0.9);
+
+  let nappe = 0;
+  for (let index = 0; index < NOMBRE_BLINDERS_FACE; index += 1) {
+    const projection = Math.round(
+      (index * (NOMBRE_BLINDERS - 1)) / (NOMBRE_BLINDERS_FACE - 1),
+    );
+    const intensite =
+      Math.max(intensiteBlinder(f, view, projection), veilleuse) *
+      (0.62 + 0.16 * f.energy);
+    if (intensite <= 0.012) continue;
+    nappe = Math.max(nappe, intensite);
+    const { x, y } = positionBlinderFace(index, w, f.height);
+    const couleur = couleurBlinder(f, index + 2, intensite, 1);
+    dessinerFaceBlinder(ctx, f, x, y, intensite, couleur, budget);
+  }
+
+  // Un seul voile pour toute la rangée : la lumière qui vient vers le public
+  // remplit le cadre entier, elle n'est pas la somme de six cônes séparés.
+  if (nappe > 0.02) {
+    const voile = ctx.createLinearGradient(0, f.height, 0, 0);
+    voile.addColorStop(0, paint(f.palette.hue, 0.95, 0.6, 0.13 * nappe * f.alpha));
+    voile.addColorStop(0.45, paint(f.palette.hue, 0.95, 0.6, 0.05 * nappe * f.alpha));
+    voile.addColorStop(1, paint(f.palette.hue, 0.95, 0.6, 0));
+    ctx.fillStyle = voile;
+    ctx.fillRect(0, 0, f.width, f.height);
+  }
+}
+
+/** Une cellule de face : halo frontal, flare en croix et source visible. */
+function dessinerFaceBlinder(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  x: number,
+  y: number,
+  intensite: number,
+  couleur: CouleurFilament,
+  budget: number,
+): void {
+  const { width: w, height: h } = f;
+  const alpha = intensite * f.alpha;
+  const rayon = Math.min(w, h) * (0.4 + 0.55 * intensite);
+
+  // Halo frontal : la source regarde l'objectif, sa lumière s'étale dans tout
+  // le cadre. Le dégradé est transparent au-delà de `rayon`, on ne remplit donc
+  // que sa boîte englobante.
+  const halo = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rayon, 1));
+  halo.addColorStop(
+    0,
+    paint(
+      couleur.hue,
+      couleur.saturation,
+      Math.min(1, couleur.lightness + 0.16),
+      0.5 * alpha,
+    ),
+  );
+  halo.addColorStop(
+    0.24,
+    paint(couleur.hue, couleur.saturation, couleur.lightness, 0.28 * alpha),
+  );
+  halo.addColorStop(
+    0.6,
+    paint(couleur.hue, couleur.saturation, couleur.lightness * 0.9, 0.1 * alpha),
+  );
+  halo.addColorStop(
+    1,
+    paint(couleur.hue, couleur.saturation * 0.85, couleur.lightness * 0.8, 0),
+  );
+  ctx.fillStyle = halo;
+  ctx.fillRect(
+    Math.max(0, x - rayon),
+    Math.max(0, y - rayon),
+    Math.min(w, rayon * 2),
+    Math.min(h, rayon * 2),
+  );
+
+  // Flare en croix : la signature d'un projecteur qui regarde la caméra.
+  if (budget > 0) {
+    const force = clamp01(intensite) * budget;
+    const demi = Math.max(w * 0.36, rayon * 1.2);
+    const bande = ctx.createLinearGradient(x - demi, 0, x + demi, 0);
+    bande.addColorStop(0, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    bande.addColorStop(
+      0.5,
+      paint(
+        couleur.hue,
+        couleur.saturation * 0.4,
+        Math.min(1, couleur.lightness + 0.18),
+        0.5 * force * f.alpha,
+      ),
+    );
+    bande.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    ctx.fillStyle = bande;
+    ctx.fillRect(x - demi, y - 1.5 - 3 * force, demi * 2, 3 + 6 * force);
+
+    // Branche verticale du flare, plus courte : sans elle, la source se lit
+    // comme un simple halo et non comme un projecteur braqué sur l'objectif.
+    const hauteur = h * (0.14 + 0.16 * force);
+    const verticale = ctx.createLinearGradient(0, y - hauteur, 0, y + hauteur);
+    verticale.addColorStop(0, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    verticale.addColorStop(
+      0.5,
+      paint(couleur.hue, couleur.saturation * 0.45, Math.min(1, couleur.lightness + 0.14), 0.32 * force * f.alpha),
+    );
+    verticale.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    ctx.fillStyle = verticale;
+    ctx.fillRect(x - 0.8 - force, y - hauteur, 1.6 + 2 * force, hauteur * 2);
+  }
+
+  // Cœur de la source : une tache courte, très claire mais encore teintée.
+  // Elle garde le projecteur lisible même quand un lavage d'impact blanchit
+  // déjà tout le cadre.
+  const coeurRayon = Math.min(w, h) * (0.05 + 0.08 * intensite);
+  const coeur = ctx.createRadialGradient(x, y, 0, x, y, Math.max(coeurRayon, 1));
+  coeur.addColorStop(
+    0,
+    paint(couleur.hue, 0.3, 0.99, 0.85 * alpha),
+  );
+  coeur.addColorStop(
+    0.45,
+    paint(couleur.hue, 0.6, 0.92, 0.35 * alpha),
+  );
+  coeur.addColorStop(
+    1,
+    paint(couleur.hue, couleur.saturation, couleur.lightness, 0),
+  );
+  ctx.fillStyle = coeur;
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(coeurRayon, 1), 0, Math.PI * 2);
+  ctx.fill();
+
+  // Les deux lampes de la cellule, teintées comme le reste de la palette.
+  for (const cote of [-1, 1] as const) {
+    const lx = x + cote * Math.max(3, w * 0.004);
+    ctx.fillStyle = paint(
+      couleur.hue,
+      Math.min(1, couleur.saturation),
+      Math.min(1, couleur.lightness + 0.2),
+      intensite * f.alpha,
+    );
+    ctx.beginPath();
+    ctx.arc(lx, y + 2, 1.4 + 4 * intensite, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 

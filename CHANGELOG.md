@@ -231,6 +231,9 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   pleine puissance la diode se délave légèrement sans changer de teinte. Leur
   champ de lumière gagne trois cônes emboîtés à bords doux (fumée, enveloppe,
   cœur), une légère ouverture vers l'extérieur et une tache au sol elliptique.
+  Une **rangée de six blinders de face** s'ajoute à l'avant-scène, tournée vers
+  le public : halo frontal, voile vertical et flare en croix, sans cône vers le
+  sol, dessinée après le lavage d'impact pour rester visible.
 
 ## [2.0.0]
 

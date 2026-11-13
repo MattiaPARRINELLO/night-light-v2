@@ -3,6 +3,7 @@ import { clamp01, hash01, mix, quantizeQuality, smoothstep } from "./series";
 import {
   contrastHue,
   dessinerBlinders,
+  dessinerBlindersFace,
   dessinerGrosBlinders,
   dessinerBordure,
   dessinerLyresRave,
@@ -1649,6 +1650,12 @@ export function renderFrame(input: RenderInput): void {
   const vignette = vignetteFor(ctx, width, height);
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, width, height);
+
+  // Blinders de face : ils regardent le public, donc ils passent après le
+  // lavage d'impact et le strobe. Sinon le flash plein cadre du drop les
+  // noierait au moment précis où ils doivent éblouir la salle.
+  ctx.globalCompositeOperation = "lighter";
+  dessinerBlindersFace(ctx, permanent, view, settings.flashes);
 
   // Le lavage blanc d'impact, le strobe et la vignette sont passés : les
   // confettis et le CO2 se dessinent maintenant au-dessus, sinon la vignette

@@ -5,6 +5,7 @@ import {
   CONCERT_FAMILIES,
   couleurBlinder,
   decroissanceFilament,
+  dessinerBlindersFace,
   drawFamily,
   intensiteBlinder,
   motifBlinder,
@@ -12,6 +13,7 @@ import {
   NOMBRE_BATTENS,
   NOMBRE_BLINDERS,
   NOMBRE_BLINDERS_FACADE,
+  NOMBRE_BLINDERS_FACE,
   NOMBRE_LYRES,
   orientationLyre,
   poidsBlinder,
@@ -19,6 +21,7 @@ import {
   positionBatten,
   positionBlinder,
   positionBlinderFacade,
+  positionBlinderFace,
   positionLyre,
   TAU_FILAMENT,
 } from "../../src/core/families";
@@ -120,6 +123,26 @@ describe("géométrie du plateau", () => {
     }
     for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
       expect(positionBlinder(index, largeur, hauteur).y).toBeCloseTo(hauteur * 0.132, 6);
+    }
+  });
+
+  test("la rangée de face est posée en bas, tournée vers le public", () => {
+    const largeur = 1280;
+    const hauteur = 720;
+    expect(NOMBRE_BLINDERS_FACE).toBe(6);
+    const points = Array.from({ length: NOMBRE_BLINDERS_FACE }, (_, index) =>
+      positionBlinderFace(index, largeur, hauteur),
+    );
+    for (const point of points) {
+      // Plus basse que la façade (45,5 %) : c'est l'avant-scène, au bord du cadre.
+      expect(point.y).toBeCloseTo(hauteur * 0.94, 6);
+      expect(point.y).toBeGreaterThan(positionBlinderFacade(0, largeur, hauteur).y);
+    }
+    // La rangée est centrée et régulière.
+    expect(points[0]!.x).toBeCloseTo(largeur * 0.14, 6);
+    expect(points[points.length - 1]!.x).toBeCloseTo(largeur * 0.86, 6);
+    for (let index = 1; index < points.length; index += 1) {
+      expect(points[index]!.x).toBeGreaterThan(points[index - 1]!.x);
     }
   });
 });
@@ -286,6 +309,25 @@ describe("barre de blinders", () => {
     const allumes = poids.filter((valeur) => valeur > 0.6);
     expect(allumes.length).toBeGreaterThan(0);
     expect(allumes.length).toBeLessThan(NOMBRE_BLINDERS_FACADE);
+  });
+
+  test("la rangée de face projette sa lumière vers le public", () => {
+    const f = frame("drop", 12, { dynamic: true });
+    const view = new TrackView(analysis());
+    const face = fakeContext();
+    dessinerBlindersFace(face.ctx, f, view, 1);
+    // Halo frontal et flare : des remplissages de dégradés, pas un trapèze
+    // de faisceau qui tomberait au sol.
+    expect(face.operations.filter((op) => op.startsWith("radial:")).length).toBeGreaterThan(0);
+    expect(face.operations.filter((op) => op.startsWith("fillRect:")).length).toBeGreaterThan(0);
+
+    // Hors concert ou en mode réduit, la rangée reste éteinte.
+    const standard = fakeContext();
+    dessinerBlindersFace(standard.ctx, { ...f, dynamic: false }, view, 1);
+    expect(standard.operations.length).toBe(0);
+    const reduit = fakeContext();
+    dessinerBlindersFace(reduit.ctx, { ...f, reduced: true }, view, 1);
+    expect(reduit.operations.length).toBe(0);
   });
 
   test("la barre de concert puise dans la palette, principale en tête", () => {
