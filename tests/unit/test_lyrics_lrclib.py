@@ -150,6 +150,73 @@ def test_rate_limit_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(calls) == 2
 
 
+def test_artist_variants_split_multi_artist_strings() -> None:
+    assert lrclib.artist_variants("Jok'air, Linema, Kady, Shadow") == (
+        "Jok'air, Linema, Kady, Shadow",
+        "Jok'air",
+        "Linema",
+        "Kady",
+        "Shadow",
+    )
+    assert lrclib.artist_variants("SCH feat. Nekfeu") == ("SCH feat. Nekfeu", "SCH", "Nekfeu")
+    assert lrclib.artist_variants("A & B") == ("A & B", "A", "B")
+    assert lrclib.artist_variants("  ") == ()
+
+
+def _artist_of(url: str) -> str:
+    params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    return params.get("artist_name", [""])[0]
+
+
+def test_fetch_falls_back_to_first_artist_of_a_list() -> None:
+    seen: list[str] = []
+
+    def fetch(url: str):
+        artist = _artist_of(url)
+        seen.append(artist)
+        if artist == "Jok'air":
+            return [_record(record_id=7, track="Lune de fiel", artist="Jok'air", duration=205.0)]
+        return []
+
+    client = LrclibClient(fetcher=fetch)
+
+    lyrics = client.fetch("Lune de fiel", "Jok'air, Linema, Kady, Shadow", 205.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 7
+    # La chaîne complète est essayée d'abord, puis le premier artiste suffit.
+    assert seen == ["Jok'air, Linema, Kady, Shadow", "Jok'air"]
+
+
+def test_fetch_without_artist_queries_once_without_artist_param() -> None:
+    seen: list[str] = []
+    client = LrclibClient(
+        fetcher=_url_fetcher([_record(record_id=1, track="Otto", artist="SCH")], seen)
+    )
+
+    lyrics = client.fetch("Otto")
+
+    assert lyrics is not None
+    assert len(seen) == 1
+    assert "artist_name" not in urllib.parse.parse_qs(urllib.parse.urlparse(seen[0]).query)
+
+
+def test_fetch_keeps_match_when_a_later_variant_errors() -> None:
+    def fetch(url: str):
+        if _artist_of(url) == "A & B":
+            return [_record(record_id=1, track="Otto", artist="A", duration=290.0)]
+        raise LrclibError("réseau")
+
+    client = LrclibClient(fetcher=fetch)
+
+    # Durée demandée très différente : le premier match reste imparfait, la
+    # variante suivante est donc interrogée et échoue sans jeter le résultat.
+    lyrics = client.fetch("Otto", "A & B", 400.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 1
+
+
 def test_http_error_becomes_lrclib_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(url: str):
         raise LrclibError("réseau")
