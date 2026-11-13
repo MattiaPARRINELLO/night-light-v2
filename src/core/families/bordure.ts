@@ -24,13 +24,6 @@ export const NOMBRE_DIODES_BORDURE = 240;
  * Quasi nul : le ruban est collé au bord, seul son halo déborde hors cadre.
  */
 const MARGE_BORDURE = 0.003;
-/**
- * Retrait du ruban en mode concert.
- *
- * Le tube est bien plus épais : il faut l'éloigner du bord pour que toute son
- * épaisseur reste visible dans le cadre.
- */
-const MARGE_BORDURE_CONCERT = 0.02;
 /** Épaisseur relative du tube, en fraction du petit côté. */
 const TUBE_BORDURE = 0.011;
 const TUBE_BORDURE_CONCERT = 0.026;
@@ -247,12 +240,7 @@ export function poidsMotif(
   motif: MotifBordure = motifBordure(f, view),
   budgetFlash = 1,
 ): number {
-  const diode = positionBordure(
-    index,
-    f.width,
-    f.height,
-    f.dynamic === true ? MARGE_BORDURE_CONCERT : MARGE_BORDURE,
-  );
+  const diode = positionBordure(index, f.width, f.height);
   const temps = tempsTempsFort(f, view);
   const marge = Math.min(f.width, f.height) * MARGE_BORDURE;
   const largeurUtile = Math.max(f.width - 2 * marge, 1);
@@ -580,8 +568,7 @@ export function dessinerBordure(
   budgetFlash = 1,
 ): void {
   const { width: w, height: h } = f;
-  const concert = f.dynamic === true;
-  const margeRatio = concert ? MARGE_BORDURE_CONCERT : MARGE_BORDURE;
+  const margeRatio = MARGE_BORDURE;
   const marge = Math.min(w, h) * margeRatio;
   const energie = clamp01(f.energy);
   const fil = teinteBordure(f, view, 0, budgetFlash);
@@ -598,7 +585,7 @@ export function dessinerBordure(
 
   const tube = epaisseurBordure(f);
 
-  if (concert) {
+  if (f.dynamic === true) {
     // Barre LED de concert : une bande continue et épaisse, avec un halo
     // extérieur, un corps saturé et un cœur clair. Les motifs restent lisibles
     // par variations de lumière internes, sans grosses diodes rondes.
@@ -615,28 +602,24 @@ export function dessinerBordure(
     ctx.lineWidth = tube * 2.6;
     traceRuban();
 
-    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.56, 0.1 + 0.12 * energie);
+    const force = clamp01(0.3 + 0.7 * intensiteMoyenne);
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation,
+      0.56,
+      (0.28 + 0.38 * force) * (0.75 + 0.25 * energie),
+    );
     ctx.lineWidth = tube;
     traceRuban();
 
-    ctx.strokeStyle = paint(fil.hue, fil.saturation, 0.76, 0.06 + 0.08 * energie);
-    ctx.lineWidth = Math.max(1.2, tube * 0.18);
+    ctx.strokeStyle = paint(
+      fil.hue,
+      fil.saturation,
+      0.76,
+      (0.1 + 0.16 * force) * (0.75 + 0.25 * energie),
+    );
+    ctx.lineWidth = Math.max(1.2, tube * 0.4);
     traceRuban();
-
-    // Le motif éclaire l'intérieur du tube, à épaisseur constante.
-    for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
-      const intensite = intensiteBordure(f, view, index, budgetFlash);
-      const couleur = teinteBordure(f, view, index, budgetFlash);
-      const variation = 0.94 + 0.12 * hash01(index * 97 + f.seed);
-      ctx.strokeStyle = paint(
-        couleur.hue,
-        couleur.saturation,
-        0.66,
-        clamp01(0.04 + 0.52 * intensite) * variation,
-      );
-      ctx.lineWidth = tube * 0.86;
-      tracerTroncon(ctx, index - 0.6, index + 0.6, w, h, margeRatio);
-    }
     return;
   }
 
