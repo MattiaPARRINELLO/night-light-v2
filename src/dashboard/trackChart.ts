@@ -29,11 +29,11 @@ const SNAP_MS = 1500;
 const CORRECTION_MS = 420;
 
 const PALETTE: Record<SectionLabel, { fill: string; line: string }> = {
-  calme: { fill: "rgba(90, 140, 220, 0.30)", line: "rgba(120, 170, 240, 0.95)" },
-  montee: { fill: "rgba(255, 180, 90, 0.30)", line: "rgba(255, 190, 110, 0.95)" },
-  intense: { fill: "rgba(255, 100, 140, 0.32)", line: "rgba(255, 120, 160, 0.95)" },
-  descente: { fill: "rgba(150, 200, 160, 0.28)", line: "rgba(160, 220, 180, 0.9)" },
-  silence: { fill: "rgba(255, 255, 255, 0.10)", line: "rgba(255, 255, 255, 0.4)" },
+  calme: { fill: "rgba(255, 255, 255, 0.06)", line: "rgba(255, 255, 255, 0.22)" },
+  montee: { fill: "rgba(255, 255, 255, 0.12)", line: "rgba(255, 255, 255, 0.36)" },
+  intense: { fill: "rgba(111, 195, 255, 0.20)", line: "rgba(111, 195, 255, 0.95)" },
+  descente: { fill: "rgba(255, 255, 255, 0.02)", line: "rgba(255, 255, 255, 0.16)" },
+  silence: { fill: "rgba(0, 0, 0, 0)", line: "rgba(255, 255, 255, 0.10)" },
 };
 
 export interface TrackFrame {
@@ -100,18 +100,21 @@ function sameRange(a: Range | null, b: Range | null): boolean {
   return a.start === b.start && a.end === b.end;
 }
 
-/** Police courte, pour ne pas répéter la chaîne partout. */
+/** Police des graduations : la police du texte, chiffres tabulaires. */
 function mono(size: number): string {
-  return `${size}px ui-monospace, SFMono-Regular, monospace`;
+  return `500 ${size}px "Inter", system-ui, sans-serif`;
 }
 
-/** Décalage de temps « sympa » pour la règle, selon la fenêtre visible. */
-function tickStep(span: number): number {
-  const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+/**
+ * Décalage de temps « sympa » pour la règle, selon la fenêtre visible et la
+ * place réelle : sur un téléphone, neuf graduations se chevauchent.
+ */
+function tickStep(span: number, maxTicks: number): number {
+  const candidates = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
   for (const step of candidates) {
-    if (span / step <= 9) return step;
+    if (span / step <= maxTicks) return step;
   }
-  return 600;
+  return 900;
 }
 
 /** Premier index dont la valeur est ≥ `target` (tableau trié). */
@@ -178,10 +181,7 @@ function renderScene(
   const px = (seconds: number): number => lay.left + ((seconds - viewStart) / span) * lay.usable;
   const x1Of = (seconds: number): number => clamp(px(seconds), lay.left, lay.right);
 
-  const background = g.createLinearGradient(0, 0, 0, h);
-  background.addColorStop(0, "rgba(17, 25, 45, 0.85)");
-  background.addColorStop(1, "rgba(8, 12, 22, 0.9)");
-  g.fillStyle = background;
+  g.fillStyle = "#070707";
   g.fillRect(0, 0, w, h);
 
   // ---- bande de structure, lisible en un coup d'œil
@@ -198,12 +198,12 @@ function renderScene(
     g.fillRect(x1, lay.bandTop, width, 3);
 
     const label = section.kind ?? section.label;
-    g.fillStyle = "rgba(240, 245, 255, 0.92)";
+    g.fillStyle = "rgba(255, 255, 255, 0.92)";
     if (width > g.measureText(label).width + 12) {
       g.fillText(label, x1 + 6, lay.bandTop + lay.bandHeight - 12);
     }
   }
-  g.strokeStyle = "rgba(255,255,255,0.10)";
+  g.strokeStyle = "rgba(255,255,255,0.12)";
   g.lineWidth = 1;
   g.strokeRect(lay.left, lay.bandTop, lay.usable, lay.bandHeight);
 
@@ -213,7 +213,7 @@ function renderScene(
     const x1 = x1Of(build.start);
     const x2 = x1Of(build.end);
     const alpha = 0.35 + build.strength * 0.6;
-    g.strokeStyle = `rgba(255, 120, 165, ${alpha})`;
+    g.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
     g.lineWidth = 2.5;
     g.beginPath();
     g.moveTo(x1, lay.laneY);
@@ -224,7 +224,7 @@ function renderScene(
     g.lineTo(x2 - 7, lay.laneY - 5);
     g.lineTo(x2 - 7, lay.laneY + 5);
     g.closePath();
-    g.fillStyle = `rgba(255, 120, 165, ${alpha})`;
+    g.fillStyle = `rgba(255, 255, 255, ${alpha * 0.8})`;
     g.fill();
   }
 
@@ -232,20 +232,20 @@ function renderScene(
   g.font = mono(11);
   for (const level of [0, 0.25, 0.5, 0.75, 1]) {
     const y = lay.curveBottom - level * (lay.curveBottom - lay.curveTop);
-    g.strokeStyle = level === 0 ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.07)";
+    g.strokeStyle = level === 0 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.055)";
     g.lineWidth = 1;
     g.beginPath();
     g.moveTo(lay.left, y);
     g.lineTo(lay.right, y);
     g.stroke();
-    g.fillStyle = "rgba(170, 188, 220, 0.7)";
+    g.fillStyle = "rgba(148, 148, 148, 0.9)";
     g.fillText(level.toFixed(2), 14, y + 4);
   }
 
   // ---- temps forts
   const beatsVisible = sliceNumbers(analysis.beats, viewStart, viewEnd);
   const beatStep = Math.max(1, Math.ceil(beatsVisible.length / lay.usable));
-  g.strokeStyle = "rgba(255,255,255,0.16)";
+  g.strokeStyle = "rgba(255,255,255,0.09)";
   g.lineWidth = 1;
   g.beginPath();
   for (let index = 0; index < beatsVisible.length; index += beatStep) {
@@ -260,10 +260,7 @@ function renderScene(
 
   const energyPoints = visible(analysis.energy);
   if (energyPoints.length > 1) {
-    const area = g.createLinearGradient(0, lay.curveTop, 0, lay.curveBottom);
-    area.addColorStop(0, "rgba(255, 217, 138, 0.30)");
-    area.addColorStop(1, "rgba(255, 217, 138, 0.02)");
-    g.fillStyle = area;
+    g.fillStyle = "rgba(111, 195, 255, 0.10)";
     g.beginPath();
     g.moveTo(px(energyPoints[0]![0]), lay.curveBottom);
     for (const [time, value] of energyPoints) g.lineTo(px(time), lay.curveBottom - value * (lay.curveBottom - lay.curveTop));
@@ -286,19 +283,15 @@ function renderScene(
     g.stroke();
   };
 
-  stroke(visible(analysis.bass), "rgba(120, 210, 255, 0.75)", 1.6);
-  stroke(visible(analysis.mid), "rgba(180, 150, 255, 0.68)", 1.6);
-  stroke(visible(analysis.high), "rgba(255, 170, 120, 0.68)", 1.6);
-  g.save();
-  g.shadowColor = "rgba(255, 217, 138, 0.85)";
-  g.shadowBlur = 14;
-  stroke(energyPoints, "#ffe08a", 3.2);
-  g.restore();
+  stroke(visible(analysis.bass), "rgba(255, 255, 255, 0.42)", 1.4);
+  stroke(visible(analysis.mid), "rgba(255, 255, 255, 0.26)", 1.4);
+  stroke(visible(analysis.high), "rgba(255, 255, 255, 0.16)", 1.4);
+  stroke(energyPoints, "#6fc3ff", 2);
 
   // ---- onsets sous les courbes
   const onsets = sliceNumbers(analysis.onsets, viewStart, viewEnd);
   const onsetStep = Math.max(1, Math.ceil(onsets.length / (lay.usable * 1.2)));
-  g.fillStyle = "rgba(150, 220, 255, 0.7)";
+  g.fillStyle = "rgba(148, 148, 148, 0.8)";
   for (let index = 0; index < onsets.length; index += onsetStep) {
     g.beginPath();
     g.arc(px(onsets[index]!), lay.curveBottom + 7, 2, 0, Math.PI * 2);
@@ -309,23 +302,23 @@ function renderScene(
   if (highlight !== null) {
     const hx1 = x1Of(highlight.start);
     const hx2 = x1Of(highlight.end);
-    g.fillStyle = "rgba(200, 225, 255, 0.14)";
+    g.fillStyle = "rgba(111, 195, 255, 0.10)";
     g.fillRect(hx1, lay.bandTop, Math.max(2, hx2 - hx1), lay.curveBottom - lay.bandTop);
-    g.strokeStyle = "rgba(200, 225, 255, 0.55)";
+    g.strokeStyle = "rgba(111, 195, 255, 0.45)";
     g.lineWidth = 1;
     g.strokeRect(hx1, lay.bandTop, Math.max(2, hx2 - hx1), lay.curveBottom - lay.bandTop);
   }
 
   // ---- règle temporelle, calée sur la fenêtre visible
-  g.strokeStyle = "rgba(255,255,255,0.22)";
+  g.strokeStyle = "rgba(255,255,255,0.14)";
   g.lineWidth = 1;
   g.beginPath();
   g.moveTo(lay.left, lay.curveBottom + 16);
   g.lineTo(lay.right, lay.curveBottom + 16);
   g.stroke();
   g.font = mono(11);
-  g.fillStyle = "rgba(200, 214, 240, 0.75)";
-  const step = tickStep(span);
+  g.fillStyle = "rgba(148, 148, 148, 0.95)";
+  const step = tickStep(span, Math.max(2, Math.floor(lay.usable / 62)));
   for (let time = Math.ceil(viewStart / step) * step; time <= viewEnd; time += step) {
     const x = px(time);
     g.beginPath();
@@ -605,7 +598,7 @@ export class TrackChart {
     ctx.clearRect(0, 0, w, h);
 
     if (this.frame.analysis === null) {
-      ctx.fillStyle = "rgba(200, 210, 235, 0.75)";
+      ctx.fillStyle = "rgba(148, 148, 148, 0.95)";
       ctx.font = "600 16px system-ui, sans-serif";
       ctx.fillText("Aucune analyse chargée — dépose un morceau ou lance une recherche.", 24, h / 2);
       this.hideTooltip();
@@ -641,7 +634,7 @@ export class TrackChart {
     if (!inView) {
       // La tête de lecture est hors de la fenêtre : une flèche sur le bord dit de quel côté.
       const left = seconds < view.start;
-      ctx.fillStyle = "rgba(143, 240, 196, 0.9)";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
       ctx.beginPath();
       ctx.moveTo(left ? lay.left : lay.right, lay.curveTop + 40);
       ctx.lineTo(left ? lay.left + 10 : lay.right - 10, lay.curveTop + 34);
@@ -651,23 +644,23 @@ export class TrackChart {
       return;
     }
 
-    ctx.strokeStyle = "rgba(143, 240, 196, 0.9)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
     ctx.lineWidth = 2;
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(x, lay.bandTop - 6);
     ctx.lineTo(x, lay.curveBottom + 18);
     ctx.stroke();
-    ctx.fillStyle = "rgba(143, 240, 196, 0.22)";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
     ctx.fillRect(lay.left, lay.bandTop, Math.max(0, x - lay.left), lay.bandHeight);
 
     const tag = `${fmtTime(seconds)}  show`;
     ctx.font = "600 11px system-ui, sans-serif";
     const tagWidth = ctx.measureText(tag).width + 14;
     const tagX = Math.min(Math.max(x - tagWidth / 2, lay.left), lay.right - tagWidth);
-    ctx.fillStyle = "rgba(143, 240, 196, 0.95)";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(tagX, lay.bandTop - 24, tagWidth, 18);
-    ctx.fillStyle = "#04070c";
+    ctx.fillStyle = "#000000";
     ctx.fillText(tag, tagX + 7, lay.bandTop - 11);
   }
 
@@ -687,7 +680,7 @@ export class TrackChart {
     const x = clamp(px(time), lay.left, lay.right);
 
     ctx.save();
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.strokeStyle = "rgba(255,255,255,0.4)";
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -698,7 +691,7 @@ export class TrackChart {
 
     const energy = sampleCurve(analysis.energy, time);
     const y = lay.curveBottom - energy * (lay.curveBottom - lay.curveTop);
-    ctx.fillStyle = "rgba(255, 224, 138, 0.95)";
+    ctx.fillStyle = "#6fc3ff";
     ctx.beginPath();
     ctx.arc(x, y, 3.5, 0, Math.PI * 2);
     ctx.fill();
