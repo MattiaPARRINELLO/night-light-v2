@@ -3,7 +3,7 @@ import { clamp01, hash01, mix, smoothstep } from "../series";
 import type { DropSignature, SceneRole } from "../show";
 import type { TrackView } from "../view";
 import { softBeam } from "./beams";
-import { contrastHue, lampHue } from "./harmony";
+import { contrastHue, lampHue, sceneChord } from "./harmony";
 import { beatSwing } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
 import { paint } from "./util";
@@ -14,7 +14,7 @@ import { paint } from "./util";
  * Le spectacle n'est plus seulement une abstraction lumineuse : il se joue sur
  * une vraie scène. Un pont technique en treillis porte huit lyres motorisées,
  * une seconde traverse accroche seize barres LED et une barre de douze blinders
- * tungstène éclaire la salle.
+ * qui éclaire la salle dans la palette du morceau.
  *
  * Règle absolue : tout est calculé à partir de `(time, view, plan, frameState)`.
  * Aucun angle ne s'accumule d'une image à l'autre, aucun filament ne garde son
@@ -36,6 +36,13 @@ export const NOMBRE_BLINDERS = 12;
  */
 export const NOMBRE_BLINDERS_FACADE = 8;
 /**
+ * Nombre de blinders de face, à l'avant-scène, tournés vers le public.
+ *
+ * Ce sont eux qui éblouissent la salle : ils ne projettent pas un cône vers le
+ * sol, leur champ de lumière part vers la caméra et remplit tout le cadre.
+ */
+export const NOMBRE_BLINDERS_FACE = 6;
+/**
  * Constante de refroidissement du filament tungstène, en secondes.
  *
  * Un vrai blinders ne s'éteint pas : son filament rougeoie encore longtemps
@@ -56,6 +63,8 @@ const LIGNE_BATTENS = 0.3;
 const LIGNE_BLINDERS = 0.132;
 /** Hauteur de la barre de blinders de façade, sous les barres LED. */
 const LIGNE_BLINDERS_FACADE = 0.455;
+/** Hauteur de la barre de face, au bord bas de la scène, tournée vers le public. */
+const LIGNE_BLINDERS_FACE = 0.94;
 /** Fenêtre de recherche du dernier impact, en secondes. */
 const FENETRE_IMPACT = 2.6;
 
@@ -158,6 +167,21 @@ export function positionBlinderFacade(index: number, largeur: number, hauteur: n
   return {
     x: largeur * (0.2 + 0.6 * (i / (NOMBRE_BLINDERS_FACADE - 1))),
     y: hauteur * LIGNE_BLINDERS_FACADE,
+  };
+}
+
+/**
+ * Position du blinder de face `index`.
+ *
+ * La rangée est posée au bord bas de la scène, face au public : ses cellules ne
+ * sont pas des projecteurs qui éclairent le sol, mais des sources qui regardent
+ * la salle.
+ */
+export function positionBlinderFace(index: number, largeur: number, hauteur: number): PointScene {
+  const i = borner(index, NOMBRE_BLINDERS_FACE);
+  return {
+    x: largeur * (0.14 + 0.72 * (i / (NOMBRE_BLINDERS_FACE - 1))),
+    y: hauteur * LIGNE_BLINDERS_FACE,
   };
 }
 
@@ -501,71 +525,38 @@ export function decroissanceFilament(age: number): number {
   return clamp01(Math.exp(-age / TAU_FILAMENT));
 }
 
-const BLANC_CHAUD: CouleurFilament = { hue: 42, saturation: 0.16, lightness: 0.96 };
-const AMBRE: CouleurFilament = { hue: 34, saturation: 0.88, lightness: 0.68 };
-const ROUGE: CouleurFilament = { hue: 10, saturation: 0.94, lightness: 0.42 };
-const ROUGE_PROFOND: CouleurFilament = { hue: 4, saturation: 0.96, lightness: 0.28 };
-
-function melangeCouleur(a: CouleurFilament, b: CouleurFilament, ratio: number): CouleurFilament {
-  return {
-    hue: mix(a.hue, b.hue, ratio),
-    saturation: mix(a.saturation, b.saturation, ratio),
-    lightness: mix(a.lightness, b.lightness, ratio),
-  };
-}
-
 /**
- * Dérive chromatique du filament.
+ * Couleur d'une cellule de blinder.
  *
- * Les seuils du cahier des charges sont respectés — blanc chaud au-dessus de
- * 0,8, ambre entre 0,3 et 0,8, rouge en dessous — mais les frontières sont
- * adoucies : un filament ne change pas de couleur d'un coup, il refroidit.
+ * Un blinder de spectacle n'est pas une source « réaliste » : il remplit la
+ * scène et doit donc rester dans le budget couleur du morceau. La barre puise
+ * uniquement dans les une à trois teintes de la scène, et la principale occupe
+ * la majorité des cellules — la secondaire et la tertiaire ne marquent que
+ * quelques cellules pour éviter un aplat.
  *
- * C'est la seule couleur du spectacle qui ne sort pas de la palette : un
- * blinders tungstène est physiquement chaud, on ne peut pas le teinter sans
- * mentir sur la source. La structure et les faisceaux, eux, continuent de
- * suivre la palette de la scène.
+ * À pleine puissance, la diode sature : la teinte ne change pas, seule la
+ * saturation baisse vers un blanc de capteur. Aucune dérive vers l'ambre ou le
+ * rouge, qui sortirait de la palette.
  */
-export function couleurBlinder(intensite: number): CouleurFilament {
-  const i = clamp01(intensite);
-  if (i > 0.8) return melangeCouleur(AMBRE, BLANC_CHAUD, smoothstep(0.82, 0.98, i));
-  if (i > 0.3) return melangeCouleur(ROUGE, AMBRE, smoothstep(0.3, 0.62, i));
-  return melangeCouleur(ROUGE_PROFOND, ROUGE, smoothstep(0.05, 0.3, i));
-}
-
-/** Interpolation de teintes par le plus court chemin autour du cercle. */
-function melangeTeinte(a: number, b: number, ratio: number): number {
-  const ecart = ((((b - a) % 360) + 540) % 360) - 180;
-  return (a + ecart * clamp01(ratio) + 360) % 360;
-}
-
-/**
- * Couleur d'un blinders de concert.
- *
- * Le concert utilise désormais des blinders LED : plus de filament tungstène,
- * la source est une barre RGBW qui éclaire réellement dans la couleur du
- * morceau. La teinte glisse le long de la barre de la couleur principale à la
- * complémentaire, avec une légère variation par cellule pour éviter un aplat.
- * À pleine puissance, un cœur blanc très bref apparaît au centre de la source —
- * c'est la saturation du capteur, pas la couleur du faisceau.
- */
-export function couleurBlinderConcert(
+export function couleurBlinder(
   f: FrameState,
   index: number,
   intensite: number,
   gel = 1,
-  position = index / Math.max(NOMBRE_BLINDERS - 1, 1),
 ): CouleurFilament {
-  const i = Math.max(0, Math.floor(index));
-  // La teinte glisse de la couleur principale à la complémentaire le long de la
-  // barre : deux cellules voisines n'ont jamais la même lumière, même quand un
-  // motif n'en allume qu'une sur quatre.
-  const teinte = melangeTeinte(f.palette.hue, f.palette.accent, clamp01(position));
-  const teinteVoisine = shiftHue(teinte, i % 3 === 0 ? 10 : -8);
-  const coeur = clamp01((intensite - 0.82) / 0.18) * 0.3 * clamp01(gel);
+  const accord = sceneChord(f.palette, f.scene.index, f.seed, f.scene.mood);
+  const principale = accord[0] ?? f.palette.hue;
+  const secondaire = accord[1] ?? principale;
+  const tertiaire = accord[2] ?? secondaire;
+  const i = Math.abs(Math.floor(index));
+  // Six cellules sur huit gardent la principale ; la septième prend la
+  // tertiaire, la quatrième la secondaire. La dominance est donc franche même
+  // quand le morceau possède trois couleurs.
+  const teinte = i % 8 === 7 ? tertiaire : i % 4 === 3 ? secondaire : principale;
+  const coeur = clamp01((intensite - 0.82) / 0.18) * 0.22 * clamp01(gel);
   return {
-    hue: melangeTeinte(teinteVoisine, 45, coeur),
-    saturation: mix(1, 0.2, coeur),
+    hue: teinte,
+    saturation: mix(1, 0.35, coeur),
     lightness: mix(0.46 + 0.2 * clamp01(intensite), 0.9, coeur),
   };
 }
@@ -982,7 +973,9 @@ function dessinerBarreBlinders(
   for (let index = 0; index < nombre; index += 1) {
     const { x } = position(index, w, h);
     for (const cote of [-1, 1] as const) {
-      ctx.fillStyle = paint(34, 0.55, 0.32, 0.62);
+      // Les deux lampes du boîtier restent dans la teinte principale du morceau :
+      // même éteintes, elles ne doivent pas introduire d'ambre hors palette.
+      ctx.fillStyle = paint(f.palette.hue, 0.6, 0.34, 0.62);
       ctx.beginPath();
       ctx.arc(
         x + cote * pas * 0.22,
@@ -997,12 +990,12 @@ function dessinerBarreBlinders(
 }
 
 /**
- * Blinders : barre tungstène standard, barre LED colorée en concert.
+ * Blinders : la barre du pont, dans la palette du morceau.
  *
- * Appelée en mode `lighter`. Le profil standard garde le filament chaud ; le
- * concert utilise des blinders LED qui éclairent réellement dans la couleur du
- * morceau : cône large, cœur de faisceau, tache au sol et halo saturé. Le rave
- * garde ses propres couleurs, encore plus vives.
+ * Appelée en mode `lighter`. Le concert comme le rave utilisent la même source
+ * colorée : cône large, cœur dense et tache au sol. La couleur ne sort jamais du
+ * budget du morceau (une à trois teintes, principale dominante) ; aucun filament
+ * ambré ne vient teinter la salle.
  */
 export function dessinerBlinders(
   ctx: CanvasRenderingContext2D,
@@ -1049,17 +1042,9 @@ export function dessinerBlinders(
     if (intensite <= 0.008) continue;
     nappe = Math.max(nappe, intensite);
     const { x, y } = positionBlinder(index, w, h);
-    const couleur = rave
-      ? {
-          // Deux couleurs au maximum : les blinders alternent entre la teinte
-          // de la scène et sa complémentaire.
-          hue: index % 2 === 0 ? f.palette.hue : f.palette.accent,
-          saturation: 1,
-          lightness: 0.62,
-        }
-      : concert
-        ? couleurBlinderConcert(f, index, intensite, 0.6)
-        : couleurBlinder(intensite);
+    // La barre ne sort jamais du budget couleur du morceau : principale
+    // dominante, secondaire et tertiaire sur quelques cellules seulement.
+    const couleur = couleurBlinder(f, index, intensite, rave ? 1 : 0.6);
     dessinerCelluleBlinder(ctx, f, x, y, intensite, couleur, {
       rayon: Math.min(w, h) * (0.035 + 0.09 * intensite),
       budget,
@@ -1088,13 +1073,7 @@ export function dessinerBlinders(
       if (intensite <= 0.008) continue;
       nappe = Math.max(nappe, intensite);
       const { x, y } = positionBlinderFacade(index, w, h);
-      const couleur = couleurBlinderConcert(
-        f,
-        index + 1,
-        intensite,
-        1,
-        index / Math.max(NOMBRE_BLINDERS_FACADE - 1, 1),
-      );
+      const couleur = couleurBlinder(f, index + 1, intensite, 1);
       dessinerCelluleBlinder(ctx, f, x, y, intensite, couleur, {
         rayon: Math.min(w, h) * (0.024 + 0.062 * intensite),
         budget,
@@ -1105,24 +1084,183 @@ export function dessinerBlinders(
   }
 
   // Nappe d'ambiance : une barre de blinders LED ne se contente pas d'allumer
-  // ses cellules, elle baigne la salle de sa couleur. Un dégradé horizontal
-  // entre les deux teintes du morceau suffit, à très faible opacité, pour que
-  // l'image entière prenne la lumière de la barre.
+  // ses cellules, elle baigne la salle de sa couleur. La principale tient
+  // presque toute la largeur ; l'accent ne marque que le bord droit.
   if (concert && nappe > 0.08) {
     const voile = ctx.createLinearGradient(0, 0, w, 0);
     voile.addColorStop(0, paint(f.palette.hue, 1, 0.56, 0.11 * nappe * f.alpha));
-    voile.addColorStop(
-      0.5,
-      paint(
-        melangeTeinte(f.palette.hue, f.palette.accent, 0.5),
-        0.9,
-        0.58,
-        0.05 * nappe * f.alpha,
-      ),
-    );
-    voile.addColorStop(1, paint(f.palette.accent, 1, 0.56, 0.11 * nappe * f.alpha));
+    voile.addColorStop(0.78, paint(f.palette.hue, 1, 0.56, 0.09 * nappe * f.alpha));
+    voile.addColorStop(1, paint(f.palette.accent, 1, 0.56, 0.045 * nappe * f.alpha));
     ctx.fillStyle = voile;
     ctx.fillRect(0, 0, w, h);
+  }
+}
+
+/**
+ * Rangée de blinders de face, tournés vers le public.
+ *
+ * Ce sont les seules sources du plateau qui regardent la caméra : au lieu de
+ * projeter un cône vers le sol, elles éblouissent la salle. En 2D, leur champ se
+ * lit comme un grand halo frontal qui envahit le cadre, un voile vertical qui
+ * lave le bas de l'image et une croix de flare — jamais une tache au sol.
+ */
+export function dessinerBlindersFace(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  view: TrackView,
+  budgetFlash = 1,
+): void {
+  if (f.dynamic !== true || f.reduced) return;
+  const budget = clamp01(budgetFlash);
+  if (budget <= 0) return;
+  const { width: w } = f;
+  const veilleuse =
+    clamp01(0.22 + 0.24 * f.energy) * (0.4 + 0.6 * FACTEUR_ROLE[f.scene.role]);
+
+  // Le boîtier reste fin et bas : c'est une barre d'avant-scène.
+  dessinerBarreBlinders(ctx, f, NOMBRE_BLINDERS_FACE, positionBlinderFace, f.palette.hue, 0.9);
+
+  let nappe = 0;
+  for (let index = 0; index < NOMBRE_BLINDERS_FACE; index += 1) {
+    const projection = Math.round(
+      (index * (NOMBRE_BLINDERS - 1)) / (NOMBRE_BLINDERS_FACE - 1),
+    );
+    const intensite =
+      Math.max(intensiteBlinder(f, view, projection), veilleuse) *
+      (0.62 + 0.16 * f.energy);
+    if (intensite <= 0.012) continue;
+    nappe = Math.max(nappe, intensite);
+    const { x, y } = positionBlinderFace(index, w, f.height);
+    const couleur = couleurBlinder(f, index + 2, intensite, 1);
+    dessinerFaceBlinder(ctx, f, x, y, intensite, couleur, budget);
+  }
+
+  // Un seul voile pour toute la rangée : la lumière qui vient vers le public
+  // remplit le cadre entier, elle n'est pas la somme de six cônes séparés.
+  if (nappe > 0.02) {
+    const voile = ctx.createLinearGradient(0, f.height, 0, 0);
+    voile.addColorStop(0, paint(f.palette.hue, 0.95, 0.6, 0.13 * nappe * f.alpha));
+    voile.addColorStop(0.45, paint(f.palette.hue, 0.95, 0.6, 0.05 * nappe * f.alpha));
+    voile.addColorStop(1, paint(f.palette.hue, 0.95, 0.6, 0));
+    ctx.fillStyle = voile;
+    ctx.fillRect(0, 0, f.width, f.height);
+  }
+}
+
+/** Une cellule de face : halo frontal, flare en croix et source visible. */
+function dessinerFaceBlinder(
+  ctx: CanvasRenderingContext2D,
+  f: FrameState,
+  x: number,
+  y: number,
+  intensite: number,
+  couleur: CouleurFilament,
+  budget: number,
+): void {
+  const { width: w, height: h } = f;
+  const alpha = intensite * f.alpha;
+  const rayon = Math.min(w, h) * (0.4 + 0.55 * intensite);
+
+  // Halo frontal : la source regarde l'objectif, sa lumière s'étale dans tout
+  // le cadre. Le dégradé est transparent au-delà de `rayon`, on ne remplit donc
+  // que sa boîte englobante.
+  const halo = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rayon, 1));
+  halo.addColorStop(
+    0,
+    paint(
+      couleur.hue,
+      couleur.saturation,
+      Math.min(1, couleur.lightness + 0.16),
+      0.5 * alpha,
+    ),
+  );
+  halo.addColorStop(
+    0.24,
+    paint(couleur.hue, couleur.saturation, couleur.lightness, 0.28 * alpha),
+  );
+  halo.addColorStop(
+    0.6,
+    paint(couleur.hue, couleur.saturation, couleur.lightness * 0.9, 0.1 * alpha),
+  );
+  halo.addColorStop(
+    1,
+    paint(couleur.hue, couleur.saturation * 0.85, couleur.lightness * 0.8, 0),
+  );
+  ctx.fillStyle = halo;
+  ctx.fillRect(
+    Math.max(0, x - rayon),
+    Math.max(0, y - rayon),
+    Math.min(w, rayon * 2),
+    Math.min(h, rayon * 2),
+  );
+
+  // Flare en croix : la signature d'un projecteur qui regarde la caméra.
+  if (budget > 0) {
+    const force = clamp01(intensite) * budget;
+    const demi = Math.max(w * 0.36, rayon * 1.2);
+    const bande = ctx.createLinearGradient(x - demi, 0, x + demi, 0);
+    bande.addColorStop(0, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    bande.addColorStop(
+      0.5,
+      paint(
+        couleur.hue,
+        couleur.saturation * 0.4,
+        Math.min(1, couleur.lightness + 0.18),
+        0.5 * force * f.alpha,
+      ),
+    );
+    bande.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    ctx.fillStyle = bande;
+    ctx.fillRect(x - demi, y - 1.5 - 3 * force, demi * 2, 3 + 6 * force);
+
+    // Branche verticale du flare, plus courte : sans elle, la source se lit
+    // comme un simple halo et non comme un projecteur braqué sur l'objectif.
+    const hauteur = h * (0.14 + 0.16 * force);
+    const verticale = ctx.createLinearGradient(0, y - hauteur, 0, y + hauteur);
+    verticale.addColorStop(0, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    verticale.addColorStop(
+      0.5,
+      paint(couleur.hue, couleur.saturation * 0.45, Math.min(1, couleur.lightness + 0.14), 0.32 * force * f.alpha),
+    );
+    verticale.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.7, couleur.lightness, 0));
+    ctx.fillStyle = verticale;
+    ctx.fillRect(x - 0.8 - force, y - hauteur, 1.6 + 2 * force, hauteur * 2);
+  }
+
+  // Cœur de la source : une tache courte, très claire mais encore teintée.
+  // Elle garde le projecteur lisible même quand un lavage d'impact blanchit
+  // déjà tout le cadre.
+  const coeurRayon = Math.min(w, h) * (0.05 + 0.08 * intensite);
+  const coeur = ctx.createRadialGradient(x, y, 0, x, y, Math.max(coeurRayon, 1));
+  coeur.addColorStop(
+    0,
+    paint(couleur.hue, 0.3, 0.99, 0.85 * alpha),
+  );
+  coeur.addColorStop(
+    0.45,
+    paint(couleur.hue, 0.6, 0.92, 0.35 * alpha),
+  );
+  coeur.addColorStop(
+    1,
+    paint(couleur.hue, couleur.saturation, couleur.lightness, 0),
+  );
+  ctx.fillStyle = coeur;
+  ctx.beginPath();
+  ctx.arc(x, y, Math.max(coeurRayon, 1), 0, Math.PI * 2);
+  ctx.fill();
+
+  // Les deux lampes de la cellule, teintées comme le reste de la palette.
+  for (const cote of [-1, 1] as const) {
+    const lx = x + cote * Math.max(3, w * 0.004);
+    ctx.fillStyle = paint(
+      couleur.hue,
+      Math.min(1, couleur.saturation),
+      Math.min(1, couleur.lightness + 0.2),
+      intensite * f.alpha,
+    );
+    ctx.beginPath();
+    ctx.arc(lx, y + 2, 1.4 + 4 * intensite, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -1156,56 +1294,80 @@ function dessinerCelluleBlinder(
   const { rayon, budget } = options;
 
   // Faisceau LED : la barre n'émet plus un simple halo, elle éclaire vraiment.
-  // Un cône large part de la cellule et lave la scène de sa couleur, avec une
-  // tache au sol là où il retombe. Deux trapèzes superposés (enveloppe + cœur)
-  // suffisent à donner du volume sans payer un vrai dégradé par faisceau.
+  // Trois cônes emboîtés (fumée large, enveloppe moyenne, cœur dense) donnent un
+  // champ de lumière à bords doux, et une tache elliptique au sol vend l'idée
+  // que la lumière retombe dans la salle.
   if (options.lame && intensite > 0.12) {
     const haut = y + 2;
-    const portee = f.height * (0.42 + 0.26 * intensite);
+    const portee = f.height * (0.46 + 0.28 * intensite);
     const bas = Math.min(f.height * 1.04, haut + portee);
-    const demiHaut = Math.max(1.6, w * 0.004);
-    const demiBas = w * (0.032 + 0.07 * intensite);
+    // Un vrai blinder n'éclaire pas pile à la verticale : chaque cellule ouvre
+    // son champ vers l'extérieur de la barre.
+    const basX = x + (x - f.width * 0.5) * 0.1;
+    const demiHaut = Math.max(1.4, w * 0.0036);
+    const demiBas = w * (0.03 + 0.075 * intensite);
     const alpha = intensite * f.alpha;
 
-    const cone = ctx.createLinearGradient(0, haut, 0, bas);
-    cone.addColorStop(0, paint(couleur.hue, couleur.saturation, couleur.lightness, 0.3 * alpha));
-    cone.addColorStop(0.45, paint(couleur.hue, couleur.saturation, couleur.lightness * 0.92, 0.16 * alpha));
-    cone.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.9, couleur.lightness * 0.8, 0));
-    ctx.fillStyle = cone;
-    ctx.beginPath();
-    ctx.moveTo(x - demiHaut, haut);
-    ctx.lineTo(x + demiHaut, haut);
-    ctx.lineTo(x + demiBas, bas);
-    ctx.lineTo(x - demiBas, bas);
-    ctx.closePath();
-    ctx.fill();
+    const couches = [
+      { largeur: 1.35, densite: 0.1, tete: 0.6 },
+      { largeur: 0.95, densite: 0.16, tete: 0.8 },
+      { largeur: 0.5, densite: 0.24, tete: 1 },
+    ] as const;
+    for (const couche of couches) {
+      const dHaut = demiHaut * couche.tete;
+      const dBas = demiBas * couche.largeur;
+      const cone = ctx.createLinearGradient(0, haut, 0, bas);
+      cone.addColorStop(
+        0,
+        paint(
+          couleur.hue,
+          couleur.saturation,
+          Math.min(1, couleur.lightness + 0.06),
+          couche.densite * alpha,
+        ),
+      );
+      cone.addColorStop(
+        0.38,
+        paint(couleur.hue, couleur.saturation, couleur.lightness, couche.densite * 0.7 * alpha),
+      );
+      cone.addColorStop(
+        1,
+        paint(couleur.hue, couleur.saturation * 0.92, couleur.lightness * 0.86, 0),
+      );
+      ctx.fillStyle = cone;
+      ctx.beginPath();
+      ctx.moveTo(x - dHaut, haut);
+      ctx.lineTo(x + dHaut, haut);
+      ctx.lineTo(basX + dBas, bas);
+      ctx.lineTo(basX - dBas, bas);
+      ctx.closePath();
+      ctx.fill();
+    }
 
-    // Cœur du faisceau : plus étroit, plus dense, il donne la direction.
-    const coeurHaut = Math.max(1.2, w * 0.0026);
-    const coeurBas = demiBas * 0.42;
-    const coeur = ctx.createLinearGradient(0, haut, 0, bas * 0.9);
-    coeur.addColorStop(0, paint(couleur.hue, couleur.saturation * 0.6, Math.min(1, couleur.lightness + 0.2), 0.5 * alpha));
-    coeur.addColorStop(0.7, paint(couleur.hue, couleur.saturation, couleur.lightness, 0.14 * alpha));
-    coeur.addColorStop(1, paint(couleur.hue, couleur.saturation, couleur.lightness * 0.9, 0));
-    ctx.fillStyle = coeur;
-    ctx.beginPath();
-    ctx.moveTo(x - coeurHaut, haut);
-    ctx.lineTo(x + coeurHaut, haut);
-    ctx.lineTo(x + coeurBas, bas * 0.9);
-    ctx.lineTo(x - coeurBas, bas * 0.9);
-    ctx.closePath();
-    ctx.fill();
-
-    // Tache au sol : c'est elle qui vend l'idée que la lumière éclaire la salle.
+    // Tache au sol : ellipse douce, plus large que le cône. Elle reste dans la
+    // teinte de la cellule, sans cœur blanc.
     if (f.quality >= 0.6) {
-      const sol = ctx.createRadialGradient(x, bas, 0, x, bas, Math.max(demiBas * 1.5, 1));
-      sol.addColorStop(0, paint(couleur.hue, couleur.saturation, couleur.lightness, 0.34 * alpha));
-      sol.addColorStop(0.55, paint(couleur.hue, couleur.saturation, couleur.lightness * 0.9, 0.14 * alpha));
-      sol.addColorStop(1, paint(couleur.hue, couleur.saturation, couleur.lightness * 0.8, 0));
+      ctx.save();
+      ctx.translate(basX, bas);
+      ctx.scale(1.7, 0.5);
+      const sol = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(demiBas * 1.7, 1));
+      sol.addColorStop(
+        0,
+        paint(couleur.hue, couleur.saturation, couleur.lightness, 0.3 * alpha),
+      );
+      sol.addColorStop(
+        0.5,
+        paint(couleur.hue, couleur.saturation, couleur.lightness * 0.92, 0.12 * alpha),
+      );
+      sol.addColorStop(
+        1,
+        paint(couleur.hue, couleur.saturation * 0.85, couleur.lightness * 0.8, 0),
+      );
       ctx.fillStyle = sol;
       ctx.beginPath();
-      ctx.arc(x, bas, Math.max(demiBas * 1.5, 1), 0, Math.PI * 2);
+      ctx.arc(0, 0, Math.max(demiBas * 1.7, 1), 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -1219,7 +1381,7 @@ function dessinerCelluleBlinder(
     0.35,
     paint(couleur.hue, couleur.saturation, couleur.lightness, 0.46 * intensite * f.alpha),
   );
-  halo.addColorStop(1, paint(shiftHue(couleur.hue, 12), couleur.saturation * 0.85, couleur.lightness * 0.6, 0));
+  halo.addColorStop(1, paint(couleur.hue, couleur.saturation * 0.85, couleur.lightness * 0.6, 0));
   ctx.fillStyle = halo;
   ctx.beginPath();
   ctx.arc(x, y, Math.max(rayon, 1), 0, Math.PI * 2);
@@ -1672,8 +1834,8 @@ const lyresArena: FamilyDraw = (ctx, f, view) => {
 
 /**
  * Gros blinders de concert : quatre pods qui éblouissent la salle sur les
- * impacts. Le rendu est volontairement chaud et blanc, comme un vrai blinder
- * tungstène : c'est la seule source qui sort de la palette du morceau.
+ * impacts. Comme la barre, ils restent dans le budget couleur du morceau : la
+ * teinte principale tient la majorité des pods, l'accent marque les autres.
  */
 const GROS_BLINDERS_WINDOW_SEC = 0.5;
 
@@ -1721,13 +1883,14 @@ export function dessinerGrosBlinders(
     const y = h * pod.y;
     const variation = 0.85 + 0.3 * hash01(index * 97 + f.seed);
     const intensite = clamp01(force * variation);
-    // LED : le pod éclaire dans la couleur du morceau, avec un cœur blanc très
-    // bref au centre (saturation du capteur) et une enveloppe saturée.
-    const teinte = index % 2 === 0 ? f.palette.hue : f.palette.accent;
+    // LED : le pod éclaire dans la couleur du morceau, avec un cœur légèrement
+    // délave au centre (saturation du capteur) et une enveloppe saturée. La
+    // couleur principale tient deux pods sur trois.
+    const teinte = index % 3 === 0 ? f.palette.accent : f.palette.hue;
     const rayon = Math.min(w, h) * (0.1 + 0.16 * intensite);
     const halo = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rayon, 1));
-    halo.addColorStop(0, paint(teinte, 0.25, 1, 1 * intensite * f.alpha));
-    halo.addColorStop(0.16, paint(teinte, 0.5, 0.94, 0.88 * intensite * f.alpha));
+    halo.addColorStop(0, paint(teinte, 0.45, 0.96, 1 * intensite * f.alpha));
+    halo.addColorStop(0.16, paint(teinte, 0.6, 0.92, 0.88 * intensite * f.alpha));
     halo.addColorStop(0.42, paint(teinte, 0.9, 0.74, 0.55 * intensite * f.alpha));
     halo.addColorStop(0.72, paint(teinte, 0.95, 0.6, 0.22 * intensite * f.alpha));
     halo.addColorStop(1, paint(teinte, 1, 0.5, 0));

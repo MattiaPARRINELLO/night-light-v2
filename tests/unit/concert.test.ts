@@ -4,8 +4,8 @@ import {
   angleBatten,
   CONCERT_FAMILIES,
   couleurBlinder,
-  couleurBlinderConcert,
   decroissanceFilament,
+  dessinerBlindersFace,
   drawFamily,
   intensiteBlinder,
   motifBlinder,
@@ -13,6 +13,7 @@ import {
   NOMBRE_BATTENS,
   NOMBRE_BLINDERS,
   NOMBRE_BLINDERS_FACADE,
+  NOMBRE_BLINDERS_FACE,
   NOMBRE_LYRES,
   orientationLyre,
   poidsBlinder,
@@ -20,6 +21,7 @@ import {
   positionBatten,
   positionBlinder,
   positionBlinderFacade,
+  positionBlinderFace,
   positionLyre,
   TAU_FILAMENT,
 } from "../../src/core/families";
@@ -123,6 +125,26 @@ describe("géométrie du plateau", () => {
       expect(positionBlinder(index, largeur, hauteur).y).toBeCloseTo(hauteur * 0.132, 6);
     }
   });
+
+  test("la rangée de face est posée en bas, tournée vers le public", () => {
+    const largeur = 1280;
+    const hauteur = 720;
+    expect(NOMBRE_BLINDERS_FACE).toBe(6);
+    const points = Array.from({ length: NOMBRE_BLINDERS_FACE }, (_, index) =>
+      positionBlinderFace(index, largeur, hauteur),
+    );
+    for (const point of points) {
+      // Plus basse que la façade (45,5 %) : c'est l'avant-scène, au bord du cadre.
+      expect(point.y).toBeCloseTo(hauteur * 0.94, 6);
+      expect(point.y).toBeGreaterThan(positionBlinderFacade(0, largeur, hauteur).y);
+    }
+    // La rangée est centrée et régulière.
+    expect(points[0]!.x).toBeCloseTo(largeur * 0.14, 6);
+    expect(points[points.length - 1]!.x).toBeCloseTo(largeur * 0.86, 6);
+    for (let index = 1; index < points.length; index += 1) {
+      expect(points[index]!.x).toBeGreaterThan(points[index - 1]!.x);
+    }
+  });
 });
 
 describe("inertie thermique des blinders", () => {
@@ -155,17 +177,34 @@ describe("inertie thermique des blinders", () => {
     );
   });
 
-  test("le filament passe du blanc chaud à l'ambre puis au rouge", () => {
-    const blanc = couleurBlinder(1);
-    const ambre = couleurBlinder(0.6);
-    const rouge = couleurBlinder(0.1);
-    expect(blanc.lightness).toBeGreaterThan(0.9);
-    expect(blanc.saturation).toBeLessThan(0.3);
-    expect(ambre.hue).toBeGreaterThan(25);
-    expect(ambre.hue).toBeLessThan(45);
-    expect(ambre.saturation).toBeGreaterThan(0.8);
-    expect(rouge.hue).toBeLessThan(15);
-    expect(rouge.lightness).toBeLessThan(0.45);
+  test("la couleur de la barre ne sort jamais du budget du morceau", () => {
+    const f = frame("refrain", 12, { dynamic: true });
+    const palette = { ...f.palette, hue: 186, accent: 52, tertiary: 352 };
+    const avecTrois = { ...f, palette };
+    const teintes = Array.from({ length: NOMBRE_BLINDERS }, (_, index) =>
+      couleurBlinder(avecTrois, index, 0.6, 1),
+    );
+    // Chaque cellule joue exactement une des trois couleurs du morceau.
+    for (const couleur of teintes) {
+      expect([186, 52, 352]).toContain(couleur.hue);
+    }
+    // La principale domine : aucune autre teinte ne prend la majorité.
+    const principale = teintes.filter((couleur) => couleur.hue === 186).length;
+    expect(principale).toBeGreaterThan(NOMBRE_BLINDERS / 2);
+
+    // À pleine puissance, la diode se délave légèrement mais ne vire jamais à
+    // l'ambre : la teinte reste celle de la palette.
+    const impact = couleurBlinder(avecTrois, 0, 1, 1);
+    expect(impact.hue).toBe(186);
+    expect(impact.saturation).toBeGreaterThan(0.6);
+    expect(impact.lightness).toBeGreaterThan(0.7);
+    expect(impact.lightness).toBeLessThan(0.9);
+
+    // Un morceau monochrome garde une seule couleur, même à pleine puissance.
+    const mono = { ...f, palette: { ...f.palette, hue: 210, accent: 210 } };
+    for (let index = 0; index < NOMBRE_BLINDERS; index += 1) {
+      expect(couleurBlinder(mono, index, 1, 1).hue).toBe(210);
+    }
   });
 
   test("en mode direct, le transient live remplace la grille d'impacts", () => {
@@ -272,21 +311,39 @@ describe("barre de blinders", () => {
     expect(allumes.length).toBeLessThan(NOMBRE_BLINDERS_FACADE);
   });
 
-  test("le concert éclaire les blinders dans la palette, comme des LED", () => {
+  test("la rangée de face projette sa lumière vers le public", () => {
+    const f = frame("drop", 12, { dynamic: true });
+    const view = new TrackView(analysis());
+    const face = fakeContext();
+    dessinerBlindersFace(face.ctx, f, view, 1);
+    // Halo frontal et flare : des remplissages de dégradés, pas un trapèze
+    // de faisceau qui tomberait au sol.
+    expect(face.operations.filter((op) => op.startsWith("radial:")).length).toBeGreaterThan(0);
+    expect(face.operations.filter((op) => op.startsWith("fillRect:")).length).toBeGreaterThan(0);
+
+    // Hors concert ou en mode réduit, la rangée reste éteinte.
+    const standard = fakeContext();
+    dessinerBlindersFace(standard.ctx, { ...f, dynamic: false }, view, 1);
+    expect(standard.operations.length).toBe(0);
+    const reduit = fakeContext();
+    dessinerBlindersFace(reduit.ctx, { ...f, reduced: true }, view, 1);
+    expect(reduit.operations.length).toBe(0);
+  });
+
+  test("la barre de concert puise dans la palette, principale en tête", () => {
     const f = frame("refrain", 12, { dynamic: true });
-    // Deux cellules voisines n'ont pas la même teinte : la barre joue les deux
-    // couleurs du morceau en alternance.
-    const premiere = couleurBlinderConcert(f, 0, 0.4, 1);
-    const seconde = couleurBlinderConcert(f, 1, 0.4, 1);
-    const ecart = Math.abs(premiere.hue - seconde.hue);
-    expect(ecart).toBeGreaterThan(5);
-    expect(premiere.saturation).toBeGreaterThan(0.8);
-    // À pleine puissance, la source reste colorée : une LED ne vire pas au
-    // tungstène, elle monte seulement en luminosité.
-    const impact = couleurBlinderConcert(f, 0, 1, 1);
-    expect(impact.saturation).toBeGreaterThan(0.6);
-    expect(impact.lightness).toBeGreaterThan(0.72);
-    expect(impact.lightness).toBeLessThan(0.92);
+    const dansPalette = { ...f, palette: { ...f.palette, hue: 186, accent: 52, tertiary: 352 } };
+    const teintes = Array.from({ length: NOMBRE_BLINDERS_FACADE }, (_, index) =>
+      couleurBlinder(dansPalette, index + 1, 0.4, 1),
+    );
+    expect(new Set(teintes.map((couleur) => couleur.hue)).size).toBeGreaterThan(1);
+    expect(teintes.filter((couleur) => couleur.hue === 186).length).toBeGreaterThan(
+      teintes.length / 2,
+    );
+    for (const couleur of teintes) {
+      expect([186, 52, 352]).toContain(couleur.hue);
+      expect(couleur.saturation).toBeGreaterThan(0.8);
+    }
   });
 });
 

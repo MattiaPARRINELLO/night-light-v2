@@ -228,6 +228,19 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   est ramenée dans le cadre et l'ouverture est bornée pour que tous les rayons
   entrent.
 
+### Modifié
+
+- **Blinders dans le budget couleur** : la barre du pont et les gros pods ne
+  jouent plus le filament tungstène (blanc chaud, ambre, rouge), qui sortait de
+  la palette du morceau. Toutes les cellules puisent dans les une à trois
+  couleurs de la scène, la principale occupant la majorité de la barre ; à
+  pleine puissance la diode se délave légèrement sans changer de teinte. Leur
+  champ de lumière gagne trois cônes emboîtés à bords doux (fumée, enveloppe,
+  cœur), une légère ouverture vers l'extérieur et une tache au sol elliptique.
+  Une **rangée de six blinders de face** s'ajoute à l'avant-scène, tournée vers
+  le public : halo frontal, voile vertical et flare en croix, sans cône vers le
+  sol, dessinée après le lavage d'impact pour rester visible.
+
 ## [2.0.0]
 
 ### Ajouté
