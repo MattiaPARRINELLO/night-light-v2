@@ -282,7 +282,9 @@ flare anamorphique étire le halo horizontalement.
 
 Une rangée de six blinders de face occupe l'avant-scène, au bord bas du cadre. Elle est
 tournée vers le public : pas de cône vers le sol, mais un halo frontal qui envahit
-l'image, un voile vertical et un flare en croix. Elle passe après le lavage d'impact,
+l'image, un voile vertical et un flare en croix. Elle claque sur le **kick** en mode
+concert (`f.beat`, déjà pondéré par la basse : un temps sans basse ne l'allume pas), en
+plus des impacts de montée et d'une veilleuse. Elle passe après le lavage d'impact,
 pour rester visible au moment où elle doit éblouir la salle.
 
 Trois échelles de renouvellement se superposent, pour que l'écran ne tourne jamais en

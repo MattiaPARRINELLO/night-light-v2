@@ -8,6 +8,7 @@ import {
   dessinerBlindersFace,
   drawFamily,
   intensiteBlinder,
+  intensiteBlinderFace,
   motifBlinder,
   motifBlinderFacade,
   NOMBRE_BATTENS,
@@ -309,6 +310,27 @@ describe("barre de blinders", () => {
     const allumes = poids.filter((valeur) => valeur > 0.6);
     expect(allumes.length).toBeGreaterThan(0);
     expect(allumes.length).toBeLessThan(NOMBRE_BLINDERS_FACADE);
+  });
+
+  test("la rangée de face claque sur le kick", () => {
+    const view = new TrackView(analysis());
+    // 12,4 s : l'impact du temps fort de 12 s est déjà retombé, seule
+    // l'impulsion de kick peut encore allumer la rangée.
+    const repos = frame("couplet", 12.4, { dynamic: true, beat: 0 });
+    const kick = { ...repos, beat: 0.95, bass: 0.9 };
+    const fond = intensiteBlinderFace(repos, view, 0);
+    const claque = intensiteBlinderFace(kick, view, 0);
+    expect(claque).toBeGreaterThan(fond * 2);
+    expect(claque).toBeGreaterThan(0.3);
+    expect(claque).toBeLessThanOrEqual(1);
+
+    // Sans impulsion de temps fort, la basse seule n'allume pas la rangée.
+    const sansTemps = { ...repos, beat: 0.02, bass: 0.95 };
+    expect(intensiteBlinderFace(sansTemps, view, 0)).toBeCloseTo(fond, 5);
+
+    // Hors concert ou en mode réduit, aucune réaction.
+    expect(intensiteBlinderFace({ ...kick, dynamic: false }, view, 0)).toBe(0);
+    expect(intensiteBlinderFace({ ...kick, reduced: true }, view, 0)).toBe(0);
   });
 
   test("la rangée de face projette sa lumière vers le public", () => {

@@ -239,7 +239,9 @@ projet adhère à [SemVer](https://semver.org/lang/fr/).
   cœur), une légère ouverture vers l'extérieur et une tache au sol elliptique.
   Une **rangée de six blinders de face** s'ajoute à l'avant-scène, tournée vers
   le public : halo frontal, voile vertical et flare en croix, sans cône vers le
-  sol, dessinée après le lavage d'impact pour rester visible.
+  sol, dessinée après le lavage d'impact pour rester visible. Elle claque sur le
+  kick en mode concert (impulsion de temps fort pondérée par la basse), avec une
+  veilleuse entre les frappes.
 
 ## [2.0.0]
 

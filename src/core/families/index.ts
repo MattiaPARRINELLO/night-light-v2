@@ -43,6 +43,7 @@ export {
   dessinerLyresRave,
   dessinerStructure,
   intensiteBlinder,
+  intensiteBlinderFace,
   motifBlinder,
   motifBlinderFacade,
   NOMBRE_BATTENS,
