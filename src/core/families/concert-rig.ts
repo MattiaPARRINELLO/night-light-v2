@@ -1097,6 +1097,35 @@ export function dessinerBlinders(
 }
 
 /**
+ * Intensité d'un blinder de face à l'instant courant.
+ *
+ * La rangée regarde le public : elle réagit au **kick**. `f.beat` est déjà
+ * l'impulsion du temps fort pondérée par la basse en mode analysé (0 sur un
+ * temps sans basse) et l'enveloppe du directeur en direct, donc un simple
+ * produit suffit. Les impacts de montée et la veilleuse s'y ajoutent sans
+ * jamais dépasser 1.
+ */
+export function intensiteBlinderFace(f: FrameState, view: TrackView, index: number): number {
+  if (f.dynamic !== true || f.reduced) return 0;
+  const role = FACTEUR_ROLE[f.scene.role];
+  const veilleuse = clamp01(0.22 + 0.24 * f.energy) * (0.4 + 0.6 * role);
+  const kick = clamp01(f.beat * (0.55 + 0.45 * clamp01(f.bass)));
+  // Léger écart entre cellules : la rangée claque ensemble sans être un aplat.
+  const variation = 0.82 + 0.18 * hash01(index * 73 + f.seed);
+  const projection = Math.round(
+    (borner(index, NOMBRE_BLINDERS_FACE) * (NOMBRE_BLINDERS - 1)) /
+      (NOMBRE_BLINDERS_FACE - 1),
+  );
+  const impact = intensiteBlinder(f, view, projection);
+  const brut = Math.max(
+    impact,
+    veilleuse,
+    kick * (0.6 + 0.4 * role),
+  );
+  return clamp01(brut * variation * (0.62 + 0.16 * f.energy));
+}
+
+/**
  * Rangée de blinders de face, tournés vers le public.
  *
  * Ce sont les seules sources du plateau qui regardent la caméra : au lieu de
@@ -1114,20 +1143,13 @@ export function dessinerBlindersFace(
   const budget = clamp01(budgetFlash);
   if (budget <= 0) return;
   const { width: w } = f;
-  const veilleuse =
-    clamp01(0.22 + 0.24 * f.energy) * (0.4 + 0.6 * FACTEUR_ROLE[f.scene.role]);
 
   // Le boîtier reste fin et bas : c'est une barre d'avant-scène.
   dessinerBarreBlinders(ctx, f, NOMBRE_BLINDERS_FACE, positionBlinderFace, f.palette.hue, 0.9);
 
   let nappe = 0;
   for (let index = 0; index < NOMBRE_BLINDERS_FACE; index += 1) {
-    const projection = Math.round(
-      (index * (NOMBRE_BLINDERS - 1)) / (NOMBRE_BLINDERS_FACE - 1),
-    );
-    const intensite =
-      Math.max(intensiteBlinder(f, view, projection), veilleuse) *
-      (0.62 + 0.16 * f.energy);
+    const intensite = intensiteBlinderFace(f, view, index);
     if (intensite <= 0.012) continue;
     nappe = Math.max(nappe, intensite);
     const { x, y } = positionBlinderFace(index, w, f.height);
