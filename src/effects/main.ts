@@ -20,7 +20,6 @@ import {
 } from "../core/effects";
 import { renderFrame } from "../core/render";
 import type { HazeLayer, HazeTarget } from "../core/families";
-import { BLUR_PASS_SCALE } from "../core/families";
 import type { FamilyId, Mood, SceneRole } from "../core/show";
 import type { RenderSettings } from "../types";
 import { ControlLink, type EffectOverride } from "../shared/control";
@@ -157,8 +156,8 @@ function dimensionnerNappe(nappe: HazeLayer, scale: number, width: number, heigh
   if (nappe.ctx.canvas.width === largeur && nappe.ctx.canvas.height === hauteur) return;
   nappe.ctx.canvas.width = largeur;
   nappe.ctx.canvas.height = hauteur;
-  nappe.blurPass.canvas.width = Math.max(1, Math.round(largeur * BLUR_PASS_SCALE));
-  nappe.blurPass.canvas.height = Math.max(1, Math.round(hauteur * BLUR_PASS_SCALE));
+  nappe.blurPass.canvas.width = largeur;
+  nappe.blurPass.canvas.height = hauteur;
 }
 
 class Studio {
@@ -749,8 +748,8 @@ class Studio {
       if (fine === undefined || large === undefined) return undefined;
       this.haze = { fine, large };
     }
-    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.42 : 0.34, width, height);
-    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.24 : quality >= 0.6 ? 0.22 : 0.2, width, height);
+    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.5 : 0.4, width, height);
+    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.42 : quality >= 0.6 ? 0.36 : 0.3, width, height);
     return this.haze;
   }
 

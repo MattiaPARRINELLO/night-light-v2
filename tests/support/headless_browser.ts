@@ -8,7 +8,7 @@
  */
 
 import { renderFrame } from "../../src/core/render";
-import { BLUR_PASS_SCALE, type HazeLayer, type HazeTarget } from "../../src/core/families";
+import type { HazeLayer, HazeTarget } from "../../src/core/families";
 import { buildShowPlan, type ShowPlan } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -95,15 +95,15 @@ function createHaze(setup: SetupPayload): HazeTarget | undefined {
     canvas.width = Math.max(1, Math.round(setup.width * scale));
     canvas.height = Math.max(1, Math.round(setup.height * scale));
     const blur = document.createElement("canvas");
-    blur.width = Math.max(1, Math.round(canvas.width * BLUR_PASS_SCALE));
-    blur.height = Math.max(1, Math.round(canvas.height * BLUR_PASS_SCALE));
+    blur.width = canvas.width;
+    blur.height = canvas.height;
     const ctx = canvas.getContext("2d");
     const blurPass = blur.getContext("2d");
     if (ctx === null || blurPass === null) return undefined;
     return { ctx, blurPass, scale, used: false };
   };
-  const fine = layer(setup.quality >= 0.6 ? 0.42 : 0.34);
-  const large = layer(setup.quality >= 0.9 ? 0.24 : setup.quality >= 0.6 ? 0.22 : 0.2);
+  const fine = layer(setup.quality >= 0.6 ? 0.5 : 0.4);
+  const large = layer(setup.quality >= 0.9 ? 0.42 : setup.quality >= 0.6 ? 0.36 : 0.3);
   if (fine === undefined || large === undefined) return undefined;
   return { fine, large };
 }

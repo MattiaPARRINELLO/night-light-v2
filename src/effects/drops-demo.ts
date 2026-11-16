@@ -9,7 +9,6 @@ import { buildShowPlan, type ShowPlan } from "../core/show";
 import { renderFrame } from "../core/render";
 import { TrackView } from "../core/view";
 import type { HazeLayer, HazeTarget } from "../core/families";
-import { BLUR_PASS_SCALE } from "../core/families";
 import type { Analysis, RenderSettings } from "../types";
 
 const WIDTH = 560;
@@ -59,8 +58,8 @@ function dimensionnerNappe(nappe: HazeLayer, scale: number, width: number, heigh
   if (nappe.ctx.canvas.width === largeur && nappe.ctx.canvas.height === hauteur) return;
   nappe.ctx.canvas.width = largeur;
   nappe.ctx.canvas.height = hauteur;
-  nappe.blurPass.canvas.width = Math.max(1, Math.round(largeur * BLUR_PASS_SCALE));
-  nappe.blurPass.canvas.height = Math.max(1, Math.round(hauteur * BLUR_PASS_SCALE));
+  nappe.blurPass.canvas.width = largeur;
+  nappe.blurPass.canvas.height = hauteur;
 }
 
 function hazeFor(quality: number): HazeTarget | undefined {
@@ -73,8 +72,8 @@ function hazeFor(quality: number): HazeTarget | undefined {
     document.createElement("canvas"),
   ]);
   if (fine === undefined || large === undefined) return undefined;
-  dimensionnerNappe(fine, quality >= 0.6 ? 0.42 : 0.34, WIDTH, HEIGHT);
-  dimensionnerNappe(large, quality >= 0.9 ? 0.24 : quality >= 0.6 ? 0.22 : 0.2, WIDTH, HEIGHT);
+  dimensionnerNappe(fine, quality >= 0.6 ? 0.5 : 0.4, WIDTH, HEIGHT);
+  dimensionnerNappe(large, quality >= 0.9 ? 0.42 : quality >= 0.6 ? 0.36 : 0.3, WIDTH, HEIGHT);
   return { fine, large };
 }
 

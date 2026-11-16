@@ -1612,48 +1612,32 @@ export function renderFrame(input: RenderInput): void {
   if (haze !== undefined) {
     // En concert, la fumée s'épaissit dans les montées et les impacts : les
     // faisceaux deviennent plus volumétriques au lieu de rester des traits.
-    const brume = dynamic ? 1.16 + 0.22 * clamp01(build) + 0.32 * clamp01(drop) : 1;
+    const brume = dynamic
+      ? 1.16 + 0.22 * clamp01(build) + 0.32 * clamp01(drop)
+      : 1;
     const nappes = [
-      { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) },
-      { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) },
+      { nappe: haze.fine, rayon: hazeFineRadiusPixels(width, height, quality) * brume },
+      { nappe: haze.large, rayon: hazeRadiusPixels(width, height, quality) * brume },
     ];
     // Le flou de chaque nappe coûte à lui seul plusieurs millisecondes par image
     // (le filtre est synchrone, contrairement aux remplissages). La fumée se
     // déplace lentement et le flou est déjà une moyenne : le rafraîchir une
-    // image sur deux ne se voit pas, et divise son coût par deux. La passe
-    // elle-même travaille à basse résolution : une diffusion est une basse
-    // fréquence, donc réduire les pixels traités ne change pas l'image.
+    // image sur deux ne se voit pas, et divise son coût par deux.
     const refresh = frame % 2 === 0;
     for (const { nappe, rayon } of nappes) {
       if (!nappe.used) continue;
-      const flou = nappe.blurPass;
-      const flouLargeur = flou.canvas.width;
-      const flouHauteur = flou.canvas.height;
       if (refresh) {
-        flou.setTransform(1, 0, 0, 1, 0, 0);
-        flou.globalCompositeOperation = "source-over";
-        flou.globalAlpha = 1;
-        flou.clearRect(0, 0, flouLargeur, flouHauteur);
-        // Pas de filtre pour l'essentiel : descendre la nappe à la résolution du
-        // flou puis la remonter à l'écran *est* la diffusion. Un `blur()` de
-        // filtre retéléscoperait l'image et coûterait bien plus cher que ce
-        // rééchantillonnage, pour un résultat visuellement identique.
-        flou.imageSmoothingEnabled = true;
-        flou.imageSmoothingQuality = "high";
-        // La brume du concert ajoute un supplément de diffusion. Le rayon est
-        // exprimé dans les pixels de la petite surface : c'est le rayon CSS
-        // voulu ramené à cette échelle, pas une fraction de largeur.
-        const rayonFlou = (rayon * flouLargeur) / Math.max(1, width);
-        const supplement = rayonFlou * (brume - 1);
-        if (supplement > 0.05) {
-          flou.filter = `blur(${supplement.toFixed(2)}px)`;
-        }
-        flou.drawImage(nappe.ctx.canvas, 0, 0, flouLargeur, flouHauteur);
-        flou.filter = "none";
+        nappe.blurPass.setTransform(1, 0, 0, 1, 0, 0);
+        nappe.blurPass.globalCompositeOperation = "source-over";
+        nappe.blurPass.globalAlpha = 1;
+        nappe.blurPass.clearRect(0, 0, nappe.blurPass.canvas.width, nappe.blurPass.canvas.height);
+        nappe.blurPass.filter = `blur(${(rayon * nappe.scale).toFixed(2)}px)`;
+        nappe.blurPass.drawImage(nappe.ctx.canvas, 0, 0);
+        nappe.blurPass.filter = "none";
       }
       ctx.globalCompositeOperation = "lighter";
       ctx.globalAlpha = 1;
-      ctx.drawImage(flou.canvas, 0, 0, width, height);
+      ctx.drawImage(nappe.blurPass.canvas, 0, 0, width, height);
     }
   }
 
