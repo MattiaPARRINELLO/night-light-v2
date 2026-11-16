@@ -371,6 +371,9 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
     # n'est pas reconnue par la répétition exacte. On rattache chaque passage
     # qui suit la même trame sur assez de lignes consécutives.
     chorus.update(_variant_positions(normalized, window))
+    # Le bloc a pu être prolongé vers l'arrière : on ne garde que des positions
+    # réelles, sans jamais déborder sur la fin du morceau.
+    chorus = {position for position in chorus if 0 <= position < len(indexable)}
     return tuple(sorted(indexable[position][0] for position in chorus))
 
 
@@ -435,8 +438,10 @@ def _extend_block(
         line, support = _majority_line(values)
         if support < 2 or support * 2 < len(values):
             break
+        # Le bloc commence désormais une ligne plus tôt : les occurrences
+        # retenues reculent d'autant, sinon le bloc glisserait vers la droite.
         window = (line,) + window
-        active = [start for start, other in values if _similar(other, line)]
+        active = [start - 1 for start, other in values if _similar(other, line)]
 
     return window, active
 
