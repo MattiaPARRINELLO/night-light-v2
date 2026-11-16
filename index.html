@@ -19,6 +19,16 @@
       <canvas id="live-stage" aria-label="Capture audio en direct" role="img" hidden></canvas>
       <div id="scrim" aria-hidden="true"></div>
 
+      <div id="render-warning" class="render-warning" role="status" hidden>
+        <p>
+          <strong>Rendu logiciel.</strong> L'accélération matérielle du navigateur n'est pas
+          active : le spectacle peut saccader.
+        </p>
+        <button id="render-warning-close" class="render-warning-close" type="button">
+          Masquer
+        </button>
+      </div>
+
       <!-- Écran de dépôt -->
       <main id="screen-drop" class="screen is-active" data-screen="drop">
         <div id="dock-panel" class="drop-shell">

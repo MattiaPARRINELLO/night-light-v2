@@ -30,6 +30,8 @@ export interface RenderSetup {
   quality: number;
   settings: RenderSettings;
   reducedMotion: boolean;
+  /** Active les deux nappes de fumée (flou compris), comme en production. */
+  haze?: boolean;
 }
 
 export interface CompareRequest extends RenderSetup {
@@ -138,15 +140,20 @@ async function openPage(browser: Browser, script: string): Promise<Page> {
 
 export async function createHeadlessRenderer(): Promise<HeadlessRenderer> {
   const script = await bundleRenderer();
-  // Rastérisation logicielle : les mesures ne doivent pas dépendre du GPU de la
-  // machine. Le résidu de premier rendu mesuré est identique avec ou sans GPU.
+  // Rastérisation logicielle par défaut : les mesures ne doivent pas dépendre du
+  // GPU de la machine. Le résidu de premier rendu mesuré est identique avec ou
+  // sans GPU. `NIGHTLIGHT_HEADLESS_GPU=1` bascule sur le vrai GPU pour mesurer
+  // le chemin accéléré.
   const extraArgs = (process.env.NIGHTLIGHT_HEADLESS_ARGS ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter((value) => value !== "");
+  const gpu = process.env.NIGHTLIGHT_HEADLESS_GPU === "1";
   const browser = await chromium.launch({
     headless: true,
-    args: ["--disable-accelerated-2d-canvas", "--disable-gpu", ...extraArgs],
+    args: gpu
+      ? ["--use-gl=angle", "--use-angle=gl", "--enable-gpu", ...extraArgs]
+      : ["--disable-accelerated-2d-canvas", "--disable-gpu", ...extraArgs],
   });
   const page = await openPage(browser, script);
 

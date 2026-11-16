@@ -395,6 +395,54 @@ input[type="range"]::-moz-range-thumb {
 
 
 /* --------------------------------------------------------------- overlay debug */
+/* Avertissement de rendu logiciel : discret, lisible, refermable. */
+.render-warning {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(620px, calc(100vw - 28px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid rgba(232, 163, 61, 0.45);
+  border-radius: 10px;
+  background: rgba(20, 14, 6, 0.92);
+  color: #f4e6cd;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  transform: translateX(-50%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.render-warning[hidden] {
+  display: none;
+}
+
+.render-warning p {
+  margin: 0;
+}
+
+.render-warning strong {
+  color: #ffc46b;
+}
+
+.render-warning-close {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid rgba(232, 163, 61, 0.5);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.render-warning-close:hover {
+  background: rgba(232, 163, 61, 0.14);
+}
+
 .debug-overlay {
   position: fixed;
   top: 10px;

@@ -315,6 +315,7 @@ export function installControl(Target: { prototype: App }): void {
       `capture état    ${cap.state}${cap.active === "?" ? "" : ` · active=${cap.active}`}${cap.source === "" ? "" : ` · source=${cap.source}`}${cap.error === "" ? "" : ` · erreur=${cap.error}`}`,
       `audio brut      rms=${num(raw.rms)} én=${num(raw.energy)} basses=${num(raw.bass)} méd=${num(raw.mid)} aigus=${num(raw.high)} transitoire=${num(raw.transient)}`,
       `audio lissé     rms=${num(smooth.rms)} én=${num(smooth.energy)} basses=${num(smooth.bass)} méd=${num(smooth.mid)} aigus=${num(smooth.high)} transitoire=${num(smooth.transient)}`,
+      `backend         ${this.renderBackend.kind} · ${this.renderBackend.detail}`,
       `rendu live      fps=${this.liveFps.toFixed(1)} · qualité=${this.liveQuality.toFixed(2)} · ${this.liveFrame} images`,
       `rendu show      fps=${this.fps.toFixed(1)} · qualité=${this.quality.toFixed(2)} · ${this.frame} images`,
     ];

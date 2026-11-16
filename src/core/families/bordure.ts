@@ -450,8 +450,10 @@ export function teinteBordure(
   view: TrackView,
   index: number,
   budgetFlash = 1,
+  /** Valeur de `blinderBordure` déjà calculée pour cette diode. */
+  blinderConnu?: number,
 ): { hue: number; saturation: number; lightness: number } {
-  const blinder = blinderBordure(f, view, index, budgetFlash);
+  const blinder = blinderConnu ?? blinderBordure(f, view, index, budgetFlash);
   return {
     hue: couleurBordure(f, index),
     saturation: 0.75 + 0.2 * blinder,
@@ -472,13 +474,15 @@ export function intensiteBordure(
   view: TrackView,
   index: number,
   budgetFlash = 1,
+  /** Valeur de `blinderBordure` déjà calculée pour cette diode. */
+  blinderConnu?: number,
 ): number {
   const energie = clamp01(f.energy);
   const poids = poidsCourant(f, view, index, budgetFlash);
   const rail = 0.03 + 0.08 * energie;
   const respiration = 0.85 + 0.15 * Math.sin(f.t * 1.1);
   const eclat = f.reduced ? 0 : clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
-  const blinder = blinderBordure(f, view, index, budgetFlash);
+  const blinder = blinderConnu ?? blinderBordure(f, view, index, budgetFlash);
   const brut =
     rail +
     poids * (0.2 + 0.65 * energie) * respiration +
@@ -591,10 +595,12 @@ export function dessinerBordure(
   // laisse de côté retombent à une veilleuse très faible.
   const pas = f.reduced ? 3 : f.quality >= 0.85 ? 1 : f.quality >= 0.6 ? 2 : 3;
   for (let index = 0; index < NOMBRE_DIODES_BORDURE; index += 1) {
-    const intensite = intensiteBordure(f, view, index, budgetFlash);
+    // Le blinder dépend de la diode mais pas du calcul : intensité et teinte le
+    // partagent, au lieu de relire deux fois la fenêtre d'impact.
+    const blinder = blinderBordure(f, view, index, budgetFlash);
+    const intensite = intensiteBordure(f, view, index, budgetFlash, blinder);
     const { x, y } = positionBordure(index, w, h, margeRatio);
-    const couleur = teinteBordure(f, view, index, budgetFlash);
-    // Variation déterministe : deux diodes voisines ne brillent jamais
+    const couleur = teinteBordure(f, view, index, budgetFlash, blinder);    // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.
     const variation = 0.9 + 0.2 * hash01(index * 97 + f.seed);
 
