@@ -316,6 +316,7 @@ export function installControl(Target: { prototype: App }): void {
       `audio brut      rms=${num(raw.rms)} én=${num(raw.energy)} basses=${num(raw.bass)} méd=${num(raw.mid)} aigus=${num(raw.high)} transitoire=${num(raw.transient)}`,
       `audio lissé     rms=${num(smooth.rms)} én=${num(smooth.energy)} basses=${num(smooth.bass)} méd=${num(smooth.mid)} aigus=${num(smooth.high)} transitoire=${num(smooth.transient)}`,
       `backend         ${this.renderBackend.kind} · ${this.renderBackend.detail}`,
+      `surface         css=${this.canvas.clientWidth}x${this.canvas.clientHeight} · canvas=${this.canvas.width}x${this.canvas.height} · dpr=${(window.devicePixelRatio || 1).toFixed(2)} · ratio=${(this.canvas.width / Math.max(1, this.canvas.clientWidth)).toFixed(3)}x${(this.canvas.height / Math.max(1, this.canvas.clientHeight)).toFixed(3)}`,
       `rendu live      fps=${this.liveFps.toFixed(1)} · qualité=${this.liveQuality.toFixed(2)} · ${this.liveFrame} images`,
       `rendu show      fps=${this.fps.toFixed(1)} · qualité=${this.quality.toFixed(2)} · ${this.frame} images`,
     ];
