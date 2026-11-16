@@ -25,7 +25,7 @@ import {
 } from "./strobe";
 import type { TrackView } from "./view";
 import { type LiveAudioFeatures } from "./liveAudio";
-import { chorusIntensityAt, drawLyrics } from "./lyrics";
+import { chorusIntensityAt, drawLyrics, outroStateAt } from "./lyrics";
 import type { LiveMusic } from "./liveDirector";
 
 export interface RenderInput {
@@ -1711,12 +1711,46 @@ export function renderFrame(input: RenderInput): void {
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;
 
+  // Extinction de fin de morceau : une fois les paroles terminées, la salle
+  // descend jusqu'au noir complet avant la fin. Le morceau suivant repart donc
+  // d'une scène noire, sans hériter des lumières du précédent.
+  const lyrics = view.analysis.lyrics;
+  const outro = isLive ? null : outroStateAt(lyrics, t, plan.duration);
+  if (outro !== null && outro.fade < 0.999) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = `rgba(0,0,0,${(1 - outro.fade).toFixed(3)})`;
+    ctx.fillRect(0, 0, width, height);
+
+    // Un ou deux derniers mots après un silence : une seule lyre reste allumée,
+    // juste le temps de ces mots. Elle passe au-dessus du voile, sinon le noir
+    // l'éteindrait avec le reste de la salle.
+    if (outro.lyre > 0.01) {
+      ctx.globalCompositeOperation = "lighter";
+      const derniereLyre: FrameState = {
+        ...base,
+        alpha: Math.min(0.5, 0.55 * settings.intensity) * outro.lyre,
+        intensity: 0.5,
+        haze: undefined,
+      };
+      drawFamily(ctx, derniereLyre, view, "lyres-poursuite");
+    }
+  }
+
   // Les paroles passent au-dessus de tout : texte net, jamais fondu dans les
   // faisceaux. Absent du payload (morceau sans paroles), rien n'est dessiné.
-  const lyrics = view.analysis.lyrics;
   if (lyrics !== undefined && lyrics.lines.length > 0) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawLyrics(ctx, lyrics, t, width, height, { palette, reduced, beat });
+  }
+
+  // Noir final : la queue d'un dernier mot ne doit pas laisser une trace sur un
+  // écran qui doit être complètement noir avant le morceau suivant.
+  if (outro !== null && outro.fade <= 0.01) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
   }
 }
 
