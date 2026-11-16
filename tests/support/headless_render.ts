@@ -82,6 +82,8 @@ export interface HeadlessRenderer {
   setup(payload: RenderSetup): Promise<{ scenes: number; width: number; height: number }>;
   /** Rend une image sur le canvas courant (diagnostic). */
   renderAt(time: number, frame?: number): Promise<void>;
+  /** Rend une image et renvoie son PNG (export vidéo, sans les mesures). */
+  framePng(time: number, frame?: number): Promise<string>;
   /** Efface le canvas courant (diagnostic de dépendance à l'historique). */
   clear(): Promise<void>;
   /** Part de pixels proches du blanc pour une série d'instants (un seul aller-retour). */
@@ -166,6 +168,9 @@ export async function createHeadlessRenderer(): Promise<HeadlessRenderer> {
     },
     async renderAt(time, frame = Math.round(time * 10)) {
       await invoke("renderAt", { time, frame });
+    },
+    async framePng(time, frame = Math.round(time * 10)) {
+      return invoke("framePng", { time, frame });
     },
     async clear() {
       await invoke("clear", {});
