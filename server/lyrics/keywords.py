@@ -11,6 +11,7 @@ import difflib
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -152,17 +153,26 @@ def _line_indices(raw: Any, lyrics: Lyrics) -> tuple[int, ...]:
 def _sane_chorus(lyrics: Lyrics, indices: tuple[int, ...]) -> tuple[int, ...]:
     """Nettoie un refrain fourni par le modèle.
 
-    On écarte les adlibs, qui ne sont pas des paroles, et on refuse un refrain
-    qui couvrirait presque tout le morceau : le modèle confond alors refrain et
-    chanson entière.
+    On écarte les adlibs, qui ne sont pas des paroles, sauf une ligne entre
+    parenthèses qui reprend mot pour mot une parole chantée (un écho du
+    refrain). On refuse aussi un refrain qui couvrirait presque tout le
+    morceau : le modèle confond alors refrain et chanson entière.
     """
-    kept = tuple(index for index in indices if strip_adlibs(lyrics.lines[index].text))
-    sung = sum(1 for line in lyrics.lines if strip_adlibs(line.text))
-    if sung == 0:
+    sung_keys = {
+        _chorus_key(strip_adlibs(line.text)) for line in lyrics.lines if strip_adlibs(line.text)
+    }
+
+    def usable(index: int) -> bool:
+        line = lyrics.lines[index]
+        return bool(strip_adlibs(line.text)) or _chorus_key(line.text) in sung_keys
+
+    kept = tuple(index for index in indices if usable(index))
+    candidates = sum(1 for index in range(len(lyrics.lines)) if usable(index))
+    if candidates == 0:
         return ()
     # Un morceau très court n'a pas assez de lignes pour juger ; sur un vrai
     # morceau, un refrain qui couvre presque tout est une erreur du modèle.
-    if sung >= 8 and len(kept) > 0.75 * sung:
+    if candidates >= 8 and len(kept) > 0.75 * candidates:
         return ()
     return kept
 
@@ -208,6 +218,19 @@ def strip_adlibs(text: str) -> str:
     Il ne doit donc compter ni dans le refrain ni dans les mots marquants.
     """
     return " ".join(_PARENTHETICAL.sub(" ", text).split())
+
+
+def _chorus_key(text: str) -> str:
+    """Clé de comparaison d'une ligne de paroles.
+
+    La ponctuation, les apostrophes et les espaces ne comptent pas : « j'la »,
+    « j la » et « jla » sont la même parole. Les accents et les ligatures sont
+    ramenés à l'ASCII pour que « cœur » et « coeur » se comparent.
+    """
+    folded = unicodedata.normalize("NFKD", text).casefold()
+    folded = folded.replace("œ", "oe").replace("æ", "ae")
+    folded = "".join(char for char in folded if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", "", folded)
 
 
 def _inside_adlib(text: str, fragment: str) -> bool:
@@ -288,10 +311,21 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
     plus long bloc répété, puis on rattache ses variantes (une phrase qui change
     d'une occurrence à l'autre) pour que le refrain ne s'arrête pas au milieu.
     """
-    indexable = [
-        (index, normalize_text(strip_adlibs(line.text))) for index, line in enumerate(lines)
-    ]
-    indexable = [(index, text) for index, text in indexable if text]
+    # Une ligne purement adlib est écartée, sauf si elle reprend mot pour mot
+    # une parole chantée ailleurs : c'est alors un écho du refrain, pas un
+    # adlib différent, et il compte comme la même ligne.
+    spoken_keys = {
+        _chorus_key(strip_adlibs(line.text)) for line in lines if strip_adlibs(line.text)
+    }
+    indexable: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        spoken = _chorus_key(strip_adlibs(line.text))
+        if spoken:
+            indexable.append((index, spoken))
+            continue
+        echo = _chorus_key(line.text)
+        if echo and echo in spoken_keys:
+            indexable.append((index, echo))
     if not indexable:
         return ()
     normalized = [text for _, text in indexable]

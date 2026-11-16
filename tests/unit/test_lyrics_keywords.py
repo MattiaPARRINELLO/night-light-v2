@@ -237,6 +237,42 @@ def test_parse_cues_refuse_un_refrain_qui_couvre_le_morceau() -> None:
     assert cues.chorus_lines == ()
 
 
+def test_detect_chorus_ignore_ponctuation_et_accents() -> None:
+    """Ponctuation, apostrophes et accents ne changent pas une ligne."""
+    texts = [
+        "premier couplet",
+        "J'la quitterai, si mère veut !",
+        "Le ciel s'éclaire avec ou sans toi",
+        "autre couplet",
+        "Jla quitterai si mere veut",
+        "Le ciel s'éclaire avec ou sans toi.",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (1, 2, 4, 5)
+
+
+def test_detect_chorus_compte_un_echo_entre_parentheses() -> None:
+    """Une ligne entre parenthèses qui reprend une parole est la même parole."""
+    texts = [
+        "premier couplet",
+        "le refrain qui monte",
+        "et le ciel répond",
+        "autre couplet",
+        "le refrain qui monte",
+        "(et le ciel répond)",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (1, 2, 4, 5)
+
+
 def test_parse_cues_ecarte_les_adlibs() -> None:
     lyrics = Lyrics(
         record_id=2,
