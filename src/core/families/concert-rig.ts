@@ -6,7 +6,7 @@ import { softBeam } from "./beams";
 import { contrastHue, lampHue, sceneChord } from "./harmony";
 import { beatSwing } from "./tempo";
 import type { FamilyDraw, FrameState } from "./types";
-import { paint } from "./util";
+import { activeSlots, count, paint } from "./util";
 
 /**
  * Scénographie de concert.
@@ -874,7 +874,11 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
   }
 
   // Lyres : yoke, corps et lentille, ancrés au cœur de la traverse.
-  for (let index = 0; index < NOMBRE_LYRES; index += 1) {
+  // La qualité réduit le nombre de têtes allumées, sans déplacer les autres :
+  // au palier plein les huit lyres sont là, sur une machine qui souffle le
+  // plateau s'allège au lieu de saccader.
+  const lyres = activeSlots(NOMBRE_LYRES, count(NOMBRE_LYRES, f.quality, f.reduced), f.seed + 23);
+  for (const index of lyres) {
     const { x, y } = positionLyre(index, w, h);
     const demi = Math.max(3, w * 0.0042);
     const hauteur = Math.max(6, h * 0.012);
@@ -901,7 +905,12 @@ export function dessinerStructure(ctx: CanvasRenderingContext2D, f: FrameState):
   }
 
   // Barres LED : une ligne de diodes serrées sous leur traverse.
-  for (let index = 0; index < NOMBRE_BATTENS; index += 1) {
+  const battens = activeSlots(
+    NOMBRE_BATTENS,
+    count(NOMBRE_BATTENS, f.quality, f.reduced),
+    f.seed + 41,
+  );
+  for (const index of battens) {
     const { x, y } = positionBatten(index, w, h);
     const demi = Math.max(2, w * 0.0022);
     const hauteur = Math.max(2, h * 0.004);
@@ -1509,7 +1518,11 @@ function dessinerLyres(
     : (0.08 + 0.3 * f.energy) * f.alpha;
   if (alpha <= 0.002) return;
 
-  for (let index = 0; index < NOMBRE_LYRES; index += 1) {
+  // La qualité réduit le nombre de têtes allumées, sans déplacer les autres :
+  // au palier plein les huit lyres sont là, sur une machine qui souffle le
+  // plateau s'allège au lieu de saccader.
+  const lyres = activeSlots(NOMBRE_LYRES, count(NOMBRE_LYRES, f.quality, f.reduced), f.seed + 23);
+  for (const index of lyres) {
     const { x, y } = positionLyre(index, w, h);
     const orientation = orientationLyre(f, view, index, f.scene.role, geste);
     const portee = Math.min(
@@ -1602,7 +1615,12 @@ function dessinerBarres(ctx: CanvasRenderingContext2D, f: FrameState, view: Trac
   const spectre = clamp01(0.65 * f.bass + 0.35 * f.mid);
   const temps = tempsTempsFort(f, view);
 
-  for (let index = 0; index < NOMBRE_BATTENS; index += 1) {
+  const battens = activeSlots(
+    NOMBRE_BATTENS,
+    count(NOMBRE_BATTENS, f.quality, f.reduced),
+    f.seed + 41,
+  );
+  for (const index of battens) {
     const { x, y } = positionBatten(index, w, h);
     const angle = angleBatten(f, view, index);
     // Une lame sur deux peut rester en vague : le rideau n'est plus binaire.
@@ -1709,6 +1727,10 @@ function dessinerEtageLyres(
   offsetY: number,
   scale: number,
 ): void {
+  // Un étage lointain et peu lumineux est le premier sacrifié quand la qualité
+  // baisse : il pèse peu sur l'image, mais autant que les autres sur le coût.
+  const seuil = f.reduced ? 0.3 : 0.1 + (1 - clamp01(f.quality)) * 0.32;
+  if (alpha < seuil) return;
   ctx.save();
   ctx.translate(f.width * 0.5, f.height * 0.5 + offsetY);
   ctx.scale(scale, scale);
