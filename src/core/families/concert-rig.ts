@@ -573,8 +573,28 @@ interface ImpactMajeur {
  * On ne conserve aucun état : la fonction relit les montées et les temps forts
  * de la fenêtre courante. La cadence des temps forts dépend du rôle — un
  * couplet ne fait pas claquer les blinders à chaque mesure.
+ *
+ * Le résultat ne dépend que de `(vue, t, rôle)`. Or la bordure LED la demande
+ * pour chaque diode (deux fois : intensité et teinte) : sans mémoïse, une image
+ * relisait 480 fois la même fenêtre de temps forts. Le cache d'une entrée suffit
+ * — à un instant donné, un seul rôle est evalué, deux pendant un fondu.
  */
+let dernierImpactCache: {
+  view: TrackView;
+  t: number;
+  role: SceneRole;
+  value: ImpactMajeur | null;
+} | null = null;
+
 function dernierImpactMajeur(view: TrackView, t: number, role: SceneRole): ImpactMajeur | null {
+  if (
+    dernierImpactCache !== null &&
+    dernierImpactCache.view === view &&
+    dernierImpactCache.t === t &&
+    dernierImpactCache.role === role
+  ) {
+    return dernierImpactCache.value;
+  }
   let dernier: ImpactMajeur | null = null;
 
   for (const build of view.buildsEndingIn(t - FENETRE_IMPACT, t)) {
@@ -593,6 +613,7 @@ function dernierImpactMajeur(view: TrackView, t: number, role: SceneRole): Impac
     }
   }
 
+  dernierImpactCache = { view, t, role, value: dernier };
   return dernier;
 }
 
