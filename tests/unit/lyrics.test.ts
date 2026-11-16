@@ -41,6 +41,19 @@ function drawnScales(lyrics: LyricsCues, timeSec: number, beat = 0): string[] {
   return operations.filter((operation) => operation.startsWith("scale:"));
 }
 
+/** Tailles de police réellement utilisées pour dessiner, dans l'ordre. */
+function drawnSizes(lyrics: LyricsCues, timeSec: number): number[] {
+  const { ctx } = fakeContext();
+  const sizes: number[] = [];
+  const fillText = ctx.fillText.bind(ctx);
+  ctx.fillText = (text: string) => {
+    sizes.push(Number(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? 0));
+    fillText(text, 0, 0);
+  };
+  drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat: 0 });
+  return sizes;
+}
+
 function repeatedLine(): LyricsCues {
   return cues([
     line({
@@ -123,6 +136,34 @@ describe("rendu des paroles", () => {
     ]);
 
     expect(drawnText(lyrics, 0.7)).toEqual(["fillText:DEUXIÈME"]);
+  });
+});
+
+describe("adlibs", () => {
+  it("affiche une ligne d'adlib en petit, même si elle est marquée refrain", () => {
+    const chorus = cues([line({ text: "le refrain", startMs: 0, endMs: 4_000 })], {
+      chorusLines: [0],
+    });
+    const adlib = cues([line({ text: "(oh oh)", startMs: 0, endMs: 4_000 })], {
+      chorusLines: [0],
+    });
+
+    const chorusSize = Math.max(...drawnSizes(chorus, 1));
+    const adlibSize = Math.max(...drawnSizes(adlib, 1));
+    expect(adlibSize).toBeLessThan(chorusSize * 0.7);
+  });
+
+  it("réduit l'adlib au milieu d'une phrase", () => {
+    const lyrics = cues(
+      [line({ text: "le refrain (oh oh)", startMs: 0, endMs: 4_000 })],
+      { chorusLines: [0] },
+    );
+
+    const sizes = drawnSizes(lyrics, 1);
+    const full = Math.max(...sizes);
+    const small = Math.min(...sizes);
+    expect(small).toBeGreaterThan(full * 0.4);
+    expect(small).toBeLessThan(full * 0.8);
   });
 });
 

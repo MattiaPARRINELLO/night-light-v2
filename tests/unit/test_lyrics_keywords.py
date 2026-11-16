@@ -113,6 +113,66 @@ def test_detect_chorus_without_repetition() -> None:
     assert detect_chorus(lines) == ()
 
 
+def test_detect_chorus_ignore_les_adlibs() -> None:
+    """Un adlib répété ne devient jamais le refrain, et ne casse pas le vrai."""
+    texts = [
+        "couplet",
+        "(oh oh)",
+        "refrain ici",
+        "(oh oh)",
+        "autre couplet",
+        "(oh oh)",
+        "refrain ici",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (2, 6)
+
+
+def test_detect_chorus_compare_sans_les_adlibs() -> None:
+    """Deux refrains dont l'adlib change restent le même refrain."""
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(
+            [
+                "premier couplet",
+                "le refrain (oh oh)",
+                "autre couplet",
+                "le refrain (hey hey)",
+            ]
+        )
+    )
+
+    assert detect_chorus(lines) == (1, 3)
+
+
+def test_parse_cues_ecarte_les_adlibs() -> None:
+    lyrics = Lyrics(
+        record_id=2,
+        track_name="Test",
+        artist_name="Test",
+        lines=(
+            LyricLine(text="Vraie parole", start_ms=0, end_ms=1_000),
+            LyricLine(text="(oh oh)", start_ms=1_000, end_ms=2_000),
+        ),
+    )
+    payload = {
+        "keywords": [{"line": 0, "text": "oh oh", "impact": 0.9}],
+        "chorus": [0, 1],
+        "shout": [1],
+    }
+
+    cues = parse_cues(payload, lyrics)
+
+    assert cues.chorus_lines == (0,)
+    assert cues.shout_lines == ()
+    # Le mot n'existe que dans l'adlib : ce n'est pas un mot marquant.
+    assert all("oh" not in cue.text for cue in cues.keywords)
+
+
 def test_extract_cues_uses_llm_when_configured() -> None:
     def poster(url, headers, body):
         return {

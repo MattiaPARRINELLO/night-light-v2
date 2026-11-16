@@ -97,6 +97,8 @@ def build_messages(
         "- `chorus` : numéros des lignes du refrain, même s'il se répète.\n"
         "- `shout` : lignes que le public crie en concert (punchline, hook), "
         "au-delà du refrain, 2 à 4 lignes.\n"
+        "- Les adlibs entre parenthèses ne sont pas des paroles : ne les choisis "
+        "pas comme mots marquants et ne les compte ni dans `chorus` ni dans `shout`.\n"
         "- Aucun commentaire, aucun texte hors JSON."
     )
     return [
@@ -121,8 +123,16 @@ def parse_cues(payload: dict[str, Any], lyrics: Lyrics) -> LyricCues:
 
     return LyricCues(
         keywords=tuple(cues),
-        chorus_lines=_line_indices(payload.get("chorus"), lyrics),
-        shout_lines=_line_indices(payload.get("shout"), lyrics),
+        chorus_lines=tuple(
+            index
+            for index in _line_indices(payload.get("chorus"), lyrics)
+            if strip_adlibs(lyrics.lines[index].text)
+        ),
+        shout_lines=tuple(
+            index
+            for index in _line_indices(payload.get("shout"), lyrics)
+            if strip_adlibs(lyrics.lines[index].text)
+        ),
         source="llm",
     )
 
@@ -148,6 +158,9 @@ def _cue_from_item(item: Any, lyrics: Lyrics) -> KeywordCue | None:
     window = _locate(line, text.strip())
     if window is None:
         return None
+    # Un mot qui ne vit que dans un adlib n'est pas une parole chantée.
+    if _inside_adlib(line.text, text.strip()):
+        return None
     start_ms, end_ms = window
     impact = item.get("impact")
     impact_value = float(impact) if isinstance(impact, (int, float)) else 0.5
@@ -163,7 +176,28 @@ def _cue_from_item(item: Any, lyrics: Lyrics) -> KeywordCue | None:
     )
 
 
-_PARENTHETICAL = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+_PARENTHETICAL = re.compile(r"[\(\[\{][^\)\]\}]*[\)\]\}]")
+
+
+def strip_adlibs(text: str) -> str:
+    """Retire les adlibs entre parenthèses et resserre les espaces.
+
+    Un adlib double la voix ou la ponctue : ce n'est pas la parole chantée.
+    Il ne doit donc compter ni dans le refrain ni dans les mots marquants.
+    """
+    return " ".join(_PARENTHETICAL.sub(" ", text).split())
+
+
+def _inside_adlib(text: str, fragment: str) -> bool:
+    """Vrai si `fragment` ne se trouve que dans un adlib de la ligne."""
+    spans = [match.span() for match in _PARENTHETICAL.finditer(text)]
+    if not spans:
+        return False
+    start = text.lower().find(fragment.lower())
+    if start < 0:
+        return False
+    end = start + len(fragment)
+    return any(left <= start and end <= right for left, right in spans)
 
 
 def _title_tokens(track_name: str) -> tuple[str, ...]:
@@ -221,10 +255,20 @@ def _locate(line: LyricLine, needle: str) -> tuple[int, int] | None:
 
 
 def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tuple[int, ...]:
-    """Repère le refrain par répétition de blocs de lignes, sans modèle."""
-    normalized = [normalize_text(line.text) for line in lines]
-    if not any(normalized):
+    """Repère le refrain par répétition de blocs de lignes, sans modèle.
+
+    Les adlibs entre parenthèses ne comptent pas : une ligne qui n'est qu'un
+    adlib est écartée de la comparaison, et le reste de la ligne est comparé
+    sans ses parenthèses. Une ligne purement adlib ne crée donc jamais de bloc
+    de refrain et ne casse pas non plus celui de ses voisines.
+    """
+    indexable = [
+        (index, normalize_text(strip_adlibs(line.text))) for index, line in enumerate(lines)
+    ]
+    indexable = [(index, text) for index, text in indexable if text]
+    if not indexable:
         return ()
+    normalized = [text for _, text in indexable]
 
     best: tuple[int, int, int, tuple[str, ...]] | None = None
     for size in (1, 2, 3, 4):
@@ -252,7 +296,7 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
     chorus: set[int] = set()
     for index in range(len(normalized) - size + 1):
         if tuple(normalized[index : index + size]) == window:
-            chorus.update(range(index, index + size))
+            chorus.update(indexable[position][0] for position in range(index, index + size))
     return tuple(sorted(chorus))
 
 
@@ -340,7 +384,7 @@ def heuristic_keywords(
     candidates: list[KeywordCue] = []
     seen: set[str] = set()
     for index, line in enumerate(lyrics.lines):
-        words = re.findall(r"[0-9A-Za-zÀ-ÖØ-öø-ÿ'’-]+", line.text)
+        words = re.findall(r"[0-9A-Za-zÀ-ÖØ-öø-ÿ'’-]+", strip_adlibs(line.text))
         if not words:
             continue
         best = max(words, key=len)

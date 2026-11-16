@@ -18,6 +18,8 @@ const CHORUS_MERGE_GAP_SEC = 2.5;
 const CHORUS_FADE_IN_SEC = 0.35;
 /** Extinction à la sortie du refrain, en secondes. */
 const CHORUS_FADE_OUT_SEC = 0.55;
+/** Taille relative d'un adlib entre parenthèses, par rapport à la phrase. */
+const ADLIB_SCALE = 0.62;
 
 /** Plages de refrain fusionnées, mémorisées par jeu de paroles. */
 const chorusRangeCache = new WeakMap<LyricsCues, Array<[number, number]>>();
@@ -62,12 +64,19 @@ export function drawLyrics(
   // Le motif ne prend la scène qu'au moment où il est chanté : hors de ses
   // occurrences, la phrase continue de se dire mot à mot.
   const occurrence = repeat !== null && current !== null ? occurrenceOf(repeat, current) : null;
+  const adlibFlags = adlibTokenFlags(line, tokens);
+  const currentIndex = current === null ? -1 : tokens.indexOf(current);
+  const currentAdlib = currentIndex >= 0 && adlibFlags[currentIndex] === true;
   if (!line.text.trim()) return;
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  if (repeat !== null && occurrence !== null) {
+  if (isAdlibLine(line.text)) {
+    // Ligne entièrement entre parenthèses : un adlib. Il se montre en petit,
+    // comme un souffle derrière la voix, jamais comme la parole principale.
+    drawPhrase(ctx, line, ms, width, height, options, 0.55, true);
+  } else if (repeat !== null && occurrence !== null && !currentAdlib) {
     drawRepeatedWord(ctx, repeat, occurrence, ms, width, height, options);
   } else if (chorus) {
     // Refrain : la phrase entière, la plus grande de toutes.
@@ -77,9 +86,55 @@ export function drawLyrics(
     drawPhrase(ctx, line, ms, width, height, options, 0.78);
   } else {
     // Tout le reste : mot à mot, taille courante, mis en avant s'il est marquant.
-    drawLineWord(ctx, ms, width, height, options, cue !== null, current);
+    drawLineWord(ctx, ms, width, height, options, cue !== null, current, currentAdlib);
   }
   ctx.restore();
+}
+
+/**
+ * Plages de caractères occupées par un adlib, entre parenthèses ou crochets.
+ *
+ * Un adlib double la voix ou la ponctue : il ne fait pas partie de la parole
+ * chantée. On ne l'utilise donc jamais pour repérer un refrain, et on l'affiche
+ * plus petit que le reste.
+ */
+function adlibRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const pattern = /[([{][^)\]}]*[)\]}]/g;
+  let match = pattern.exec(text);
+  while (match !== null) {
+    const start = match.index;
+    ranges.push([start, start + match[0].length]);
+    match = pattern.exec(text);
+  }
+  return ranges;
+}
+
+/** Ligne entièrement entre parenthèses : un adlib, pas une parole. */
+function isAdlibLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 3) return false;
+  const ranges = adlibRanges(trimmed);
+  return ranges.length === 1 && ranges[0]![0] === 0 && ranges[0]![1] === trimmed.length;
+}
+
+/** Adlib par mot, d'après la position du mot dans le texte de la ligne. */
+function adlibTokenFlags(line: LyricLine, tokens: LyricWord[]): boolean[] {
+  const ranges = adlibRanges(line.text);
+  if (ranges.length === 0) return tokens.map(() => false);
+  let cursor = 0;
+  return tokens.map((token) => {
+    let offset: number;
+    if (line.words.length > 0) {
+      offset = cursor;
+      cursor += token.text.length;
+    } else {
+      const found = line.text.indexOf(token.text, cursor);
+      offset = found < 0 ? cursor : found;
+      cursor = offset + token.text.length;
+    }
+    return ranges.some(([start, end]) => offset >= start && offset < end);
+  });
 }
 
 /**
@@ -384,6 +439,7 @@ function drawLineWord(
   options: LyricsDrawOptions,
   emphasised: boolean,
   current: LyricWord | null,
+  adlib = false,
 ): void {
   if (current === null) return;
   paintWord(
@@ -391,13 +447,14 @@ function drawLineWord(
     current.text,
     current.startMs,
     current.endMs,
-    emphasised ? 0.95 : 0.55,
+    adlib ? 0.35 : emphasised ? 0.95 : 0.55,
     false,
     ms,
     width,
     height,
     options,
-    emphasised ? 1 : 0.55,
+    adlib ? 0.55 : emphasised ? 1 : 0.55,
+    adlib,
   );
 }
 
@@ -443,6 +500,7 @@ function paintWord(
   height: number,
   options: LyricsDrawOptions,
   sizeScale = 1,
+  adlib = false,
 ): void {
   const word = rawText.trim();
   if (word.length === 0) return;
@@ -476,11 +534,12 @@ function paintWord(
   ctx.translate(width * 0.5, y);
   ctx.scale(scale, scale);
   // Le titre se distingue par sa couleur d'accent, pas par sa taille : c'est
-  // une signature, pas un mot marquant de plus.
-  ctx.fillStyle = isTitle ? accentSolid(options.palette) : "#ffffff";
-  ctx.shadowColor = accentColor(options.palette, 0.85);
-  const blurCeiling = isTitle ? 64 : 52;
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (0.28 + 0.3 * impact), blurCeiling);
+  // une signature, pas un mot marquant de plus. Un adlib reste en retrait :
+  // blanc atténué, halo court, il ne prend jamais la vedette.
+  ctx.fillStyle = adlib ? "rgba(255,255,255,0.68)" : isTitle ? accentSolid(options.palette) : "#ffffff";
+  ctx.shadowColor = accentColor(options.palette, adlib ? 0.45 : 0.85);
+  const blurCeiling = adlib ? 18 : isTitle ? 64 : 52;
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (adlib ? 0.2 : 0.28 + 0.3 * impact), blurCeiling);
   ctx.fillText(text, 0, 0);
 }
 
@@ -490,6 +549,8 @@ function paintWord(
  *
  * Le mot en cours est mis en couleur d'accent, les mots déjà chantés sont
  * atténués. Une phrase longue rétrécit jusqu'à tenir, plutôt que d'être coupée.
+ * Un adlib entre parenthèses est rendu plus petit, comme un souffle derrière la
+ * voix principale ; une phrase entièrement adlib (`adlib`) est toute en retrait.
  */
 function drawPhrase(
   ctx: CanvasRenderingContext2D,
@@ -499,6 +560,7 @@ function drawPhrase(
   height: number,
   options: LyricsDrawOptions,
   scaleFactor: number,
+  adlib = false,
 ): void {
   const duration = Math.max(1, line.endMs - line.startMs);
   const alpha = envelope(
@@ -511,12 +573,15 @@ function drawPhrase(
   if (alpha <= 0.01) return;
 
   const timed = line.words.length > 0;
-  const tokens = timed
+  const tokens: LyricWord[] = timed
     ? line.words
-    : line.text
-        .split(/\s+/)
-        .filter((word) => word.length > 0)
-        .map((word) => ({ text: word, startMs: 0, endMs: 0 }));
+    : [...line.text.matchAll(/\S+/g)].map((match) => ({
+        text: match[0],
+        startMs: 0,
+        endMs: 0,
+      }));
+  if (tokens.length === 0) return;
+  const adlibFlags = adlibTokenFlags(line, tokens);
   const maxWidth = width * 0.9;
   let size = Math.min(width * 0.15, height * 0.21) * scaleFactor;
   let rows: number[][] = [];
@@ -542,29 +607,42 @@ function drawPhrase(
   ctx.translate(width * 0.5, height * 0.46);
   ctx.scale(scale, scale);
   ctx.translate(-width * 0.5, -height * 0.46);
-  ctx.shadowColor = accentColor(options.palette, 0.65);
-  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * 0.28, 40);
+  ctx.shadowColor = accentColor(options.palette, adlib ? 0.45 : 0.65);
+  ctx.shadowBlur = options.reduced ? 0 : Math.min(size * (adlib ? 0.18 : 0.28), adlib ? 18 : 40);
 
+  const space = ctx.measureText(" ").width;
   rows.forEach((row, rowIndex) => {
     const texts = row.map((tokenIndex) => tokens[tokenIndex]!.text.trim().toUpperCase());
-    const rowWidth = texts.reduce((sum, text) => sum + ctx.measureText(`${text} `).width, 0) - ctx.measureText(" ").width;
+    const sizes = row.map((tokenIndex) =>
+      adlib || adlibFlags[tokenIndex] !== true ? size : size * ADLIB_SCALE,
+    );
+    const widths = texts.map((text, position) => {
+      ctx.font = `800 ${sizes[position]!}px ${FONT_STACK}`;
+      return ctx.measureText(text).width;
+    });
+    const rowWidth =
+      widths.reduce((sum, value) => sum + value, 0) + space * Math.max(0, row.length - 1);
     let x = width * 0.5 - rowWidth * 0.5;
     const y = startY + rowIndex * lineHeight;
     row.forEach((tokenIndex, position) => {
       const token = tokens[tokenIndex]!;
       const text = texts[position]!;
+      const secondary = adlib || adlibFlags[tokenIndex] === true;
       const current = timed && token.startMs <= ms && ms < token.endMs;
       const past = timed && ms >= token.endMs;
-      ctx.fillStyle = !timed
-        ? "rgba(255,255,255,0.92)"
-        : current
-          ? accentSolid(options.palette)
-          : past
-            ? "rgba(255,255,255,0.55)"
-            : "rgba(255,255,255,0.92)";
+      ctx.font = `800 ${sizes[position]!}px ${FONT_STACK}`;
+      ctx.fillStyle = secondary
+        ? "rgba(255,255,255,0.68)"
+        : !timed
+          ? "rgba(255,255,255,0.92)"
+          : current
+            ? accentSolid(options.palette)
+            : past
+              ? "rgba(255,255,255,0.55)"
+              : "rgba(255,255,255,0.92)";
       ctx.textAlign = "left";
       ctx.fillText(text, x, y);
-      x += ctx.measureText(`${text} `).width;
+      x += widths[position]! + space;
     });
   });
 }
