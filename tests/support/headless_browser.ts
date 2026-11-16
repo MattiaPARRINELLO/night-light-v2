@@ -8,6 +8,7 @@
  */
 
 import { renderFrame } from "../../src/core/render";
+import { BLUR_PASS_SCALE, type HazeLayer, type HazeTarget } from "../../src/core/families";
 import { buildShowPlan, type ShowPlan } from "../../src/core/show";
 import { TrackView } from "../../src/core/view";
 import type { Analysis, RenderSettings } from "../../src/types";
@@ -27,6 +28,8 @@ interface SetupPayload {
   quality: number;
   settings: RenderSettings;
   reducedMotion: boolean;
+  /** Active les deux nappes de fumée de production (flou inclus). */
+  haze?: boolean;
 }
 
 interface Session {
@@ -35,6 +38,7 @@ interface Session {
   view: TrackView;
   plan: ShowPlan;
   setup: SetupPayload;
+  haze?: HazeTarget;
 }
 
 interface DrawTarget {
@@ -60,6 +64,7 @@ function draw(
   plan: ShowPlan,
   time: number,
   frame: number,
+  haze?: HazeTarget,
 ): void {
   // Neutralise le cache de rastérisation Skia interne au canvas. Il ne masque
   // aucun état applicatif : sans reset, le résidu mesuré est de 146 px / 57 600
@@ -78,7 +83,29 @@ function draw(
     reducedMotion: setup.reducedMotion,
     quality: setup.quality,
     frame,
+    ...(haze !== undefined ? { haze } : {}),
   });
+}
+
+/** Crée les deux nappes de fumée à la résolution de production. */
+function createHaze(setup: SetupPayload): HazeTarget | undefined {
+  if (setup.haze !== true) return undefined;
+  const layer = (scale: number): HazeLayer | undefined => {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(setup.width * scale));
+    canvas.height = Math.max(1, Math.round(setup.height * scale));
+    const blur = document.createElement("canvas");
+    blur.width = Math.max(1, Math.round(canvas.width * BLUR_PASS_SCALE));
+    blur.height = Math.max(1, Math.round(canvas.height * BLUR_PASS_SCALE));
+    const ctx = canvas.getContext("2d");
+    const blurPass = blur.getContext("2d");
+    if (ctx === null || blurPass === null) return undefined;
+    return { ctx, blurPass, scale, used: false };
+  };
+  const fine = layer(setup.quality >= 0.6 ? 0.42 : 0.34);
+  const large = layer(setup.quality >= 0.9 ? 0.24 : setup.quality >= 0.6 ? 0.22 : 0.2);
+  if (fine === undefined || large === undefined) return undefined;
+  return { fine, large };
 }
 
 function pixels(target: DrawTarget): Uint8ClampedArray {
@@ -107,12 +134,14 @@ function setup(payload: SetupPayload): { scenes: number; width: number; height: 
     plan.scenes = plan.scenes.map((scene) => ({ ...scene, family, variant: family }));
   }
   session = { canvas: target.canvas, ctx: target.ctx, view, plan, setup: payload };
+  const haze = createHaze(payload);
+  if (haze !== undefined) session.haze = haze;
   return { scenes: plan.scenes.length, width: target.canvas.width, height: target.canvas.height };
 }
 
 function renderAt(time: number, frame: number): void {
   if (session === null) throw new Error("setup() d'abord");
-  draw(session, session.setup, session.view, session.plan, time, frame);
+  draw(session, session.setup, session.view, session.plan, time, frame, session.haze);
 }
 
 /** Variante sérialisable de `renderAt` pour l'API exposée. */

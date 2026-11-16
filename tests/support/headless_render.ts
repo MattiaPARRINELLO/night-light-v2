@@ -30,6 +30,8 @@ export interface RenderSetup {
   quality: number;
   settings: RenderSettings;
   reducedMotion: boolean;
+  /** Active les deux nappes de fumée (flou compris), comme en production. */
+  haze?: boolean;
 }
 
 export interface CompareRequest extends RenderSetup {

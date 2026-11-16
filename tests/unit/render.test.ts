@@ -1415,7 +1415,7 @@ describe("faisceaux adoucis", () => {
           haze,
         });
         for (const nappe of [fine, large]) {
-          const floutee = nappe.flou.filter((operation) => operation.startsWith("filter:blur(")).length;
+          const floutee = nappe.flou.filter((operation) => operation === "drawImage").length;
           if (floutee === 0) {
             // Une nappe que rien n'a nourrie n'est pas floutée en vain.
             expect(dessins(nappe)).toBe(0);
@@ -1464,7 +1464,7 @@ describe("faisceaux adoucis", () => {
       });
       let remontees = 0;
       for (const nappe of [fine, large]) {
-        const floutee = nappe.flou.filter((operation) => operation.startsWith("filter:blur(")).length;
+        const floutee = nappe.flou.filter((operation) => operation === "drawImage").length;
         const remontee = nappe.flou.filter((operation) => operation === "drawImage").length;
         // Une seule passe de flou au plus par nappe et par image.
         expect(floutee).toBeLessThanOrEqual(1);

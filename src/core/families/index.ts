@@ -10,7 +10,7 @@ import { SHAPE_FAMILIES } from "./shapes";
 import type { FamilyDraw, FrameState } from "./types";
 
 export type { BeamLayer, BeamSpec, FamilyDraw, FrameState, HazeLayer, HazeTarget } from "./types";
-export { BEAM_FINE_MAX, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
+export { BEAM_FINE_MAX, BLUR_PASS_SCALE, GRAND_BALAYAGE_BEATS, PETIT_ELEMENT_BEATS } from "./types";
 
 export { beamLayers, curvedBeam, hazeFineRadiusPixels, hazeRadiusPixels, softBeam } from "./beams";
 export { CONCERT_FAMILIES } from "./concert-rig";
