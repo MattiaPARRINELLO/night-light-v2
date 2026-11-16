@@ -64,7 +64,11 @@ export function drawLyrics(
   // Le motif ne prend la scène qu'au moment où il est chanté : hors de ses
   // occurrences, la phrase continue de se dire mot à mot.
   const occurrence = repeat !== null && current !== null ? occurrenceOf(repeat, current) : null;
-  const adlibFlags = adlibTokenFlags(line, tokens);
+  const adlibFlags = adlibTokenFlags(
+    line,
+    tokens,
+    line.words.length > 0 && reliableWordTimings(line),
+  );
   const currentIndex = current === null ? -1 : tokens.indexOf(current);
   const currentAdlib = currentIndex >= 0 && adlibFlags[currentIndex] === true;
   if (!line.text.trim()) return;
@@ -119,13 +123,13 @@ function isAdlibLine(text: string): boolean {
 }
 
 /** Adlib par mot, d'après la position du mot dans le texte de la ligne. */
-function adlibTokenFlags(line: LyricLine, tokens: LyricWord[]): boolean[] {
+function adlibTokenFlags(line: LyricLine, tokens: LyricWord[], fromWords: boolean): boolean[] {
   const ranges = adlibRanges(line.text);
   if (ranges.length === 0) return tokens.map(() => false);
   let cursor = 0;
   return tokens.map((token) => {
     let offset: number;
-    if (line.words.length > 0) {
+    if (fromWords) {
       offset = cursor;
       cursor += token.text.length;
     } else {
@@ -466,7 +470,7 @@ function drawLineWord(
  * syllabes, ce qui reste une estimation mais suit le débit réel.
  */
 function withTimings(line: LyricLine): LyricWord[] {
-  if (line.words.length > 0) return line.words;
+  if (line.words.length > 0 && reliableWordTimings(line)) return line.words;
   const words = line.text.split(/\s+/).filter((word) => word.length > 0);
   if (words.length === 0) return [];
   const weights = words.map(syllables);
@@ -479,6 +483,28 @@ function withTimings(line: LyricLine): LyricWord[] {
     const end = line.startMs + Math.round((span * elapsed) / total);
     return { text: word, startMs: start, endMs: end };
   });
+}
+
+/**
+ * Les timings de mots du fournisseur sont-ils exploitables ?
+ *
+ * Certains morceaux arrivent avec des mots tassés dans la première fraction de
+ * la ligne puis un dernier mot qui tient tout le reste : le mot à mot défile
+ * alors en une fraction de seconde et semble cassé. On préfère l'estimation
+ * par syllabes à ces timings fabriqués.
+ */
+function reliableWordTimings(line: LyricLine): boolean {
+  const words = line.words;
+  if (words.length === 0) return false;
+  if (words.length < 4) return true;
+  const span = Math.max(1, line.endMs - line.startMs);
+  const first = words[0]!;
+  const last = words[words.length - 1]!;
+  const startsSpan = last.startMs - first.startMs;
+  const lastHold = last.endMs - last.startMs;
+  // Un dernier mot qui tient plus de la moitié de la ligne, ou des départs
+  // entassés dans le premier tiers, trahissent des timings non fiables.
+  return lastHold < span * 0.5 && startsSpan >= span * 0.4;
 }
 
 /** Estimation grossière : une syllabe par groupe de voyelles. */
@@ -572,16 +598,18 @@ function drawPhrase(
   );
   if (alpha <= 0.01) return;
 
-  const timed = line.words.length > 0;
-  const tokens: LyricWord[] = timed
-    ? line.words
+  const hasWords = line.words.length > 0;
+  const reliable = hasWords && reliableWordTimings(line);
+  const tokens: LyricWord[] = hasWords
+    ? withTimings(line)
     : [...line.text.matchAll(/\S+/g)].map((match) => ({
         text: match[0],
         startMs: 0,
         endMs: 0,
       }));
   if (tokens.length === 0) return;
-  const adlibFlags = adlibTokenFlags(line, tokens);
+  const timed = hasWords;
+  const adlibFlags = adlibTokenFlags(line, tokens, reliable);
   const maxWidth = width * 0.9;
   let size = Math.min(width * 0.15, height * 0.21) * scaleFactor;
   let rows: number[][] = [];

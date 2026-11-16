@@ -65,6 +65,42 @@ def test_parse_lyricsfile_single_quote_escape() -> None:
     assert lines[0].words[0].text == "J'connais "
 
 
+def test_parse_lyricsfile_etale_une_ligne_ecrasee() -> None:
+    """Des timings écrasés au début de la ligne ne restent pas tels quels."""
+    text = (
+        "lines:\n"
+        "- text: une phrase tres longue qui ne peut pas tenir dans un dixieme de seconde\n"
+        "  start_ms: 1000\n"
+        "  end_ms: 1200\n"
+        "  words:\n"
+        "  - text: une \n"
+        "    start_ms: 1000\n"
+        "  - text: phrase \n"
+        "    start_ms: 1020\n"
+        "- text: la suite\n"
+        "  start_ms: 6000\n"
+    )
+    _, lines = parse_lyricsfile(text)
+
+    assert lines[0].end_ms > 1200
+    assert lines[0].end_ms < 6000
+    assert lines[0].words[-1].end_ms == lines[0].end_ms
+
+
+def test_parse_lyricsfile_ne_deborde_pas_sur_la_suivante() -> None:
+    text = (
+        "lines:\n"
+        "- text: une phrase tres longue qui ne peut pas tenir dans un dixieme de seconde\n"
+        "  start_ms: 1000\n"
+        "  end_ms: 1200\n"
+        "- text: la suite\n"
+        "  start_ms: 1500\n"
+    )
+    _, lines = parse_lyricsfile(text)
+
+    assert lines[0].end_ms == 1500
+
+
 def test_parse_lrc_lines_and_metadata() -> None:
     text = "\n".join(
         [
