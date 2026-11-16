@@ -101,14 +101,6 @@ export interface HazeTarget {
  */
 export const BEAM_FINE_MAX = 22;
 
-/**
- * Résolution de la passe de flou, en fraction de la nappe.
- *
- * La fumée est une lumière diffuse : flouter à mi-résolution puis agrandir donne
- * la même image qu'un flou pleine résolution, pour un quart des pixels traités.
- */
-export const BLUR_PASS_SCALE = 0.25;
-
 export type FamilyDraw = (ctx: CanvasRenderingContext2D, f: FrameState, view: TrackView) => void;
 
 /**

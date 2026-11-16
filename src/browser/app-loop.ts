@@ -6,7 +6,6 @@
 
 import type { App } from "./app";
 import type { HazeLayer, HazeTarget } from "../core/families";
-import { BLUR_PASS_SCALE } from "../core/families";
 import { drawTransition, renderFrame, sceneHue, variationStrength } from "../core/render";
 import { clamp, formatTime, quantizeQuality } from "../core/series";
 import { FAMILY_LABELS, MOOD_LABELS, SCENE_REASON_LABELS, sceneAt, type ShowPlan } from "../core/show";
@@ -60,11 +59,8 @@ function dimensionnerNappe(nappe: HazeLayer, scale: number, width: number, heigh
   if (nappe.ctx.canvas.width === largeur && nappe.ctx.canvas.height === hauteur) return;
   nappe.ctx.canvas.width = largeur;
   nappe.ctx.canvas.height = hauteur;
-  // La passe de flou travaille à mi-résolution de la nappe : une diffusion est
-  // une basse fréquence, et flouter quatre fois moins de pixels divise le coût
-  // du filtre sans changer ce qu'on voit (le rayon est réduit d'autant).
-  nappe.blurPass.canvas.width = Math.max(1, Math.round(largeur * BLUR_PASS_SCALE));
-  nappe.blurPass.canvas.height = Math.max(1, Math.round(hauteur * BLUR_PASS_SCALE));
+  nappe.blurPass.canvas.width = largeur;
+  nappe.blurPass.canvas.height = hauteur;
 }
 
 declare module "./app" {
@@ -103,8 +99,8 @@ export function installLoop(Target: { prototype: App }): void {
     // dixième de sa taille n'existe plus. La nappe large, elle, ne porte que la
     // diffusion des gros faisceaux : une résolution plus basse y est invisible
     // (elle est floutée plus loin) et divise le coût de remplissage.
-    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.42 : 0.34, width, height);
-    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.24 : quality >= 0.6 ? 0.22 : 0.2, width, height);
+    dimensionnerNappe(this.haze.fine, quality >= 0.6 ? 0.5 : 0.4, width, height);
+    dimensionnerNappe(this.haze.large, quality >= 0.9 ? 0.42 : quality >= 0.6 ? 0.36 : 0.3, width, height);
     return this.haze;
   };
 
