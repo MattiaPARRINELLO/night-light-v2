@@ -1752,6 +1752,41 @@ export function renderFrame(input: RenderInput): void {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
   }
+
+  // La barre LED reste la dernière lumière : la scène s'éteint, mais le cadre
+  // autour de l'écran reste allumé dans la couleur principale du morceau. Elle
+  // passe après le noir final, sinon le voile de sortie l'éteindrait avec le
+  // reste de la salle.
+  if (outro !== null && outro.fade < 0.999) {
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 1;
+    dessinerBordure(ctx, etatBordureSortie(permanent, plan), view, settings.flashes);
+  }
+}
+
+/**
+ * État de la bordure pendant l'extinction de fin de morceau.
+ *
+ * Le ruban est la seule lumière laissée allumée : il prend donc la teinte
+ * principale du morceau, et garde un plancher d'énergie pour rester lisible
+ * quand l'audio est déjà dans le silence.
+ */
+function etatBordureSortie(permanent: FrameState, plan: ShowPlan): FrameState {
+  return {
+    ...permanent,
+    palette: {
+      ...permanent.palette,
+      hue: plan.track.hue,
+      accent: plan.track.accent,
+    },
+    energy: Math.max(permanent.energy, 0.6),
+    bass: Math.max(permanent.bass, 0.5),
+    mid: Math.max(permanent.mid, 0.5),
+    high: Math.max(permanent.high, 0.5),
+    beat: Math.max(permanent.beat, 0.35),
+    drop: 0,
+    haze: undefined,
+  };
 }
 
 /** Vignettes déjà créées, par contexte puis par dimensions. */

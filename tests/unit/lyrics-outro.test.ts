@@ -119,7 +119,7 @@ describe("extinction de fin de morceau", () => {
 });
 
 describe("noir final au rendu", () => {
-  test("la dernière image est complètement noire", () => {
+  test("la scène s'éteint mais la barre du cadre reste allumée", () => {
     const data = analysis({ lyrics: lyrics([line("la fin", 0, 20, ["la", "fin"])]) });
     const { ctx, operations } = fakeContext();
     renderFrame({
@@ -135,7 +135,13 @@ describe("noir final au rendu", () => {
       quality: 1,
       frame: 2400,
     });
-    expect(operations.slice(-2)).toEqual(["fillStyle:#000", "fillRect:0.0,0.0,640.0,360.0"]);
+    // Le noir final couvre tout l'écran...
+    const noir = operations.lastIndexOf("fillStyle:#000");
+    expect(noir).toBeGreaterThan(-1);
+    expect(operations.slice(noir)).toContain("fillRect:0.0,0.0,640.0,360.0");
+    // ... puis la bordure est redessinée par-dessus : les diodes restent la
+    // seule lumière de l'image.
+    expect(operations.slice(noir).some((operation) => operation.startsWith("arc:"))).toBe(true);
   });
 
   test("sans paroles, aucun voile de fin n'est ajouté", () => {
