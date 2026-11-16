@@ -1399,7 +1399,7 @@ export function renderFrame(input: RenderInput): void {
     palette,
     // Refrain chanté : les paroles datées sont la seule source fiable. En
     // direct, aucune parole n'est calée sur l'audio, donc la salle reste noire.
-    chorus: isLive ? 0 : chorusIntensityAt(view.analysis.lyrics, t),
+    chorus: isLive ? 0 : chorusIntensityAt(view.analysis.lyrics, t, view.analysis.sections),
     energy:
       liveMusic !== undefined
         ? liveMusic.energy

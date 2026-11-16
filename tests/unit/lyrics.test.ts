@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { chorusIntensityAt, drawLyrics } from "../../src/core/lyrics";
 import type { Palette } from "../../src/core/show";
-import type { LyricLine, LyricsCues } from "../../src/types";
+import type { LyricLine, LyricsCues, Section } from "../../src/types";
 import { fakeContext } from "../support/fake_canvas";
 
 const palette = {
@@ -157,5 +157,27 @@ describe("refrain des paroles", () => {
     expect(chorusIntensityAt(lyrics, 10.1)).toBeLessThan(1);
     expect(chorusIntensityAt(lyrics, 19.8)).toBeGreaterThan(0);
     expect(chorusIntensityAt(lyrics, 19.8)).toBeLessThan(1);
+  });
+
+  it("tient jusqu'à la fin de la section quand le refrain continue", () => {
+    const lyrics = refrain();
+    const sections: Section[] = [
+      { start: 8, end: 23, label: "intense", energy: 0.8, kind: "refrain" },
+    ];
+
+    // La dernière ligne de refrain se termine à 20 s, mais la section va à 23 s.
+    expect(chorusIntensityAt(lyrics, 22, sections)).toBeCloseTo(1, 5);
+    expect(chorusIntensityAt(lyrics, 22.9, sections)).toBeLessThan(1);
+    // Hors de la section, rien ne change.
+    expect(chorusIntensityAt(lyrics, 5, sections)).toBe(0);
+  });
+
+  it("ne prolonge pas un refrain hors section de refrain", () => {
+    const lyrics = refrain();
+    const sections: Section[] = [
+      { start: 8, end: 23, label: "calme", energy: 0.4, kind: "couplet" },
+    ];
+
+    expect(chorusIntensityAt(lyrics, 20.5, sections)).toBe(0);
   });
 });

@@ -1,4 +1,4 @@
-import type { KeywordCue, LyricLine, LyricsCues, LyricWord } from "../types";
+import type { KeywordCue, LyricLine, LyricsCues, LyricWord, Section } from "../types";
 import { clamp01 } from "./series";
 import type { Palette } from "./show";
 
@@ -90,10 +90,19 @@ export function drawLyrics(
  * retombe doucement sur les bords du bloc. Sert à éclairer la salle en mode
  * concert : le rendu y ajoute une lumière d'ambiance, sans changer la couleur
  * du morceau ni les projecteurs.
+ *
+ * Quand l'analyse fournit des sections de refrain, un bloc est prolongé
+ * jusqu'à la fin de la section qui le contient : le refrain chanté n'est
+ * souvent que les premières lignes d'une section plus longue, et couper la
+ * lumière à la dernière ligne éteint la salle au milieu du refrain.
  */
-export function chorusIntensityAt(lyrics: LyricsCues | undefined, timeSec: number): number {
+export function chorusIntensityAt(
+  lyrics: LyricsCues | undefined,
+  timeSec: number,
+  sections?: readonly Section[],
+): number {
   if (lyrics === undefined || lyrics.chorusLines.length === 0) return 0;
-  const ranges = chorusRanges(lyrics);
+  const ranges = chorusRangesUntilSectionEnd(lyrics, sections);
   for (const [start, end] of ranges) {
     if (timeSec < start || timeSec > end) continue;
     const rise = clamp01((timeSec - start) / CHORUS_FADE_IN_SEC);
@@ -125,6 +134,39 @@ function chorusRanges(lyrics: LyricsCues): Array<[number, number]> {
   }
   chorusRangeCache.set(lyrics, ranges);
   return ranges;
+}
+
+/**
+ * Blocs de refrain prolongés jusqu'à la fin de la section qui les contient.
+ *
+ * Les paroles ne marquent souvent que les deux premières phrases du refrain :
+ * la section musicale, elle, va jusqu'au bout. On garde donc l'ancre des
+ * paroles (aucune lumière sans refrain chanté) et on étend seulement la fin.
+ * Un bloc qui ne tombe dans aucune section de refrain reste inchangé.
+ */
+function chorusRangesUntilSectionEnd(
+  lyrics: LyricsCues,
+  sections: readonly Section[] | undefined,
+): Array<[number, number]> {
+  const ranges = chorusRanges(lyrics);
+  if (sections === undefined || sections.length === 0) return ranges;
+  const extended: Array<[number, number]> = [];
+  for (const [start, end] of ranges) {
+    const middle = (start + end) / 2;
+    let stop = end;
+    for (const section of sections) {
+      if (section.kind !== "refrain") continue;
+      if (middle < section.start || middle > section.end) continue;
+      stop = Math.max(stop, section.end);
+    }
+    const previous = extended[extended.length - 1];
+    if (previous !== undefined && start - previous[1] <= CHORUS_MERGE_GAP_SEC) {
+      previous[1] = Math.max(previous[1], stop);
+    } else {
+      extended.push([start, stop]);
+    }
+  }
+  return extended;
 }
 
 /** Dernier mot dont le chant a commencé, celui qui occupe la scène. */
