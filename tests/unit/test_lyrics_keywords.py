@@ -221,6 +221,27 @@ def test_detect_chorus_rattache_une_occurrence_partielle() -> None:
     assert set(range(11, 14)) <= set(chorus_lines)
 
 
+def test_detect_chorus_ne_deborde_pas_en_prolongeant_vers_l_arriere() -> None:
+    """Un bloc prolongé vers l'arrière garde ses bornes, sans sortir du morceau."""
+    texts = [
+        "avant le refrain ce soir",
+        "juste avant le rideau",
+        "le refrain commence",
+        "le refrain finit",
+        "pont unique",
+        "avant le refrain ce soir là",
+        "juste avant le rideau noir",
+        "le refrain commence",
+        "le refrain finit",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (0, 1, 2, 3, 5, 6, 7, 8)
+
+
 def test_parse_cues_refuse_un_refrain_qui_couvre_le_morceau() -> None:
     lyrics = Lyrics(
         record_id=3,
