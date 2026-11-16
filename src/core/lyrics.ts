@@ -1,5 +1,5 @@
 import type { KeywordCue, LyricLine, LyricsCues, LyricWord, Section } from "../types";
-import { clamp01 } from "./series";
+import { clamp01, smoothstep } from "./series";
 import type { Palette } from "./show";
 
 const FONT_STACK = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -169,6 +169,93 @@ export function chorusIntensityAt(
     return Math.min(rise, fall);
   }
   return 0;
+}
+
+/** En dessous de cette queue de morceau, il n'y a pas la place de s'éteindre. */
+const OUTRO_MIN_TAIL_SEC = 0.5;
+/** Respiration laissée après la dernière parole avant de commencer à baisser. */
+const OUTRO_GRACE_SEC = 0.6;
+/** Durée maximale du noir tenu avant la fin du morceau. */
+const OUTRO_MAX_HOLD_SEC = 0.8;
+/** Écart minimal avant une ligne finale courte pour y voir des mots isolés. */
+const TRAILING_GAP_SEC = 3.5;
+/** Une ligne finale d'au plus ces mots est un rappel, pas une phrase chantée. */
+const TRAILING_MAX_WORDS = 3;
+
+/** État d'extinction de fin de morceau, calculé depuis les paroles. */
+export interface OutroState {
+  /** Lumière restante, 1 = scène normale, 0 = noir complet. */
+  fade: number;
+  /** Rappel d'une seule lyre pour les derniers mots, 0..1. */
+  lyre: number;
+}
+
+/**
+ * Extinction de fin de morceau, dès que les paroles sont terminées.
+ *
+ * Une fois la dernière ligne chantée, la salle descend progressivement jusqu'au
+ * noir complet avant la fin du morceau : le morceau suivant repart ainsi d'une
+ * scène noire, sans rester sur les lumières du précédent. La descente porte sur
+ * toute la queue instrumentale, avec un noir tenu sur les dernières secondes.
+ *
+ * Si la ligne finale n'est qu'un mot ou deux, lancés après un vrai silence, on
+ * la traite comme un rappel : l'extinction commence avant elle, et une seule
+ * lyre reste allumée pendant ces derniers mots. `lyre` vaut alors 0..1 ; le
+ * rendu s'en sert pour dessiner cette unique tête.
+ *
+ * Sans paroles, ou quand le morceau se termine sur la voix, rien ne change.
+ */
+export function outroStateAt(
+  lyrics: LyricsCues | undefined,
+  timeSec: number,
+  durationSec: number,
+): OutroState {
+  const none: OutroState = { fade: 1, lyre: 0 };
+  if (lyrics === undefined || lyrics.lines.length === 0) return none;
+  const voiced = lyrics.lines.filter((line) => line.text.trim().length > 0 && line.endMs > 0);
+  const last = voiced[voiced.length - 1];
+  if (last === undefined) return none;
+  const before = voiced[voiced.length - 2];
+  const lastEnd = lyricLineEndSec(last);
+  const previousEnd = before === undefined ? lastEnd : lyricLineEndSec(before);
+  const duration = Math.max(durationSec, 0.001);
+  const tail = duration - lastEnd;
+  if (tail <= OUTRO_MIN_TAIL_SEC) return none;
+
+  // Un dernier mot isolé après un silence : c'est un rappel. L'extinction
+  // commence alors avant lui, pas après, pour qu'il ne rallume pas la salle.
+  const trailing =
+    before !== undefined &&
+    last.startMs / 1000 - previousEnd >= TRAILING_GAP_SEC &&
+    wordCount(last) <= TRAILING_MAX_WORDS;
+  const contentEnd = trailing ? previousEnd : lastEnd;
+  const start = contentEnd + OUTRO_GRACE_SEC;
+  const hold = Math.min(OUTRO_MAX_HOLD_SEC, tail * 0.15);
+  const blackAt = Math.min(duration, Math.max(lastEnd, duration - hold));
+  if (blackAt <= start) return none;
+
+  const progress = clamp01((timeSec - start) / (blackAt - start));
+  const fade = 1 - smoothstep(0, 1, progress);
+  // Le rappel suit la fin de la ligne finale, jamais au-delà du noir tenu.
+  const inTrailing = trailing && timeSec >= last.startMs / 1000 && timeSec <= lastEnd;
+  // La lyre monte à mesure que la salle s'éteint : elle ne prend le relais que
+  // lorsque le reste de la scène a déjà beaucoup perdu.
+  const lyre =
+    inTrailing && fade > 0.02 ? clamp01((1 - fade) / 0.5) * clamp01(fade / 0.04) : 0;
+  return { fade, lyre };
+}
+
+/** Fin d'une ligne, en secondes, en tenant compte des timings de mots. */
+function lyricLineEndSec(line: LyricLine): number {
+  let end = line.endMs;
+  for (const word of line.words) end = Math.max(end, word.endMs);
+  return end / 1000;
+}
+
+/** Nombre de mots d'une ligne, fournis par le fournisseur ou déduits du texte. */
+function wordCount(line: LyricLine): number {
+  if (line.words.length > 0) return line.words.length;
+  return line.text.split(/\s+/).filter((word) => word.length > 0).length;
 }
 
 /** Blocs de refrain, en secondes, fusionnés quand deux lignes se suivent. */
