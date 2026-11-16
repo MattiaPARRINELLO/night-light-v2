@@ -1,5 +1,5 @@
 import type { KeywordCue, LyricLine, LyricsCues, LyricWord, Section } from "../types";
-import { clamp01, smoothstep } from "./series";
+import { clamp01 } from "./series";
 import type { Palette } from "./show";
 
 const FONT_STACK = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -173,6 +173,8 @@ export function chorusIntensityAt(
 
 /** En dessous de cette queue de morceau, il n'y a pas la place de s'éteindre. */
 const OUTRO_MIN_TAIL_SEC = 0.5;
+/** Durée minimale de la descente : en dessous, elle se lit comme une coupure. */
+const OUTRO_MIN_FADE_SEC = 6;
 /** Respiration laissée après la dernière parole avant de commencer à baisser. */
 const OUTRO_GRACE_SEC = 0.6;
 /** Durée maximale du noir tenu avant la fin du morceau. */
@@ -188,6 +190,8 @@ export interface OutroState {
   fade: number;
   /** Rappel d'une seule lyre pour les derniers mots, 0..1. */
   lyre: number;
+  /** Instant où la descente commence : la scène se fige à partir de là. */
+  start: number;
 }
 
 /**
@@ -197,6 +201,8 @@ export interface OutroState {
  * noir complet avant la fin du morceau : le morceau suivant repart ainsi d'une
  * scène noire, sans rester sur les lumières du précédent. La descente porte sur
  * toute la queue instrumentale, avec un noir tenu sur les dernières secondes.
+ * Elle dure au moins quelques secondes, quitte à commencer pendant la fin de la
+ * dernière ligne, pour ne jamais se lire comme une coupure.
  *
  * Si la ligne finale n'est qu'un mot ou deux, lancés après un vrai silence, on
  * la traite comme un rappel : l'extinction commence avant elle, et une seule
@@ -210,7 +216,7 @@ export function outroStateAt(
   timeSec: number,
   durationSec: number,
 ): OutroState {
-  const none: OutroState = { fade: 1, lyre: 0 };
+  const none: OutroState = { fade: 1, lyre: 0, start: 0 };
   if (lyrics === undefined || lyrics.lines.length === 0) return none;
   const voiced = lyrics.lines.filter((line) => line.text.trim().length > 0 && line.endMs > 0);
   const last = voiced[voiced.length - 1];
@@ -229,20 +235,25 @@ export function outroStateAt(
     last.startMs / 1000 - previousEnd >= TRAILING_GAP_SEC &&
     wordCount(last) <= TRAILING_MAX_WORDS;
   const contentEnd = trailing ? previousEnd : lastEnd;
-  const start = contentEnd + OUTRO_GRACE_SEC;
   const hold = Math.min(OUTRO_MAX_HOLD_SEC, tail * 0.15);
   const blackAt = Math.min(duration, Math.max(lastEnd, duration - hold));
+  // La descente dure au moins quelques secondes, quitte à commencer pendant la
+  // fin de la dernière ligne : une extinction trop courte se lit comme une
+  // suite de paliers, pas comme un fondu.
+  const start = Math.max(0, Math.min(contentEnd + OUTRO_GRACE_SEC, blackAt - OUTRO_MIN_FADE_SEC));
   if (blackAt <= start) return none;
 
   const progress = clamp01((timeSec - start) / (blackAt - start));
-  const fade = 1 - smoothstep(0, 1, progress);
+  // Descente linéaire : la luminosité baisse du même pas à chaque image, sans
+  // accélération au milieu qui donnerait l'impression de sauter.
+  const fade = 1 - progress;
   // Le rappel suit la fin de la ligne finale, jamais au-delà du noir tenu.
   const inTrailing = trailing && timeSec >= last.startMs / 1000 && timeSec <= lastEnd;
   // La lyre monte à mesure que la salle s'éteint : elle ne prend le relais que
   // lorsque le reste de la scène a déjà beaucoup perdu.
   const lyre =
     inTrailing && fade > 0.02 ? clamp01((1 - fade) / 0.5) * clamp01(fade / 0.04) : 0;
-  return { fade, lyre };
+  return { fade, lyre, start };
 }
 
 /** Fin d'une ligne, en secondes, en tenant compte des timings de mots. */

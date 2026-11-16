@@ -377,7 +377,17 @@ export function couleurBordure(f: FrameState, index: number): number {
  * suivant, la valeur est exactement continue (le motif sortant devient le motif
  * précédent, et le fondu repart de zéro).
  */
-function poidsCourant(f: FrameState, view: TrackView, index: number, budgetFlash = 1): number {
+function poidsCourant(
+  f: FrameState,
+  view: TrackView,
+  index: number,
+  budgetFlash = 1,
+  motifForce: MotifBordure | undefined = undefined,
+): number {
+  // Motif imposé (sortie de morceau) : pas de mélange avec le temps fort, la
+  // barre doit rester une lumière calme au lieu de battre avec un morceau qui
+  // n'a plus de signal.
+  if (motifForce !== undefined) return poidsMotif(f, view, index, motifForce, budgetFlash);
   // Creux du cycle hard : le pourtour strobe seul, sans le mur de lumière.
   if (f.hard && hardStrobeBarsOnly(f)) {
     return poidsMotif(f, view, index, "strobe", budgetFlash);
@@ -476,9 +486,11 @@ export function intensiteBordure(
   budgetFlash = 1,
   /** Valeur de `blinderBordure` déjà calculée pour cette diode. */
   blinderConnu?: number,
+  /** Motif imposé, pour une barre calme de fin de morceau. */
+  motif?: MotifBordure,
 ): number {
   const energie = clamp01(f.energy);
-  const poids = poidsCourant(f, view, index, budgetFlash);
+  const poids = poidsCourant(f, view, index, budgetFlash, motif);
   const rail = 0.03 + 0.08 * energie;
   const respiration = 0.85 + 0.15 * Math.sin(f.t * 1.1);
   const eclat = f.reduced ? 0 : clamp01(f.drop) * clamp01(budgetFlash) * 0.5;
@@ -498,7 +510,11 @@ export function intensiteBordure(
  * tube diffuseur et le cœur du fil. Sans elle, un tracé constant écraserait les
  * motifs — un chenillard ou une respiration deviendraient invisibles.
  */
-export function moyenneBordure(f: FrameState, view: TrackView): number {
+export function moyenneBordure(
+  f: FrameState,
+  view: TrackView,
+  motif?: MotifBordure,
+): number {
   const echantillons = 8;
   let total = 0;
   for (let index = 0; index < echantillons; index += 1) {
@@ -506,6 +522,8 @@ export function moyenneBordure(f: FrameState, view: TrackView): number {
       f,
       view,
       Math.floor((index * NOMBRE_DIODES_BORDURE) / echantillons),
+      1,
+      motif,
     );
   }
   return total / echantillons;
@@ -565,6 +583,8 @@ export function dessinerBordure(
   f: FrameState,
   view: TrackView,
   budgetFlash = 1,
+  /** Motif imposé, pour garder une barre calme pendant l'extinction finale. */
+  motif?: MotifBordure,
 ): void {
   const { width: w, height: h } = f;
   const margeRatio = MARGE_BORDURE;
@@ -587,7 +607,7 @@ export function dessinerBordure(
   // Piste permanente, volontairement presque éteinte : elle donne l'axe du
   // cadre, mais c'est le motif qui fait la lumière. Sans ça, le ruban reste
   // uniformément allumé et la différence allumé/éteint disparaît.
-  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.45, 0.35, (0.03 + 0.03 * energie) * (0.4 + 0.6 * moyenneBordure(f, view)));
+  ctx.strokeStyle = paint(fil.hue, fil.saturation * 0.45, 0.35, (0.03 + 0.03 * energie) * (0.4 + 0.6 * moyenneBordure(f, view, motif)));
   ctx.lineWidth = Math.max(1.2, tube * 0.35);
   traceRuban();
 
@@ -598,7 +618,7 @@ export function dessinerBordure(
     // Le blinder dépend de la diode mais pas du calcul : intensité et teinte le
     // partagent, au lieu de relire deux fois la fenêtre d'impact.
     const blinder = blinderBordure(f, view, index, budgetFlash);
-    const intensite = intensiteBordure(f, view, index, budgetFlash, blinder);
+    const intensite = intensiteBordure(f, view, index, budgetFlash, blinder, motif);
     const { x, y } = positionBordure(index, w, h, margeRatio);
     const couleur = teinteBordure(f, view, index, budgetFlash, blinder);    // Variation déterministe : deux diodes voisines ne brillent jamais
     // exactement pareil, comme sur un vrai ruban.

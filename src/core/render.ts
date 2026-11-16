@@ -1311,7 +1311,22 @@ export function renderFrame(input: RenderInput): void {
       nappe.ctx.globalCompositeOperation = "lighter";
     }
   }
-  const scene = sceneAt(plan, t);
+  // Extinction de fin de morceau. Elle est calculée ici pour pouvoir calmer
+  // toute la scène pendant la descente, pas seulement poser un voile noir
+  // par-dessus des effets qui continuent de sauter.
+  const lyrics = view.analysis.lyrics;
+  const outro = isLive ? null : outroStateAt(lyrics, t, plan.duration);
+  const sortie = outro === null ? 1 : outro.fade;
+
+  const sceneTime =
+    outro !== null && outro.fade < 1 ? Math.min(t, Math.max(outro.start, 0)) : t;
+  const sceneFrozen = sceneTime !== t;
+  // Pendant la descente, toute la matière musicale est figée à l'instant où
+  // elle commence : seules la lumière baissent et la barre restent vivantes.
+  // Sans cela, une montée d'énergie en fin de morceau rallumait la scène sous
+  // le voile et le fondu faisait des bonds.
+  const featureTime = sceneFrozen ? sceneTime : t;
+  const scene = sceneAt(plan, sceneTime);
   const hard = plan.profile === "hard";
   const dynamic = plan.profile === "dynamic";
   // En direct, la direction musicale fournit un vrai temps fort (attaque suivie
@@ -1319,36 +1334,36 @@ export function renderFrame(input: RenderInput): void {
   // analysé, un temps fort ne vaut que par ce qu'il porte : `beatStrength`
   // renvoie 0 sur un temps sans basse, donc le show ne pulse plus à vide.
   const beat =
-    liveMusic !== undefined
+    (liveMusic !== undefined
       ? liveMusic.beat
       : liveAudio !== undefined
         ? liveAudio.transient
-        : beatStrength(view, t);
+        : beatStrength(view, featureTime)) * sortie;
   const build =
-    liveMusic !== undefined
+    (liveMusic !== undefined
       ? liveMusic.build
       : liveAudio !== undefined
         ? 0
-        : view.buildProgress(t);
-  const buildNow = liveMusic !== undefined ? null : view.buildAt(t);
+        : view.buildProgress(featureTime)) * sortie;
+  const buildNow = liveMusic !== undefined ? null : view.buildAt(featureTime);
   // Flash : le trigger est l'instant de naissance (latence nulle). On expose
   // l'âge des deux déclencheurs pour que l'attaque puisse être dosée.
   const lastBeat =
-    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBeatAt(t);
+    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBeatAt(featureTime);
   const lastImpact =
-    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBuildEnd(t);
+    liveMusic !== undefined || liveAudio !== undefined ? -Infinity : view.lastBuildEnd(featureTime);
   const beatAge =
     liveMusic !== undefined
       ? liveMusic.beatAge
       : lastBeat === -Infinity
         ? Infinity
-        : t - lastBeat;
+        : featureTime - lastBeat;
   const dropAge =
     liveMusic !== undefined
       ? liveMusic.dropAge
       : lastImpact === -Infinity
         ? Infinity
-        : t - lastImpact;
+        : featureTime - lastImpact;
   // La couleur vit en permanence : elle glisse dans le temps, fait un saut net
   // à chaque impact (drop) et un autre à chaque variation de phrase, pour que
   // le morceau « change de lumière » sans cesse.
@@ -1356,22 +1371,22 @@ export function renderFrame(input: RenderInput): void {
   // ne sert qu'à l'intensité et à la taille, sinon un morceau sans montée faisait
   // clignoter la teinte de 12° d'une image à l'autre. Le saut de couleur reste
   // réservé au vrai drop (`buildIntensity`).
-  const beatDriveValue = isLive ? 0 : beatDrive(view, t, view.analysis.builds.length);
+  const beatDriveValue = isLive ? 0 : beatDrive(view, featureTime, view.analysis.builds.length) * sortie;
   const drop =
-    liveMusic !== undefined
+    (liveMusic !== undefined
       ? liveMusic.drop
       : liveAudio !== undefined
         ? 0
-        : view.buildIntensity(t);
-  const variation = reduced ? 0 : variationStrength(scene, t);
+        : view.buildIntensity(featureTime)) * sortie;
+  const variation = reduced ? 0 : variationStrength(scene, featureTime) * sortie;
   const surge =
-    liveMusic !== undefined
+    (liveMusic !== undefined
       ? liveMusic.surge
       : liveAudio !== undefined
         ? liveAudio.transient
-        : view.energyTrend(t, 1.2);
+        : view.energyTrend(featureTime, 1.2)) * sortie;
   const anchor = sceneAnchor(scene, plan.track);
-  const paletteHue = sceneHue(scene, t, drop, variation, reduced, anchor);  const paletteAccent =
+  const paletteHue = sceneHue(scene, featureTime, drop, variation, reduced, anchor);  const paletteAccent =
     paletteHue === scene.palette.hue ? scene.palette.accent : scene.palette.hue;
   const palette: Palette = {
     name: scene.palette.name,
@@ -1379,7 +1394,7 @@ export function renderFrame(input: RenderInput): void {
     // L'autre couleur du morceau, jamais une teinte intermédiaire.
     accent: paletteAccent,
     ...(scene.palette.tertiary !== undefined ? { tertiary: scene.palette.tertiary } : {}),
-    spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(t * 0.55))),
+    spread: scene.palette.spread * (0.75 + 0.5 * (0.5 + 0.5 * Math.sin(featureTime * 0.55))),
     saturation: Math.min(1, scene.palette.saturation + drop * 0.16 + variation * 0.1),
     // Un temps fort pousse la lumière vers le blanc : c'est ce qui « allume la
     // salle » sur un impact, sans changer la couleur du morceau. En mode rave, on
@@ -1391,7 +1406,7 @@ export function renderFrame(input: RenderInput): void {
   };
 
   const base: FrameState = {
-    t,
+    t: featureTime,
     width,
     height,
     dpr,
@@ -1399,21 +1414,23 @@ export function renderFrame(input: RenderInput): void {
     palette,
     // Refrain chanté : les paroles datées sont la seule source fiable. En
     // direct, aucune parole n'est calée sur l'audio, donc la salle reste noire.
-    chorus: isLive ? 0 : chorusIntensityAt(view.analysis.lyrics, t, view.analysis.sections),
+    chorus:
+      isLive ? 0 : chorusIntensityAt(view.analysis.lyrics, featureTime, view.analysis.sections) * sortie,
     energy:
       liveMusic !== undefined
         ? liveMusic.energy
         : liveAudio !== undefined
           ? clamp01(liveAudio.energy * 1.35 + liveAudio.transient * 0.3)
-          : clamp01(visibleEnergy(view.energyAt(t)) * (dynamic ? 1.12 : 1)),
-    bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(t),
-    mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(t),
-    high: liveAudio !== undefined ? liveAudio.high : view.highAt(t),
+          : clamp01(visibleEnergy(view.energyAt(featureTime)) * (dynamic ? 1.12 : 1)),
+    bass: liveAudio !== undefined ? liveAudio.bass : view.bassAt(featureTime),
+    mid: liveAudio !== undefined ? liveAudio.mid : view.midAt(featureTime),
+    high: liveAudio !== undefined ? liveAudio.high : view.highAt(featureTime),
     beat,
-    beatPhase: liveMusic !== undefined ? liveMusic.beatPhase : view.beatPhase(t),
-    beatIndex: liveMusic !== undefined ? liveMusic.beatIndex : view.beatIndexAt(t),
+    beatPhase: liveMusic !== undefined ? liveMusic.beatPhase : view.beatPhase(featureTime),
+    beatIndex: liveMusic !== undefined ? liveMusic.beatIndex : view.beatIndexAt(featureTime),
     build,
-    buildStrength: liveMusic !== undefined ? liveMusic.buildStrength : (buildNow?.strength ?? 0),
+    buildStrength:
+      (liveMusic !== undefined ? liveMusic.buildStrength : (buildNow?.strength ?? 0)) * sortie,
     drop,
     beatAge,
     dropAge,
@@ -1429,7 +1446,7 @@ export function renderFrame(input: RenderInput): void {
         : isLive
           ? 1.1 + liveAudio!.energy * 0.9 + liveAudio!.transient * 0.4
           : 1 + surge * 0.6 + beatDriveValue * 0.5),
-    alpha: sceneWeight(scene, t),
+    alpha: sceneFrozen ? 1 : sceneWeight(scene, t),
     reduced,
     hard,
     dynamic,
@@ -1528,13 +1545,14 @@ export function renderFrame(input: RenderInput): void {
   // sur-couche et couvre tout l'écran. Jamais en mode réduit. En direct, c'est
   // la direction musicale qui fournit l'âge et la force de l'impact : un vrai
   // saut de niveau balaie la salle, un simple temps fort ne le déclenche pas.
-  const wash = reduced
-    ? 0
-    : liveMusic !== undefined
-      ? washAlpha(liveMusic.dropAge, liveMusic.impactStrength)
-      : isLive
-        ? 0
-        : washStrength(view, t, plan.scenes.length);
+  const wash =
+    (reduced
+      ? 0
+      : liveMusic !== undefined
+        ? washAlpha(liveMusic.dropAge, liveMusic.impactStrength)
+        : isLive
+          ? 0
+          : washStrength(view, featureTime, plan.scenes.length)) * sortie;
   if (wash > 0.02) {
     const washState: FrameState = {
       ...base,
@@ -1557,13 +1575,13 @@ export function renderFrame(input: RenderInput): void {
     // il ne blanchit pas l'écran. Sinon un morceau sans montée clignoterait à
     // chaque temps fort.
     const realDrop =
-      liveMusic !== undefined
+      (liveMusic !== undefined
         ? liveMusic.drop > 0.35
           ? liveMusic.impactStrength
           : 0
         : isLive
           ? 0
-          : view.buildIntensity(t);
+          : view.buildIntensity(featureTime)) * sortie;
     if (ceiling > 0 && realDrop > 0.35) {
       const washAlpha = Math.min(0.5, ceiling * realDrop);
       // En mode rave ou concert, l'impact est coloré au lieu d'être un blanc de
@@ -1588,7 +1606,7 @@ export function renderFrame(input: RenderInput): void {
   }
 
   const previous = scene.index > 0 ? plan.scenes[scene.index - 1] : undefined;
-  if (previous !== undefined && t < scene.start + scene.fadeIn) {
+  if (!sceneFrozen && previous !== undefined && t < scene.start + scene.fadeIn) {
     const ratio = clamp01((t - scene.start) / Math.max(scene.fadeIn, 0.001));
     // Croisement exactement complémentaire : ce que la nouvelle scène n'a pas
     // encore pris reste à l'ancienne. Chacune ayant par ailleurs sa propre
@@ -1644,8 +1662,8 @@ export function renderFrame(input: RenderInput): void {
   // Blinders : couche permanente, elle ne suit pas le fondu de scène, sinon
   // l'impact d'un drop s'éteindrait au moment précis où il doit frapper.
   ctx.globalCompositeOperation = "lighter";
-  dessinerBlinders(ctx, permanent, view, settings.flashes);
-  dessinerGrosBlinders(ctx, permanent, view, settings.flashes);
+  dessinerBlinders(ctx, permanent, view, settings.flashes * sortie);
+  dessinerGrosBlinders(ctx, permanent, view, settings.flashes * sortie);
 
   // Bordure LED : dessinée APRÈS la vignette (plus bas), pour ne pas être
   // assombrie sur les bords de l'écran.
@@ -1653,11 +1671,13 @@ export function renderFrame(input: RenderInput): void {
   drawDust(ctx, permanent);
 
   const fullStrobeAllowed = !hard || hardStrobeAllowsFull(base);
-  const flash = fullStrobeAllowed ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) : 0;
+  const flash = fullStrobeAllowed
+    ? Math.max(flashAlpha(base, settings), surgeAlpha(base, settings)) * sortie
+    : 0;
   // En direct, il n'y a pas de grille de temps forts dans la vue : c'est la
   // direction musicale qui dit si un flash peut naître (impact toujours, temps
   // fort une fois sur deux).
-  const admitted = liveMusic !== undefined ? liveMusic.admitted : flashAdmitted(view, t, hard, dynamic);
+  const admitted = liveMusic !== undefined ? liveMusic.admitted : flashAdmitted(view, featureTime, hard, dynamic);
   if (flash > 0.002 && admitted) {
     const strength = flash * (0.5 + 0.5 * mix(0.7, 1, base.energy));
     // Flash de temps fort rave ou concert : la couleur principale du morceau,
@@ -1671,10 +1691,8 @@ export function renderFrame(input: RenderInput): void {
   // Stroboscope hard ou concert : la couche qui fait vraiment « clignoter » le
   // profil. Elle s'ajoute au flash de temps fort, sans dépendre de
   // `flashAdmitted`, car elle bat plusieurs fois à l'intérieur d'un même temps.
-  const strobe = Math.max(
-    hardStrobeAlpha(base, settings, drop),
-    dynamicStrobeAlpha(base, settings, drop),
-  );
+  const strobe =
+    Math.max(hardStrobeAlpha(base, settings, drop), dynamicStrobeAlpha(base, settings, drop)) * sortie;
   if (strobe > 0.002) {
     // Un seul éclat, une seule couleur : la couleur principale du morceau. On
     // ne bascule plus sur la complémentaire à chaque flash, sinon la teinte
@@ -1692,14 +1710,13 @@ export function renderFrame(input: RenderInput): void {
   // lavage d'impact et le strobe. Sinon le flash plein cadre du drop les
   // noierait au moment précis où ils doivent éblouir la salle.
   ctx.globalCompositeOperation = "lighter";
-  dessinerBlindersFace(ctx, permanent, view, settings.flashes);
+  dessinerBlindersFace(ctx, permanent, view, settings.flashes * sortie);
 
   // Le lavage blanc d'impact, le strobe et la vignette sont passés : les
   // confettis et le CO2 se dessinent maintenant au-dessus, sinon la vignette
   // assombrissait justement les bords où sont les jets.
-  const raveBurst = hard
-    ? Math.max(drop, clamp01(base.energy * 0.85 + base.beat * 0.55))
-    : drop;
+  const raveBurst =
+    (hard ? Math.max(drop, clamp01(base.energy * 0.85 + base.beat * 0.55)) : drop) * sortie;
   drawRaveConfetti(ctx, base, raveBurst);
   // Le CO2 reste réservé aux impacts : pas de canons qui crachent en continu.
   drawRaveCo2(ctx, base, drop);
@@ -1714,8 +1731,6 @@ export function renderFrame(input: RenderInput): void {
   // Extinction de fin de morceau : une fois les paroles terminées, la salle
   // descend jusqu'au noir complet avant la fin. Le morceau suivant repart donc
   // d'une scène noire, sans hériter des lumières du précédent.
-  const lyrics = view.analysis.lyrics;
-  const outro = isLive ? null : outroStateAt(lyrics, t, plan.duration);
   if (outro !== null && outro.fade < 0.999) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -1756,11 +1771,16 @@ export function renderFrame(input: RenderInput): void {
   // La barre LED reste la dernière lumière : la scène s'éteint, mais le cadre
   // autour de l'écran reste allumé dans la couleur principale du morceau. Elle
   // passe après le noir final, sinon le voile de sortie l'éteindrait avec le
-  // reste de la salle.
+  // reste de la salle. Un court fondu d'entrée évite de la voir surgir d'un
+  // coup au moment où la descente commence.
   if (outro !== null && outro.fade < 0.999) {
-    ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 1;
-    dessinerBordure(ctx, etatBordureSortie(permanent, plan), view, settings.flashes);
+    const bordureIn = clamp01((1 - outro.fade) / 0.08);
+    if (bordureIn > 0.01) {
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = bordureIn;
+      dessinerBordure(ctx, etatBordureSortie(permanent, plan), view, 0, "plein");
+      ctx.globalAlpha = 1;
+    }
   }
 }
 
@@ -1768,22 +1788,20 @@ export function renderFrame(input: RenderInput): void {
  * État de la bordure pendant l'extinction de fin de morceau.
  *
  * Le ruban est la seule lumière laissée allumée : il prend donc la teinte
- * principale du morceau, et garde un plancher d'énergie pour rester lisible
- * quand l'audio est déjà dans le silence.
+ * principale du morceau et reste fixe, sans temps fort ni respiration. Le temps
+ * est figé pour que la barre ne batte pas pendant que la scène descend au noir.
  */
 function etatBordureSortie(permanent: FrameState, plan: ShowPlan): FrameState {
   return {
     ...permanent,
+    t: 0,
     palette: {
       ...permanent.palette,
       hue: plan.track.hue,
       accent: plan.track.accent,
     },
     energy: Math.max(permanent.energy, 0.6),
-    bass: Math.max(permanent.bass, 0.5),
-    mid: Math.max(permanent.mid, 0.5),
-    high: Math.max(permanent.high, 0.5),
-    beat: Math.max(permanent.beat, 0.35),
+    beat: 0,
     drop: 0,
     haze: undefined,
   };

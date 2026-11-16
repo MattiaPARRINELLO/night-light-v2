@@ -67,13 +67,13 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
 
 describe("extinction de fin de morceau", () => {
   test("sans paroles, la scène ne s'éteint pas", () => {
-    expect(outroStateAt(undefined, 30, 40)).toEqual({ fade: 1, lyre: 0 });
-    expect(outroStateAt(lyrics([]), 30, 40)).toEqual({ fade: 1, lyre: 0 });
+    expect(outroStateAt(undefined, 30, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
+    expect(outroStateAt(lyrics([]), 30, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
   });
 
   test("le morceau se termine sur la voix : pas d'extinction", () => {
     const cues = lyrics([line("dernière phrase", 10, 40, ["dernière", "phrase"])]);
-    expect(outroStateAt(cues, 39, 40)).toEqual({ fade: 1, lyre: 0 });
+    expect(outroStateAt(cues, 39, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
   });
 
   test("après la dernière parole, la lumière descend jusqu'au noir", () => {
@@ -93,6 +93,13 @@ describe("extinction de fin de morceau", () => {
       expect(fade).toBeLessThanOrEqual(previous + 1e-9);
       previous = fade;
     }
+  });
+
+  test("une queue courte garde une descente d'au moins six secondes", () => {
+    const cues = lyrics([line("dernière phrase", 30, 39, ["dernière", "phrase"])]);
+    const state = outroStateAt(cues, 40, 40);
+    expect(state.start).toBeLessThanOrEqual(34);
+    expect(outroStateAt(cues, 34, 40).fade).toBeLessThan(1);
   });
 
   test("un dernier mot isolé garde une seule lyre allumée", () => {
