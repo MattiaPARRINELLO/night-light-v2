@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { chorusIntensityAt, drawLyrics } from "../../src/core/lyrics";
 import type { Palette } from "../../src/core/show";
-import type { LyricLine, LyricsCues } from "../../src/types";
+import type { LyricLine, LyricsCues, Section } from "../../src/types";
 import { fakeContext } from "../support/fake_canvas";
 
 const palette = {
@@ -39,6 +39,19 @@ function drawnScales(lyrics: LyricsCues, timeSec: number, beat = 0): string[] {
   const { ctx, operations } = fakeContext();
   drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat });
   return operations.filter((operation) => operation.startsWith("scale:"));
+}
+
+/** Tailles de police réellement utilisées pour dessiner, dans l'ordre. */
+function drawnSizes(lyrics: LyricsCues, timeSec: number): number[] {
+  const { ctx } = fakeContext();
+  const sizes: number[] = [];
+  const fillText = ctx.fillText.bind(ctx);
+  ctx.fillText = (text: string) => {
+    sizes.push(Number(/(\d+(?:\.\d+)?)px/.exec(ctx.font)?.[1] ?? 0));
+    fillText(text, 0, 0);
+  };
+  drawLyrics(ctx, lyrics, timeSec, 1920, 1080, { palette, reduced: false, beat: 0 });
+  return sizes;
 }
 
 function repeatedLine(): LyricsCues {
@@ -126,6 +139,34 @@ describe("rendu des paroles", () => {
   });
 });
 
+describe("adlibs", () => {
+  it("affiche une ligne d'adlib en petit, même si elle est marquée refrain", () => {
+    const chorus = cues([line({ text: "le refrain", startMs: 0, endMs: 4_000 })], {
+      chorusLines: [0],
+    });
+    const adlib = cues([line({ text: "(oh oh)", startMs: 0, endMs: 4_000 })], {
+      chorusLines: [0],
+    });
+
+    const chorusSize = Math.max(...drawnSizes(chorus, 1));
+    const adlibSize = Math.max(...drawnSizes(adlib, 1));
+    expect(adlibSize).toBeLessThan(chorusSize * 0.7);
+  });
+
+  it("réduit l'adlib au milieu d'une phrase", () => {
+    const lyrics = cues(
+      [line({ text: "le refrain (oh oh)", startMs: 0, endMs: 4_000 })],
+      { chorusLines: [0] },
+    );
+
+    const sizes = drawnSizes(lyrics, 1);
+    const full = Math.max(...sizes);
+    const small = Math.min(...sizes);
+    expect(small).toBeGreaterThan(full * 0.4);
+    expect(small).toBeLessThan(full * 0.8);
+  });
+});
+
 describe("refrain des paroles", () => {
   const refrain = (): LyricsCues =>
     cues(
@@ -157,5 +198,27 @@ describe("refrain des paroles", () => {
     expect(chorusIntensityAt(lyrics, 10.1)).toBeLessThan(1);
     expect(chorusIntensityAt(lyrics, 19.8)).toBeGreaterThan(0);
     expect(chorusIntensityAt(lyrics, 19.8)).toBeLessThan(1);
+  });
+
+  it("tient jusqu'à la fin de la section quand le refrain continue", () => {
+    const lyrics = refrain();
+    const sections: Section[] = [
+      { start: 8, end: 23, label: "intense", energy: 0.8, kind: "refrain" },
+    ];
+
+    // La dernière ligne de refrain se termine à 20 s, mais la section va à 23 s.
+    expect(chorusIntensityAt(lyrics, 22, sections)).toBeCloseTo(1, 5);
+    expect(chorusIntensityAt(lyrics, 22.9, sections)).toBeLessThan(1);
+    // Hors de la section, rien ne change.
+    expect(chorusIntensityAt(lyrics, 5, sections)).toBe(0);
+  });
+
+  it("ne prolonge pas un refrain hors section de refrain", () => {
+    const lyrics = refrain();
+    const sections: Section[] = [
+      { start: 8, end: 23, label: "calme", energy: 0.4, kind: "couplet" },
+    ];
+
+    expect(chorusIntensityAt(lyrics, 20.5, sections)).toBe(0);
   });
 });

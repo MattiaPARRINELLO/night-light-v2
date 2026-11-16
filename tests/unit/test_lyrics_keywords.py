@@ -113,6 +113,190 @@ def test_detect_chorus_without_repetition() -> None:
     assert detect_chorus(lines) == ()
 
 
+def test_detect_chorus_ignore_les_adlibs() -> None:
+    """Un adlib répété ne devient jamais le refrain, et ne casse pas le vrai."""
+    texts = [
+        "couplet",
+        "(oh oh)",
+        "refrain ici",
+        "(oh oh)",
+        "autre couplet",
+        "(oh oh)",
+        "refrain ici",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (2, 6)
+
+
+def test_detect_chorus_compare_sans_les_adlibs() -> None:
+    """Deux refrains dont l'adlib change restent le même refrain."""
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(
+            [
+                "premier couplet",
+                "le refrain (oh oh)",
+                "autre couplet",
+                "le refrain (hey hey)",
+            ]
+        )
+    )
+
+    assert detect_chorus(lines) == (1, 3)
+
+
+def test_detect_chorus_prend_tout_le_bloc() -> None:
+    """Un refrain de six lignes est repris en entier, pas seulement sa queue."""
+    chorus = [f"refrain ligne {index}" for index in range(6)]
+    texts = ["premier couplet", "deuxieme couplet", *chorus, "pont unique", *chorus]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14)
+
+
+def test_detect_chorus_prolonge_une_ligne_qui_varie() -> None:
+    """Une ligne de refrain légèrement différente ne coupe pas le bloc."""
+    chorus = [
+        "le soleil se lève sur la ville",
+        "les lumières s'allument dans la nuit",
+        "on court on rit on oublie tout",
+        "jusqu'au matin on reste debout",
+        "et le ciel nous répond encore",
+    ]
+    texts = [
+        "premier couplet",
+        *chorus,
+        "pont unique",
+        *chorus,
+        "interlude",
+        *chorus[:4],
+        "et le ciel nous répond encore une fois",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    chorus_lines = detect_chorus(lines)
+
+    # Les trois occurrences sont marquées, y compris la dernière ligne qui
+    # change de la troisième fois.
+    assert set(range(1, 6)) <= set(chorus_lines)
+    assert set(range(7, 12)) <= set(chorus_lines)
+    assert set(range(13, 18)) <= set(chorus_lines)
+
+
+def test_detect_chorus_rattache_une_occurrence_partielle() -> None:
+    """Un refrain repris sans son début reste rattaché au même bloc."""
+    chorus = [
+        "le soleil se lève sur la ville",
+        "les lumières s'allument dans la nuit",
+        "on court on rit on oublie tout",
+        "jusqu'au matin on reste debout",
+    ]
+    texts = [
+        "premier couplet",
+        *chorus,
+        "pont unique",
+        *chorus,
+        "interlude",
+        *chorus[1:],
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    chorus_lines = detect_chorus(lines)
+
+    assert set(range(1, 5)) <= set(chorus_lines)
+    assert set(range(6, 10)) <= set(chorus_lines)
+    assert set(range(11, 14)) <= set(chorus_lines)
+
+
+def test_parse_cues_refuse_un_refrain_qui_couvre_le_morceau() -> None:
+    lyrics = Lyrics(
+        record_id=3,
+        track_name="Test",
+        artist_name="Test",
+        lines=tuple(
+            LyricLine(text=f"ligne {index}", start_ms=index * 1000, end_ms=index * 1000 + 900)
+            for index in range(10)
+        ),
+    )
+
+    cues = parse_cues({"chorus": list(range(10))}, lyrics)
+
+    assert cues.chorus_lines == ()
+
+
+def test_detect_chorus_ignore_ponctuation_et_accents() -> None:
+    """Ponctuation, apostrophes et accents ne changent pas une ligne."""
+    texts = [
+        "premier couplet",
+        "J'la quitterai, si mère veut !",
+        "Le ciel s'éclaire avec ou sans toi",
+        "autre couplet",
+        "Jla quitterai si mere veut",
+        "Le ciel s'éclaire avec ou sans toi.",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (1, 2, 4, 5)
+
+
+def test_detect_chorus_compte_un_echo_entre_parentheses() -> None:
+    """Une ligne entre parenthèses qui reprend une parole est la même parole."""
+    texts = [
+        "premier couplet",
+        "le refrain qui monte",
+        "et le ciel répond",
+        "autre couplet",
+        "le refrain qui monte",
+        "(et le ciel répond)",
+    ]
+    lines = tuple(
+        LyricLine(text=text, start_ms=index * 1000, end_ms=index * 1000 + 900)
+        for index, text in enumerate(texts)
+    )
+
+    assert detect_chorus(lines) == (1, 2, 4, 5)
+
+
+def test_parse_cues_ecarte_les_adlibs() -> None:
+    lyrics = Lyrics(
+        record_id=2,
+        track_name="Test",
+        artist_name="Test",
+        lines=(
+            LyricLine(text="Vraie parole", start_ms=0, end_ms=1_000),
+            LyricLine(text="(oh oh)", start_ms=1_000, end_ms=2_000),
+        ),
+    )
+    payload = {
+        "keywords": [{"line": 0, "text": "oh oh", "impact": 0.9}],
+        "chorus": [0, 1],
+        "shout": [1],
+    }
+
+    cues = parse_cues(payload, lyrics)
+
+    assert cues.chorus_lines == (0,)
+    assert cues.shout_lines == ()
+    # Le mot n'existe que dans l'adlib : ce n'est pas un mot marquant.
+    assert all("oh" not in cue.text for cue in cues.keywords)
+
+
 def test_extract_cues_uses_llm_when_configured() -> None:
     def poster(url, headers, body):
         return {

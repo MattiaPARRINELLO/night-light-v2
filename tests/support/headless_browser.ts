@@ -129,6 +129,13 @@ function clear(): void {
   session.ctx.clearRect(0, 0, session.canvas.width, session.canvas.height);
 }
 
+/** Rendu d'une image, PNG seul : chemin rapide pour l'export vidéo. */
+function framePng(payload: { time: number; frame: number }): string {
+  renderAt(payload.time, payload.frame);
+  if (session === null) throw new Error("setup() d'abord");
+  return session.canvas.toDataURL("image/png");
+}
+
 function whiteRatioAt(time: number, frame: number): number {
   renderAt(time, frame);
   if (session === null) throw new Error("setup() d'abord");
@@ -399,6 +406,7 @@ export interface HeadlessApi {
   setup: typeof setup;
   renderAt: typeof renderAtPayload;
   clear: typeof clear;
+  framePng: typeof framePng;
   whiteRatioAt: typeof whiteRatioAt;
   whiteRatios: typeof whiteRatios;
   imageStats: typeof imageStats;
@@ -411,6 +419,7 @@ export interface HeadlessApi {
   setup,
   renderAt: renderAtPayload,
   clear,
+  framePng,
   whiteRatioAt,
   whiteRatios,
   imageStats,
