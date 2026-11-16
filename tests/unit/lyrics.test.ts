@@ -137,6 +137,30 @@ describe("rendu des paroles", () => {
 
     expect(drawnText(lyrics, 0.7)).toEqual(["fillText:DEUXIÈME"]);
   });
+
+  it("ignore des timings de mots tassés au début de la ligne", () => {
+    const lyrics = cues([
+      line({
+        text: "un deux trois quatre cinq six",
+        startMs: 0,
+        endMs: 6_000,
+        words: [
+          { text: "un", startMs: 0, endMs: 40 },
+          { text: "deux", startMs: 40, endMs: 60 },
+          { text: "trois", startMs: 60, endMs: 80 },
+          { text: "quatre", startMs: 80, endMs: 100 },
+          { text: "cinq", startMs: 100, endMs: 140 },
+          { text: "six", startMs: 200, endMs: 6_000 },
+        ],
+      }),
+    ]);
+
+    // Avec les timings du fournisseur, « six » tiendrait toute la ligne et
+    // s'afficherait dès 200 ms. L'estimation par syllabes répartit les mots.
+    expect(drawnText(lyrics, 0.3)).not.toEqual(["fillText:SIX"]);
+    expect(drawnText(lyrics, 3)).not.toEqual(["fillText:SIX"]);
+    expect(drawnText(lyrics, 5.5)).toEqual(["fillText:SIX"]);
+  });
 });
 
 describe("adlibs", () => {

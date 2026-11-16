@@ -12,6 +12,11 @@ from typing import Any
 
 from .models import DEFAULT_LAST_LINE_MS, LyricLine, LyricWord
 
+# Débit maximal admissible d'une ligne, en secondes par caractère (hors
+# espaces). En dessous, les timings du fournisseur sont faux : le texte est
+# écrasé dans une fraction de seconde au début de la ligne.
+MIN_SEC_PER_CHAR = 0.035
+
 # [01:23.45] ou [01:23:45] ou [01:23]
 _LRC_TIME_RE = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
 # Balise de mot du LRC enrichi : <01:23.45>
@@ -154,17 +159,31 @@ def _lines_from_records(records: list[dict[str, Any]]) -> tuple[LyricLine, ...]:
     lines: list[LyricLine] = []
     for index, record in enumerate(clean):
         start_ms = int(record.get("start_ms") or 0)
+        raw_words = record.get("words") or []
+        text_value = str(record.get("text") or "").strip()
+        if not text_value and raw_words:
+            text_value = "".join(str(word.get("text") or "") for word in raw_words).strip()
+        if not text_value:
+            continue
+
+        following = clean[index + 1] if index + 1 < len(clean) else None
+        following_start = int(following.get("start_ms") or 0) if following else None
         end_ms = record.get("end_ms")
         if end_ms is None:
-            following = clean[index + 1] if index + 1 < len(clean) else None
             end_ms = (
-                int(following.get("start_ms") or 0)
-                if following
-                else start_ms + DEFAULT_LAST_LINE_MS
+                following_start if following_start is not None else start_ms + DEFAULT_LAST_LINE_MS
             )
         end_ms = max(int(end_ms), start_ms)
 
-        raw_words = record.get("words") or []
+        # Une ligne ne peut pas être débitée plus vite que MIN_SEC_PER_CHAR :
+        # certains fichiers donnent des mots tassés dans une fraction de
+        # seconde, puis un long silence jusqu'à la ligne suivante. On rend à la
+        # ligne une durée plausible, sans déborder sur la suivante.
+        floor_end = start_ms + round(len(text_value.replace(" ", "")) * MIN_SEC_PER_CHAR * 1000)
+        if following_start is not None:
+            floor_end = min(floor_end, following_start)
+        end_ms = max(end_ms, floor_end)
+
         words: list[LyricWord] = []
         for word_index, word in enumerate(raw_words):
             word_start = int(word.get("start_ms") or start_ms)
@@ -180,11 +199,6 @@ def _lines_from_records(records: list[dict[str, Any]]) -> tuple[LyricLine, ...]:
                 )
             )
 
-        text_value = str(record.get("text") or "").strip()
-        if not text_value and words:
-            text_value = "".join(word.text for word in words).strip()
-        if not text_value:
-            continue
         lines.append(
             LyricLine(text=text_value, start_ms=start_ms, end_ms=end_ms, words=tuple(words))
         )
