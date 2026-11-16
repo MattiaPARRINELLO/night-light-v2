@@ -7,6 +7,7 @@ inventé, ou absent de la ligne citée, est simplement écarté.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import re
@@ -21,6 +22,13 @@ from .models import LyricLine, Lyrics
 PROMPT_VERSION = "2"
 DEFAULT_MAX_KEYWORDS = 10
 MIN_KEYWORDS = 4
+# Longueur maximale d'un bloc de refrain, en lignes. Un refrain peut tenir bien
+# plus de quatre lignes : s'arrêter à quatre coupait le bloc au milieu et ne
+# gardait que sa queue la plus répétée.
+MAX_CHORUS_LINES = 12
+# Deux lignes portent la même phrase au-delà de cette ressemblance : sert à
+# rattacher une variante du refrain où un mot change.
+SIMILAR_RATIO = 0.8
 KINDS = {"image", "action", "emotion", "lieu", "nom"}
 # Type réservé aux cues produites localement, jamais demandé au modèle.
 TITLE_KIND = "titre"
@@ -123,11 +131,7 @@ def parse_cues(payload: dict[str, Any], lyrics: Lyrics) -> LyricCues:
 
     return LyricCues(
         keywords=tuple(cues),
-        chorus_lines=tuple(
-            index
-            for index in _line_indices(payload.get("chorus"), lyrics)
-            if strip_adlibs(lyrics.lines[index].text)
-        ),
+        chorus_lines=_sane_chorus(lyrics, _line_indices(payload.get("chorus"), lyrics)),
         shout_lines=tuple(
             index
             for index in _line_indices(payload.get("shout"), lyrics)
@@ -143,6 +147,24 @@ def _line_indices(raw: Any, lyrics: Lyrics) -> tuple[int, ...]:
         return ()
     keep = {item for item in raw if isinstance(item, int) and 0 <= item < len(lyrics.lines)}
     return tuple(sorted(keep))
+
+
+def _sane_chorus(lyrics: Lyrics, indices: tuple[int, ...]) -> tuple[int, ...]:
+    """Nettoie un refrain fourni par le modèle.
+
+    On écarte les adlibs, qui ne sont pas des paroles, et on refuse un refrain
+    qui couvrirait presque tout le morceau : le modèle confond alors refrain et
+    chanson entière.
+    """
+    kept = tuple(index for index in indices if strip_adlibs(lyrics.lines[index].text))
+    sung = sum(1 for line in lyrics.lines if strip_adlibs(line.text))
+    if sung == 0:
+        return ()
+    # Un morceau très court n'a pas assez de lignes pour juger ; sur un vrai
+    # morceau, un refrain qui couvre presque tout est une erreur du modèle.
+    if sung >= 8 and len(kept) > 0.75 * sung:
+        return ()
+    return kept
 
 
 def _cue_from_item(item: Any, lyrics: Lyrics) -> KeywordCue | None:
@@ -261,6 +283,10 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
     adlib est écartée de la comparaison, et le reste de la ligne est comparé
     sans ses parenthèses. Une ligne purement adlib ne crée donc jamais de bloc
     de refrain et ne casse pas non plus celui de ses voisines.
+
+    Un refrain tient souvent bien plus de quatre lignes : on cherche donc le
+    plus long bloc répété, puis on rattache ses variantes (une phrase qui change
+    d'une occurrence à l'autre) pour que le refrain ne s'arrête pas au milieu.
     """
     indexable = [
         (index, normalize_text(strip_adlibs(line.text))) for index, line in enumerate(lines)
@@ -269,12 +295,13 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
     if not indexable:
         return ()
     normalized = [text for _, text in indexable]
+    total = len(normalized)
 
-    best: tuple[int, int, int, tuple[str, ...]] | None = None
-    for size in (1, 2, 3, 4):
+    best: tuple[int, int, int, int, tuple[str, ...]] | None = None
+    for size in range(1, min(MAX_CHORUS_LINES, total) + 1):
         first_seen: dict[tuple[str, ...], int] = {}
         counts: dict[tuple[str, ...], int] = {}
-        for index in range(len(normalized) - size + 1):
+        for index in range(total - size + 1):
             window = tuple(normalized[index : index + size])
             if not all(window):
                 continue
@@ -283,21 +310,144 @@ def detect_chorus(lines: tuple[LyricLine, ...], *, min_repeats: int = 2) -> tupl
         for window, count in counts.items():
             if count < min_repeats:
                 continue
-            # Priorité à la couverture (répétitions × longueur) : un bloc de
-            # quatre lignes chanté deux fois est un vrai refrain, alors qu'une
-            # seule ligne répétée quatre fois n'en est souvent qu'un tic.
-            candidate = (count * size, count, size, -first_seen[window], window)
+            # Priorité à la couverture (répétitions × longueur) : un bloc long
+            # chanté deux fois est un vrai refrain, alors qu'une seule ligne
+            # répétée quatre fois n'en est souvent qu'un tic. À couverture
+            # égale, le bloc le plus long gagne : c'est le refrain entier, pas
+            # le motif qui le termine.
+            candidate = (count * size, size, count, -first_seen[window], window)
             if best is None or candidate > best:
                 best = candidate
 
     if best is None:
         return ()
-    _coverage, _count, size, _first, window = best
+    _coverage, size, _count, _first, window = best
+    starts = [
+        index
+        for index in range(total - size + 1)
+        if tuple(normalized[index : index + size]) == window
+    ]
+    window, starts = _extend_block(normalized, window, starts)
+    size = len(window)
     chorus: set[int] = set()
-    for index in range(len(normalized) - size + 1):
-        if tuple(normalized[index : index + size]) == window:
-            chorus.update(indexable[position][0] for position in range(index, index + size))
-    return tuple(sorted(chorus))
+    for start in starts:
+        chorus.update(range(start, start + size))
+
+    # Variantes : une occurrence du refrain dont une ou deux phrases changent
+    # n'est pas reconnue par la répétition exacte. On rattache chaque passage
+    # qui suit la même trame sur assez de lignes consécutives.
+    chorus.update(_variant_positions(normalized, window))
+    return tuple(sorted(indexable[position][0] for position in chorus))
+
+
+def _majority_line(values: list[tuple[int, str]]) -> tuple[str, int]:
+    """Ligne qui ressemble au plus grand nombre d'occurrences, et son support."""
+    best_line = values[0][1]
+    best_support = 0
+    for _, line in values:
+        support = sum(1 for _, other in values if _similar(line, other))
+        if support > best_support:
+            best_line, best_support = line, support
+    return best_line, best_support
+
+
+def _extend_block(
+    normalized: list[str],
+    window: tuple[str, ...],
+    starts: list[int],
+) -> tuple[tuple[str, ...], list[int]]:
+    """Prolonge un bloc répété quand une ligne voisine varie d'une fois à l'autre.
+
+    La répétition exacte s'arrête dès qu'une occurrence change un mot. Si la
+    majorité des occurrences partagent tout de même la ligne suivante (ou
+    précédente), elle appartient au refrain : on l'ajoute au bloc et on ne garde
+    que les occurrences qui la portent. Les autres seront rattrapées comme
+    variantes.
+    """
+    active = sorted(starts)
+    if len(active) < 2:
+        return window, active
+
+    # Vers l'avant.
+    while len(active) >= 2:
+        size = len(window)
+        values: list[tuple[int, str]] = []
+        for position, start in enumerate(active):
+            at = start + size
+            following = active[position + 1] if position + 1 < len(active) else len(normalized)
+            if at >= following:
+                continue
+            values.append((start, normalized[at]))
+        if len(values) < 2:
+            break
+        line, support = _majority_line(values)
+        if support < 2 or support * 2 < len(values):
+            break
+        window = window + (line,)
+        active = [start for start, other in values if _similar(other, line)]
+
+    # Vers l'arrière.
+    while len(active) >= 2:
+        size = len(window)
+        values = []
+        for position, start in enumerate(active):
+            at = start - 1
+            previous_end = active[position - 1] + size if position > 0 else 0
+            if at < previous_end:
+                continue
+            values.append((start, normalized[at]))
+        if len(values) < 2:
+            break
+        line, support = _majority_line(values)
+        if support < 2 or support * 2 < len(values):
+            break
+        window = (line,) + window
+        active = [start for start, other in values if _similar(other, line)]
+
+    return window, active
+
+
+def _variant_positions(
+    normalized: list[str],
+    window: tuple[str, ...],
+) -> set[int]:
+    """Positions des occurrences approximatives du refrain, en indices normalisés.
+
+    Un passage est une variante quand il suit le bloc sur au moins un tiers de
+    sa longueur (trois lignes minimum), à partir de n'importe quel décalage.
+    Une ligne peut différer tant qu'elle reste proche : les choristes changent
+    un mot, pas la phrase.
+    """
+    size = len(window)
+    if size < 2:
+        return set()
+    # Trois lignes suffisent pour reconnaître un passage ; un long refrain
+    # tolère de s'arrêter sur un fragment final.
+    minimum = max(3, size // 3)
+    found: set[int] = set()
+    for start in range(len(normalized)):
+        best_run = 0
+        for offset in range(size):
+            run = 0
+            while (
+                offset + run < size
+                and start + run < len(normalized)
+                and _similar(normalized[start + run], window[offset + run])
+            ):
+                run += 1
+            best_run = max(best_run, run)
+        if best_run >= minimum:
+            found.update(range(start, start + best_run))
+    return found
+
+
+def _similar(left: str, right: str) -> bool:
+    """Deux lignes portent la même phrase, à quelques mots près."""
+    if left == right:
+        return True
+    if not left or not right:
+        return False
+    return difflib.SequenceMatcher(None, left, right).ratio() >= SIMILAR_RATIO
 
 
 _STOPWORDS = {
