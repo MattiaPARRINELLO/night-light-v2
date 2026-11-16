@@ -34,6 +34,7 @@ import type { EffectTimeline } from "../core/effects";
 import { ControlLink, type EffectOverride, type TrackTimings } from "../shared/control";
 import { DEFAULT_SETTINGS, type Analysis, type RenderSettings } from "../types";
 import { el, setStatus, setUploadState, showScreen } from "./ui";
+import { detectRenderBackend, type RenderBackend } from "./renderBackend";
 
 import { installControl } from "./app-control";
 import { installDrop } from "./app-drop";
@@ -284,6 +285,8 @@ export class App {
   lastTs = 0;
   fps = 60;
   quality = 1;
+  /** Backend de rendu détecté une fois au démarrage. */
+  renderBackend: RenderBackend = { kind: "unknown", label: "inconnu", detail: "" };
   /** Images consécutives passées à demander un autre palier de qualité. */
   qualityHold = 0;
   lastHudUpdate = 0;
@@ -303,6 +306,7 @@ export class App {
     this.mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     this.reducedMotion = this.mediaQuery.matches;
     this.mediaQuery.addEventListener("change", this.onReducedMotionChange);
+    this.checkRenderBackend();
     this.bindDrop();
     this.bindResolve();
     this.bindLiveCapture();
@@ -322,6 +326,31 @@ export class App {
   }
 
   /* ------------------------------------------------------------ cycle de vie */
+
+  /**
+   * Vérifie une fois si le navigateur rend en GPU ou en logiciel.
+   *
+   * Le canvas 2D ne s'expose pas ; on sonde WebGL, qui partage le même GPU.
+   * Un rendu logiciel est signalé par un bandeau refermable, et journalisé avec
+   * le renderer exact pour le diagnostic.
+   */
+  checkRenderBackend(): void {
+    const backend = detectRenderBackend();
+    this.renderBackend = backend;
+    dbgLog("boot", "backend de rendu", { backend: backend.label, renderer: backend.detail });
+    if (backend.kind !== "software") return;
+    const warning = document.getElementById("render-warning");
+    if (warning === null) return;
+    warning.hidden = false;
+    document.getElementById("render-warning-close")?.addEventListener(
+      "click",
+      () => {
+        warning.hidden = true;
+      },
+      { once: true },
+    );
+    dbgLog("attention", "rendu logiciel détecté", { renderer: backend.detail });
+  }
 
   private async loadHealth(): Promise<void> {
     try {
