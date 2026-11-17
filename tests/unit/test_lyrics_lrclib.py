@@ -100,6 +100,77 @@ def test_fetch_ignores_records_without_timed_lines() -> None:
     assert client.fetch("Otto", "SCH", 290.0) is None
 
 
+def test_fetch_prefers_word_sync_over_better_metadata() -> None:
+    # Même titre, même artiste, durée légèrement plus juste pour l'entrée sans
+    # mot à mot : la version mot à mot doit quand même gagner.
+    payload = [
+        _record(record_id=1, track="Otto", artist="SCH", word_sync=False),
+        _record(record_id=2, track="Otto", artist="SCH", duration=291.0),
+    ]
+    client = LrclibClient(fetcher=_fetcher(payload))
+
+    lyrics = client.fetch("Otto", "SCH", 290.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 2
+    assert lyrics.word_synced
+
+
+def test_fetch_breaks_word_sync_tie_on_closest_duration() -> None:
+    payload = [
+        _record(record_id=1, track="Otto", artist="SCH", duration=284.0),
+        _record(record_id=2, track="Otto", artist="SCH", duration=290.5),
+    ]
+    client = LrclibClient(fetcher=_fetcher(payload))
+
+    lyrics = client.fetch("Otto", "SCH", 290.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 2
+
+
+def test_fetch_breaks_tie_on_most_complete_lyrics() -> None:
+    short = "version: '1.0'\nlines:\n- text: Court\n  start_ms: 3360\n"
+    long = (
+        "version: '1.0'\nlines:\n"
+        "- text: Une phrase bien plus complète\n  start_ms: 3360\n"
+        "- text: Deuxième ligne\n  start_ms: 8000\n"
+    )
+    payload = [
+        {**_record(record_id=1, track="Otto", artist="SCH"), "lyricsfile": short},
+        {**_record(record_id=2, track="Otto", artist="SCH"), "lyricsfile": long},
+    ]
+    client = LrclibClient(fetcher=_fetcher(payload))
+
+    lyrics = client.fetch("Otto", "SCH", 290.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 2
+    assert len(lyrics.lines) == 2
+
+
+def test_fetch_keeps_looking_after_an_exact_unsynced_match() -> None:
+    seen: list[str] = []
+
+    def fetch(url: str):
+        artist = _artist_of(url)
+        seen.append(artist)
+        if artist == "A & B":
+            return [_record(record_id=1, track="Otto", artist="A & B", word_sync=False)]
+        if artist == "A":
+            return [_record(record_id=2, track="Otto", artist="A")]
+        return []
+
+    client = LrclibClient(fetcher=fetch)
+
+    lyrics = client.fetch("Otto", "A & B", 290.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 2
+    assert lyrics.word_synced
+    assert seen == ["A & B", "A"]
+
+
 def test_fetch_rejects_wrong_artist() -> None:
     payload = [_record(record_id=1, track="Otto", artist="Autre Artiste")]
     client = LrclibClient(fetcher=_fetcher(payload))

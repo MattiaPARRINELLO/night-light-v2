@@ -165,13 +165,14 @@ class LrclibClient:
     ) -> Lyrics | None:
         """Cherche le meilleur enregistrement pour un morceau, ou None.
 
-        Le score combine le titre, l'artiste et la durée ; un enregistrement
-        synchronisé mot à mot est légèrement préféré à qualité égale. Les
-        morceaux à plusieurs artistes sont cherchés avec la chaîne complète puis
-        avec chaque artiste pris séparément, LRCLIB n'acceptant qu'un seul nom.
+        Les morceaux à plusieurs artistes sont cherchés avec la chaîne complète
+        puis avec chaque artiste pris séparément, LRCLIB n'acceptant qu'un seul
+        nom. Tous les candidats sont classés (voir `_match_rank`) : la version
+        synchronisée mot à mot l'emporte, puis la correspondance titre/artiste/
+        durée, puis la durée la plus proche, etc.
         """
         best: Lyrics | None = None
-        best_score = 0.0
+        best_rank: tuple[int, float, float, int, int, int] | None = None
         variants = artist_variants(artist_name)[:MAX_ARTIST_VARIANTS] or ("",)
         for candidate in variants:
             try:
@@ -182,12 +183,14 @@ class LrclibClient:
                     raise
                 break
             for lyrics in results:
-                score = _match_score(lyrics, track_name, candidate, duration_sec)
-                if score > best_score:
-                    best, best_score = lyrics, score
-            if best_score >= EXACT_MATCH_SCORE:
+                rank = _match_rank(lyrics, track_name, candidate, duration_sec)
+                if rank is not None and (best_rank is None or rank > best_rank):
+                    best, best_rank = lyrics, rank
+            # Une correspondance exacte en mot à mot ne peut pas être battue :
+            # inutile d'interroger les autres variantes d'artiste.
+            if best_rank is not None and best_rank[0] and best_rank[1] >= EXACT_MATCH_SCORE:
                 break
-        if best is None or best_score < MIN_MATCH_SCORE:
+        if best is None or best_rank is None or best_rank[1] < MIN_MATCH_SCORE:
             return None
         return best
 
@@ -295,9 +298,44 @@ def _match_score(
         elif delta > DURATION_REJECT_SEC:
             score -= 1.0
 
-    if lyrics.word_synced:
-        score += 0.25
     return score
+
+
+def _match_rank(
+    lyrics: Lyrics,
+    track_name: str,
+    artist_name: str,
+    duration_sec: float | None,
+) -> tuple[int, float, float, int, int, int] | None:
+    """Classe un enregistrement ; None s'il ne peut pas piloter le show.
+
+    Ordre de préférence, du plus au moins important :
+    1. paroles synchronisées mot à mot (seule source de timings par mot) ;
+    2. correspondance titre/artiste/durée ;
+    3. durée la plus proche de celle du morceau ;
+    4. version la plus complète (texte le plus long) ;
+    5. nombre de lignes ;
+    6. entrée la plus récente (les identifiants LRCLIB sont croissants).
+
+    Les deux derniers critères départagent des doublons par ailleurs
+    identiques : sans eux le gagnant dépendrait de l'ordre de l'API.
+    """
+    score = _match_score(lyrics, track_name, artist_name, duration_sec)
+    if score <= 0:
+        return None
+    delta = (
+        abs(lyrics.duration_ms / 1000.0 - duration_sec)
+        if duration_sec and lyrics.duration_ms
+        else float("inf")
+    )
+    return (
+        1 if lyrics.word_synced else 0,
+        score,
+        -delta,
+        sum(len(line.text) for line in lyrics.lines),
+        len(lyrics.lines),
+        lyrics.record_id,
+    )
 
 
 def fetch_lyrics(
