@@ -12,7 +12,12 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 PLAYERCTL = "playerctl"
-FOLLOW_FORMAT = "{{status}}|{{title}}|{{artist}}|{{album}}|{{mpris:length}}|{{xesam:url}}"
+# Le nom du lecteur est le premier champ : `--follow` écoute TOUS les lecteurs,
+# et sans lui une métadonnée d'onglet de navigateur était attribuée au lecteur
+# suivi (voir `_follow_once`).
+FOLLOW_FORMAT = (
+    "{{playerName}}|{{status}}|{{title}}|{{artist}}|{{album}}|{{mpris:length}}|{{xesam:url}}"
+)
 # Identifiant d'une piste du catalogue Deezer dans l'URL MPRIS. Les pistes
 # locales (fichiers importés) portent un identifiant négatif : elles ne sont pas
 # téléchargeables, on les ignore.
@@ -73,10 +78,10 @@ def _playerctl_available() -> bool:
 
 
 def _parse_info(line: str) -> dict[str, Any]:
-    parts = line.split("|", 5)
-    while len(parts) < 6:
+    parts = line.split("|", 6)
+    while len(parts) < 7:
         parts.append("")
-    status_raw, title, artist, album, length_raw, url_raw = parts
+    player, status_raw, title, artist, album, length_raw, url_raw = parts
     status = status_raw.strip().lower() or "unknown"
     # mpris:length est en microsecondes.
     duration = None
@@ -94,6 +99,7 @@ def _parse_info(line: str) -> dict[str, Any]:
         # absente du catalogue Deezer : inutile de la demander au serveur.
         deezer_id = identifier if identifier.isdigit() else ""
     return {
+        "player": player.strip(),
         "status": status,
         "title": title.strip(),
         "artist": artist.strip(),
@@ -101,6 +107,37 @@ def _parse_info(line: str) -> dict[str, Any]:
         "duration_sec": duration,
         "deezer_id": deezer_id,
     }
+
+
+def _position_for(player: str) -> float | None:
+    """Position du lecteur donné, ou `None` si elle est illisible."""
+    args = [PLAYERCTL]
+    if player:
+        args.extend(["-p", player])
+    args.append("position")
+    cp = _run(args, timeout=2.0)
+    try:
+        return float((cp.stdout or "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
+def _same_state(left: NowPlaying, right: NowPlaying) -> bool:
+    """Deux états décrivent-ils le même morceau ?
+
+    La position et l'horodatage sont exclus : ils changent à chaque lecture et
+    ne justifient pas de republier un morceau identique sur le flux SSE.
+    """
+    return (
+        left.player == right.player
+        and left.status == right.status
+        and left.title == right.title
+        and left.artist == right.artist
+        and left.album == right.album
+        and left.duration_sec == right.duration_sec
+        and left.ambiguous == right.ambiguous
+        and left.deezer_id == right.deezer_id
+    )
 
 
 def _metadata_for(player: str) -> dict[str, Any]:
@@ -116,13 +153,7 @@ def _metadata_for(player: str) -> dict[str, Any]:
         timeout=2.0,
     )
     info = _parse_info((cp.stdout or "").strip())
-    position = None
-    cp_pos = _run([PLAYERCTL, "-p", player, "position"], timeout=2.0)
-    try:
-        position = float((cp_pos.stdout or "").strip())
-    except (ValueError, TypeError):
-        position = None
-    info["position_sec"] = position
+    info["position_sec"] = _position_for(player)
     return info
 
 
@@ -150,8 +181,6 @@ def _choose_player(players: list[str], previous: NowPlaying) -> tuple[str, bool]
             score += 5
         if info["artist"]:
             score += 5
-        if info["player"] == previous.player if False else False:
-            pass
         infos.append((player, info, score))
     # S'il y a plusieurs lecteurs avec le même meilleur score, on lève l'ambiguïté.
     best_score = max(item[2] for item in infos)
@@ -164,7 +193,10 @@ def _choose_player(players: list[str], previous: NowPlaying) -> tuple[str, bool]
         playing = [item for item in infos if item[1]["status"] == "playing"]
         if len(playing) > 1:
             ambiguous = True
-    chosen = best[0][0]
+    # À score égal, on garde le lecteur suivi : sans cette stabilité, deux
+    # lecteurs ex æquo faisaient osciller le morceau affiché d'un événement à
+    # l'autre.
+    chosen = next((item[0] for item in best if item[0] == previous.player), best[0][0])
     return chosen, ambiguous
 
 
@@ -271,14 +303,22 @@ def _follow_once(previous: NowPlaying) -> tuple[bool, NowPlaying]:
             if _STOP.is_set():
                 break
             info = _parse_info(line.strip())
-            cp_pos = _run([PLAYERCTL, "position"], timeout=2.0)
-            try:
-                position = float((cp_pos.stdout or "").strip())
-            except (ValueError, TypeError):
-                position = None
+            emitting = info["player"]
+            # `--follow` écoute tous les lecteurs à la fois : un onglet de
+            # navigateur (Chromium expose le titre de l'onglet comme morceau)
+            # ne doit pas se faire passer pour le lecteur suivi. On réélit alors
+            # le lecteur au lieu de publier ses métadonnées, et seulement si le
+            # morceau retenu a réellement changé.
+            if emitting and previous.player and emitting != previous.player:
+                state = _snapshot(previous)
+                if not _same_state(state, previous):
+                    _publish(state)
+                previous = state
+                continue
+            position = _position_for(previous.player or emitting)
             state = NowPlaying(
                 available=True,
-                player=previous.player,
+                player=previous.player or emitting,
                 status=info["status"],
                 title=info["title"],
                 artist=info["artist"],
