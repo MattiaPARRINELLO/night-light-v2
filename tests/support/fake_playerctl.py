@@ -87,6 +87,7 @@ def main(argv: list[str]) -> int:
         while True:
             state = load_state()
             values = {
+                "playerName": PLAYER,
                 "status": str(state.get("status", "Stopped")),
                 "title": str(state.get("title", "")),
                 "artist": str(state.get("artist", "")),
@@ -106,6 +107,7 @@ def main(argv: list[str]) -> int:
             field.strip().removeprefix("{{").removesuffix("}}") for field in template.split("|")
         ]
         values = {
+            "playerName": PLAYER,
             "status": str(state.get("status", "Stopped")),
             "title": str(state.get("title", "")),
             "artist": str(state.get("artist", "")),

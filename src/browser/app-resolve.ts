@@ -442,7 +442,11 @@ export function installResolve(Target: { prototype: App }): void {
     // prête : on quitte immédiatement l'ancien show au lieu de le laisser
     // tourner (et se recaler sur le début du nouveau morceau). Plusieurs
     // lecteurs à la fois donnent un titre qui va et vient : on s'abstient.
-    if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
+    // Seule une lecture réelle compte : un titre en pause ou à l'arrêt peut
+    // être celui d'un onglet de navigateur, et il ne doit pas couper le show.
+    if (!data.ambiguous && data.status === "playing") {
+      this.abandonSyncedShowForTrackChange(data.title);
+    }
     this.scheduleAutoResolve();
   };
 
@@ -522,7 +526,9 @@ export function installResolve(Target: { prototype: App }): void {
       this.updateNowPlayingUI();
       if (data.title.trim() !== "") this.debugSync.playerTitle = data.title;
       if (!data.ambiguous && data.title.trim() !== "") this.debugSync.expectedTitle = data.title;
-      if (!data.ambiguous) this.abandonSyncedShowForTrackChange(data.title);
+      if (!data.ambiguous && data.status === "playing") {
+        this.abandonSyncedShowForTrackChange(data.title);
+      }
       this.scheduleAutoResolve();
     } catch {
       // Service indisponible : on masque simplement l'indication.
