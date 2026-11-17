@@ -67,13 +67,13 @@ function analysis(overrides: Partial<Analysis> = {}): Analysis {
 
 describe("extinction de fin de morceau", () => {
   test("sans paroles, la scène ne s'éteint pas", () => {
-    expect(outroStateAt(undefined, 30, 40)).toEqual({ fade: 1, lyre: 0 });
-    expect(outroStateAt(lyrics([]), 30, 40)).toEqual({ fade: 1, lyre: 0 });
+    expect(outroStateAt(undefined, 30, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
+    expect(outroStateAt(lyrics([]), 30, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
   });
 
   test("le morceau se termine sur la voix : pas d'extinction", () => {
     const cues = lyrics([line("dernière phrase", 10, 40, ["dernière", "phrase"])]);
-    expect(outroStateAt(cues, 39, 40)).toEqual({ fade: 1, lyre: 0 });
+    expect(outroStateAt(cues, 39, 40)).toEqual({ fade: 1, lyre: 0, start: 0 });
   });
 
   test("après la dernière parole, la lumière descend jusqu'au noir", () => {
@@ -93,6 +93,13 @@ describe("extinction de fin de morceau", () => {
       expect(fade).toBeLessThanOrEqual(previous + 1e-9);
       previous = fade;
     }
+  });
+
+  test("une queue courte garde une descente d'au moins six secondes", () => {
+    const cues = lyrics([line("dernière phrase", 30, 39, ["dernière", "phrase"])]);
+    const state = outroStateAt(cues, 40, 40);
+    expect(state.start).toBeLessThanOrEqual(34);
+    expect(outroStateAt(cues, 34, 40).fade).toBeLessThan(1);
   });
 
   test("un dernier mot isolé garde une seule lyre allumée", () => {
@@ -119,7 +126,7 @@ describe("extinction de fin de morceau", () => {
 });
 
 describe("noir final au rendu", () => {
-  test("la dernière image est complètement noire", () => {
+  test("la scène s'éteint mais la barre du cadre reste allumée", () => {
     const data = analysis({ lyrics: lyrics([line("la fin", 0, 20, ["la", "fin"])]) });
     const { ctx, operations } = fakeContext();
     renderFrame({
@@ -135,7 +142,13 @@ describe("noir final au rendu", () => {
       quality: 1,
       frame: 2400,
     });
-    expect(operations.slice(-2)).toEqual(["fillStyle:#000", "fillRect:0.0,0.0,640.0,360.0"]);
+    // Le noir final couvre tout l'écran...
+    const noir = operations.lastIndexOf("fillStyle:#000");
+    expect(noir).toBeGreaterThan(-1);
+    expect(operations.slice(noir)).toContain("fillRect:0.0,0.0,640.0,360.0");
+    // ... puis la bordure est redessinée par-dessus : les diodes restent la
+    // seule lumière de l'image.
+    expect(operations.slice(noir).some((operation) => operation.startsWith("arc:"))).toBe(true);
   });
 
   test("sans paroles, aucun voile de fin n'est ajouté", () => {
