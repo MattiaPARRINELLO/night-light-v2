@@ -259,6 +259,13 @@ def _match_score(
     artist_name: str,
     duration_sec: float | None,
 ) -> float:
+    # Un enregistrement sans timings ne peut pas piloter le show. LRCLIB en
+    # contient beaucoup (paroles en texte brut, `lines: []`) qui portent le même
+    # titre et le même artiste : les accepter masquait la version synchronisée,
+    # souvent déposée sous une autre variante du nom d'artiste.
+    if not lyrics.timed:
+        return 0.0
+
     wanted_title = normalize_text(track_name)
     found_title = normalize_text(lyrics.track_name)
     if wanted_title == found_title:

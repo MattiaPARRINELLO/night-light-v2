@@ -77,6 +77,29 @@ def test_fetch_prefers_exact_artist_and_word_sync() -> None:
     assert lyrics.lines[0].words[0].text == "J'connais "
 
 
+def test_fetch_prefers_timed_record_over_exact_untimed_match() -> None:
+    # Cas réel « Pa Pa Paw » : l'entrée exacte (titre + artiste + durée) est en
+    # texte brut, la version synchronisée existe sous un autre nom d'artiste.
+    payload = [
+        _record(record_id=1, track="Otto", artist="SCH", word_sync=False, synced=""),
+        _record(record_id=2, track="Otto", artist="SCH, Nekfeu"),
+    ]
+    client = LrclibClient(fetcher=_fetcher(payload))
+
+    lyrics = client.fetch("Otto", "SCH", 290.0)
+
+    assert lyrics is not None
+    assert lyrics.record_id == 2
+    assert lyrics.timed
+
+
+def test_fetch_ignores_records_without_timed_lines() -> None:
+    payload = [_record(record_id=1, track="Otto", artist="SCH", word_sync=False, synced="")]
+    client = LrclibClient(fetcher=_fetcher(payload))
+
+    assert client.fetch("Otto", "SCH", 290.0) is None
+
+
 def test_fetch_rejects_wrong_artist() -> None:
     payload = [_record(record_id=1, track="Otto", artist="Autre Artiste")]
     client = LrclibClient(fetcher=_fetcher(payload))
