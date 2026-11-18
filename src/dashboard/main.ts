@@ -798,6 +798,8 @@ class Dashboard {
     el<HTMLElement>("sync-attempts").textContent = String(sync.attempts);
     el<HTMLElement>("sync-correlation").textContent =
       sync.correlation === null ? "—" : sync.correlation.toFixed(3);
+    el<HTMLElement>("sync-audio-offset").textContent =
+      sync.audioOffsetMs === null ? "—" : signed(sync.audioOffsetMs);
     el<HTMLElement>("sync-expected").textContent = sync.expectedTitle || "—";
     el<HTMLElement>("sync-read").textContent = sync.playerTitle || "—";
 

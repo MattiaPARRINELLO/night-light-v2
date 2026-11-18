@@ -319,6 +319,7 @@ export function installControl(Target: { prototype: App }): void {
       `surface         css=${this.canvas.clientWidth}x${this.canvas.clientHeight} · canvas=${this.canvas.width}x${this.canvas.height} · dpr=${(window.devicePixelRatio || 1).toFixed(2)} · ratio=${(this.canvas.width / Math.max(1, this.canvas.clientWidth)).toFixed(3)}x${(this.canvas.height / Math.max(1, this.canvas.clientHeight)).toFixed(3)}`,
       `rendu live      fps=${this.liveFps.toFixed(1)} · qualité=${this.liveQuality.toFixed(2)} · ${this.liveFrame} images`,
       `rendu show      fps=${this.fps.toFixed(1)} · qualité=${this.quality.toFixed(2)} · ${this.frame} images`,
+      `rendu calcul    moyenne=${this.frameCostMs.toFixed(1)} ms · pic 5 s=${this.frameCostPeakMs.toFixed(1)} ms`,
     ];
 
     if (sync.phase !== "LIVE") {
@@ -334,6 +335,7 @@ export function installControl(Target: { prototype: App }): void {
         `sync morceau   lecteur=${sync.playerTitle === "" ? "—" : sync.playerTitle}`,
         `sync position  lecteur=${seconds(lecteurMs)} · show=${seconds(showMs)} · écart=${Math.round(ecartMs)} ms`,
         `sync réglages  latence=${sync.latencyMs} ms · tentatives=${sync.attempts} · corrélation=${sync.correlation === null ? "—" : sync.correlation.toFixed(2)}`,
+        `sync audio     décalage mesuré=${sync.audioOffsetMs === null ? "—" : `${sync.audioOffsetMs} ms`} (positif = show en retard) · sonde=${this.syncProbe.size} points`,
         `sync verdict   ${sync.match === "" ? "—" : sync.match}${sync.resyncAt === 0 ? "" : ` · dernier contrôle il y a ${((performance.now() - sync.resyncAt) / 1000).toFixed(1)} s`}`,
       );
     }

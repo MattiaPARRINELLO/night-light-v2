@@ -106,6 +106,8 @@ export interface ShowState {
     attempts: number;
     match: string;
     correlation: number | null;
+    /** Décalage mesuré du show sur le son capturé, en millisecondes. */
+    audioOffsetMs: number | null;
   };
   analysis: {
     title: string;
@@ -391,6 +393,7 @@ export function emptyShowState(): ShowState {
       attempts: 0,
       match: "",
       correlation: null,
+      audioOffsetMs: null,
     },
     analysis: null,
     settings: { intensity: 1, flashes: 0.9, reduced: false, noflash: false, hard: "auto", blackout: false, transition: "crossfade" },

@@ -18,6 +18,7 @@ declare module "./app" {
     bindLiveCapture(): void;
     openExternalCapture(): void;
     closeExternalCapture(): void;
+    refreshLiveAudio(): void;
     stopLiveRender(): void;
     ensureLiveView(): Promise<void>;
     startLiveMode(): Promise<void>;
@@ -235,27 +236,33 @@ export function installLive(Target: { prototype: App }): void {
     this.liveMainRaf = 0;
   };
 
-  Target.prototype.tickLive = function (this: App): void {
-    if (!this.liveMode || this.liveView === null || this.livePlan === null) return;
+  Target.prototype.refreshLiveAudio = function (this: App): void {
     const target = this.liveAudioRaw;
     if (target.updatedAt > this.liveAudio.updatedAt) {
       this.liveAudio = smoothLiveFeatures(this.liveAudio, target, 0.4);
     }
+  };
+
+  Target.prototype.tickLive = function (this: App): void {
+    if (!this.liveMode || this.liveView === null || this.livePlan === null) return;
+    this.refreshLiveAudio();
     const now = performance.now();
     const time = (now - this.liveTimeStart) / 1000;
     // Une capture muette ne doit pas figer la dernière image musicale : au-delà
     // d'une seconde sans message, la direction reçoit un état vide et retombe.
     const fresh = this.liveAudioSeenAt > 0 && now - this.liveAudioSeenAt < 1200;
-    this.liveMusic = this.liveDirector.update(time, fresh ? target : EMPTY_LIVE_AUDIO);
+    this.liveMusic = this.liveDirector.update(time, fresh ? this.liveAudioRaw : EMPTY_LIVE_AUDIO);
     this.renderLive(time);
   };
 
   Target.prototype.renderLive = function (this: App, time: number): void {
+    const startedAt = performance.now();
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     // Un effet forcé depuis le studio prend la toile, même sans morceau.
     if (this.renderEffectOverride(this.liveQuality, width, height, this.hazeFor(this.liveQuality, width, height))) {
       this.liveFrame += 1;
+      this.recordFrameCost(performance.now() - startedAt);
       return;
     }
     const view = this.liveView;
@@ -308,6 +315,8 @@ export function installLive(Target: { prototype: App }): void {
       this.liveQuality = quantizeQuality(this.liveQuality * 0.7);
       this.debug("erreur", "rendu live interrompu", error instanceof Error ? error.message : String(error));
       console.error("Rendu live interrompu", error);
+    } finally {
+      this.recordFrameCost(performance.now() - startedAt);
     }
   };
 }
