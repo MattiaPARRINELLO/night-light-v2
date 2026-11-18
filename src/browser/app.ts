@@ -28,6 +28,7 @@ import { EMPTY_LIVE_MUSIC, LiveDirector, type LiveMusic } from "../core/liveDire
 import type { AutoResolveFailure } from "../core/nowPlaying";
 import type { ExternalPlaybackState } from "../core/playback";
 import { renderPixelRatio } from "../core/series";
+import { SyncProbe } from "../core/syncProbe";
 import type { ShowPlan } from "../core/show";
 import type { TrackView } from "../core/view";
 import type { EffectTimeline } from "../core/effects";
@@ -108,7 +109,10 @@ interface SyncDebug {
   latencyMs: number;
   attempts: number;
   match: string;
+  /** Corrélation entre le son capturé et l'énergie dessinée, entre -1 et 1. */
   correlation: number | null;
+  /** Décalage mesuré du show sur le son, en millisecondes. Positif = en retard. */
+  audioOffsetMs: number | null;
   resyncAt: number;
 }
 
@@ -256,10 +260,23 @@ export class App {
     attempts: 0,
     match: "",
     correlation: null,
+    audioOffsetMs: null,
     resyncAt: 0,
   };
   debugTimer: number | null = null;
   debugLastPlayer: ExternalPlaybackState | null = null;
+
+  /**
+   * Sonde de synchronisation : compare le son réellement capturé à l'énergie
+   * que le show dessine. Elle mesure, elle ne corrige rien.
+   */
+  syncProbe = new SyncProbe();
+  /** Coût moyen du dernier rendu (calcul seul, hors présentation), en ms. */
+  frameCostMs = 0;
+  /** Plus gros coût observé sur la fenêtre de mesure, en ms. */
+  frameCostPeakMs = 0;
+  /** Instant (performance.now) du début de la fenêtre du pic de coût. */
+  frameCostPeakAt = 0;
 
   /* ---- lien avec le dashboard ---- */
   control: ControlLink | null = null;
@@ -393,6 +410,26 @@ export class App {
   /** Écrit une ligne dans la console et dans le tampon de l'overlay. */
   debug(category: DebugCategory, message: string, data?: unknown): void {
     dbgLog(category, message, data);
+  }
+
+  /**
+   * Enregistre le coût d'un rendu.
+   *
+   * C'est la part observable du « lag d'affichage » : le temps passé à calculer
+   * l'image. Le temps de présentation (GPU, vsync, flou) s'y ajoute sans être
+   * visible depuis le JavaScript, mais un calcul lourd est déjà un signal.
+   */
+  recordFrameCost(durationMs: number): void {
+    if (!Number.isFinite(durationMs) || durationMs < 0) return;
+    this.frameCostMs =
+      this.frameCostMs === 0 ? durationMs : this.frameCostMs * 0.9 + durationMs * 0.1;
+    const now = performance.now();
+    if (now - this.frameCostPeakAt > 5000) {
+      this.frameCostPeakMs = durationMs;
+      this.frameCostPeakAt = now;
+    } else if (durationMs > this.frameCostPeakMs) {
+      this.frameCostPeakMs = durationMs;
+    }
   }
 
   /**

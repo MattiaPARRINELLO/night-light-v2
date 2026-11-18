@@ -118,6 +118,10 @@ try {
   await page.goto(`${API}/`, { waitUntil: "domcontentloaded" });
 
   // ---- analyse du morceau, puis démarrage automatique du show
+  // Le faux lecteur avance depuis son état initial. Le démarrage du serveur peut
+  // prendre plusieurs secondes : on recale sa position à l'instant du dépôt pour
+  // que la piste de 12 s ne soit pas déjà finie quand l'analyse se termine.
+  fake.state({ status: "Playing", title: TITLE, artist: "", album: "", length_us: 12_000_000, position: 4.0 });
   await page.setInputFiles("#file-input", track);
   if (!(await waitForState("analyse", async () => (await page.evaluate(() => document.body.dataset.analysisReady)) === "true", 120000))) {
     throw new Error("analyse interrompue");
@@ -144,6 +148,19 @@ try {
   }
   if (debut.sync !== null && debut.sync.show < 3) {
     failures.push(`position de départ trop basse : ${debut.sync.show} s`);
+  }
+  // Sonde de synchronisation et coût de rendu : les deux mesures doivent être
+  // présentes même quand aucune capture audio n'est disponible dans le test.
+  const ligneSonde = debut.text.split("\n").find((line) => line.startsWith("sync audio"));
+  if (ligneSonde === undefined) {
+    failures.push("overlay : ligne de sonde audio absente");
+  } else if (!/décalage mesuré=(—|-?\d+ ms)/.test(ligneSonde)) {
+    failures.push(`overlay : sonde audio illisible (${ligneSonde})`);
+  }
+  const ligneCout = debut.text.split("\n").find((line) => line.startsWith("rendu calcul"));
+  const coutMs = Number(/moyenne=([\d.]+) ms/.exec(ligneCout ?? "")?.[1] ?? NaN);
+  if (!Number.isFinite(coutMs) || coutMs <= 0) {
+    failures.push(`overlay : coût de rendu non mesuré (${ligneCout ?? "absent"})`);
   }
 
   /**

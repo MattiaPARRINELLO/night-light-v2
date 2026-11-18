@@ -201,6 +201,11 @@ export function installSync(Target: { prototype: App }): void {
     this.pendingPlanAt = null;
     this.syncedPlan = this.buildPlan(analysis);
     this.pendingSynced = null;
+    // La fenêtre de mesure appartient au morceau précédent : on ne compare pas
+    // son énergie au son du nouveau.
+    this.syncProbe.reset();
+    this.debugSync.correlation = null;
+    this.debugSync.audioOffsetMs = null;
     this.syncedStartMs = initialMs + this.syncedLatencyMs;
     this.syncedStartedAtEpoch = Date.now();
     this.syncedPaused = false;
@@ -354,6 +359,9 @@ export function installSync(Target: { prototype: App }): void {
     this.syncedPaused = false;
     this.pendingSynced = null;
     this.syncedTitle = "";
+    this.syncProbe.reset();
+    this.debugSync.correlation = null;
+    this.debugSync.audioOffsetMs = null;
     // Un fondu qui fait ENTRER un show n'a plus de sens quand ce show s'arrête ;
     // celui qui fait SORTIR vers le direct, si : il porte la transition en cours
     // et c'est le retour au live qui doit rester lisse.
@@ -425,13 +433,16 @@ export function installSync(Target: { prototype: App }): void {
   };
 
   Target.prototype.renderSynced = function (this: App): void {
+    const startedAt = performance.now();
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (this.renderEffectOverride(this.quality, width, height, this.hazeFor(this.quality, width, height))) {
       this.frame += 1;
+      this.recordFrameCost(performance.now() - startedAt);
       return;
     }
-    const time = Math.max(0, this.showTimeMs(Date.now()) / 1000);
+    const nowEpoch = Date.now();
+    const time = Math.max(0, this.showTimeMs(nowEpoch) / 1000);
     this.applyPendingPlanIfDue(time);
     const pending = this.pendingSynced;
     if (pending !== null && time >= pending.switchAt) {
@@ -456,6 +467,11 @@ export function installSync(Target: { prototype: App }): void {
     const fade = this.crossfade;
     const target = this.fadeTarget("show");
     const renderTime = Math.min(time, view.duration);
+    // Sonde de synchronisation : le niveau réellement capturé, face à l'énergie
+    // que cette image est en train de dessiner. C'est la seule mesure qui dit si
+    // le show colle au son, indépendamment de la position MPRIS.
+    this.refreshLiveAudio();
+    this.syncProbe.push(nowEpoch, this.liveAudio.rms, view.energyAt(renderTime));
     try {
       if (fade !== null && fade.active && fade.fromPlan !== null && fade.from === "live") {
         fade.fromCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -504,6 +520,8 @@ export function installSync(Target: { prototype: App }): void {
     } catch (error) {
       this.debug("erreur", "rendu synchronisé interrompu", error instanceof Error ? error.message : String(error));
       console.error("Rendu synchronisé interrompu", error);
+    } finally {
+      this.recordFrameCost(performance.now() - startedAt);
     }
   };
 
@@ -565,6 +583,12 @@ export function installSync(Target: { prototype: App }): void {
       // L'écart mesuré avant correction sert à décider, pas à s'afficher : ce qui
       // compte pour l'utilisateur est l'écart résiduel une fois recadré.
       const driftAvantCorrection = drift;
+      // Mesure indépendante de la position MPRIS : le son réellement capturé
+      // face à l'énergie que le show dessine. Elle ne corrige rien, elle dit si
+      // le show colle au son, et de combien il en est écarté.
+      const probe = this.syncProbe.estimate();
+      this.debugSync.correlation = probe === null ? null : probe.score;
+      this.debugSync.audioOffsetMs = probe === null ? null : probe.offsetMs;
 
       if (state.status === "paused") {
         this.debugSync.phase = "PAUSED";
