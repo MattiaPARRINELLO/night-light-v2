@@ -268,6 +268,12 @@ export function installLive(Target: { prototype: App }): void {
     const view = this.liveView;
     const plan = this.livePlan;
     if (view === null || plan === null) return;
+    // Entrée en show : la couche direct est sortante. La rendre encore pendant
+    // le fondu doublait le coût par image au moment précis où le show démarre,
+    // et faisait tomber la cadence sur ses premiers temps forts. Le fondu garde
+    // l'image figée de cette couche, ce qui suffit pour la dissoudre.
+    const fade = this.crossfade;
+    if (fade !== null && fade.active && fade.to === "show") return;
     const target = this.fadeTarget("live");
     try {
       const fade = this.crossfade;
@@ -309,7 +315,10 @@ export function installLive(Target: { prototype: App }): void {
       });
       this.liveFrame += 1;
       this.drawTransitionIfNeeded(time, plan);
-      this.composeCrossfade();
+      // Pendant une transition qui implique un show, c'est `renderSynced` qui
+      // compose : composer ici aussi rejouait deux recopies plein écran par
+      // image, pour un résultat identique.
+      if (!this.syncedMode) this.composeCrossfade();
       this.applyBlackout();
     } catch (error) {
       this.liveQuality = quantizeQuality(this.liveQuality * 0.7);
